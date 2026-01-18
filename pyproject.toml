@@ -9,4 +9,8 @@ dependencies = [
     "fastapi>=0.118.0",
     "streamlit>=1.50.0",
     "together>=1.5.26",
+    "django",
+    "djangorestframework",
+    "django-cors-headers",
+    "djangorestframework-simplejwt",
 ]

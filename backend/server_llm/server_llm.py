@@ -35,3 +35,21 @@ class TogetherAIsServerLLM:
     def generate_response(self, prompt, llm):
         return self._generate_response_llm(prompt, llm)
 
+    def generate_streaming_response(self, prompt, llm):
+        """
+        Generates a streaming response from the TogetherAI API.
+        """
+        stream = self.client.chat.completions.create(
+            model=llm,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            stream=True
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+

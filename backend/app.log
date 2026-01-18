@@ -1,0 +1,19 @@
+2026-01-18 12:59:22,654 - INFO - /home/oussama/AIMIx/backend/api/urls.py changed, reloading.
+2026-01-18 13:01:00,154 - INFO - error_code=invalid_api_key error_message='Invalid API key provided. You can find your API key at https://api.together.ai/settings/api-keys.' error_param=None error_type=invalid_request_error message='Together API error received' stream_error=False
+2026-01-18 13:01:00,159 - ERROR - Internal Server Error: /api/chat
+2026-01-18 13:07:04,785 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 13:07:39,699 - INFO - error_code=model_not_available error_message='Unable to access non-serverless model meta-llama/Llama-3-8b-chat-hf. Please visit https://api.together.ai/models/meta-llama/Llama-3-8b-chat-hf to create and start a new dedicated endpoint for the model.' error_param=None error_type=invalid_request_error message='Together API error received' stream_error=False
+2026-01-18 13:07:39,702 - ERROR - Internal Server Error: /api/chat
+2026-01-18 13:09:28,923 - INFO - error_code=model_not_available error_message='Unable to access non-serverless model meta-llama/Llama-3-8b-chat-hf. Please visit https://api.together.ai/models/meta-llama/Llama-3-8b-chat-hf to create and start a new dedicated endpoint for the model.' error_param=None error_type=invalid_request_error message='Together API error received' stream_error=False
+2026-01-18 13:09:28,928 - ERROR - Internal Server Error: /api/chat
+2026-01-18 13:10:08,986 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 13:11:30,415 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 13:11:54,746 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 13:11:58,081 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 14:24:04,732 - WARNING - Unauthorized: /api/chat
+2026-01-18 14:37:13,604 - INFO - /home/oussama/AIMIx/backend/server_llm/server_llm.py changed, reloading.
+2026-01-18 14:37:25,253 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 14:46:31,652 - INFO - /home/oussama/AIMIx/backend/api/models.py changed, reloading.
+2026-01-18 14:46:58,316 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 14:47:11,248 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-18 14:47:21,060 - INFO - /home/oussama/AIMIx/backend/api/urls.py changed, reloading.
