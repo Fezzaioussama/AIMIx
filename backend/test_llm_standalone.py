@@ -1,6 +1,6 @@
 import os
-from server_llm import TogetherAIsServerLLM
-from data_models import LLMTogetherAI
+from server_llm.server_llm import TogetherAIsServerLLM
+from server_llm.data_models import LLMTogetherAI
 from dotenv import load_dotenv
 
 

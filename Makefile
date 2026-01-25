@@ -9,7 +9,7 @@ install:
 
 # Run the standalone LLM script
 run-llm:
-	$(UV) run backend/main.py
+	$(UV) run backend/test_llm_standalone.py
 
 # Run the Django Backend
 run-backend:
@@ -20,7 +20,7 @@ run-frontend:
 	cd frontend/AIMIx && npm start
 
 # Run both concurrently
-run-all:
+run-aimix:
 	$(MAKE) -j 2 run-backend run-frontend
 
 # Create a superuser for authentication

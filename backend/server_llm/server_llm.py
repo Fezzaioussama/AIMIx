@@ -30,7 +30,9 @@ class TogetherAIsServerLLM:
                 }
             ]
         )
-        return response.choices[0].message.content
+        if response.choices:
+            return response.choices[0].message.content
+        return ""
 
     def generate_response(self, prompt, llm):
         return self._generate_response_llm(prompt, llm)
@@ -50,6 +52,6 @@ class TogetherAIsServerLLM:
             stream=True
         )
         for chunk in stream:
-            if chunk.choices[0].delta.content:
+            if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
