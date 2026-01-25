@@ -1,0 +1,29 @@
+<div class="register-box">
+    <img src="logo.png" alt="AIMIx Logo" class="app-logo">
+    <h2>Create Account</h2>
+    <form (ngSubmit)="onSubmit()">
+
+        <div class="input-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" [(ngModel)]="username" required>
+        </div>
+
+        <div class="input-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" [(ngModel)]="password" required>
+        </div>
+
+        <div class="input-group">
+            <label for="confirmPassword">Confirm Password:</label>
+            <input type="password" id="confirmPassword" name="confirmPassword" [(ngModel)]="confirmPassword" required>
+        </div>
+
+        <button type="submit">Register</button>
+
+        <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+        <div class="login-link">
+            Already have an account? <a (click)="navigateToLogin()">Log in here</a>
+        </div>
+    </form>
+</div>

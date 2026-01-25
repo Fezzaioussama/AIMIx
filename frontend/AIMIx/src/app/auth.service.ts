@@ -22,4 +22,12 @@ export class AuthService {
       })
     );
   }
+
+  register(username: string, password: string): Observable<any> {
+    const credentials = { username, password };
+    // Assuming the register endpoint is similar pattern. Adjust if needed.
+    // If backend doesn't have register endpoint yet, this will 404, but frontend is ready.
+    const registerUrl = this.apiUrl.replace('/login', '/register');
+    return this.http.post<any>(registerUrl, credentials);
+  }
 }

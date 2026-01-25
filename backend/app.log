@@ -1,2 +1,9 @@
 2026-01-25 12:19:05,778 - INFO - /home/oussama/AIMIx/backend/server_llm/server_llm.py changed, reloading.
 2026-01-25 12:19:17,198 - INFO - /home/oussama/AIMIx/backend/server_llm/server_llm.py changed, reloading.
+2026-01-25 15:07:27,823 - WARNING - Unauthorized: /api/pipelines/
+2026-01-25 15:18:14,824 - WARNING - Not Found: /api/register
+2026-01-25 15:18:17,708 - WARNING - Not Found: /api/register
+2026-01-25 15:18:43,670 - WARNING - Unauthorized: /api/login
+2026-01-25 15:20:00,239 - INFO - /home/oussama/AIMIx/backend/api/serializers.py changed, reloading.
+2026-01-25 15:20:12,029 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-01-25 15:20:24,183 - INFO - /home/oussama/AIMIx/backend/api/urls.py changed, reloading.

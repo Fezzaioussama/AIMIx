@@ -1,5 +1,5 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef, Inject, PLATFORM_ID } from '@angular/core';
+import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -61,7 +61,8 @@ export class PipelineBuilderComponent implements OnInit {
     constructor(
         private http: HttpClient,
         private cdr: ChangeDetectorRef,
-        private sanitizer: DomSanitizer
+        private sanitizer: DomSanitizer,
+        @Inject(PLATFORM_ID) private platformId: Object
     ) { }
 
     ngOnInit(): void {
@@ -69,7 +70,9 @@ export class PipelineBuilderComponent implements OnInit {
     }
 
     loadPipelines() {
+        if (!isPlatformBrowser(this.platformId)) return;
         const token = localStorage.getItem('access_token');
+        if (!token) return;
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
         this.http.get<Pipeline[]>('http://127.0.0.1:8000/api/pipelines/', { headers }).subscribe({
             next: (res) => {
@@ -117,6 +120,7 @@ export class PipelineBuilderComponent implements OnInit {
     }
 
     savePipeline() {
+        if (!isPlatformBrowser(this.platformId)) return;
         this.isSaving = true;
         const token = localStorage.getItem('access_token');
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
@@ -144,6 +148,7 @@ export class PipelineBuilderComponent implements OnInit {
         this.isRunning = true;
         this.runResults = [];
         this.finalOutput = '';
+        if (!isPlatformBrowser(this.platformId)) return;
         const token = localStorage.getItem('access_token');
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
 

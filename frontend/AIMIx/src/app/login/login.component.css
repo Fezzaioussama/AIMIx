@@ -18,8 +18,15 @@
   text-align: center;
 }
 
+.app-logo {
+  width: 350px;
+  height: auto;
+  margin: 0 auto 0.2rem auto;
+  display: block;
+}
+
 h2 {
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.2rem;
   color: #333;
 }
 
@@ -41,7 +48,8 @@ input {
   padding: 10px;
   border: 1px solid #ccc;
   border-radius: 4px;
-  box-sizing: border-box; /* Ensures padding doesn't widen the box */
+  box-sizing: border-box;
+  /* Ensures padding doesn't widen the box */
 }
 
 /* Style the button */
@@ -65,4 +73,20 @@ button:hover {
   color: red;
   margin-top: 1rem;
   font-size: 0.9rem;
+}
+
+.register-link {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.register-link p {
+  margin: 0;
+}
+
+.register-link a {
+  color: #007bff;
+  cursor: pointer;
+  text-decoration: underline;
 }

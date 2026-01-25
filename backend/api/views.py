@@ -136,3 +136,13 @@ def run_pipeline(request, pipeline_id):
 
     except Exception as e:
         return Response({"error": f"Pipeline execution failed at step {len(results) + 1}: {str(e)}"}, status=500)
+
+from rest_framework import generics
+from rest_framework.permissions import AllowAny
+from .serializers import RegisterSerializer
+from django.contrib.auth.models import User
+
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = (AllowAny,)
+    serializer_class = RegisterSerializer
