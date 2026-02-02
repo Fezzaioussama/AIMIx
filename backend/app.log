@@ -7,3 +7,10 @@
 2026-01-25 15:20:00,239 - INFO - /home/oussama/AIMIx/backend/api/serializers.py changed, reloading.
 2026-01-25 15:20:12,029 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
 2026-01-25 15:20:24,183 - INFO - /home/oussama/AIMIx/backend/api/urls.py changed, reloading.
+2026-02-01 14:02:41,501 - INFO - /home/oussama/AIMIx/backend/api/views.py changed, reloading.
+2026-02-01 14:02:57,005 - INFO - /home/oussama/AIMIx/backend/api/urls.py changed, reloading.
+2026-02-01 14:18:20,668 - WARNING - Unauthorized: /api/pipelines/generate
+2026-02-01 14:26:21,030 - WARNING - Unauthorized: /api/pipelines/generate
+2026-02-01 19:40:11,749 - WARNING - Unauthorized: /api/pipelines/
+2026-02-01 19:50:49,563 - WARNING - Unauthorized: /api/pipelines/
+2026-02-01 20:08:53,930 - WARNING - Unauthorized: /api/chat

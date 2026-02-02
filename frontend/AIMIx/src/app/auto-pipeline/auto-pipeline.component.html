@@ -1,0 +1,115 @@
+<div class="auto-pipeline-container">
+    <div class="header">
+        <div class="logo">
+            <span class="logo-icon"></span>
+            <span class="logo-text">AIMix</span>
+            <span class="logo-subtitle">Auto Pipeline</span>
+        </div>
+        <nav class="header-nav">
+            <a routerLink="/pipeline" routerLinkActive="active">Pipeline</a>
+            <a routerLink="/auto-pipeline" routerLinkActive="active">Auto Pipeline</a>
+        </nav>
+        <p class="subtitle">Describe your workflow and let AI create the pipeline for you</p>
+    </div>
+
+    <div class="content">
+        <!-- Input Section -->
+        <div class="input-section card">
+            <h2>
+                <span class="section-icon"></span>
+                Describe Your Workflow
+            </h2>
+
+            <textarea [(ngModel)]="description"
+                placeholder="Example: I want a pipeline that takes a code snippet, translates it to Python, adds detailed documentation, and then creates a step-by-step tutorial..."
+                [disabled]="isGenerating">
+            </textarea>
+
+            <div class="controls">
+                <div class="model-selector">
+                    <label>Planner Model:</label>
+                    <select [(ngModel)]="plannerModel" [disabled]="isGenerating">
+                        <option *ngFor="let m of availableModels" [value]="m">
+                            {{ getModelName(m) }}
+                        </option>
+                    </select>
+                </div>
+
+                <button (click)="generatePipeline()" [disabled]="isGenerating || !description.trim()"
+                    class="generate-btn">
+                    <span *ngIf="!isGenerating">Generate Pipeline</span>
+                    <span *ngIf="isGenerating">
+                        <span class="spinner-inline"></span> Generating...
+                    </span>
+                </button>
+            </div>
+
+            <div *ngIf="errorMessage" class="error-message">
+                {{ errorMessage }}
+            </div>
+
+            <div *ngIf="successMessage" class="success-message">
+                {{ successMessage }}
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div *ngIf="isGenerating" class="loading-section">
+            <div class="spinner"></div>
+            <p>AI is analyzing your workflow and creating pipeline steps...</p>
+        </div>
+
+        <!-- Generated Pipeline -->
+        <div *ngIf="generatedPipeline && !isGenerating" class="pipeline-section card">
+            <div class="pipeline-header">
+                <h2>
+                    <span class="section-icon">🔧</span>
+                    Generated Pipeline
+                </h2>
+                <input type="text" [(ngModel)]="generatedPipeline.name" class="pipeline-name-input"
+                    placeholder="Pipeline Name">
+            </div>
+
+            <div class="steps-container">
+                <div *ngFor="let step of generatedPipeline.steps; let i = index" class="step-card">
+                    <div class="step-header">
+                        <span class="step-number">{{ step.order }}</span>
+                        <span class="step-title">Step {{ step.order }}</span>
+                    </div>
+
+                    <div class="step-body">
+                        <div class="prompt-section">
+                            <label>Prompt Template:</label>
+                            <textarea [(ngModel)]="step.prompt"></textarea>
+                        </div>
+
+                        <div class="model-section">
+                            <label>Model:</label>
+                            <select [(ngModel)]="step.model">
+                                <option *ngFor="let m of availableModels" [value]="m">
+                                    {{ getModelName(m) }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div *ngIf="i < generatedPipeline.steps.length - 1" class="step-arrow">
+                        <span>↓</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button (click)="resetForm()" class="reset-btn">
+                    Start Over
+                </button>
+                <button (click)="savePipeline()" [disabled]="isSaving" class="save-btn">
+                    {{ isSaving ? 'Saving...' : 'Save Pipeline' }}
+                </button>
+                <button (click)="saveAndNavigate()" [disabled]="isSaving" class="execute-btn">
+                    {{ isSaving ? 'Saving...' : '▶Save & Execute' }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

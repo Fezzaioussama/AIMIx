@@ -3,6 +3,10 @@
         <div class="logo">
             <span class="logo-text">AI</span>Mix Pipeline
         </div>
+        <nav class="sidebar-nav">
+            <a routerLink="/pipeline" routerLinkActive="active">Pipeline</a>
+            <a routerLink="/auto-pipeline" routerLinkActive="active">Auto Pipeline</a>
+        </nav>
         <div class="pipeline-meta">
             <button (click)="resetPipeline()" class="new-btn">+ Create New</button>
             <input type="text" [(ngModel)]="pipeline.name" placeholder="Pipeline Name" class="name-input">

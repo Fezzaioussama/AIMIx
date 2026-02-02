@@ -1,7 +1,9 @@
 import { Component, OnInit, ChangeDetectorRef, Inject, PLATFORM_ID } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
 
@@ -29,7 +31,7 @@ interface RunResult {
 @Component({
     selector: 'app-pipeline-builder',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, RouterLink, RouterLinkActive],
     templateUrl: './pipeline-builder.component.html',
     styleUrls: ['./pipeline-builder.component.css']
 })
@@ -62,6 +64,7 @@ export class PipelineBuilderComponent implements OnInit {
         private http: HttpClient,
         private cdr: ChangeDetectorRef,
         private sanitizer: DomSanitizer,
+        private router: Router,
         @Inject(PLATFORM_ID) private platformId: Object
     ) { }
 
@@ -72,14 +75,25 @@ export class PipelineBuilderComponent implements OnInit {
     loadPipelines() {
         if (!isPlatformBrowser(this.platformId)) return;
         const token = localStorage.getItem('access_token');
-        if (!token) return;
+        if (!token) {
+            this.router.navigate(['/login']);
+            return;
+        }
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
         this.http.get<Pipeline[]>('http://127.0.0.1:8000/api/pipelines/', { headers }).subscribe({
             next: (res) => {
                 this.pipelines = res;
                 this.cdr.detectChanges();
             },
-            error: (err) => console.error('Load error:', err)
+            error: (err) => {
+                console.error('Load error:', err);
+                if (err.status === 401) {
+                    // Token expired or invalid, redirect to login
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    this.router.navigate(['/login']);
+                }
+            }
         });
     }
 

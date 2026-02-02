@@ -4,7 +4,7 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-from .views import protected_view, chat_view, PipelineViewSet, run_pipeline, RegisterView
+from .views import protected_view, chat_view, PipelineViewSet, run_pipeline, generate_pipeline, RegisterView
 
 router = DefaultRouter()
 router.register(r'pipelines', PipelineViewSet, basename='pipeline')
@@ -17,4 +17,5 @@ urlpatterns = [
     path('protected', protected_view, name='protected_view'),
     path('chat', chat_view, name='chat_view'),
     path('pipelines/<int:pipeline_id>/run', run_pipeline, name='run_pipeline'),
+    path('pipelines/generate', generate_pipeline, name='generate_pipeline'),
 ]
