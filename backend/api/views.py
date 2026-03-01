@@ -2,23 +2,39 @@ import os
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from server_llm.server_llm import TogetherAIsServerLLM
-from server_llm.data_models import LLMTogetherAI
+from server_llm.server_llm import TogetherAIsServerLLM, OpenRouterServerLLM
+from server_llm.data_models import LLMTogetherAI, OpenRouterLLM
 from dotenv import load_dotenv
 
 # Load env at the top level
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 def get_ai_service():
-    """ Helper to get or initialize the AI service with the current key. """
-    togai_api_key = os.getenv('TOGAI_API_KEY')
-    if not togai_api_key or 'your_api_key_here' in togai_api_key:
-        return None, "API Key is missing or invalid in .env"
-    
-    try:
-        return TogetherAIsServerLLM(api_key_togai=togai_api_key), None
-    except Exception as e:
-        return None, str(e)
+    """
+    Helper to get or initialize the AI service.
+    Reads LLM_PROVIDER from .env to select the backend:
+      - 'togetherai'  → TogetherAIsServerLLM  (default)
+      - 'openrouter'  → OpenRouterServerLLM
+    Also returns the default model for that provider.
+    """
+    provider = os.getenv('LLM_PROVIDER', 'togetherai').strip().lower()
+
+    if provider == 'openrouter':
+        api_key = os.getenv('OPEN_ROUTER_KEY')
+        if not api_key or 'your_api_key_here' in api_key:
+            return None, None, "OPEN_ROUTER_KEY is missing or invalid in .env"
+        try:
+            return OpenRouterServerLLM(api_key_openrouter=api_key), OpenRouterLLM.Minimax_M2_5, None
+        except Exception as e:
+            return None, None, str(e)
+    else:  # default: togetherai
+        api_key = os.getenv('TOGAI_API_KEY')
+        if not api_key or 'your_api_key_here' in api_key:
+            return None, None, "TOGAI_API_KEY is missing or invalid in .env"
+        try:
+            return TogetherAIsServerLLM(api_key_togai=api_key), LLMTogetherAI.Llama4_Maverick_17B_128E, None
+        except Exception as e:
+            return None, None, str(e)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -39,13 +55,14 @@ import json
 @permission_classes([IsAuthenticated])
 def chat_view(request):
     """
-    Protected chat endpoint that interfaces with TogetherAI using Streaming.
+    Protected chat endpoint. Uses LLM_PROVIDER from .env to select the backend
+    (togetherai or openrouter) and streams the response.
     """
     prompt = request.data.get('prompt')
     if not prompt:
         return Response({"error": "Prompt is required"}, status=400)
     
-    ai_service, error = get_ai_service()
+    ai_service, default_model, error = get_ai_service()
     if error:
         return Response({
             "error": "AI Service configuration issue.",
@@ -53,8 +70,9 @@ def chat_view(request):
         }, status=503)
 
     try:
-        model = LLMTogetherAI.Llama4_Maverick_17B_128E 
-        print(f"Streaming response using model: {model}")
+        model = default_model
+        provider = os.getenv('LLM_PROVIDER', 'togetherai').strip().lower()
+        print(f"Streaming response using model: {model} (provider: {provider})")
 
         def stream_generator():
             for chunk in ai_service.generate_streaming_response(prompt=prompt, llm=model):
@@ -63,7 +81,7 @@ def chat_view(request):
         return StreamingHttpResponse(stream_generator(), content_type='text/plain')
     except Exception as e:
         error_msg = str(e)
-        print(f"TogetherAI Error: {error_msg}")
+        print(f"LLM Error: {error_msg}")
         return Response({
             "error": "AI Generation Failed",
             "details": error_msg
@@ -98,7 +116,7 @@ def run_pipeline(request, pipeline_id):
     if not initial_input:
         return Response({"error": "Initial input is required"}, status=400)
 
-    ai_service, error = get_ai_service()
+    ai_service, _, error = get_ai_service()
     if error:
         return Response({"error": "AI Service not configured", "details": error}, status=503)
 
@@ -177,7 +195,7 @@ def generate_pipeline(request):
     if planner_model not in AVAILABLE_MODELS:
         return Response({"error": f"Invalid planner model. Choose from: {AVAILABLE_MODELS}"}, status=400)
     
-    ai_service, error = get_ai_service()
+    ai_service, _, error = get_ai_service()
     if error:
         return Response({"error": "AI Service not configured", "details": error}, status=503)
     

@@ -25,7 +25,11 @@ SECRET_KEY = 'REDACTED_SECRET_KEY'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "REDACTED_HOST",
+    "localhost",
+    "127.0.0.1"
+]
 
 
 # Application definition
@@ -129,6 +133,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
+    "http://REDACTED_HOST",
 ]
 
 # REST Framework Configuration

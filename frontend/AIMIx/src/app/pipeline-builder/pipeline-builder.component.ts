@@ -80,7 +80,7 @@ export class PipelineBuilderComponent implements OnInit {
             return;
         }
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
-        this.http.get<Pipeline[]>('http://127.0.0.1:8000/api/pipelines/', { headers }).subscribe({
+        this.http.get<Pipeline[]>('/api/pipelines/', { headers }).subscribe({
             next: (res) => {
                 this.pipelines = res;
                 this.cdr.detectChanges();
@@ -139,7 +139,7 @@ export class PipelineBuilderComponent implements OnInit {
         const token = localStorage.getItem('access_token');
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
 
-        this.http.post<any>('http://127.0.0.1:8000/api/pipelines/', this.pipeline, { headers }).subscribe({
+        this.http.post<any>('/api/pipelines/', this.pipeline, { headers }).subscribe({
             next: (res) => {
                 this.pipeline.id = res.id;
                 this.isSaving = false;
@@ -166,7 +166,7 @@ export class PipelineBuilderComponent implements OnInit {
         const token = localStorage.getItem('access_token');
         const headers = new HttpHeaders().set('Authorization', `Bearer ${token}`);
 
-        this.http.post<any>(`http://127.0.0.1:8000/api/pipelines/${this.pipeline.id}/run`, { input: this.userInput }, { headers }).subscribe({
+        this.http.post<any>(`/api/pipelines/${this.pipeline.id}/run`, { input: this.userInput }, { headers }).subscribe({
             next: (res) => {
                 this.runResults = res.intermediate_results.map((r: any) => ({
                     ...r,

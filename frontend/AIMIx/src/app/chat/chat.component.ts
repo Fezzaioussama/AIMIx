@@ -24,7 +24,7 @@ export class ChatComponent implements OnInit {
     messages: Message[] = [];
     userInput: string = '';
     isLoading: boolean = false;
-    private apiUrl = 'http://127.0.0.1:8000/api/chat';
+    private apiUrl = '/api/chat';
 
     constructor(
         private http: HttpClient,

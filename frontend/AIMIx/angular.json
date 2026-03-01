@@ -65,7 +65,8 @@
               "buildTarget": "my-auth-app:build:production"
             },
             "development": {
-              "buildTarget": "my-auth-app:build:development"
+              "buildTarget": "my-auth-app:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"

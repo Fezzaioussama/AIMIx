@@ -76,7 +76,7 @@ export class AutoPipelineComponent implements OnInit {
             planner_model: this.plannerModel
         };
 
-        this.http.post<any>('http://127.0.0.1:8000/api/pipelines/generate', payload, {
+        this.http.post<any>('/api/pipelines/generate', payload, {
             headers: this.getAuthHeaders()
         }).subscribe({
             next: (res) => {
@@ -108,7 +108,7 @@ export class AutoPipelineComponent implements OnInit {
         this.isSaving = true;
         this.errorMessage = '';
 
-        this.http.post<any>('http://127.0.0.1:8000/api/pipelines/', this.generatedPipeline, {
+        this.http.post<any>('/api/pipelines/', this.generatedPipeline, {
             headers: this.getAuthHeaders()
         }).subscribe({
             next: (res) => {
@@ -131,7 +131,7 @@ export class AutoPipelineComponent implements OnInit {
         this.isSaving = true;
         this.errorMessage = '';
 
-        this.http.post<any>('http://127.0.0.1:8000/api/pipelines/', this.generatedPipeline, {
+        this.http.post<any>('/api/pipelines/', this.generatedPipeline, {
             headers: this.getAuthHeaders()
         }).subscribe({
             next: (res) => {

@@ -7,7 +7,7 @@ import { Observable, tap } from 'rxjs';
 })
 export class AuthService {
   // Update this URL to match your Python Backend
-  private apiUrl = 'http://127.0.0.1:8000/api/login';
+  private apiUrl = '/api/login';
 
   constructor(private http: HttpClient) { }
 
