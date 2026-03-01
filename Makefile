@@ -1,4 +1,4 @@
-.PHONY: run-llm run-backend run-frontend run-all install
+.PHONY: run-llm run-backend run-frontend run-n8n stop-n8n run-aimix install
 
 UV := /home/oussama/.local/bin/uv
 
@@ -19,10 +19,37 @@ run-backend:
 run-frontend:
 	cd frontend/AIMIx && npm start
 
-# Run both concurrently
+# Run n8n workflow engine
+run-n8n:
+	N8N_USER_FOLDER=$(CURDIR)/n8n-data \
+	N8N_SECURE_COOKIE=false \
+	N8N_DISABLE_UI_SECURITY=true \
+	n8n start
+
+# Run backend + frontend + n8n concurrently
 run-aimix:
-	$(MAKE) -j 2 run-backend run-frontend
+	$(MAKE) -j 3 run-backend run-frontend run-n8n
 
 # Create a superuser for authentication
 superuser:
 	cd backend && $(UV) run python manage.py createsuperuser
+
+# Kill the Django Backend
+kill-back:
+	-pkill -f "manage.py runserver"
+	@echo "Backend killed."
+
+# Kill the Angular Frontend
+kill-front:
+	-pkill -f "npm start"
+	-pkill -f "ng serve"
+	@echo "Frontend killed."
+
+# Kill n8n workflow engine
+kill-n8n:
+	-pkill -f "n8n"
+	@echo "n8n killed."
+
+# Kill all AIMIx processes
+kill-all: kill-back kill-front kill-n8n
+	@echo "All AIMIx processes have been terminated."

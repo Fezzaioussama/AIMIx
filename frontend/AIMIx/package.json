@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "serve:ssr:my-auth-app": "node dist/my-auth-app/server/server.mjs"
+    "serve:ssr:my-auth-app": "node dist/my-auth-app/server/server.mjs",
+    "start:n8n": "N8N_USER_FOLDER=../../n8n-data npx n8n start"
   },
   "prettier": {
     "printWidth": 100,

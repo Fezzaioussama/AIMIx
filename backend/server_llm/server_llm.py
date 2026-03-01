@@ -1,7 +1,7 @@
 from together import Together
 from openai import OpenAI  # Required for OpenRouter
 import logging
-from data_models import LLMTogetherAI, OpenRouterLLM
+from .data_models import LLMTogetherAI, OpenRouterLLM
 
 # Set up logging
 logging.basicConfig(

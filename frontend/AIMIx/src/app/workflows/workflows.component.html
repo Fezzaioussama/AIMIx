@@ -1,0 +1,194 @@
+<div class="workflows-container">
+    <!-- Header -->
+    <div class="wf-header">
+        <div class="header-left">
+            <span class="logo-text">AI</span>Mix Workflows
+        </div>
+        <div class="header-right">
+            <span class="connection-status" [class.connected]="isConnected">
+                <span class="conn-dot"></span>
+                {{ isConnected ? 'n8n Connected' : 'n8n Disconnected' }}
+            </span>
+            <button class="open-n8n-btn" (click)="openN8n()" title="Open n8n editor in new tab">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+                n8n Editor
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" *ngIf="isLoading">
+        <div class="spinner"></div>
+        <p>Connecting to n8n workflow engine...</p>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state" *ngIf="!isLoading && !isConnected">
+        <div class="error-card">
+            <div class="error-icon">⚠️</div>
+            <h2>n8n is not running</h2>
+            <p>{{ errorMessage }}</p>
+            <code class="command-hint">make run-n8n</code>
+            <button class="retry-btn" (click)="checkConnection()">Retry Connection</button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content" *ngIf="!isLoading && isConnected">
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn" [class.active]="activeTab === 'workflows'" (click)="setTab('workflows')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+                Workflows
+                <span class="tab-count">{{ workflows.length }}</span>
+            </button>
+            <button class="tab-btn" [class.active]="activeTab === 'executions'" (click)="setTab('executions')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Executions
+                <span class="tab-count">{{ executions.length }}</span>
+            </button>
+        </div>
+
+        <!-- Workflows Tab -->
+        <div class="tab-content" *ngIf="activeTab === 'workflows'">
+            <!-- Empty State -->
+            <div class="empty-state" *ngIf="workflows.length === 0">
+                <div class="empty-icon">🔧</div>
+                <h3>No workflows yet</h3>
+                <p>Create your first workflow in the n8n editor</p>
+                <button class="action-btn" (click)="openN8n()">Open n8n Editor</button>
+            </div>
+
+            <!-- API Key Missing -->
+            <div class="api-key-card" *ngIf="apiKeyMissing">
+                <div class="api-key-icon">🔑</div>
+                <h3>API Key Required</h3>
+                <p>{{ apiKeyMessage }}</p>
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <span class="step-num">1</span>
+                        <span>Open n8n editor and go to <strong>Settings → n8n API</strong></span>
+                    </div>
+                    <div class="setup-step">
+                        <span class="step-num">2</span>
+                        <span>Click <strong>"Create an API key"</strong></span>
+                    </div>
+                    <div class="setup-step">
+                        <span class="step-num">3</span>
+                        <span>Add to <code>backend/.env</code>:</span>
+                    </div>
+                </div>
+                <code class="command-hint">N8N_API_KEY=your-api-key-here</code>
+                <div class="setup-actions">
+                    <button class="action-btn" (click)="openN8n()">Open n8n Editor</button>
+                    <button class="retry-btn" (click)="checkConnection()">Retry</button>
+                </div>
+            </div>
+
+            <!-- Workflow Cards -->
+            <div class="wf-grid">
+                <div *ngFor="let wf of workflows" class="wf-card" [class.active]="selectedWorkflow?.id === wf.id"
+                    (click)="selectWorkflow(wf)">
+                    <div class="wf-card-header">
+                        <div class="wf-status-badge" [class.wf-active]="wf.active">
+                            {{ wf.active ? 'Active' : 'Inactive' }}
+                        </div>
+                        <span class="wf-time">{{ getTimeAgo(wf.updatedAt) }}</span>
+                    </div>
+                    <h3 class="wf-name">{{ wf.name || 'Untitled Workflow' }}</h3>
+                    <div class="wf-meta">
+                        <span class="meta-item">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="14" width="7" height="7"></rect>
+                                <rect x="3" y="14" width="7" height="7"></rect>
+                            </svg>
+                            {{ getNodeCount(wf) }} nodes
+                        </span>
+                        <span class="meta-item">
+                            ID: {{ wf.id }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workflow Detail -->
+            <div class="wf-detail" *ngIf="selectedWorkflow">
+                <div class="detail-header">
+                    <h2>{{ selectedWorkflow.name }}</h2>
+                    <button class="close-btn" (click)="selectedWorkflow = null">&times;</button>
+                </div>
+                <div class="detail-body">
+                    <div class="detail-row">
+                        <span class="detail-label">Status</span>
+                        <span class="detail-value">
+                            <span class="wf-status-badge" [class.wf-active]="selectedWorkflow.active">
+                                {{ selectedWorkflow.active ? 'Active' : 'Inactive' }}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Created</span>
+                        <span class="detail-value">{{ formatDate(selectedWorkflow.createdAt) }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Updated</span>
+                        <span class="detail-value">{{ formatDate(selectedWorkflow.updatedAt) }}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Nodes</span>
+                        <span class="detail-value">{{ getNodeCount(selectedWorkflow) }}</span>
+                    </div>
+                    <div class="nodes-list" *ngIf="selectedWorkflow.nodes && selectedWorkflow.nodes.length > 0">
+                        <h4>Nodes</h4>
+                        <div class="node-chip" *ngFor="let node of selectedWorkflow.nodes">
+                            <span class="node-type">{{ node.type?.split('.').pop() || node.type }}</span>
+                            <span class="node-name">{{ node.name }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Executions Tab -->
+        <div class="tab-content" *ngIf="activeTab === 'executions'">
+            <div class="empty-state" *ngIf="executions.length === 0">
+                <div class="empty-icon">📋</div>
+                <h3>No executions yet</h3>
+                <p>Run a workflow to see execution history here</p>
+            </div>
+
+            <div class="exec-list">
+                <div *ngFor="let exec of executions" class="exec-row">
+                    <div class="exec-status">
+                        <span class="exec-dot" [ngClass]="getStatusClass(exec.status)"></span>
+                    </div>
+                    <div class="exec-info">
+                        <span class="exec-id">#{{ exec.id }}</span>
+                        <span class="exec-workflow">Workflow {{ exec.workflowId }}</span>
+                    </div>
+                    <div class="exec-meta">
+                        <span class="exec-mode">{{ exec.mode }}</span>
+                        <span class="exec-time">{{ getTimeAgo(exec.startedAt) }}</span>
+                    </div>
+                    <div class="exec-result">
+                        <span class="exec-badge" [ngClass]="getStatusClass(exec.status)">
+                            {{ exec.status || (exec.finished ? 'success' : 'running') }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
