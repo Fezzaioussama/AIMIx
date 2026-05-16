@@ -179,6 +179,7 @@ button:disabled {
 .error-card,
 .api-key-card,
 .engine-card,
+.ai-builder-card,
 .designer-shell,
 .wf-card,
 .wf-detail,
@@ -295,7 +296,8 @@ button:disabled {
 }
 
 .engine-card,
-.api-key-card {
+.api-key-card,
+.ai-builder-card {
     padding: 18px;
 }
 
@@ -492,6 +494,66 @@ button:disabled {
     color: #fecaca;
     background: rgba(248, 113, 113, 0.1);
     border: 1px solid rgba(248, 113, 113, 0.22);
+}
+
+.notice.warning {
+    color: #fde68a;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.22);
+}
+
+.compact-notice {
+    margin: 10px 0 0;
+    font-size: 0.78rem;
+}
+
+.ai-builder-card {
+    display: grid;
+    gap: 10px;
+    border-color: rgba(56, 189, 248, 0.2);
+    background: rgba(14, 35, 54, 0.72);
+}
+
+.ai-builder-card textarea {
+    width: 100%;
+    min-height: 116px;
+    resize: vertical;
+    background: rgba(0, 0, 0, 0.24);
+    color: #f9fafb;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    outline: none;
+    padding: 11px;
+    font-family: inherit;
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+.ai-builder-card textarea:focus {
+    border-color: rgba(56, 189, 248, 0.5);
+}
+
+.builder-meta,
+.plan-preview {
+    color: #9ca3af;
+    font-size: 0.76rem;
+}
+
+.plan-preview {
+    display: grid;
+    gap: 5px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.plan-preview strong {
+    color: #f9fafb;
+    font-size: 0.84rem;
+}
+
+.plan-preview span,
+.plan-preview div {
+    overflow-wrap: anywhere;
 }
 
 .wf-grid {

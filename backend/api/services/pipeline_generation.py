@@ -1,27 +1,33 @@
 import json
 import re
 
-AVAILABLE_MODELS = [
-    "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-    "meta-llama/Llama-3-8b-chat-hf",
-    "openai/gpt-oss-120b",
-    "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
-]
+from server_llm.data_models import OpenRouterLLM
 
-PIPELINE_GENERATION_PROMPT = """You are an AI pipeline architect. Given a user's description of a workflow, generate a structured multi-step pipeline.
+DEFAULT_PIPELINE_MODEL = OpenRouterLLM.DeepSeek_V4_Flash.model_id
+AVAILABLE_MODELS = [
+    DEFAULT_PIPELINE_MODEL,
+    *[
+        model_id
+        for model_id in OpenRouterLLM.ids()
+        if model_id != DEFAULT_PIPELINE_MODEL
+    ],
+]
+AVAILABLE_MODELS_TEXT = ", ".join(AVAILABLE_MODELS)
+
+PIPELINE_GENERATION_PROMPT = f"""You are an AI pipeline architect. Given a user's description of a workflow, generate a structured multi-step pipeline.
 
 Each step should have:
-1. A clear, specific prompt template that uses {input} as a placeholder for the previous step's output
-2. A recommended model from this list: meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8, meta-llama/Llama-3-8b-chat-hf, openai/gpt-oss-120b, Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+1. A clear, specific prompt template that uses {{input}} as a placeholder for the previous step's output
+2. A recommended model from this list: {AVAILABLE_MODELS_TEXT}
 
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
-{
+{{
   "name": "Pipeline Name",
   "steps": [
-    {"order": 1, "prompt": "Your prompt with {input}", "model": "model-name"},
-    {"order": 2, "prompt": "Next prompt with {input}", "model": "model-name"}
+    {{"order": 1, "prompt": "Your prompt with {{input}}", "model": "model-name"}},
+    {{"order": 2, "prompt": "Next prompt with {{input}}", "model": "model-name"}}
   ]
-}
+}}
 
 User's workflow description:
 """

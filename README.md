@@ -131,6 +131,7 @@ graph LR
 ### Embedded n8n Workflow Studio
 
 The `/workflows` page keeps n8n inside the AIMIx interface:
+-   **AI Builder** accepts a natural-language request, discovers the installed n8n node catalog, asks the configured LLM for a plan, and creates an inactive n8n draft workflow for review.
 -   **Designer** embeds the native n8n editor, so workflow building is not recreated from scratch.
 -   **Workflows** lists n8n workflows through the Django proxy and supports edit, activate, deactivate, and webhook trigger actions.
 -   **Executions** shows n8n run history and supports retrying failed runs or stopping active runs.

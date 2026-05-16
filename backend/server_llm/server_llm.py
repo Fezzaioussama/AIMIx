@@ -1,7 +1,19 @@
 from together import Together
 from openai import OpenAI  # Required for OpenRouter
 import logging
-from .data_models import LLMTogetherAI, OpenRouterLLM
+from .data_models import LLMTogetherAI, ModelInfo, OpenRouterLLM
+
+DEFAULT_TOGETHER_MODEL = LLMTogetherAI.Llama4_Maverick_17B_128E
+DEFAULT_OPENROUTER_MODEL = OpenRouterLLM.DeepSeek_V4_Flash
+
+
+def resolve_model_id(llm):
+    if isinstance(llm, ModelInfo):
+        return llm.model_id
+    if not llm:
+        raise ValueError("LLM model id is required")
+    return str(llm)
+
 
 # Set up logging
 logging.basicConfig(
@@ -24,7 +36,7 @@ class TogetherAIsServerLLM:
 
     def _generate_response_llm(self, prompt, llm):
         response = self.client.chat.completions.create(
-            model=llm,
+            model=resolve_model_id(llm),
             messages=[
                 {
                     "role": "user",
@@ -36,15 +48,15 @@ class TogetherAIsServerLLM:
             return response.choices[0].message.content
         return ""
 
-    def generate_response(self, prompt, llm=LLMTogetherAI.Llama4_Maverick_17B_128E):
+    def generate_response(self, prompt, llm=DEFAULT_TOGETHER_MODEL):
         return self._generate_response_llm(prompt, llm)
 
-    def generate_streaming_response(self, prompt, llm=LLMTogetherAI.Llama4_Maverick_17B_128E):
+    def generate_streaming_response(self, prompt, llm=DEFAULT_TOGETHER_MODEL):
         """
         Generates a streaming response from the TogetherAI API.
         """
         stream = self.client.chat.completions.create(
-            model=llm,
+            model=resolve_model_id(llm),
             messages=[
                 {
                     "role": "user",
@@ -73,7 +85,7 @@ class OpenRouterServerLLM:
     def _generate_response_llm(self, prompt, llm):
         try:
             response = self.client.chat.completions.create(
-                model=llm,
+                model=resolve_model_id(llm),
                 messages=[
                     {
                         "role": "user",
@@ -88,16 +100,16 @@ class OpenRouterServerLLM:
             logging.error(f"OpenRouter API error: {e}")
             return ""
 
-    def generate_response(self, prompt, llm=OpenRouterLLM.Minimax_M2_5):
+    def generate_response(self, prompt, llm=DEFAULT_OPENROUTER_MODEL):
         return self._generate_response_llm(prompt, llm)
 
-    def generate_streaming_response(self, prompt, llm=OpenRouterLLM.Minimax_M2_5):
+    def generate_streaming_response(self, prompt, llm=DEFAULT_OPENROUTER_MODEL):
         """
         Generates a streaming response from the OpenRouter API.
         """
         try:
             stream = self.client.chat.completions.create(
-                model=llm,
+                model=resolve_model_id(llm),
                 messages=[
                     {
                         "role": "user",

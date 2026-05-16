@@ -9,8 +9,10 @@ from api.endpoints.chat import chat_view
 from api.endpoints.n8n import (
     activate_workflow,
     deactivate_workflow,
+    generate_workflow,
     get_execution,
     get_workflow,
+    list_node_types,
     list_executions,
     list_workflows,
     n8n_health,
@@ -36,7 +38,9 @@ urlpatterns = [
     # n8n proxy endpoints
     path('n8n/health', n8n_health, name='n8n_health'),
     path('n8n/info', n8n_info, name='n8n_info'),
+    path('n8n/nodes', list_node_types, name='n8n_list_node_types'),
     path('n8n/workflows', list_workflows, name='n8n_list_workflows'),
+    path('n8n/workflows/generate', generate_workflow, name='n8n_generate_workflow'),
     path('n8n/workflows/<str:workflow_id>', get_workflow, name='n8n_get_workflow'),
     path('n8n/workflows/<str:workflow_id>/activate', activate_workflow, name='n8n_activate_workflow'),
     path('n8n/workflows/<str:workflow_id>/deactivate', deactivate_workflow, name='n8n_deactivate_workflow'),

@@ -74,6 +74,29 @@
 
         <div class="tab-content designer-content" *ngIf="activeTab === 'designer'">
             <aside class="designer-sidebar">
+                <div class="ai-builder-card">
+                    <div class="engine-title">AI Workflow Builder</div>
+                    <textarea [(ngModel)]="aiWorkflowPrompt" spellcheck="false"
+                        placeholder="Receive an invoice webhook, summarize it, then send the result to Slack"></textarea>
+                    <button class="primary-btn" [disabled]="isGeneratingWorkflow" (click)="generateWorkflowFromText()">
+                        <span class="spinner small" *ngIf="isGeneratingWorkflow"></span>
+                        {{ isGeneratingWorkflow ? 'Building...' : 'Build Draft' }}
+                    </button>
+                    <div class="builder-meta">
+                        <span>{{ availableNodeCount || 'n8n' }} nodes available</span>
+                    </div>
+                    <div class="notice success compact-notice" *ngIf="generationMessage">{{ generationMessage }}</div>
+                    <div class="notice warning compact-notice" *ngIf="generationWarning">{{ generationWarning }}</div>
+                    <div class="notice error compact-notice" *ngIf="generationError">{{ generationError }}</div>
+                    <div class="plan-preview" *ngIf="generatedPlan">
+                        <strong>{{ generatedPlan.name }}</strong>
+                        <span *ngIf="generatedPlan.summary">{{ generatedPlan.summary }}</span>
+                        <div *ngIf="generatedPlan.credential_notes && generatedPlan.credential_notes.length > 0">
+                            Credentials: {{ generatedPlan.credential_notes.join(', ') }}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="engine-card">
                     <div class="engine-title">n8n Engine</div>
                     <div class="engine-row">

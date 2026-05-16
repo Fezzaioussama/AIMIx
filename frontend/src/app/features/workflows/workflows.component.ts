@@ -48,6 +48,13 @@ interface WebhookTarget {
     nodeName: string;
 }
 
+interface GeneratedWorkflowPlan {
+    name: string;
+    summary?: string;
+    credential_notes?: string[];
+    activation_notes?: string[];
+}
+
 @Component({
     selector: 'app-workflows',
     standalone: true,
@@ -82,6 +89,14 @@ export class WorkflowsComponent implements OnInit {
     webhookError = '';
     isTriggeringWebhook = false;
 
+    aiWorkflowPrompt = '';
+    isGeneratingWorkflow = false;
+    generationMessage = '';
+    generationError = '';
+    generationWarning = '';
+    generatedPlan: GeneratedWorkflowPlan | null = null;
+    availableNodeCount = 0;
+
     constructor(
         private http: HttpClient,
         private cdr: ChangeDetectorRef,
@@ -95,6 +110,7 @@ export class WorkflowsComponent implements OnInit {
     ngOnInit(): void {
         if (isPlatformBrowser(this.platformId)) {
             this.loadEditorConfig();
+            this.loadNodeCatalog();
             this.checkConnection();
         }
     }
@@ -160,6 +176,18 @@ export class WorkflowsComponent implements OnInit {
                 this.workflows = [];
                 this.isLoading = false;
                 this.cdr.detectChanges();
+            }
+        });
+    }
+
+    loadNodeCatalog(): void {
+        this.http.get<{ count?: number; data?: unknown[] }>('/api/n8n/nodes').subscribe({
+            next: (resp) => {
+                this.availableNodeCount = resp.count ?? resp.data?.length ?? 0;
+                this.cdr.detectChanges();
+            },
+            error: () => {
+                this.availableNodeCount = 0;
             }
         });
     }
@@ -318,6 +346,57 @@ export class WorkflowsComponent implements OnInit {
                 this.handleHttpError(err, 'Webhook execution failed.');
                 this.webhookError = err.error?.error || err.error?.message || 'Webhook execution failed.';
                 this.isTriggeringWebhook = false;
+                this.cdr.detectChanges();
+            }
+        });
+    }
+
+    generateWorkflowFromText(): void {
+        if (!this.ensureAuthenticated()) return;
+
+        const prompt = this.aiWorkflowPrompt.trim();
+        if (prompt.length < 8) {
+            this.generationError = 'Describe the workflow in a little more detail.';
+            return;
+        }
+
+        this.isGeneratingWorkflow = true;
+        this.generationError = '';
+        this.generationMessage = '';
+        this.generationWarning = '';
+        this.generatedPlan = null;
+
+        this.http.post<any>('/api/n8n/workflows/generate', { prompt, create: true }, {
+            headers: this.getAuthHeaders()
+        }).subscribe({
+            next: (resp) => {
+                if (resp.api_key_missing) {
+                    this.apiKeyMissing = true;
+                    this.generationError = resp.message || 'N8N_API_KEY is not configured.';
+                    this.isGeneratingWorkflow = false;
+                    this.cdr.detectChanges();
+                    return;
+                }
+
+                const createdWorkflow = resp.created_workflow?.data || resp.created_workflow || {};
+                const workflowId = createdWorkflow.id;
+                this.generatedPlan = resp.plan || null;
+                this.generationWarning = resp.warning || '';
+                this.generationMessage = `${createdWorkflow.name || this.generatedPlan?.name || 'Draft workflow'} created.`;
+                this.isGeneratingWorkflow = false;
+                this.loadWorkflows();
+
+                if (workflowId) {
+                    this.setEditorPath(`/workflow/${workflowId}`);
+                    this.setTab('designer');
+                    this.reloadDesigner();
+                }
+                this.cdr.detectChanges();
+            },
+            error: (err) => {
+                this.handleHttpError(err, 'Unable to generate workflow.');
+                this.generationError = err.error?.error || err.error?.message || 'Unable to generate workflow.';
+                this.isGeneratingWorkflow = false;
                 this.cdr.detectChanges();
             }
         });
