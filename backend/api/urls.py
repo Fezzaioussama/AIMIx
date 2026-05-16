@@ -8,6 +8,7 @@ from api.endpoints.auth import RegisterView, protected_view
 from api.endpoints.chat import chat_view
 from api.endpoints.n8n import (
     activate_workflow,
+    autofix_workflow_endpoint,
     deactivate_workflow,
     generate_workflow,
     get_execution,
@@ -44,6 +45,7 @@ urlpatterns = [
     path('n8n/workflows/<str:workflow_id>', get_workflow, name='n8n_get_workflow'),
     path('n8n/workflows/<str:workflow_id>/activate', activate_workflow, name='n8n_activate_workflow'),
     path('n8n/workflows/<str:workflow_id>/deactivate', deactivate_workflow, name='n8n_deactivate_workflow'),
+    path('n8n/workflows/<str:workflow_id>/autofix', autofix_workflow_endpoint, name='n8n_autofix_workflow'),
     path('n8n/executions', list_executions, name='n8n_list_executions'),
     path('n8n/executions/<str:execution_id>', get_execution, name='n8n_get_execution'),
     path('n8n/executions/<str:execution_id>/retry', retry_execution, name='n8n_retry_execution'),

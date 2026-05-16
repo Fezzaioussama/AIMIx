@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from api.services.n8n_workflow_generation import build_heuristic_plan, build_workflow_from_plan
+from api.services.workflow_autofix import diagnose_failure
 
 
 class N8nWorkflowGenerationTests(SimpleTestCase):
@@ -22,3 +23,38 @@ class N8nWorkflowGenerationTests(SimpleTestCase):
         self.assertTrue(
             any(node["type"] == "n8n-nodes-base.scheduleTrigger" for node in workflow["nodes"])
         )
+
+
+class WorkflowAutoFixTests(SimpleTestCase):
+    def test_diagnose_failure_uses_top_level_error_node(self):
+        workflow = {
+            "name": "Broken workflow",
+            "nodes": [
+                {
+                    "name": "HTTP Request",
+                    "type": "n8n-nodes-base.httpRequest",
+                    "typeVersion": 4,
+                    "parameters": {"url": "https://example.com"},
+                }
+            ],
+            "connections": {},
+        }
+        execution = {
+            "data": {
+                "resultData": {
+                    "lastNodeExecuted": "HTTP Request",
+                    "runData": {},
+                    "error": {
+                        "message": "Bad request",
+                        "node": {"name": "HTTP Request"},
+                    },
+                }
+            }
+        }
+
+        failure = diagnose_failure(execution, workflow)
+
+        self.assertEqual(failure["node_name"], "HTTP Request")
+        self.assertEqual(failure["error_message"], "Bad request")
+        self.assertEqual(failure["node_type"], "n8n-nodes-base.httpRequest")
+        self.assertEqual(failure["node_parameters"], {"url": "https://example.com"})

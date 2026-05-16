@@ -9,6 +9,7 @@ from api.services.n8n_workflow_generation import (
     discover_local_n8n_node_catalog,
     generate_n8n_workflow,
 )
+from api.services.workflow_autofix import AutoFixError, autofix_workflow
 
 
 def _proxy_response(resp):
@@ -216,6 +217,34 @@ def stop_execution(request, execution_id):
         return Response({"error": "Cannot connect to n8n."}, status=503)
     except Exception as exc:
         return Response({"error": str(exc)}, status=500)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def autofix_workflow_endpoint(request, workflow_id):
+    if not n8n_api_key_configured():
+        return _api_key_missing_response()
+
+    body = request.data or {}
+    execution_id = body.get("execution_id") or body.get("executionId") or ""
+    max_iterations = body.get("max_iterations") or body.get("maxIterations")
+
+    if not execution_id:
+        return Response(
+            {"error": "Provide an execution_id of a failed execution to auto-fix."},
+            status=400,
+        )
+
+    try:
+        report = autofix_workflow(workflow_id, execution_id=str(execution_id), max_iterations=max_iterations)
+    except AutoFixError as exc:
+        return Response({"error": str(exc)}, status=400)
+    except requests.ConnectionError:
+        return Response({"error": "Cannot connect to n8n."}, status=503)
+    except Exception as exc:
+        return Response({"error": f"Auto-fix failed: {exc}"}, status=500)
+
+    return Response(report, status=200)
 
 
 @api_view(["POST"])

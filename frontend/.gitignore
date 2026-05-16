@@ -10,6 +10,28 @@
 /node_modules
 npm-debug.log
 yarn-error.log
+pnpm-debug.log*
+
+# Environment variables and local config
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+*.local.*
+
+# Secrets and credentials
+*.pem
+*.key
+*.crt
+*.cer
+*.cert
+*.p12
+*.pfx
+secrets.*
+*.secret
+*.credentials
+*.token
 
 # IDEs and editors
 .idea/
@@ -33,6 +55,8 @@ yarn-error.log
 .sass-cache/
 /connect.lock
 /coverage
+coverage/
+*.lcov
 /libpeerconnection.log
 testem.log
 /typings
@@ -41,3 +65,4 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+*Zone.Identifier

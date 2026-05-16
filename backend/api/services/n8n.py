@@ -45,3 +45,16 @@ def n8n_post(path, payload=None, timeout=30, authenticated=True):
         headers=headers,
         timeout=timeout,
     )
+
+
+def n8n_put(path, payload=None, timeout=30):
+    return requests.put(
+        n8n_url(path),
+        json=payload or {},
+        headers=n8n_headers(),
+        timeout=timeout,
+    )
+
+
+def n8n_delete(path, timeout=10):
+    return requests.delete(n8n_url(path), headers=n8n_headers(), timeout=timeout)

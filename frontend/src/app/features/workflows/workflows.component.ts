@@ -55,6 +55,27 @@ interface GeneratedWorkflowPlan {
     activation_notes?: string[];
 }
 
+interface AutoFixIteration {
+    iteration: number;
+    execution_id: string;
+    status: string;
+    failing_node: string;
+    error_message: string;
+    explanation: string;
+    patched: boolean;
+    new_execution_id: string;
+    needs_user_action: string;
+}
+
+interface AutoFixReport {
+    workflow_id: string;
+    iteration_cap: number;
+    iterations: AutoFixIteration[];
+    final_state: string;
+    final_execution_id: string;
+    needs_user_action: string;
+}
+
 @Component({
     selector: 'app-workflows',
     standalone: true,
@@ -96,6 +117,10 @@ export class WorkflowsComponent implements OnInit {
     generationWarning = '';
     generatedPlan: GeneratedWorkflowPlan | null = null;
     availableNodeCount = 0;
+
+    autofixActionId: string | null = null;
+    autofixReport: AutoFixReport | null = null;
+    autofixError = '';
 
     constructor(
         private http: HttpClient,
@@ -410,6 +435,63 @@ export class WorkflowsComponent implements OnInit {
     retryExecution(exec: Execution, event: Event): void {
         event.stopPropagation();
         this.runExecutionAction(exec, 'retry', { loadWorkflow: true });
+    }
+
+    autofixExecution(exec: Execution, event: Event): void {
+        event.stopPropagation();
+        if (!this.ensureAuthenticated()) return;
+        if (!exec.workflowId) {
+            this.autofixError = 'This execution has no associated workflow id.';
+            return;
+        }
+        this.autofixActionId = exec.id;
+        this.autofixReport = null;
+        this.autofixError = '';
+        this.actionMessage = '';
+        this.actionError = '';
+
+        this.http.post<AutoFixReport>(
+            `/api/n8n/workflows/${encodeURIComponent(exec.workflowId)}/autofix`,
+            { execution_id: exec.id },
+            { headers: this.getAuthHeaders() }
+        ).subscribe({
+            next: (report) => {
+                this.autofixReport = report;
+                this.autofixActionId = null;
+                this.actionMessage = this.summarizeAutofix(report);
+                this.loadExecutions();
+                if (report.final_execution_id) {
+                    this.selectExecution({ id: report.final_execution_id } as Execution);
+                }
+                this.cdr.detectChanges();
+            },
+            error: (err) => {
+                this.handleHttpError(err, 'Auto-fix failed.');
+                this.autofixError = err.error?.error || err.error?.message || 'Auto-fix failed.';
+                this.autofixActionId = null;
+                this.cdr.detectChanges();
+            }
+        });
+    }
+
+    private summarizeAutofix(report: AutoFixReport): string {
+        const attempts = report.iterations.length;
+        switch (report.final_state) {
+            case 'success':
+                return `Auto-fix succeeded after ${attempts} attempt(s).`;
+            case 'needs_user_action':
+                return `Auto-fix paused: ${report.needs_user_action || 'manual step required.'}`;
+            case 'no_patch_generated':
+                return 'LLM could not produce a concrete patch — open the failing node and inspect.';
+            case 'iteration_cap_reached':
+                return `Auto-fix used all ${report.iteration_cap} attempts without success.`;
+            case 'llm_unavailable':
+                return 'Auto-fix could not reach the LLM provider.';
+            case 'no_failure_signal':
+                return 'No failing node was found in this execution.';
+            default:
+                return `Auto-fix stopped: ${report.final_state}.`;
+        }
     }
 
     getWebhookTargets(wf: Workflow | null): WebhookTarget[] {

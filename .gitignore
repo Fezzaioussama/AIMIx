@@ -1,25 +1,69 @@
-# Environment Variables & Secrets
+# Environment variables and local config
 .env
 .env.*
 !.env.example
+!.env.*.example
+*.local
+*.local.*
+.envrc
+.direnv/
+local_settings.py
+settings.local.py
+
+# Secrets and credentials
 *.pem
 *.key
+*.crt
+*.cer
 *.cert
 *.cert.pem
+*.csr
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.kdbx
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+secrets.*
+*.secret
+*.secrets
+credentials.*
+*.credentials
+*.credentials.*
+*.token
+*.tokens
+*.auth
+*.passwd
+*.password
 
-# Databases
+# Databases and runtime state
 db.sqlite3
-db.sqlite3-journal
+db.sqlite3-*
 *.db
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.pid
+*.pid.lock
+*.seed
 
-# Logs
+# Logs and reports
 *.log
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-logs/
+pnpm-debug.log*
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+*.lcov
 
-# IA
+# AI assistants and local agent state
 .codex/
 .agents/
 .agents-server/
@@ -47,20 +91,24 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tox/
+.nox/
+.hypothesis/
+staticfiles/
+media/
 
-# Virtual Environments
-.env
-.venv
+# Virtual environments
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
 
-# Node.js & Angular (Frontend)
+# Node.js and Angular
 node_modules/
 dist/
 tmp/
@@ -68,11 +116,16 @@ out-tsc/
 bazel-out/
 .angular/
 .npm/
+.pnpm-store/
+.parcel-cache/
+.turbo/
+.vite/
 
-# n8n & Data storage
+# n8n and data storage
 n8n-data/
+.n8n/
 
-# IDEs & OS
+# IDEs, editors, and OS metadata
 .DS_Store
 .DS_Store?
 ._*
@@ -80,6 +133,7 @@ n8n-data/
 .Trashes
 ehthumbs.db
 Thumbs.db
+*Zone.Identifier
 .vscode/
 .idea/
 *.suo
@@ -87,6 +141,8 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+*.sublime-workspace
+.history/
 
-# Other / Custom files
+# Other local notes
 doc_understanding.md

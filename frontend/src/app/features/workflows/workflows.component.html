@@ -292,6 +292,41 @@
                 <p>Run a workflow to see execution history here.</p>
             </div>
 
+            <div class="notice error" *ngIf="autofixError">{{ autofixError }}</div>
+
+            <div class="autofix-report" *ngIf="autofixReport">
+                <div class="autofix-header">
+                    <h4>Auto-fix report</h4>
+                    <button class="close-btn" (click)="autofixReport = null">&times;</button>
+                </div>
+                <div class="autofix-summary">
+                    <span class="autofix-state" [class.success]="autofixReport.final_state === 'success'"
+                        [class.needs-action]="autofixReport.final_state === 'needs_user_action'"
+                        [class.fail]="autofixReport.final_state !== 'success' && autofixReport.final_state !== 'needs_user_action'">
+                        {{ autofixReport.final_state }}
+                    </span>
+                    <span>Attempts: {{ autofixReport.iterations.length }} / {{ autofixReport.iteration_cap }}</span>
+                    <span *ngIf="autofixReport.final_execution_id">Last execution #{{ autofixReport.final_execution_id }}</span>
+                </div>
+                <div class="autofix-needs-action" *ngIf="autofixReport.needs_user_action">
+                    <strong>Action needed:</strong> {{ autofixReport.needs_user_action }}
+                </div>
+                <div class="autofix-iteration" *ngFor="let it of autofixReport.iterations">
+                    <div class="autofix-iteration-head">
+                        <span class="autofix-iteration-num">#{{ it.iteration }}</span>
+                        <span class="autofix-node" *ngIf="it.failing_node">{{ it.failing_node }}</span>
+                        <span class="autofix-badge" [class.patched]="it.patched">
+                            {{ it.patched ? 'patched' : 'no patch' }}
+                        </span>
+                    </div>
+                    <div class="autofix-error" *ngIf="it.error_message">{{ it.error_message }}</div>
+                    <div class="autofix-explanation" *ngIf="it.explanation">{{ it.explanation }}</div>
+                    <div class="autofix-needs-action" *ngIf="it.needs_user_action">
+                        {{ it.needs_user_action }}
+                    </div>
+                </div>
+            </div>
+
             <div class="exec-list" *ngIf="executions.length > 0">
                 <div *ngFor="let exec of executions" class="exec-row" [class.active]="selectedExecution?.id === exec.id"
                     (click)="selectExecution(exec)">
@@ -315,6 +350,11 @@
                         <button class="secondary-btn compact" *ngIf="canRetryExecution(exec)"
                             [disabled]="executionActionId === exec.id" (click)="retryExecution(exec, $event)">
                             Retry
+                        </button>
+                        <button class="primary-btn compact" *ngIf="canRetryExecution(exec)"
+                            [disabled]="autofixActionId === exec.id" (click)="autofixExecution(exec, $event)"
+                            title="Let the agent diagnose and patch the failing node.">
+                            {{ autofixActionId === exec.id ? 'Fixing...' : 'Auto-fix' }}
                         </button>
                         <button class="danger-btn compact" *ngIf="canStopExecution(exec)"
                             [disabled]="executionActionId === exec.id" (click)="stopExecution(exec, $event)">
