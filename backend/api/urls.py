@@ -6,7 +6,19 @@ from rest_framework_simplejwt.views import (
 )
 from api.endpoints.auth import RegisterView, protected_view
 from api.endpoints.chat import chat_view
-from api.endpoints.n8n import get_workflow, list_executions, list_workflows, n8n_health, trigger_webhook
+from api.endpoints.n8n import (
+    activate_workflow,
+    deactivate_workflow,
+    get_execution,
+    get_workflow,
+    list_executions,
+    list_workflows,
+    n8n_health,
+    n8n_info,
+    retry_execution,
+    stop_execution,
+    trigger_webhook,
+)
 from api.endpoints.pipelines import PipelineViewSet, generate_pipeline, run_pipeline
 
 router = DefaultRouter()
@@ -23,8 +35,14 @@ urlpatterns = [
     path('pipelines/generate', generate_pipeline, name='generate_pipeline'),
     # n8n proxy endpoints
     path('n8n/health', n8n_health, name='n8n_health'),
+    path('n8n/info', n8n_info, name='n8n_info'),
     path('n8n/workflows', list_workflows, name='n8n_list_workflows'),
-    path('n8n/workflows/<int:workflow_id>', get_workflow, name='n8n_get_workflow'),
+    path('n8n/workflows/<str:workflow_id>', get_workflow, name='n8n_get_workflow'),
+    path('n8n/workflows/<str:workflow_id>/activate', activate_workflow, name='n8n_activate_workflow'),
+    path('n8n/workflows/<str:workflow_id>/deactivate', deactivate_workflow, name='n8n_deactivate_workflow'),
     path('n8n/executions', list_executions, name='n8n_list_executions'),
+    path('n8n/executions/<str:execution_id>', get_execution, name='n8n_get_execution'),
+    path('n8n/executions/<str:execution_id>/retry', retry_execution, name='n8n_retry_execution'),
+    path('n8n/executions/<str:execution_id>/stop', stop_execution, name='n8n_stop_execution'),
     path('n8n/webhooks/<path:webhook_path>', trigger_webhook, name='n8n_trigger_webhook'),
 ]

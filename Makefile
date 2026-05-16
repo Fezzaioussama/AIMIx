@@ -28,6 +28,10 @@ $(N8N_BIN):
 # Run n8n workflow engine
 run-n8n: | $(N8N_BIN)
 	N8N_USER_FOLDER=$(CURDIR)/n8n-data \
+	N8N_HOST=localhost \
+	N8N_PROTOCOL=http \
+	N8N_EDITOR_BASE_URL=http://localhost:5678 \
+	N8N_PUBLIC_API_DISABLED=false \
 	N8N_SECURE_COOKIE=false \
 	N8N_DISABLE_UI_SECURITY=true \
 	$(NPM) --prefix n8n-engine start

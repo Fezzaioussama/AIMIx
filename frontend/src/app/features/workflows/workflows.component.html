@@ -1,46 +1,57 @@
 <div class="workflows-container">
-    <!-- Header -->
     <div class="wf-header">
         <div class="header-left">
-            <span class="logo-text">AI</span>Mix Workflows
+            <span class="logo-text">AI</span>Mix Workflow Studio
         </div>
         <div class="header-right">
             <span class="connection-status" [class.connected]="isConnected">
                 <span class="conn-dot"></span>
                 {{ isConnected ? 'n8n Connected' : 'n8n Disconnected' }}
             </span>
-            <button class="open-n8n-btn" (click)="openN8n()" title="Open n8n editor in new tab">
+            <button class="secondary-btn" (click)="checkConnection()" title="Refresh n8n status and lists">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                    <polyline points="15 3 21 3 21 9"></polyline>
-                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                    <path d="M3 21v-5h5"></path>
+                    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                    <path d="M16 8h5V3"></path>
                 </svg>
-                n8n Editor
+                Refresh
             </button>
         </div>
     </div>
 
-    <!-- Loading State -->
     <div class="loading-state" *ngIf="isLoading">
         <div class="spinner"></div>
         <p>Connecting to n8n workflow engine...</p>
     </div>
 
-    <!-- Error State -->
     <div class="error-state" *ngIf="!isLoading && !isConnected">
         <div class="error-card">
-            <div class="error-icon">⚠️</div>
+            <div class="error-icon">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path>
+                    <path d="M12 9v4"></path>
+                    <path d="M12 17h.01"></path>
+                </svg>
+            </div>
             <h2>n8n is not running</h2>
             <p>{{ errorMessage }}</p>
             <code class="command-hint">make run-n8n</code>
-            <button class="retry-btn" (click)="checkConnection()">Retry Connection</button>
+            <button class="primary-btn" (click)="checkConnection()">Retry Connection</button>
         </div>
     </div>
 
-    <!-- Main Content -->
     <div class="main-content" *ngIf="!isLoading && isConnected">
-        <!-- Tabs -->
         <div class="tabs">
+            <button class="tab-btn" [class.active]="activeTab === 'designer'" (click)="setTab('designer')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 3h7v7H3z"></path>
+                    <path d="M14 3h7v7h-7z"></path>
+                    <path d="M14 14h7v7h-7z"></path>
+                    <path d="M3 14h7v7H3z"></path>
+                </svg>
+                Designer
+            </button>
             <button class="tab-btn" [class.active]="activeTab === 'workflows'" (click)="setTab('workflows')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
@@ -58,44 +69,97 @@
             </button>
         </div>
 
-        <!-- Workflows Tab -->
-        <div class="tab-content" *ngIf="activeTab === 'workflows'">
-            <!-- Empty State -->
-            <div class="empty-state" *ngIf="workflows.length === 0">
-                <div class="empty-icon">🔧</div>
-                <h3>No workflows yet</h3>
-                <p>Create your first workflow in the n8n editor</p>
-                <button class="action-btn" (click)="openN8n()">Open n8n Editor</button>
-            </div>
+        <div class="notice success" *ngIf="actionMessage">{{ actionMessage }}</div>
+        <div class="notice error" *ngIf="actionError">{{ actionError }}</div>
 
-            <!-- API Key Missing -->
+        <div class="tab-content designer-content" *ngIf="activeTab === 'designer'">
+            <aside class="designer-sidebar">
+                <div class="engine-card">
+                    <div class="engine-title">n8n Engine</div>
+                    <div class="engine-row">
+                        <span>Workflows</span>
+                        <strong>{{ workflows.length }}</strong>
+                    </div>
+                    <div class="engine-row">
+                        <span>Executions</span>
+                        <strong>{{ executions.length }}</strong>
+                    </div>
+                    <div class="engine-row">
+                        <span>API proxy</span>
+                        <strong>{{ apiKeyMissing ? 'Needs key' : 'Ready' }}</strong>
+                    </div>
+                    <div class="engine-actions">
+                        <button class="primary-btn compact" (click)="showDesignerHome()">Designer Home</button>
+                        <button class="secondary-btn compact" (click)="reloadDesigner()">Reload</button>
+                    </div>
+                </div>
+
+                <div class="api-key-card compact-card" *ngIf="apiKeyMissing">
+                    <h3>API Key Required</h3>
+                    <p>{{ apiKeyMessage }}</p>
+                    <code class="command-hint">N8N_API_KEY=your-api-key-here</code>
+                </div>
+
+                <div class="mini-list" *ngIf="workflows.length > 0">
+                    <h3>Recent Workflows</h3>
+                    <button *ngFor="let wf of workflows | slice:0:5" class="mini-row" (click)="openWorkflowInDesigner(wf)">
+                        <span class="mini-dot" [class.active]="wf.active"></span>
+                        <span>{{ wf.name || 'Untitled Workflow' }}</span>
+                    </button>
+                </div>
+            </aside>
+
+            <section class="designer-shell">
+                <div class="designer-toolbar">
+                    <div>
+                        <h2>Embedded n8n Designer</h2>
+                        <span>{{ n8nEditorUrl }}{{ editorPath }}</span>
+                    </div>
+                    <button class="secondary-btn compact" (click)="reloadDesigner()" title="Reload embedded designer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                            <path d="M21 3v6h-6"></path>
+                        </svg>
+                        Reload
+                    </button>
+                </div>
+                <iframe class="n8n-frame" [src]="n8nEditorSafeUrl" title="n8n workflow designer"
+                    allow="clipboard-read; clipboard-write"></iframe>
+            </section>
+        </div>
+
+        <div class="tab-content" *ngIf="activeTab === 'workflows'">
             <div class="api-key-card" *ngIf="apiKeyMissing">
-                <div class="api-key-icon">🔑</div>
                 <h3>API Key Required</h3>
                 <p>{{ apiKeyMessage }}</p>
                 <div class="setup-steps">
                     <div class="setup-step">
                         <span class="step-num">1</span>
-                        <span>Open n8n editor and go to <strong>Settings → n8n API</strong></span>
+                        <span>Use the Designer tab and open Settings, then n8n API.</span>
                     </div>
                     <div class="setup-step">
                         <span class="step-num">2</span>
-                        <span>Click <strong>"Create an API key"</strong></span>
+                        <span>Create an API key with workflow and execution scopes.</span>
                     </div>
                     <div class="setup-step">
                         <span class="step-num">3</span>
-                        <span>Add to <code>backend/.env</code>:</span>
+                        <span>Add it to <code>backend/.env</code>.</span>
                     </div>
                 </div>
                 <code class="command-hint">N8N_API_KEY=your-api-key-here</code>
                 <div class="setup-actions">
-                    <button class="action-btn" (click)="openN8n()">Open n8n Editor</button>
-                    <button class="retry-btn" (click)="checkConnection()">Retry</button>
+                    <button class="primary-btn" (click)="setTab('designer')">Open Designer</button>
+                    <button class="secondary-btn" (click)="checkConnection()">Retry</button>
                 </div>
             </div>
 
-            <!-- Workflow Cards -->
-            <div class="wf-grid">
+            <div class="empty-state" *ngIf="!apiKeyMissing && workflows.length === 0">
+                <h3>No workflows yet</h3>
+                <p>Create the first n8n workflow in the embedded designer.</p>
+                <button class="primary-btn" (click)="setTab('designer')">Open Designer</button>
+            </div>
+
+            <div class="wf-grid" *ngIf="workflows.length > 0">
                 <div *ngFor="let wf of workflows" class="wf-card" [class.active]="selectedWorkflow?.id === wf.id"
                     (click)="selectWorkflow(wf)">
                     <div class="wf-card-header">
@@ -116,77 +180,159 @@
                             </svg>
                             {{ getNodeCount(wf) }} nodes
                         </span>
-                        <span class="meta-item">
-                            ID: {{ wf.id }}
-                        </span>
+                        <span class="meta-item">ID: {{ wf.id }}</span>
+                    </div>
+                    <div class="wf-actions">
+                        <button class="secondary-btn compact" (click)="openWorkflowInDesigner(wf, $event)">
+                            Edit
+                        </button>
+                        <button class="primary-btn compact" *ngIf="!wf.active"
+                            [disabled]="workflowActionId === wf.id" (click)="activateWorkflow(wf, $event)">
+                            {{ workflowActionId === wf.id ? 'Activating...' : 'Activate' }}
+                        </button>
+                        <button class="danger-btn compact" *ngIf="wf.active" [disabled]="workflowActionId === wf.id"
+                            (click)="deactivateWorkflow(wf, $event)">
+                            {{ workflowActionId === wf.id ? 'Stopping...' : 'Deactivate' }}
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Workflow Detail -->
             <div class="wf-detail" *ngIf="selectedWorkflow">
                 <div class="detail-header">
-                    <h2>{{ selectedWorkflow.name }}</h2>
+                    <div>
+                        <h2>{{ selectedWorkflow.name }}</h2>
+                        <span>{{ selectedWorkflow.id }}</span>
+                    </div>
                     <button class="close-btn" (click)="selectedWorkflow = null">&times;</button>
                 </div>
                 <div class="detail-body">
-                    <div class="detail-row">
-                        <span class="detail-label">Status</span>
-                        <span class="detail-value">
-                            <span class="wf-status-badge" [class.wf-active]="selectedWorkflow.active">
-                                {{ selectedWorkflow.active ? 'Active' : 'Inactive' }}
+                    <div class="detail-grid">
+                        <div class="detail-row">
+                            <span class="detail-label">Status</span>
+                            <span class="detail-value">
+                                <span class="wf-status-badge" [class.wf-active]="selectedWorkflow.active">
+                                    {{ selectedWorkflow.active ? 'Active' : 'Inactive' }}
+                                </span>
                             </span>
-                        </span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Created</span>
+                            <span class="detail-value">{{ formatDate(selectedWorkflow.createdAt) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Updated</span>
+                            <span class="detail-value">{{ formatDate(selectedWorkflow.updatedAt) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Nodes</span>
+                            <span class="detail-value">{{ getNodeCount(selectedWorkflow) }}</span>
+                        </div>
                     </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Created</span>
-                        <span class="detail-value">{{ formatDate(selectedWorkflow.createdAt) }}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Updated</span>
-                        <span class="detail-value">{{ formatDate(selectedWorkflow.updatedAt) }}</span>
-                    </div>
-                    <div class="detail-row">
-                        <span class="detail-label">Nodes</span>
-                        <span class="detail-value">{{ getNodeCount(selectedWorkflow) }}</span>
-                    </div>
+
                     <div class="nodes-list" *ngIf="selectedWorkflow.nodes && selectedWorkflow.nodes.length > 0">
                         <h4>Nodes</h4>
                         <div class="node-chip" *ngFor="let node of selectedWorkflow.nodes">
-                            <span class="node-type">{{ node.type?.split('.').pop() || node.type }}</span>
+                            <span class="node-type">{{ getNodeTypeLabel(node) }}</span>
                             <span class="node-name">{{ node.name }}</span>
                         </div>
+                    </div>
+
+                    <div class="webhook-panel" *ngIf="getWebhookTargets(selectedWorkflow).length > 0">
+                        <div class="webhook-header">
+                            <h4>Webhook Trigger</h4>
+                            <span>{{ selectedWorkflow.active ? 'Production URL ready' : 'Activate workflow first' }}</span>
+                        </div>
+                        <select [(ngModel)]="selectedWebhookPath">
+                            <option *ngFor="let hook of getWebhookTargets(selectedWorkflow)" [value]="hook.path">
+                                {{ hook.label }} - {{ hook.nodeName }}
+                            </option>
+                        </select>
+                        <textarea [(ngModel)]="webhookPayload" spellcheck="false"></textarea>
+                        <div class="webhook-actions">
+                            <button class="primary-btn" [disabled]="isTriggeringWebhook || !selectedWorkflow.active"
+                                (click)="runWebhook()">
+                                {{ isTriggeringWebhook ? 'Running...' : 'Run Webhook' }}
+                            </button>
+                            <span *ngIf="!selectedWorkflow.active">Inactive workflows cannot receive production webhooks.</span>
+                        </div>
+                        <div class="notice error" *ngIf="webhookError">{{ webhookError }}</div>
+                        <pre class="json-result" *ngIf="webhookResult">{{ webhookResult }}</pre>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Executions Tab -->
         <div class="tab-content" *ngIf="activeTab === 'executions'">
-            <div class="empty-state" *ngIf="executions.length === 0">
-                <div class="empty-icon">📋</div>
+            <div class="empty-state" *ngIf="!apiKeyMissing && executions.length === 0">
                 <h3>No executions yet</h3>
-                <p>Run a workflow to see execution history here</p>
+                <p>Run a workflow to see execution history here.</p>
             </div>
 
-            <div class="exec-list">
-                <div *ngFor="let exec of executions" class="exec-row">
+            <div class="exec-list" *ngIf="executions.length > 0">
+                <div *ngFor="let exec of executions" class="exec-row" [class.active]="selectedExecution?.id === exec.id"
+                    (click)="selectExecution(exec)">
                     <div class="exec-status">
-                        <span class="exec-dot" [ngClass]="getStatusClass(exec.status)"></span>
+                        <span class="exec-dot" [ngClass]="getStatusClass(getExecutionStatus(exec))"></span>
                     </div>
                     <div class="exec-info">
                         <span class="exec-id">#{{ exec.id }}</span>
-                        <span class="exec-workflow">Workflow {{ exec.workflowId }}</span>
+                        <span class="exec-workflow">{{ getWorkflowName(exec) }}</span>
                     </div>
                     <div class="exec-meta">
-                        <span class="exec-mode">{{ exec.mode }}</span>
+                        <span class="exec-mode">{{ exec.mode || 'manual' }}</span>
                         <span class="exec-time">{{ getTimeAgo(exec.startedAt) }}</span>
                     </div>
                     <div class="exec-result">
-                        <span class="exec-badge" [ngClass]="getStatusClass(exec.status)">
-                            {{ exec.status || (exec.finished ? 'success' : 'running') }}
+                        <span class="exec-badge" [ngClass]="getStatusClass(getExecutionStatus(exec))">
+                            {{ getExecutionStatus(exec) }}
                         </span>
                     </div>
+                    <div class="exec-actions">
+                        <button class="secondary-btn compact" *ngIf="canRetryExecution(exec)"
+                            [disabled]="executionActionId === exec.id" (click)="retryExecution(exec, $event)">
+                            Retry
+                        </button>
+                        <button class="danger-btn compact" *ngIf="canStopExecution(exec)"
+                            [disabled]="executionActionId === exec.id" (click)="stopExecution(exec, $event)">
+                            Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wf-detail execution-detail" *ngIf="selectedExecution">
+                <div class="detail-header">
+                    <div>
+                        <h2>Execution #{{ selectedExecution.id }}</h2>
+                        <span>{{ getWorkflowName(selectedExecution) }}</span>
+                    </div>
+                    <button class="close-btn" (click)="selectedExecution = null">&times;</button>
+                </div>
+                <div class="detail-body">
+                    <div class="loading-inline" *ngIf="isLoadingExecution">
+                        <div class="spinner small"></div>
+                        Loading execution data...
+                    </div>
+                    <div class="detail-grid">
+                        <div class="detail-row">
+                            <span class="detail-label">Status</span>
+                            <span class="detail-value">{{ getExecutionStatus(selectedExecution) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Started</span>
+                            <span class="detail-value">{{ formatDate(selectedExecution.startedAt) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Stopped</span>
+                            <span class="detail-value">{{ formatDate(selectedExecution.stoppedAt) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Mode</span>
+                            <span class="detail-value">{{ selectedExecution.mode || '-' }}</span>
+                        </div>
+                    </div>
+                    <pre class="json-result" *ngIf="selectedExecution.data">{{ formatJson(selectedExecution.data) }}</pre>
                 </div>
             </div>
         </div>

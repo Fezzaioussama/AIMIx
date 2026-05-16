@@ -116,9 +116,26 @@ graph LR
 1.  **Install**: `make install`
     -   (Sets up Python venv `uv`, installs Node modules).
 2.  **Configure**: Create `backend/.env` with `TOGAI_API_KEY=...`.
+    -   Optional for the embedded n8n workflow controls:
+        ```bash
+        N8N_BASE_URL=http://localhost:5678
+        N8N_PUBLIC_URL=http://localhost:5678
+        N8N_API_KEY=your-n8n-api-key
+        ```
+        `N8N_API_KEY` is only used by the Django backend proxy. The browser never receives it.
 3.  **Run**: `make run-aimix`
     -   Starts Backend on `localhost:8000`.
     -   Starts Frontend on `localhost:4200`.
+    -   Starts n8n on `localhost:5678` and embeds the n8n designer in AIMIx at `/workflows`.
+
+### Embedded n8n Workflow Studio
+
+The `/workflows` page keeps n8n inside the AIMIx interface:
+-   **Designer** embeds the native n8n editor, so workflow building is not recreated from scratch.
+-   **Workflows** lists n8n workflows through the Django proxy and supports edit, activate, deactivate, and webhook trigger actions.
+-   **Executions** shows n8n run history and supports retrying failed runs or stopping active runs.
+
+Create the n8n API key from the embedded designer under n8n settings, then add it to `backend/.env` as `N8N_API_KEY`.
 
 ### Common Issues
 -   **CORS Error**: If frontend can't talk to backend, ensure `django-cors-headers` is configured in `settings.py` (It is pre-configured).
