@@ -54,7 +54,7 @@ graph LR
 5.  **Critical**: For subsequent requests (like saving a pipeline), headers must include `Authorization: Bearer <token>`.
 
 ### B. Pipeline Creation Flow
-**File**: `frontend/.../pipeline-builder.component.ts` maps to `backend/api/views.py`
+**File**: `frontend/src/app/features/pipelines/pipeline-builder/pipeline-builder.component.ts` maps to `backend/api/endpoints/pipelines.py`
 
 1.  **UI State**: The frontend maintains a `pipeline` object:
     ```json
@@ -72,7 +72,7 @@ graph LR
     -   **Important**: The `PipelineSerializer` handles nested writing of steps.
 
 ### C. Pipeline Execution Flow (The "Magic")
-**File**: `backend/api/views.py` function `run_pipeline`
+**File**: `backend/api/endpoints/pipelines.py` function `run_pipeline`
 
 1.  **Trigger**: User clicks "Run" on a saved pipeline.
 2.  **Request**: Frontend sends `POST /api/pipelines/<ID>/run` with `{ "input": "Hello World" }`.
@@ -88,7 +88,7 @@ graph LR
 4.  **Response**: Returns final output + intermediate steps to display in UI.
 
 ### D. Chat with Streaming
-**File**: `frontend/.../chat.component.ts`
+**File**: `frontend/src/app/features/chat/chat.component.ts`
 
 -   Unlike standard REST calls, this uses **Streaming**.
 -   **Backend**: `server_llm.generate_streaming_response` yields chunks of text as they arrive from TogetherAI.
@@ -101,11 +101,12 @@ graph LR
 | Directory / File | Purpose |
 | :--- | :--- |
 | **`backend/api/models.py`** | Defines `Pipeline` and `PipelineStep` database tables. |
-| **`backend/api/views.py`** | Contains rules for ALL endpoints (`run_pipeline`, `chat_view`, `PipelineViewSet`). |
+| **`backend/api/endpoints/`** | Contains thin DRF endpoint modules grouped by feature. |
+| **`backend/api/services/`** | Contains reusable LLM, pipeline, and n8n business logic. |
 | **`backend/api/serializers.py`** | Converts complex Database objects into JSON for the API. |
 | **`backend/server_llm/server_llm.py`** | **The Brain**. Contains the actual logic to call TogetherAI. |
-| **`frontend/src/app/auth.service.ts`** | Central place for Login logic. |
-| **`frontend/src/app/pipeline-builder/`** | Contains the complex UI for drag-and-drop creation of workflows. |
+| **`frontend/src/app/core/auth/auth.service.ts`** | Central place for Login and registration API calls. |
+| **`frontend/src/app/features/pipelines/pipeline-builder/`** | Contains the complex UI for drag-and-drop creation of workflows. |
 
 ---
 
@@ -139,7 +140,7 @@ This section is for developers who want to add new features.
 1.  **Generate Component**:
     Use the Angular CLI to generate the files.
     ```bash
-    cd frontend/AIMIx
+    cd frontend
     npx ng generate component pages/my-new-page
     ```
 2.  **Add Route**:
@@ -162,7 +163,7 @@ This section is for developers who want to add new features.
     ```
     Then run `python manage.py makemigrations` and `migrate`.
 2.  **Create View Logic**:
-    Edit `backend/api/views.py`.
+    Edit the matching module in `backend/api/endpoints/`.
     ```python
     @api_view(['POST'])
     @permission_classes([IsAuthenticated])
@@ -176,4 +177,3 @@ This section is for developers who want to add new features.
     ```python
     path('my-process', my_custom_process, name='my_process')
     ```
-

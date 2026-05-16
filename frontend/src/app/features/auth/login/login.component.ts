@@ -1,9 +1,8 @@
-// --- 1. THE IMPORTS (These were missing!) ---
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { AuthService } from '../auth.service'; // Ensure this path matches where your service is
+import { AuthService } from '../../../core/auth/auth.service';
 
 @Component({
   selector: 'app-login',
@@ -23,10 +22,8 @@ export class LoginComponent {
     this.errorMessage = '';
 
     this.authService.login(this.username, this.password).subscribe({
-      // We add ': any' to fix the "Implicitly has any type" error
       next: (response: any) => {
         console.log('Login successful', response);
-        // Navigate to the chat interface
         this.router.navigate(['/chat']);
       },
       error: (err: any) => {

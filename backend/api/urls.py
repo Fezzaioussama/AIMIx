@@ -4,8 +4,10 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
-from .views import protected_view, chat_view, PipelineViewSet, run_pipeline, generate_pipeline, RegisterView
-from .n8n_views import list_workflows, get_workflow, list_executions, trigger_webhook, n8n_health
+from api.endpoints.auth import RegisterView, protected_view
+from api.endpoints.chat import chat_view
+from api.endpoints.n8n import get_workflow, list_executions, list_workflows, n8n_health, trigger_webhook
+from api.endpoints.pipelines import PipelineViewSet, generate_pipeline, run_pipeline
 
 router = DefaultRouter()
 router.register(r'pipelines', PipelineViewSet, basename='pipeline')

@@ -1,11 +1,14 @@
 .PHONY: run-llm run-backend run-frontend run-n8n stop-n8n run-aimix install
 
-UV := /home/oussama/.local/bin/uv
+UV ?= uv
+NPM ?= npm
+N8N_BIN := n8n-engine/node_modules/.bin/n8n
 
 # Install all dependencies
 install:
 	$(UV) sync
-	cd frontend/AIMIx && npm install
+	cd frontend && $(NPM) install
+	cd n8n-engine && $(NPM) install
 
 # Run the standalone LLM script
 run-llm:
@@ -17,14 +20,17 @@ run-backend:
 
 # Run the Angular Frontend
 run-frontend:
-	cd frontend/AIMIx && npm start
+	cd frontend && $(NPM) start
+
+$(N8N_BIN):
+	cd n8n-engine && $(NPM) install
 
 # Run n8n workflow engine
-run-n8n:
+run-n8n: | $(N8N_BIN)
 	N8N_USER_FOLDER=$(CURDIR)/n8n-data \
 	N8N_SECURE_COOKIE=false \
 	N8N_DISABLE_UI_SECURITY=true \
-	n8n start
+	$(NPM) --prefix n8n-engine start
 
 # Run backend + frontend + n8n concurrently
 run-aimix:

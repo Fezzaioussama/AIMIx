@@ -19,6 +19,11 @@ yarn-debug.log*
 yarn-error.log*
 logs/
 
+# IA
+.codex/
+.agents/
+.agents-server/
+
 # Python / Django
 __pycache__/
 *.py[cod]
