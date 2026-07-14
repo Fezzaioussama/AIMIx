@@ -1,9 +1,19 @@
-import { ChangeDetectorRef, Component, Inject, OnInit, PLATFORM_ID } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, Inject, OnDestroy, OnInit, PLATFORM_ID } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+
+type WorkflowFilter = 'all' | 'active' | 'inactive';
+type ExecutionFilter = 'all' | 'success' | 'error' | 'running';
+
+interface Toast {
+    id: number;
+    kind: 'success' | 'error' | 'warning' | 'info';
+    message: string;
+    leaving?: boolean;
+}
 
 interface WorkflowNode {
     name: string;
@@ -83,7 +93,7 @@ interface AutoFixReport {
     templateUrl: './workflows.component.html',
     styleUrls: ['./workflows.component.css']
 })
-export class WorkflowsComponent implements OnInit {
+export class WorkflowsComponent implements OnInit, OnDestroy {
     workflows: Workflow[] = [];
     executions: Execution[] = [];
     isLoading = true;
@@ -99,6 +109,15 @@ export class WorkflowsComponent implements OnInit {
     isLoadingExecution = false;
     workflowActionId: string | null = null;
     executionActionId: string | null = null;
+
+    workflowSearch = '';
+    workflowFilter: WorkflowFilter = 'all';
+    executionFilter: ExecutionFilter = 'all';
+    autoRefreshExecutions = false;
+    private autoRefreshTimer: any = null;
+    toasts: Toast[] = [];
+    private toastSeq = 0;
+    copiedId = '';
 
     n8nEditorUrl = 'http://localhost:5678';
     n8nEditorSafeUrl: SafeResourceUrl;
@@ -138,6 +157,151 @@ export class WorkflowsComponent implements OnInit {
             this.loadNodeCatalog();
             this.checkConnection();
         }
+    }
+
+    ngOnDestroy(): void {
+        this.stopAutoRefresh();
+    }
+
+    @HostListener('document:keydown.escape')
+    onEscape(): void {
+        if (this.selectedExecution) {
+            this.selectedExecution = null;
+            this.cdr.detectChanges();
+            return;
+        }
+        if (this.selectedWorkflow) {
+            this.selectedWorkflow = null;
+            this.cdr.detectChanges();
+            return;
+        }
+        if (this.autofixReport) {
+            this.autofixReport = null;
+            this.cdr.detectChanges();
+        }
+    }
+
+    get filteredWorkflows(): Workflow[] {
+        const term = this.workflowSearch.trim().toLowerCase();
+        return this.workflows.filter((wf) => {
+            if (this.workflowFilter === 'active' && !wf.active) return false;
+            if (this.workflowFilter === 'inactive' && wf.active) return false;
+            if (!term) return true;
+            return (wf.name || '').toLowerCase().includes(term)
+                || (wf.id || '').toLowerCase().includes(term);
+        });
+    }
+
+    get filteredExecutions(): Execution[] {
+        if (this.executionFilter === 'all') return this.executions;
+        return this.executions.filter((exec) => {
+            const status = this.getExecutionStatus(exec);
+            if (this.executionFilter === 'success') return status === 'success';
+            if (this.executionFilter === 'error') {
+                return ['error', 'failed', 'crashed'].includes(status);
+            }
+            if (this.executionFilter === 'running') {
+                return ['running', 'waiting', 'new'].includes(status);
+            }
+            return true;
+        });
+    }
+
+    get activeWorkflowCount(): number {
+        return this.workflows.filter((wf) => wf.active).length;
+    }
+
+    get successExecutionCount(): number {
+        return this.executions.filter((exec) => this.getExecutionStatus(exec) === 'success').length;
+    }
+
+    get failedExecutionCount(): number {
+        return this.executions.filter((exec) => ['error', 'failed', 'crashed'].includes(this.getExecutionStatus(exec))).length;
+    }
+
+    setWorkflowFilter(filter: WorkflowFilter): void {
+        this.workflowFilter = filter;
+    }
+
+    setExecutionFilter(filter: ExecutionFilter): void {
+        this.executionFilter = filter;
+    }
+
+    clearWorkflowSearch(): void {
+        this.workflowSearch = '';
+    }
+
+    toggleAutoRefresh(): void {
+        this.autoRefreshExecutions = !this.autoRefreshExecutions;
+        if (this.autoRefreshExecutions) {
+            this.startAutoRefresh();
+            this.pushToast('info', 'Auto-refresh enabled (every 5s)');
+        } else {
+            this.stopAutoRefresh();
+            this.pushToast('info', 'Auto-refresh disabled');
+        }
+    }
+
+    private startAutoRefresh(): void {
+        this.stopAutoRefresh();
+        this.autoRefreshTimer = setInterval(() => {
+            if (this.isConnected && !this.apiKeyMissing) {
+                this.loadExecutions();
+            }
+        }, 5000);
+    }
+
+    private stopAutoRefresh(): void {
+        if (this.autoRefreshTimer) {
+            clearInterval(this.autoRefreshTimer);
+            this.autoRefreshTimer = null;
+        }
+    }
+
+    pushToast(kind: Toast['kind'], message: string): void {
+        const toast: Toast = { id: ++this.toastSeq, kind, message };
+        this.toasts = [...this.toasts, toast];
+        this.cdr.detectChanges();
+        setTimeout(() => this.dismissToast(toast.id), 4500);
+    }
+
+    dismissToast(id: number): void {
+        const target = this.toasts.find((t) => t.id === id);
+        if (!target) return;
+        target.leaving = true;
+        this.cdr.detectChanges();
+        setTimeout(() => {
+            this.toasts = this.toasts.filter((t) => t.id !== id);
+            this.cdr.detectChanges();
+        }, 220);
+    }
+
+    copyToClipboard(value: string, event?: Event): void {
+        event?.stopPropagation();
+        if (!value || !isPlatformBrowser(this.platformId)) return;
+        try {
+            navigator.clipboard.writeText(value).then(() => {
+                this.copiedId = value;
+                this.pushToast('success', 'Copied to clipboard');
+                this.cdr.detectChanges();
+                setTimeout(() => {
+                    if (this.copiedId === value) {
+                        this.copiedId = '';
+                        this.cdr.detectChanges();
+                    }
+                }, 1500);
+            });
+        } catch {
+            this.pushToast('error', 'Clipboard not available');
+        }
+    }
+
+    trackById(_index: number, item: { id: string }): string {
+        return item.id;
+    }
+
+    trackToastById(_index: number, item: Toast): number {
+        return item.id;
     }
 
     checkConnection(): void {
@@ -578,8 +742,10 @@ export class WorkflowsComponent implements OnInit {
             next: (resp) => {
                 if (resp.api_key_missing) {
                     this.actionError = resp.message || 'N8N_API_KEY is not configured.';
+                    this.pushToast('error', this.actionError);
                 } else {
                     this.actionMessage = `${wf.name || 'Workflow'} ${active ? 'activated' : 'deactivated'}.`;
+                    this.pushToast('success', this.actionMessage);
                     this.loadWorkflows();
                     this.loadExecutions();
                 }
@@ -588,6 +754,7 @@ export class WorkflowsComponent implements OnInit {
             },
             error: (err) => {
                 this.handleHttpError(err, `Unable to ${action} workflow.`);
+                if (this.actionError) this.pushToast('error', this.actionError);
                 this.workflowActionId = null;
                 this.cdr.detectChanges();
             }
@@ -605,8 +772,10 @@ export class WorkflowsComponent implements OnInit {
             next: (resp) => {
                 if (resp.api_key_missing) {
                     this.actionError = resp.message || 'N8N_API_KEY is not configured.';
+                    this.pushToast('error', this.actionError);
                 } else {
                     this.actionMessage = `Execution #${exec.id} ${action === 'stop' ? 'stopped' : 'retried'}.`;
+                    this.pushToast('success', this.actionMessage);
                     this.loadExecutions();
                 }
                 this.executionActionId = null;
@@ -614,6 +783,7 @@ export class WorkflowsComponent implements OnInit {
             },
             error: (err) => {
                 this.handleHttpError(err, `Unable to ${action} execution.`);
+                if (this.actionError) this.pushToast('error', this.actionError);
                 this.executionActionId = null;
                 this.cdr.detectChanges();
             }

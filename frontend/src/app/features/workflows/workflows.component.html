@@ -20,9 +20,33 @@
         </div>
     </div>
 
+    <div class="toast-stack" *ngIf="toasts.length > 0">
+        <div *ngFor="let toast of toasts; trackBy: trackToastById"
+            class="toast"
+            [ngClass]="'toast-' + toast.kind"
+            [class.leaving]="toast.leaving"
+            (click)="dismissToast(toast.id)">
+            <span class="toast-icon" aria-hidden="true">
+                <ng-container [ngSwitch]="toast.kind">
+                    <ng-container *ngSwitchCase="'success'">&#10003;</ng-container>
+                    <ng-container *ngSwitchCase="'error'">&#10007;</ng-container>
+                    <ng-container *ngSwitchCase="'warning'">!</ng-container>
+                    <ng-container *ngSwitchDefault>i</ng-container>
+                </ng-container>
+            </span>
+            <span class="toast-message">{{ toast.message }}</span>
+            <button class="toast-close" (click)="dismissToast(toast.id); $event.stopPropagation()" aria-label="Dismiss">&times;</button>
+        </div>
+    </div>
+
     <div class="loading-state" *ngIf="isLoading">
-        <div class="spinner"></div>
+        <div class="loading-orb">
+            <div class="loading-ring"></div>
+            <div class="loading-ring inner"></div>
+            <div class="loading-core"></div>
+        </div>
         <p>Connecting to n8n workflow engine...</p>
+        <div class="loading-dots"><span></span><span></span><span></span></div>
     </div>
 
     <div class="error-state" *ngIf="!isLoading && !isConnected">
@@ -80,6 +104,9 @@
                         placeholder="Receive an invoice webhook, summarize it, then send the result to Slack"></textarea>
                     <button class="primary-btn" [disabled]="isGeneratingWorkflow" (click)="generateWorkflowFromText()">
                         <span class="spinner small" *ngIf="isGeneratingWorkflow"></span>
+                        <svg *ngIf="!isGeneratingWorkflow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"></path>
+                        </svg>
                         {{ isGeneratingWorkflow ? 'Building...' : 'Build Draft' }}
                     </button>
                     <div class="builder-meta">
@@ -182,8 +209,62 @@
                 <button class="primary-btn" (click)="setTab('designer')">Open Designer</button>
             </div>
 
-            <div class="wf-grid" *ngIf="workflows.length > 0">
-                <div *ngFor="let wf of workflows" class="wf-card" [class.active]="selectedWorkflow?.id === wf.id"
+            <div class="stats-row" *ngIf="workflows.length > 0">
+                <div class="stat-card">
+                    <span class="stat-label">Total Workflows</span>
+                    <span class="stat-value">{{ workflows.length }}</span>
+                    <span class="stat-spark"></span>
+                </div>
+                <div class="stat-card accent">
+                    <span class="stat-label">Active</span>
+                    <span class="stat-value">{{ activeWorkflowCount }}</span>
+                    <span class="stat-spark"></span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Inactive</span>
+                    <span class="stat-value">{{ workflows.length - activeWorkflowCount }}</span>
+                    <span class="stat-spark"></span>
+                </div>
+                <div class="stat-card violet">
+                    <span class="stat-label">Total Executions</span>
+                    <span class="stat-value">{{ executions.length }}</span>
+                    <span class="stat-spark"></span>
+                </div>
+            </div>
+
+            <div class="toolbar" *ngIf="workflows.length > 0">
+                <div class="search-wrap">
+                    <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg>
+                    <input class="search-input" type="text" [(ngModel)]="workflowSearch"
+                        placeholder="Search workflows by name or id..." />
+                    <button class="search-clear" *ngIf="workflowSearch" (click)="clearWorkflowSearch()" aria-label="Clear">&times;</button>
+                </div>
+                <div class="filter-chips">
+                    <button class="filter-chip" [class.active]="workflowFilter === 'all'" (click)="setWorkflowFilter('all')">
+                        All <span class="chip-count">{{ workflows.length }}</span>
+                    </button>
+                    <button class="filter-chip" [class.active]="workflowFilter === 'active'" (click)="setWorkflowFilter('active')">
+                        <span class="chip-dot success"></span>
+                        Active <span class="chip-count">{{ activeWorkflowCount }}</span>
+                    </button>
+                    <button class="filter-chip" [class.active]="workflowFilter === 'inactive'" (click)="setWorkflowFilter('inactive')">
+                        <span class="chip-dot"></span>
+                        Inactive <span class="chip-count">{{ workflows.length - activeWorkflowCount }}</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="empty-state subtle" *ngIf="workflows.length > 0 && filteredWorkflows.length === 0">
+                <h3>No matches</h3>
+                <p>Try a different search term or filter.</p>
+                <button class="secondary-btn" (click)="clearWorkflowSearch(); setWorkflowFilter('all')">Clear filters</button>
+            </div>
+
+            <div class="wf-grid" *ngIf="filteredWorkflows.length > 0">
+                <div *ngFor="let wf of filteredWorkflows; trackBy: trackById" class="wf-card" [class.active]="selectedWorkflow?.id === wf.id"
                     (click)="selectWorkflow(wf)">
                     <div class="wf-card-header">
                         <div class="wf-status-badge" [class.wf-active]="wf.active">
@@ -203,7 +284,14 @@
                             </svg>
                             {{ getNodeCount(wf) }} nodes
                         </span>
-                        <span class="meta-item">ID: {{ wf.id }}</span>
+                        <button class="meta-item copy-btn" (click)="copyToClipboard(wf.id, $event)"
+                            [class.copied]="copiedId === wf.id" title="Copy workflow ID">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <span>{{ copiedId === wf.id ? 'Copied!' : 'ID: ' + wf.id }}</span>
+                        </button>
                     </div>
                     <div class="wf-actions">
                         <button class="secondary-btn compact" (click)="openWorkflowInDesigner(wf, $event)">
@@ -225,9 +313,12 @@
                 <div class="detail-header">
                     <div>
                         <h2>{{ selectedWorkflow.name }}</h2>
-                        <span>{{ selectedWorkflow.id }}</span>
+                        <button class="header-id-btn" (click)="copyToClipboard(selectedWorkflow.id, $event)"
+                            [class.copied]="copiedId === selectedWorkflow.id" title="Copy workflow ID">
+                            {{ copiedId === selectedWorkflow.id ? 'Copied!' : selectedWorkflow.id }}
+                        </button>
                     </div>
-                    <button class="close-btn" (click)="selectedWorkflow = null">&times;</button>
+                    <button class="close-btn" (click)="selectedWorkflow = null" title="Close (Esc)">&times;</button>
                 </div>
                 <div class="detail-body">
                     <div class="detail-grid">
@@ -292,6 +383,39 @@
                 <p>Run a workflow to see execution history here.</p>
             </div>
 
+            <div class="toolbar" *ngIf="executions.length > 0">
+                <div class="filter-chips">
+                    <button class="filter-chip" [class.active]="executionFilter === 'all'" (click)="setExecutionFilter('all')">
+                        All <span class="chip-count">{{ executions.length }}</span>
+                    </button>
+                    <button class="filter-chip" [class.active]="executionFilter === 'success'" (click)="setExecutionFilter('success')">
+                        <span class="chip-dot success"></span>
+                        Success <span class="chip-count">{{ successExecutionCount }}</span>
+                    </button>
+                    <button class="filter-chip" [class.active]="executionFilter === 'error'" (click)="setExecutionFilter('error')">
+                        <span class="chip-dot error"></span>
+                        Failed <span class="chip-count">{{ failedExecutionCount }}</span>
+                    </button>
+                    <button class="filter-chip" [class.active]="executionFilter === 'running'" (click)="setExecutionFilter('running')">
+                        <span class="chip-dot running"></span>
+                        Running
+                    </button>
+                </div>
+                <div class="toolbar-actions">
+                    <button class="auto-refresh-toggle" [class.on]="autoRefreshExecutions" (click)="toggleAutoRefresh()"
+                        [title]="autoRefreshExecutions ? 'Auto-refresh on (5s)' : 'Auto-refresh off'">
+                        <span class="auto-refresh-led"></span>
+                        Auto-refresh
+                    </button>
+                    <button class="secondary-btn compact" (click)="loadExecutions()" title="Refresh now">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                            <path d="M21 3v6h-6"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
             <div class="notice error" *ngIf="autofixError">{{ autofixError }}</div>
 
             <div class="autofix-report" *ngIf="autofixReport">
@@ -327,8 +451,14 @@
                 </div>
             </div>
 
-            <div class="exec-list" *ngIf="executions.length > 0">
-                <div *ngFor="let exec of executions" class="exec-row" [class.active]="selectedExecution?.id === exec.id"
+            <div class="empty-state subtle" *ngIf="executions.length > 0 && filteredExecutions.length === 0">
+                <h3>No executions match</h3>
+                <p>Try a different status filter.</p>
+                <button class="secondary-btn" (click)="setExecutionFilter('all')">Show all</button>
+            </div>
+
+            <div class="exec-list" *ngIf="filteredExecutions.length > 0">
+                <div *ngFor="let exec of filteredExecutions; trackBy: trackById" class="exec-row" [class.active]="selectedExecution?.id === exec.id"
                     (click)="selectExecution(exec)">
                     <div class="exec-status">
                         <span class="exec-dot" [ngClass]="getStatusClass(getExecutionStatus(exec))"></span>
@@ -370,7 +500,7 @@
                         <h2>Execution #{{ selectedExecution.id }}</h2>
                         <span>{{ getWorkflowName(selectedExecution) }}</span>
                     </div>
-                    <button class="close-btn" (click)="selectedExecution = null">&times;</button>
+                    <button class="close-btn" (click)="selectedExecution = null" title="Close (Esc)">&times;</button>
                 </div>
                 <div class="detail-body">
                     <div class="loading-inline" *ngIf="isLoadingExecution">
