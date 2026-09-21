@@ -1,197 +1,206 @@
-# AIMIx Project Documentation
+# AIMIx
 
-## 1. Project Overview
-AIMIx is an AI Pipeline Builder application that allows users to create, configure, and execute multi-step AI workflows. Users can define a sequence of steps where each step uses a specific Large Language Model (LLM) and prompt. The output of one step is automatically fed as input to the next, enabling complex chaining of AI tasks.
+> AI pipeline builder — chain multi-step LLM workflows, with an embedded n8n automation studio.
 
-The project consists of a **Django** backend that manages pipelines and interacts with AI models (via TogetherAI), and an **Angular** frontend that provides a user-friendly interface for building and running these pipelines.
+AIMIx lets you define a sequence of steps, each with its own model and prompt,
+and run them as a chain: the output of step 1 becomes the input to step 2. On
+top of that sits a `/workflows` page that embeds n8n, so you can generate,
+edit, and run full automation workflows from natural language without leaving
+the app.
 
----
+A Django backend owns pipelines, auth, and every outbound AI call; an Angular
+frontend provides the builder UI.
 
-## 2. Architecture & Design Principle
+## Stack
 
-The application follows a standard **Client-Server Architecture**.
+| Layer | Technology |
+|---|---|
+| Backend | Django, Django REST Framework, SimpleJWT, `django-cors-headers` |
+| Frontend | Angular 21 (standalone components), RxJS, Marked |
+| Automation | n8n (embedded, proxied through Django) |
+| LLM | TogetherAI via the Together Python SDK |
+| Database | SQLite |
+| Tooling | `uv` (Python), npm |
 
-### High-Level Diagram
-```mermaid
-graph LR
-    User[User] -->|Browser| Frontend[Angular Frontend]
-    Frontend -->|HTTP Requests| Backend[Django Backend]
-    Backend -->|SQL| DB[(SQLite Database)]
-    Backend -->|API Key| AI[TogetherAI Provider]
+## Quick start
+
+```bash
+make install                        # uv sync + npm install (frontend + n8n-engine)
+echo "TOGAI_API_KEY=..." > backend/.env
+make run-aimix                      # backend :8000, frontend :4200, n8n :5678
 ```
 
-### Data Flow
-1.  **Frontend (Angular)**: Handles user interactions, manages state, and renders UI. It makes HTTP requests to the Backend.
-2.  **Backend (Django)**: Receives requests, validates data, interacts with the Database, and communicates with external AI services.
-3.  **Database**: Stores persistent data like User accounts, Pipeline definitions, and Steps.
-4.  **AI Service**: The backend acts as a proxy to TogetherAI, securing the API key and handling the raw API calls.
+`make superuser` creates a Django admin account if you need one.
 
----
+For the n8n workflow controls, create an API key from the embedded designer
+(n8n settings) and add it to `backend/.env`:
 
-## 3. Tech Stack in Detail
+```bash
+N8N_BASE_URL=http://localhost:5678
+N8N_PUBLIC_URL=http://localhost:5678
+N8N_API_KEY=your-n8n-api-key
+```
 
-### Backend (Python/Django)
--   **Django REST Framework (DRF)**: Used to build the API. It handles serialization (converting DB models to JSON) and view logic.
--   **SimpleJWT**: Handles authentication. The server issues a `access_token` and `refresh_token` upon login. The frontend requires the `access_token` in headers for protected routes.
--   **Together Python SDK**: Used to communicate with the LLM provider.
--   **StreamingHttpResponse**: Used by the Chat endpoint to stream AI responses token-by-token to the client.
+`N8N_API_KEY` is used only by the Django proxy — the browser never receives it.
 
-### Frontend (Angular 21)
--   **Standalone Components**: The app uses modern Angular Standalone Components (no `AppModule`).
--   **RxJS**: Used for handling asynchronous HTTP requests (Login, Saving Pipelines).
--   **Fetch API (for Streaming)**: The Chat component uses the native browser `fetch` API instead of `HttpClient` to handle streaming bodies via `ReadableStream`.
--   **Marked**: A library to convert Markdown output from LLMs into HTML for display.
+## Commands
 
----
+| Command | Does |
+|---|---|
+| `make install` | Python venv via `uv` + npm deps for frontend and n8n |
+| `make run-aimix` | Run backend, frontend, and n8n concurrently |
+| `make run-backend` / `run-frontend` / `run-n8n` | Run one service |
+| `make run-llm` | Standalone LLM script (`backend/test_llm_standalone.py`) |
+| `make superuser` | Create a Django superuser |
+| `make kill-back` / `kill-front` / `kill-n8n` / `kill-all` | Stop services |
 
-## 4. Deep Dive: Key Workflows
+## Architecture
 
-### A. Authentication Flow
-1.  User enters credentials in `LoginComponent`.
-2.  `AuthService.login()` sends `POST /api/login`.
-3.  Backend checks credentials and returns `{access: "...", refresh: "..."}`.
-4.  Frontend saves these tokens in `localStorage`.
-5.  **Critical**: For subsequent requests (like saving a pipeline), headers must include `Authorization: Bearer <token>`.
+```mermaid
+graph LR
+    User -->|Browser| FE["Angular :4200"]
+    FE -->|"HTTP + JWT"| BE["Django :8000"]
+    BE -->|SQL| DB[("SQLite")]
+    BE -->|API key| AI["TogetherAI"]
+    BE -->|"proxy"| N8N["n8n :5678"]
+    FE -.->|"embedded editor"| N8N
+```
 
-### B. Pipeline Creation Flow
-**File**: `frontend/src/app/features/pipelines/pipeline-builder/pipeline-builder.component.ts` maps to `backend/api/endpoints/pipelines.py`
+The backend is a deliberate chokepoint: it proxies both TogetherAI and the n8n
+public API so neither key ever reaches the browser.
 
-1.  **UI State**: The frontend maintains a `pipeline` object:
-    ```json
-    {
-      "name": "My Pipeline",
-      "steps": [
-        { "order": 1, "prompt": "Translate {input}", "model": "Llama-3" }
-      ]
-    }
-    ```
-2.  **Saving**: When User clicks "Save":
-    -   Frontend sends `POST /api/pipelines/`.
-    -   Backend `PipelineViewSet` creates the `Pipeline` record.
-    -   Backend iterates over `steps` data and creates `PipelineStep` records linked to that pipeline.
-    -   **Important**: The `PipelineSerializer` handles nested writing of steps.
+### Pipeline execution
 
-### C. Pipeline Execution Flow (The "Magic")
-**File**: `backend/api/endpoints/pipelines.py` function `run_pipeline`
+`backend/api/endpoints/pipelines.py` → `run_pipeline` is the core loop. On
+`POST /api/pipelines/<id>/run` with `{"input": "..."}`:
 
-1.  **Trigger**: User clicks "Run" on a saved pipeline.
-2.  **Request**: Frontend sends `POST /api/pipelines/<ID>/run` with `{ "input": "Hello World" }`.
-3.  **Backend Logic**:
-    -   Fetches the `Pipeline` from DB.
-    -   **Loop**: Iterates through each `PipelineStep` in order.
-    -   **Prompt Engineering**:
-        -   If the prompt contains `{input}`, it replaces it with the current data.
-        -   If not, it appends the input to the end.
-    -   **AI Call**: Calls `server_llm.generate_response`.
-    -   **Chaining**: The `output` of Step 1 becomes variables `current_input` for Step 2.
-    -   **History**: It collects intermediate results to return to the user.
-4.  **Response**: Returns final output + intermediate steps to display in UI.
+1. Fetch the pipeline and iterate its `PipelineStep` records in `order`.
+2. Substitute the running value into the step's prompt — replacing `{input}` if
+   the template contains it, otherwise appending to the end.
+3. Call the configured model through `server_llm.generate_response`.
+4. The step's output becomes the next step's input.
+5. Return the final output plus every intermediate result for display.
 
-### D. Chat with Streaming
-**File**: `frontend/src/app/features/chat/chat.component.ts`
+### Chat streaming
 
--   Unlike standard REST calls, this uses **Streaming**.
--   **Backend**: `server_llm.generate_streaming_response` yields chunks of text as they arrive from TogetherAI.
--   **Frontend**: Uses `response.body.getReader()` to read the stream loop. It continually updates the UI text variable as chunks arrive, creating the "typing" effect.
+The chat endpoint uses `StreamingHttpResponse` and
+`server_llm.generate_streaming_response`, which yields chunks as TogetherAI
+produces them. The frontend deliberately uses the native `fetch` API rather than
+`HttpClient` here, reading `response.body.getReader()` in a loop to get the
+token-by-token typing effect — `HttpClient` can't expose a `ReadableStream`.
 
----
+### Auth
 
-## 5. File Structure Reference
+`POST /api/login` returns `{access, refresh}`, stored in `localStorage`. Every
+protected request must carry `Authorization: Bearer <access_token>`. An
+"Unauthorized" error usually just means the access token expired.
 
-| Directory / File | Purpose |
-| :--- | :--- |
-| **`backend/api/models.py`** | Defines `Pipeline` and `PipelineStep` database tables. |
-| **`backend/api/endpoints/`** | Contains thin DRF endpoint modules grouped by feature. |
-| **`backend/api/services/`** | Contains reusable LLM, pipeline, and n8n business logic. |
-| **`backend/api/serializers.py`** | Converts complex Database objects into JSON for the API. |
-| **`backend/server_llm/server_llm.py`** | **The Brain**. Contains the actual logic to call TogetherAI. |
-| **`frontend/src/app/core/auth/auth.service.ts`** | Central place for Login and registration API calls. |
-| **`frontend/src/app/features/pipelines/pipeline-builder/`** | Contains the complex UI for drag-and-drop creation of workflows. |
+### Embedded n8n studio
 
----
+The `/workflows` page keeps n8n inside AIMIx:
 
-## 6. Setup & Development
+- **AI Builder** — takes a natural-language request, discovers the installed n8n
+  node catalog, asks the LLM for a plan, and creates an **inactive draft**
+  workflow for review.
+- **Designer** — embeds the native n8n editor rather than recreating it.
+- **Workflows** — lists workflows via the Django proxy; edit, activate,
+  deactivate, trigger webhooks.
+- **Executions** — run history, retry failed runs, stop active ones.
 
-### Running the App
-1.  **Install**: `make install`
-    -   (Sets up Python venv `uv`, installs Node modules).
-2.  **Configure**: Create `backend/.env` with `TOGAI_API_KEY=...`.
-    -   Optional for the embedded n8n workflow controls:
-        ```bash
-        N8N_BASE_URL=http://localhost:5678
-        N8N_PUBLIC_URL=http://localhost:5678
-        N8N_API_KEY=your-n8n-api-key
-        ```
-        `N8N_API_KEY` is only used by the Django backend proxy. The browser never receives it.
-3.  **Run**: `make run-aimix`
-    -   Starts Backend on `localhost:8000`.
-    -   Starts Frontend on `localhost:4200`.
-    -   Starts n8n on `localhost:5678` and embeds the n8n designer in AIMIx at `/workflows`.
+## Project structure
 
-### Embedded n8n Workflow Studio
+```
+backend/
+  api/
+    models.py            # Pipeline, PipelineStep, WorkflowChatSession, WorkflowChatMessage
+    serializers.py       # Nested write for pipeline steps
+    urls.py              # Route table
+    endpoints/           # Thin DRF views: auth · chat · pipelines · n8n
+    services/            # Business logic:
+                         #   llm.py, pipeline_runner.py, pipeline_generation.py
+                         #   n8n.py, n8n_workflow_generation.py, workflow_autofix.py
+  server_llm/
+    server_llm.py        # ★ TogetherAI calls — sync and streaming
+    data_models.py
+  backend/settings.py
 
-The `/workflows` page keeps n8n inside the AIMIx interface:
--   **AI Builder** accepts a natural-language request, discovers the installed n8n node catalog, asks the configured LLM for a plan, and creates an inactive n8n draft workflow for review.
--   **Designer** embeds the native n8n editor, so workflow building is not recreated from scratch.
--   **Workflows** lists n8n workflows through the Django proxy and supports edit, activate, deactivate, and webhook trigger actions.
--   **Executions** shows n8n run history and supports retrying failed runs or stopping active runs.
+frontend/src/app/
+  core/auth/             # auth.service.ts — login and registration
+  features/
+    auth/ chat/ pipelines/ workflows/
+  app.routes.ts
 
-Create the n8n API key from the embedded designer under n8n settings, then add it to `backend/.env` as `N8N_API_KEY`.
+n8n-engine/              # Pinned n8n install (data in n8n-data/)
+```
 
-### Common Issues
--   **CORS Error**: If frontend can't talk to backend, ensure `django-cors-headers` is configured in `settings.py` (It is pre-configured).
--   **Auth Error**: If "Unauthorized", your token expired. Log out and Log back in.
--   **LLM Error**: If "List index out of range", update `server_llm.py` (fixed in recent patch).
+The split to respect: `endpoints/` stays thin — validation and response shaping
+only — while `services/` holds the logic. Anything that calls a model belongs in
+`services/llm.py` or `server_llm/`.
 
----
+### Data model
 
-use this document as your map. If you are stuck on *Frontend* visual logic, look in `src/app`. If you are stuck on *Business Logic* (how the AI is called, how data is saved), look in `backend/api` or `backend/server_llm`.
+| Model | Purpose |
+|---|---|
+| `Pipeline` | Named pipeline owned by a user |
+| `PipelineStep` | `order`, `prompt` (with `{input}` placeholder), `model` |
+| `WorkflowChatSession` | An n8n build conversation: state, plan, pending questions, linked workflow and execution ids |
+| `WorkflowChatMessage` | Role + JSON content within a session |
 
----
+### API
 
-## 7. How to Extend the Project
+All routes under `/api`.
 
-This section is for developers who want to add new features.
+| Group | Endpoints |
+|---|---|
+| Auth | `POST /register`, `POST /login`, `POST /token/refresh`, `GET /protected` |
+| Chat | `POST /chat` (streaming) |
+| Pipelines | `GET\|POST /pipelines/` (ViewSet), `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
+| n8n — status | `GET /n8n/health`, `GET /n8n/info`, `GET /n8n/nodes` |
+| n8n — workflows | `GET /n8n/workflows`, `POST /n8n/workflows/generate`, `GET /n8n/workflows/<id>`, `POST .../activate`, `.../deactivate`, `.../autofix` |
+| n8n — executions | `GET /n8n/executions`, `GET /n8n/executions/<id>`, `POST .../retry`, `.../stop` |
+| n8n — webhooks | `POST /n8n/webhooks/<path>` |
 
-### Adding a New Frontend Page
+## Configuration
 
-1.  **Generate Component**:
-    Use the Angular CLI to generate the files.
-    ```bash
-    cd frontend
-    npx ng generate component pages/my-new-page
-    ```
-2.  **Add Route**:
-    Open `src/app/app.routes.ts`. Add your new route mapping:
-    ```typescript
-    { path: 'my-feature', component: MyNewPageComponent, canActivate: [authGuard] }
-    ```
-3.  **Add Logic**:
-    Edit `src/app/pages/my-new-page/my-new-page.component.ts`. If you need data from the backend:
-    -   Inject `HttpClient` in the constructor.
-    -   Make requests to `http://127.0.0.1:8000/api/...`.
+`backend/.env`:
 
-### Adding a New Backend Process
+| Variable | Required | Purpose |
+|---|---|---|
+| `TOGAI_API_KEY` | Yes | TogetherAI API key |
+| `N8N_BASE_URL` | For `/workflows` | n8n API base, e.g. `http://localhost:5678` |
+| `N8N_PUBLIC_URL` | For `/workflows` | URL the embedded editor loads from |
+| `N8N_API_KEY` | For `/workflows` | n8n API key — server-side only |
 
-1.  **Define Model (Optional)**:
-    If you need to store new data, edit `backend/api/models.py`.
-    ```python
-    class MyModel(models.Model):
-        ...
-    ```
-    Then run `python manage.py makemigrations` and `migrate`.
-2.  **Create View Logic**:
-    Edit the matching module in `backend/api/endpoints/`.
-    ```python
-    @api_view(['POST'])
-    @permission_classes([IsAuthenticated])
-    def my_custom_process(request):
-        # Your logic here
-        return Response({"status": "done"})
-    ```
-    -   If your process is complex or interacts with AI, consider adding a helper class in `server_llm/`.
-3.  **Add URL**:
-    Edit `backend/api/urls.py` to expose your view.
-    ```python
-    path('my-process', my_custom_process, name='my_process')
-    ```
+## Extending
+
+**New frontend page**
+
+```bash
+cd frontend && npx ng generate component features/my-feature
+```
+
+Then add the route in `src/app/app.routes.ts`:
+
+```typescript
+{ path: 'my-feature', component: MyFeatureComponent, canActivate: [authGuard] }
+```
+
+**New backend endpoint**
+
+1. If you need storage, add a model in `backend/api/models.py`, then
+   `makemigrations` and `migrate`.
+2. Put the logic in `backend/api/services/`, and a thin view in
+   `backend/api/endpoints/`.
+3. Register the path in `backend/api/urls.py`.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| CORS error | `django-cors-headers` config in `settings.py` — it ships pre-configured |
+| "Unauthorized" | Access token expired; log out and back in |
+| n8n panels empty | `N8N_API_KEY` missing or n8n not running |
+
+## License
+
+Apache 2.0 — see [`LICENSE`](LICENSE).
