@@ -11,6 +11,8 @@ export interface AuthTokens {
 export interface PipelineStep {
   id?: number;
   order: number;
+  /** Steps sharing a stage run in parallel; stages run in ascending order. */
+  stage: number;
   prompt: string;
   model: string;
 }
@@ -23,6 +25,7 @@ export interface Pipeline {
 
 export interface StepResult {
   step_order: number;
+  stage: number;
   model: string;
   input_used: string;
   output: string;

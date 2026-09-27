@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 
 import * as pipelinesApi from '../../core/api/pipelines';
 import type { Pipeline, PipelineStep, StepResult } from '../../core/api/types';
+import { nextStage } from './stages';
 
 function emptyPipeline(defaultModel: string): Pipeline {
-  return { name: 'New Pipeline', steps: [{ order: 1, prompt: '', model: defaultModel }] };
+  return { name: 'New Pipeline', steps: [{ order: 1, stage: 1, prompt: '', model: defaultModel }] };
 }
 
 /** State and transport for the builder screen, kept out of the component (§2). */
@@ -64,7 +65,12 @@ export function usePipelineBuilder(defaultModel: string) {
       ...current,
       steps: [
         ...current.steps,
-        { order: current.steps.length + 1, prompt: '', model: defaultModel },
+        {
+          order: current.steps.length + 1,
+          stage: nextStage(current.steps),
+          prompt: '',
+          model: defaultModel,
+        },
       ],
     }));
   }, [defaultModel]);

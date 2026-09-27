@@ -166,6 +166,9 @@ SIMPLE_JWT = {
 # to it by api.services.llm (§5 D).
 LLM_PROVIDER = env_str("LLM_PROVIDER", "openrouter")
 LLM_TIMEOUT_SECONDS = env_float("LLM_TIMEOUT_SECONDS", 60.0)
+# Upper bound on provider calls one pipeline run makes at once for a stage whose
+# steps run in parallel.
+PIPELINE_MAX_PARALLEL_STEPS = max(1, int(env_float("PIPELINE_MAX_PARALLEL_STEPS", 4)))
 LLM_API_KEYS = {
     "openrouter": env_secret("OPEN_ROUTER_KEY") or env_secret("OPENROUTER_API_KEY"),
     "togetherai": env_secret("TOGAI_API_KEY"),

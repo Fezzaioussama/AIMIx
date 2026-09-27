@@ -33,6 +33,20 @@ def test_pipeline_accepts_a_catalogued_model(default_model: str) -> None:
     assert serializer.is_valid(), serializer.errors
 
 
+def test_a_step_without_a_stage_runs_in_its_own_stage(default_model: str) -> None:
+    serializer = PipelineSerializer(
+        data={"name": "P", "steps": [{"order": 3, "prompt": "x", "model": default_model}]}
+    )
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["steps"][0]["stage"] == 3
+
+
+def test_a_stage_must_be_positive(default_model: str) -> None:
+    step = {"order": 1, "stage": 0, "prompt": "x", "model": default_model}
+    serializer = PipelineSerializer(data={"name": "P", "steps": [step]})
+    assert not serializer.is_valid()
+
+
 def test_pipeline_requires_at_least_one_step() -> None:
     serializer = PipelineSerializer(data={"name": "P", "steps": []})
     assert not serializer.is_valid()

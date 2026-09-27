@@ -86,7 +86,7 @@ class OpenRouterModels(ModelCatalog):
 
     Qwen3_Coder_480B_A35B = ModelInfo(
         provider="openrouter",
-        model_id="Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+        model_id="qwen/qwen3-coder",
         supports_tools=True,
         description="High-end coding and agentic model.",
     )
@@ -99,13 +99,13 @@ class OpenRouterModels(ModelCatalog):
     )
     Llama4_Maverick_17B_128E = ModelInfo(
         provider="openrouter",
-        model_id="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        model_id="meta-llama/llama-4-maverick",
         supports_tools=True,
         description="Efficient Llama 4 instruction model.",
     )
-    GROK_4_1_FAST = ModelInfo(
+    GROK_4_20 = ModelInfo(
         provider="openrouter",
-        model_id="x-ai/grok-4.1-fast",
+        model_id="x-ai/grok-4.20",
         fast=True,
         supports_tools=True,
         description="Fast Grok inference model.",
@@ -135,6 +135,13 @@ class OpenRouterModels(ModelCatalog):
         fast=True,
         supports_tools=True,
         description="Ultra-fast DeepSeek inference model.",
+    )
+    DeepSeek_V4_1_Flash = ModelInfo(
+        provider="openrouter",
+        model_id="deepseek/deepseek-v4.1-flash",
+        fast=True,
+        supports_tools=True,
+        description="DeepSeek V4.1 fast inference model.",
     )
     Tencent_HY3_Preview = ModelInfo(
         provider="openrouter",

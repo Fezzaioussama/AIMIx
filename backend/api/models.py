@@ -22,7 +22,11 @@ class Pipeline(models.Model):
 
 class PipelineStep(models.Model):
     """One step of a pipeline. ``prompt`` may contain the {input} placeholder,
-    which the runner substitutes with the previous step's output."""
+    which the runner substitutes with the previous stage's output.
+
+    Steps sharing a ``stage`` run in parallel on the same input; stages run in
+    ascending order, so ``stage == order`` for every step is a plain chain.
+    """
 
     pipeline = models.ForeignKey(Pipeline, related_name="steps", on_delete=models.CASCADE)
     order = models.PositiveIntegerField()
@@ -33,9 +37,12 @@ class PipelineStep(models.Model):
         max_length=200,
         help_text="Model id, validated against the provider catalogue on write.",
     )
+    stage = models.PositiveIntegerField(
+        help_text="Execution stage. Steps in the same stage run in parallel."
+    )
 
     class Meta:
-        ordering = ["order"]
+        ordering = ["stage", "order"]
         constraints = [
             models.UniqueConstraint(
                 fields=["pipeline", "order"], name="unique_step_order_per_pipeline"

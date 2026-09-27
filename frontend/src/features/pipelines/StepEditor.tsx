@@ -1,4 +1,5 @@
 import type { PipelineStep } from '../../core/api/types';
+import { StageInput } from './StageInput';
 import { modelLabel } from './modelLabel';
 
 interface StepEditorProps {
@@ -17,6 +18,11 @@ export function StepEditor({ steps, availableModels, onChange, onRemove }: StepE
             <span className="flex size-6 items-center justify-center rounded-full bg-sky-400/15 text-xs font-semibold text-sky-400">
               {step.order}
             </span>
+            <StageInput
+              value={step.stage}
+              label={`Stage of step ${step.order}`}
+              onChange={(stage) => onChange(index, { stage })}
+            />
             <button
               type="button"
               onClick={() => onRemove(index)}

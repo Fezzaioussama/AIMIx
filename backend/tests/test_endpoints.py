@@ -85,7 +85,7 @@ def test_creating_a_pipeline_assigns_the_caller_as_owner(
 def test_pipelines_are_scoped_to_their_owner(auth_client: APIClient, default_model: str) -> None:
     stranger = User.objects.create_user(username="stranger", password="x-pass-2891")
     theirs = Pipeline.objects.create(user=stranger, name="Theirs")
-    PipelineStep.objects.create(pipeline=theirs, order=1, prompt="p", model=default_model)
+    PipelineStep.objects.create(pipeline=theirs, order=1, stage=1, prompt="p", model=default_model)
 
     listed = auth_client.get(reverse("pipeline-list")).json()
     assert [row["name"] for row in listed] == []
@@ -102,8 +102,12 @@ def test_running_a_pipeline_returns_every_step(
     auth_client: APIClient, user: User, fake_provider, default_model: str
 ) -> None:
     pipeline = Pipeline.objects.create(user=user, name="Runner")
-    PipelineStep.objects.create(pipeline=pipeline, order=1, prompt="a {input}", model=default_model)
-    PipelineStep.objects.create(pipeline=pipeline, order=2, prompt="b {input}", model=default_model)
+    PipelineStep.objects.create(
+        pipeline=pipeline, order=1, stage=1, prompt="a {input}", model=default_model
+    )
+    PipelineStep.objects.create(
+        pipeline=pipeline, order=2, stage=2, prompt="b {input}", model=default_model
+    )
 
     response = auth_client.post(
         reverse("run_pipeline", args=[pipeline.pk]), {"input": "seed"}, format="json"
@@ -112,7 +116,7 @@ def test_running_a_pipeline_returns_every_step(
     assert response.status_code == 200
     body = response.json()
     assert body["pipeline_name"] == "Runner"
-    assert len(body["intermediate_results"]) == 2
+    assert [step["stage"] for step in body["intermediate_results"]] == [1, 2]
     assert body["final_output"] == "fake reply"
 
 
@@ -131,7 +135,9 @@ def test_provider_timeout_surfaces_as_504(
     auth_client: APIClient, user: User, monkeypatch: pytest.MonkeyPatch, default_model: str
 ) -> None:
     pipeline = Pipeline.objects.create(user=user, name="Slow")
-    PipelineStep.objects.create(pipeline=pipeline, order=1, prompt="p", model=default_model)
+    PipelineStep.objects.create(
+        pipeline=pipeline, order=1, stage=1, prompt="p", model=default_model
+    )
     monkeypatch.setattr(
         "api.endpoints.pipelines.get_provider",
         lambda: FailingProvider(llm_exceptions.ProviderTimeout("slow")),

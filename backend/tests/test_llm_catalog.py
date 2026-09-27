@@ -23,6 +23,19 @@ def test_by_id_finds_a_model_and_returns_none_otherwise() -> None:
     assert OpenRouterModels.by_id("does/not-exist") is None
 
 
+def test_deepseek_v4_1_flash_is_an_openrouter_fast_model() -> None:
+    model = OpenRouterModels.by_id("deepseek/deepseek-v4.1-flash")
+    assert model is not None
+    assert model in OpenRouterModels.fast_models()
+
+
+def test_openrouter_ids_are_openrouter_slugs() -> None:
+    # TogetherAI-style ids passed validation but OpenRouter rejected them (HTTP 400).
+    for model_id in OpenRouterModels.ids():
+        assert model_id == model_id.lower(), model_id
+    assert "x-ai/grok-4.1-fast" not in OpenRouterModels.ids()
+
+
 def test_flag_helpers_filter_the_catalogue() -> None:
     assert all(model.free for model in OpenRouterModels.free_models())
     assert all(model.fast for model in OpenRouterModels.fast_models())

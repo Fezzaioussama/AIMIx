@@ -32,6 +32,7 @@ LLM-related settings (all from env, see `.env.example`):
 | `LLM_API_KEYS[provider]` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`), `TOGAI_API_KEY` | Credentials |
 | `LLM_BASE_URLS[provider]` | `OPENROUTER_BASE_URL`, `TOGETHERAI_BASE_URL` | Optional override (proxy/gateway) |
 | `LLM_DEFAULT_MODELS[provider]` | `OPENROUTER_DEFAULT_MODEL`, `TOGETHERAI_DEFAULT_MODEL` | Default model id |
+| `PIPELINE_MAX_PARALLEL_STEPS` | `PIPELINE_MAX_PARALLEL_STEPS` | Provider calls one parallel stage makes at once (default 4) |
 
 ## `api/` — the HTTP application
 

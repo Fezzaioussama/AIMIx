@@ -24,10 +24,17 @@ def _validate_model_id(value: str) -> None:
 
 class PipelineStepSerializer(serializers.ModelSerializer):
     model = serializers.CharField(validators=[_validate_model_id])
+    # Optional so clients that predate parallel stages keep working: a step
+    # without a stage gets its own, which is the old sequential behaviour.
+    stage = serializers.IntegerField(min_value=1, required=False)
 
     class Meta:
         model = PipelineStep
-        fields = ("id", "order", "prompt", "model")
+        fields = ("id", "order", "stage", "prompt", "model")
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        attrs.setdefault("stage", attrs["order"])
+        return attrs
 
 
 class PipelineSerializer(serializers.ModelSerializer):

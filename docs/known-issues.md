@@ -41,7 +41,7 @@ original request once.
 ### 4. Pipeline runs block the request
 
 `POST /pipelines/<id>/run` calls every step synchronously inside the request, so
-a long pipeline holds a worker for minutes (up to steps × `LLM_TIMEOUT_SECONDS`).
+a long pipeline holds a worker for minutes (up to stages × `LLM_TIMEOUT_SECONDS`).
 This conflicts with AGENTS.md §6 ("no long-running work in the request path").
 The frontend allows 180 s, so a slow multi-step run can time out on the client
 while the server keeps going.
@@ -56,17 +56,7 @@ which is safe but undocumented in code. Decide on a policy, then either document
 "no retries" in `llm/base.py` or add bounded retries with backoff for transient
 errors (timeouts, 429, 5xx).
 
-### 6. Catalogue ids may not match the provider
-
-`OpenRouterModels` lists `Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8` and
-`meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8`, which are TogetherAI-style
-ids. OpenRouter normally uses lower-case slugs such as `qwen/qwen3-coder`.
-Such ids pass validation but fail at call time with `provider_unavailable`.
-
-**Fix:** check each id with `manage.py llm_probe "hi" --model <id>` and correct
-the catalogue.
-
-### 7. The pipeline list is not paginated
+### 6. The pipeline list is not paginated
 
 `GET /api/pipelines/` returns all of the user's pipelines. This is fine for now;
 add DRF pagination (and update the client) if lists grow large.

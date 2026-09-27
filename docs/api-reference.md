@@ -48,7 +48,7 @@ Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
 ### `GET /models`
 
 ```json
-{ "models": ["deepseek/deepseek-v4-flash", "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8", "..."],
+{ "models": ["deepseek/deepseek-v4-flash", "qwen/qwen3-coder", "..."],
   "default": "deepseek/deepseek-v4-flash" }
 ```
 
@@ -82,8 +82,8 @@ A pipeline object:
   "user": 1,
   "created_at": "2026-09-27T10:00:00Z",
   "steps": [
-    { "id": 12, "order": 1, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
-    { "id": 13, "order": 2, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
+    { "id": 12, "order": 1, "stage": 1, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
+    { "id": 13, "order": 2, "stage": 2, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
   ]
 }
 ```
@@ -91,6 +91,11 @@ A pipeline object:
 `user`, `created_at`, and the step `id`s are read-only. `steps` must contain at
 least one step; each `model` must be in `GET /models`. `order` must be unique
 within a pipeline.
+
+`stage` (integer ≥ 1, optional, defaults to the step's `order`) sets how steps
+run. Stages run one after another in ascending order; **steps that share a stage
+run in parallel** on the same input. Giving every step its own stage is a plain
+sequential chain.
 
 ### `GET /pipelines/`
 
@@ -127,19 +132,27 @@ deleted and recreated** in one transaction.
   "pipeline_name": "Summarise then translate",
   "final_output": "Résumé ...",
   "intermediate_results": [
-    { "step_order": 1, "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ..." },
-    { "step_order": 2, "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ..." }
+    { "step_order": 1, "stage": 1, "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ..." },
+    { "step_order": 2, "stage": 2, "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ..." }
   ]
 }
 ```
 
-Each step's prompt has `{input}` replaced by the running value; if the template
+`intermediate_results` holds every step's output, ordered by stage then `order`.
+Each step's prompt has `{input}` replaced by its stage's input; if the template
 has no `{input}`, the value is appended as `"\n\nInput: <value>"`.
+
+A stage's input is the previous stage's output. When that stage ran several
+steps in parallel, their outputs are joined, each under a
+`## Output of step <order>` heading. `final_output` is the last stage's output,
+joined the same way if it is parallel. At most `PIPELINE_MAX_PARALLEL_STEPS`
+(default 4) steps of one stage call the provider at once; if any of them fails,
+the run fails.
 Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
 `502/503/504` provider failures (the run stops; no partial result is returned).
 
-The call is synchronous: it takes as long as all steps combined. The frontend
-allows 180 s.
+The call is synchronous: it takes as long as its stages combined, and a parallel
+stage takes as long as its slowest step. The frontend allows 180 s.
 
 ### `POST /pipelines/generate`
 
@@ -155,13 +168,17 @@ allows 180 s.
   "generated_pipeline": {
     "name": "Review responder",
     "steps": [
-      { "order": 1, "prompt": "Extract pros and cons from: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 2, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
+      { "order": 1, "stage": 1, "prompt": "List the pros in: {input}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 2, "stage": 1, "prompt": "List the cons in: {input}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 3, "stage": 2, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
     ]
   },
   "available_models": ["deepseek/deepseek-v4-flash", "..."]
 }
 ```
 
-Nothing is saved. Unknown model ids in the plan are replaced by the default.
+Nothing is saved. The planner decides which steps can run in parallel by giving
+them the same `stage`. Unknown model ids in the plan are replaced by the
+default, `order` is renumbered 1..N, and a missing or invalid `stage` falls back
+to the step's position (sequential).
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.

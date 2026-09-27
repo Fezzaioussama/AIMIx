@@ -51,7 +51,7 @@ Goal: `POST /api/pipelines/<id>/duplicate` returns a copy of an owned pipeline.
    @transaction.atomic
    def duplicate(pipeline: Pipeline) -> Pipeline:
        steps = [
-           {"order": s.order, "prompt": s.prompt, "model": s.model}
+           {"order": s.order, "stage": s.stage, "prompt": s.prompt, "model": s.model}
            for s in pipeline.steps.all()
        ]
        return create_with_steps(user=pipeline.user, name=f"{pipeline.name} (copy)", steps=steps)
@@ -104,7 +104,7 @@ Example backend test:
 ```python
 def test_run_returns_each_step(auth_client, fake_provider, user, default_model):
     pipeline = create_with_steps(
-        user=user, name="p", steps=[{"order": 1, "prompt": "A {input}", "model": default_model}]
+        user=user, name="p", steps=[{"order": 1, "stage": 1, "prompt": "A {input}", "model": default_model}]
     )
     response = auth_client.post(f"/api/pipelines/{pipeline.pk}/run", {"input": "x"}, format="json")
 

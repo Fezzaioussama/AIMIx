@@ -70,13 +70,16 @@ never reaches the browser, and every outbound call is bounded by
 1. The endpoint validates the body with `RunPipelineSerializer`.
 2. `repositories/pipelines.get_owned` fetches the pipeline **scoped to the
    caller**, so someone else's pipeline is indistinguishable from a missing one.
-3. The service iterates `PipelineStep` records in `order`, substituting the
-   running value into each prompt — replacing `{input}` where present, otherwise
+3. The service groups `PipelineStep` records by `stage` and runs the stages in
+   ascending order. Steps that share a stage run in parallel (at most
+   `PIPELINE_MAX_PARALLEL_STEPS` at once) on the same input, which is
+   substituted into each prompt — replacing `{input}` where present, otherwise
    appending it.
 4. Each step calls the configured provider, bounded by `LLM_TIMEOUT_SECONDS`. A
    provider failure raises a domain error, never an empty string.
-5. Each output becomes the next step's input; the final output plus every
-   intermediate result is returned for display.
+5. A stage's output becomes the next stage's input; parallel outputs are joined
+   under a heading per step. The final output plus every step's result is
+   returned for display, grouped by stage.
 
 ### Chat streaming
 
@@ -197,6 +200,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `OPEN_ROUTER_KEY` | For OpenRouter | Provider API key |
 | `TOGAI_API_KEY` | For TogetherAI | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 60) |
+| `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 
 See [`backend/.env.example`](backend/.env.example) for the full list.
 
