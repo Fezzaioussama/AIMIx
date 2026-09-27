@@ -1,14 +1,12 @@
-.PHONY: run-llm run-backend run-frontend run-n8n stop-n8n run-aimix install
+.PHONY: install run-llm run-backend run-frontend run-aimix superuser kill-back kill-front kill-all
 
 UV ?= uv
 NPM ?= npm
-N8N_BIN := n8n-engine/node_modules/.bin/n8n
 
 # Install all dependencies
 install:
 	$(UV) sync
 	cd frontend && $(NPM) install
-	cd n8n-engine && $(NPM) install
 
 # Run the standalone LLM script
 run-llm:
@@ -22,23 +20,9 @@ run-backend:
 run-frontend:
 	cd frontend && $(NPM) start
 
-$(N8N_BIN):
-	cd n8n-engine && $(NPM) install
-
-# Run n8n workflow engine
-run-n8n: | $(N8N_BIN)
-	N8N_USER_FOLDER=$(CURDIR)/n8n-data \
-	N8N_HOST=localhost \
-	N8N_PROTOCOL=http \
-	N8N_EDITOR_BASE_URL=http://localhost:5678 \
-	N8N_PUBLIC_API_DISABLED=false \
-	N8N_SECURE_COOKIE=false \
-	N8N_DISABLE_UI_SECURITY=true \
-	$(NPM) --prefix n8n-engine start
-
-# Run backend + frontend + n8n concurrently
+# Run backend + frontend concurrently
 run-aimix:
-	$(MAKE) -j 3 run-backend run-frontend run-n8n
+	$(MAKE) -j 2 run-backend run-frontend
 
 # Create a superuser for authentication
 superuser:
@@ -55,11 +39,6 @@ kill-front:
 	-pkill -f "ng serve"
 	@echo "Frontend killed."
 
-# Kill n8n workflow engine
-kill-n8n:
-	-pkill -f "n8n"
-	@echo "n8n killed."
-
 # Kill all AIMIx processes
-kill-all: kill-back kill-front kill-n8n
+kill-all: kill-back kill-front
 	@echo "All AIMIx processes have been terminated."

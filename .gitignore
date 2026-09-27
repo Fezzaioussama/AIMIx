@@ -121,10 +121,6 @@ bazel-out/
 .turbo/
 .vite/
 
-# n8n and data storage
-n8n-data/
-.n8n/
-
 # IDEs, editors, and OS metadata
 .DS_Store
 .DS_Store?

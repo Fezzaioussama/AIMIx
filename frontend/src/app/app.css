@@ -50,8 +50,7 @@
 /* Adjust components to account for fixed nav */
 app-chat,
 app-pipeline-builder,
-app-auto-pipeline,
-app-workflows {
+app-auto-pipeline {
     display: block;
     padding-top: 60px;
 }

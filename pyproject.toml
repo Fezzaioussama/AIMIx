@@ -14,5 +14,4 @@ dependencies = [
     "django-cors-headers",
     "djangorestframework-simplejwt",
     "openai>=2.24.0",
-    "requests>=2.32.5",
 ]
