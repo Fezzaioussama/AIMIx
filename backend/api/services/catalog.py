@@ -7,14 +7,13 @@ reach are one and the same (AGENTS.md §3).
 
 from __future__ import annotations
 
-from django.conf import settings
-
+from config.settings import get_settings
 from llm.catalog import CATALOGS, ModelCatalog
 from llm.registry import canonical_name
 
 
 def _catalog() -> type[ModelCatalog]:
-    provider = canonical_name(settings.LLM_PROVIDER)
+    provider = canonical_name(get_settings().llm_provider)
     return CATALOGS[provider]
 
 
@@ -28,8 +27,9 @@ def available_model_ids() -> list[str]:
 
 
 def default_model_id() -> str:
-    provider = canonical_name(settings.LLM_PROVIDER)
-    configured = settings.LLM_DEFAULT_MODELS.get(provider, "")
+    settings = get_settings()
+    provider = canonical_name(settings.llm_provider)
+    configured = settings.llm_default_models.get(provider, "")
     if configured:
         return configured
     ids = _catalog().ids()

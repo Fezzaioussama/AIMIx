@@ -47,23 +47,27 @@ Put new code in the layer that owns the responsibility. Never skip a layer.
 
 ```
 backend/
-  manage.py              # defaults to config.settings.local
   config/                # project wiring, no business logic
-    settings/            #   base.py (shared) + local / test / production
-    urls.py              #   project routes; app routes live in api/urls.py
-    wsgi.py asgi.py      #   default to config.settings.production
-  api/                   # the HTTP application
-    urls.py              #   routing table ONLY — no logic
-    endpoints/*.py       #   HTTP boundary: validate, call a service, shape the response
-    serializers/*.py     #   request + response contracts (one module per resource)
+    settings.py          #   typed Settings (pydantic-settings) from env / backend/.env
+    logging_setup.py     #   logging config, applied by the app factory
+  alembic.ini            # Alembic config; the URL comes from config.settings
+  migrations/            # Alembic env + versions/ — one revision per schema change
+  api/                   # the HTTP application (FastAPI)
+    main.py              #   create_app(): wires settings, database, middleware, routes
+    routes.py            #   routing table ONLY — public vs protected routers, no logic
+    endpoints/*.py       #   HTTP boundary: one APIRouter per resource; validate, call, shape
+    schemas/*.py         #   pydantic request + response contracts (one module per resource)
+    deps.py              #   FastAPI dependencies: db session, settings, current user, provider
     services/*.py        #   ALL business logic and orchestration
-    repositories/*.py    #   data access; ownership filtering lives here
-    models.py            #   persistence + invariants that belong to the entity
+    repositories/*.py    #   data access (SQLAlchemy); ownership filtering lives here
+    models.py            #   SQLAlchemy models + invariants that belong to the entity
+    db.py                #   engine and session factory, built from settings
+    security.py          #   password hashing and JWT signing — pure, no framework
+    middleware.py        #   allowed hosts, CORS, security headers
     exceptions.py        #   domain errors carrying a code + HTTP status
     errors.py            #   the ONE place that shapes an error response
-    http.py              #   HTTP-boundary helpers (e.g. narrowing request.user)
-    management/commands/ #   operational entry points (llm_probe)
-  llm/                   # provider layer — framework-agnostic, no Django import
+    cli.py               #   operational entry points (llm-probe, create-user, import)
+  llm/                   # provider layer — framework-agnostic, no web or DB import
     base.py              #   LLMProvider Protocol + the shared transport
     providers/*.py       #   one module per provider, each just builds a client
     registry.py          #   name -> factory map (add an entry, never an if branch)
@@ -87,23 +91,25 @@ The repository is backend + frontend only. Automation engines (n8n or any other)
 not vendored or run here; if one is ever integrated, it is an external service reached
 through an adapter in `services/` (§7), never a runtime checked into this repo.
 
-**Dependency direction, backend:** `endpoints → serializers/services → repositories/models`
-and `services → llm`. `llm/` never imports `api/`, `config/` or Django settings — it
-receives a `ProviderConfig` (§5 D). Only `api/services/llm.py` reads provider settings.
+**Dependency direction, backend:** `endpoints → schemas/deps/services → repositories/models`
+and `services → llm`. `llm/` never imports `api/` or `config/` — it receives a
+`ProviderConfig` (§5 D). Only `api/services/llm.py` reads provider settings.
 
 **Layer rules**
 
 - An `endpoints/` function must be thin: validate input, delegate to a service, map the
   result to a response. If it contains `if` branches about business meaning, HTTP calls, or
   prompt building, that code belongs in `services/`.
-- `services/` must never import Django request/response objects. Services take and return
-  plain Python types / dataclasses, so they stay testable and reusable.
+- `services/` must never import FastAPI or Starlette (no `Request`, `Response`,
+  `HTTPException`, `Depends`). Services take and return plain Python types / dataclasses
+  (and ORM models / a `Session` passed in), so they stay testable and reusable.
 - Services signal failure by raising a `DomainError` subclass from `api/exceptions.py`.
   They never build a `Response`, never return an error tuple, and never swallow an error
   into a falsy success value.
 - No endpoint constructs an error response. `api/errors.exception_handler` owns the error
   shape; an endpoint that needs a new failure mode adds a domain exception instead.
-- Queryset logic belongs in `api/repositories/`, not inline in an endpoint or serializer.
+- Query logic belongs in `api/repositories/`, not inline in an endpoint, schema or service.
+- Every router is auth-protected unless it is listed in `PUBLIC_ROUTERS` in `api/routes.py`.
 - React components handle presentation and user interaction. Any `fetch` call, token
   handling, polling, or mapping of API payloads belongs in `core/api/` (or a
   `features/<feature>/use<Feature>.ts` hook if the state is feature-local). A component
@@ -144,8 +150,8 @@ receives a `ProviderConfig` (§5 D). Only `api/services/llm.py` reads provider s
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
 **Files already over budget (technical debt).** None — every file is currently within the
-700-line cap. The largest files are `backend/tests/test_endpoints.py` (185) and
-`backend/config/settings/base.py` (179). When a file first crosses a budget, list it here
+700-line cap. The largest files are `backend/tests/test_endpoints.py` (289) and
+`backend/api/services/pipelines.py` (214). When a file first crosses a budget, list it here
 with its line count so the next change knows not to grow it.
 
 ---
@@ -182,7 +188,7 @@ function, and no `fetch` call inside a component — go through `core/api/`.
 - **Stateless request handling.** No mutable module-level state to carry request data.
   State lives in the database, the session model, or the client.
 - **Explicit contracts.** Every endpoint has a defined request and response schema via
-  serializers, and a documented error shape `{ "error": "<code>", "detail": "<message>" }`.
+  pydantic models in `api/schemas/`, and a documented error shape `{ "error": "<code>", "detail": "<message>" }`.
   Keep error shapes consistent across endpoints.
 - **Fail fast, degrade gracefully.** Validate at the boundary. Every outbound call (LLM
   provider, any other third-party API) must have an explicit **timeout**; decide and state the retry policy
@@ -217,7 +223,7 @@ Preferred patterns for this codebase:
 | Building a prompt separately from sending it | **Builder** | `api/services/prompts.py` |
 | Ordered, independently testable transformations | **Pipeline** | `api/services/pipelines.py` (`run`) |
 | Data access shape shared by several callers | **Repository** | `api/repositories/pipelines.py` |
-| Cross-cutting HTTP concerns (auth header, error mapping, timeout) | **Gateway / Decorator** | `core/api/client.ts`; Python decorator for endpoints |
+| Cross-cutting HTTP concerns (auth header, error mapping, timeout) | **Gateway / Dependency Injection** | `core/api/client.ts`; FastAPI dependencies in `api/deps.py` |
 | State shared across components | **Provider / Context** | `core/auth/AuthContext.tsx` |
 | Typed, immutable data across layers | **Value Object / DTO** (`@dataclass`, TS `interface`) | `llm/catalog.py`, `api/services/pipelines.py`, `core/api/types.ts` |
 
@@ -229,18 +235,23 @@ branching, `any` as a habit in TypeScript, catching `Exception` and returning `2
 
 ## 8. Language & stack conventions
 
-**Python / Django**
+**Python / FastAPI**
 - Type hints on every function, including tests; `mypy` must pass (see §9).
 - `from __future__ import annotations` at the top of each module, so annotations stay cheap
   and `X | None` works on Python 3.10.
 - `@dataclass(frozen=True)` for structured data crossing a layer boundary.
 - Raise `DomainError` subclasses in services; `api/errors.py` turns them into HTTP. Never
-  build an error `Response` by hand.
+  build an error `Response` or raise `HTTPException` by hand.
+- Endpoints are plain `def` (FastAPI runs them in a threadpool) because the services and
+  providers are synchronous; use `async def` only for code that awaits.
+- Get collaborators through `Depends` (`api/deps.py`) so tests swap them with
+  `app.dependency_overrides`; never read settings or open sessions inside an endpoint body.
 - Catching broad `Exception` is allowed in exactly one place: an adapter wrapping a
   third-party SDK, and only to re-raise it as one of our own errors with `from cause`
   (`llm/base.py`). Never swallow it, and never return a falsy value to mean failure.
 - Every outbound call passes an explicit timeout from settings (§6).
-- Model changes always ship with the generated migration.
+- Model changes always ship with an Alembic revision (`alembic revision --autogenerate`,
+  reviewed by hand); the test suite fails if the migrations and models disagree.
 - f-strings, 4-space indent, imports grouped stdlib / third-party / local (Ruff enforces).
 
 **TypeScript / React 19 (Vite)**
@@ -257,7 +268,8 @@ branching, `any` as a habit in TypeScript, catching `Exception` and returning `2
   `core/markdown/renderMarkdown`.
 
 **Tooling.** Ruff lints and formats the Python (100 cols, config in `pyproject.toml`);
-`mypy` type-checks `api/`, `llm/` and `config/`; `pytest` runs the backend suite. Run
+`mypy` type-checks `api/`, `llm/`, `config/` and `migrations/`; `pytest` runs the backend
+suite. Run
 `make format` before finishing. Frontend formatting follows the Prettier config in
 `frontend/package.json` (100 cols, single quotes).
 
@@ -283,8 +295,7 @@ branching, `any` as a habit in TypeScript, catching `Exception` and returning `2
   ```bash
   uv run ruff check . && uv run ruff format --check .
   uv run mypy
-  cd backend && uv run python manage.py check
-  uv run pytest
+  uv run pytest            # includes the migrations-match-models check
   cd frontend && npm test
   cd frontend && npm run build
   ```

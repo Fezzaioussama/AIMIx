@@ -1,123 +1,173 @@
 # Backend reference
 
-Django 5 + Django REST Framework + SimpleJWT, run with `uv`. The import root is
-`backend/`: the top-level packages are `config`, `api`, and `llm`.
+FastAPI + SQLAlchemy 2.0 + Alembic, served by Uvicorn and run with `uv`. The
+import root is `backend/`: the top-level packages are `config`, `api`, `llm` and
+`migrations`.
 
 ```
 backend/
-  manage.py                 # defaults to config.settings.local
-  config/                   # wiring only
+  alembic.ini               # Alembic config; the database URL comes from settings
+  migrations/               # Alembic env + versions/
+  config/                   # settings + logging, no business logic
   api/                      # the HTTP application
   llm/                      # provider layer, framework-agnostic
   tests/                    # pytest suite
 ```
 
-## `config/` — project wiring
+Run it with `make run-backend`, which runs
+`uvicorn api.main:create_app --factory --reload --port 8000` from `backend/`.
+Outside production the interactive docs are at <http://127.0.0.1:8000/api/docs>.
 
-| File | Role |
-|---|---|
-| `settings/base.py` | Shared settings. Loads `backend/.env` with `python-dotenv`. Helpers `env_str`, `env_bool`, `env_list`, `env_float`, `env_secret` (treats placeholders as empty). Defines DRF defaults (JWT auth, **`IsAuthenticated` by default**, custom exception handler), SimpleJWT lifetimes, the `LLM_*` settings, and logging for the `api` and `llm` loggers. |
-| `settings/local.py` | Dev: `DEBUG` on, fallback insecure key. |
-| `settings/test.py` | In-memory DB, MD5 hasher, **empty provider keys** so tests can never reach a real LLM. |
-| `settings/production.py` | Refuses unsafe config (`ImproperlyConfigured`), enables HSTS, SSL redirect, secure cookies. |
-| `urls.py` | `admin/` and `api/` → `api.urls`. |
-| `wsgi.py` / `asgi.py` | Default to production settings. |
+## `config/` — settings and logging
 
-LLM-related settings (all from env, see `.env.example`):
+`config/settings.py` defines one typed `Settings` class (pydantic-settings). It
+reads the environment first, then `backend/.env`. `get_settings()` returns the
+process-wide instance, and `pin_settings()` fixes it for tests and one-off tools.
 
-| Setting | Source | Meaning |
+| Setting | Variable (legacy name also accepted) | Default / meaning |
 |---|---|---|
-| `LLM_PROVIDER` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
-| `LLM_TIMEOUT_SECONDS` | `LLM_TIMEOUT_SECONDS` | Timeout passed to the SDK client, per call (default 3600 = one hour) |
-| `LLM_API_KEYS[provider]` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`), `TOGAI_API_KEY` | Credentials |
-| `LLM_BASE_URLS[provider]` | `OPENROUTER_BASE_URL`, `TOGETHERAI_BASE_URL` | Optional override (proxy/gateway) |
-| `LLM_DEFAULT_MODELS[provider]` | `OPENROUTER_DEFAULT_MODEL`, `TOGETHERAI_DEFAULT_MODEL` | Default model id |
-| `PIPELINE_MAX_PARALLEL_STEPS` | `PIPELINE_MAX_PARALLEL_STEPS` | Provider calls one parallel stage makes at once (default 4) |
+| `app_env` | `APP_ENV` | `local`, `production` or `test`. Production refuses `DEBUG=true`, an empty `SECRET_KEY` or empty `ALLOWED_HOSTS`, adds HSTS, and turns off `/api/docs` |
+| `secret_key` | `SECRET_KEY` (`DJANGO_SECRET_KEY`) | Signs the JWTs. Outside production an empty value falls back to a throwaway key |
+| `debug` | `DEBUG` (`DJANGO_DEBUG`) | FastAPI debug mode |
+| `allowed_hosts` | `ALLOWED_HOSTS` (`DJANGO_ALLOWED_HOSTS`) | Comma-separated `Host` allowlist (`localhost,127.0.0.1`) |
+| `cors_allowed_origins` | `CORS_ALLOWED_ORIGINS` (`DJANGO_CORS_ALLOWED_ORIGINS`) | Comma-separated origins (the Vite dev server) |
+| `database_url` | `DATABASE_URL` | SQLAlchemy URL; default `backend/aimix.sqlite3` |
+| `log_level` | `LOG_LEVEL` (`DJANGO_LOG_LEVEL`) | `INFO` |
+| `jwt_access_minutes` / `jwt_refresh_days` | `JWT_ACCESS_MINUTES` / `JWT_REFRESH_DAYS` | 60 minutes / 1 day |
+| `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
+| `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
+| `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
+| `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Provider calls one parallel stage makes at once (4) |
+| `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
+| `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
+| `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
+
+`llm_api_keys`, `llm_base_urls` and `llm_default_models` expose the provider
+settings as dicts keyed by provider name. `config/logging_setup.py` configures
+logging once, from the app factory.
 
 ## `api/` — the HTTP application
 
-### `models.py`
+### `main.py` and `routes.py`
 
-| Model | Fields | Invariants |
-|---|---|---|
-| `Pipeline` | `name`, `user` (FK, cascade), `created_at` | Ordered newest first |
-| `PipelineStep` | `pipeline` (FK, `related_name="steps"`), `order`, `prompt`, `model` | Ordered by `order`; **unique `(pipeline, order)`** |
+`create_app()` builds the app: it creates the `Database`, installs the error
+handlers and middleware, and mounts `routes.api_router()` under `/api`.
+`routes.py` is the routing table. Routers in `PUBLIC_ROUTERS` (register, login,
+refresh) are open. Every router in `PROTECTED_ROUTERS` is mounted behind the
+`current_user` dependency, so **new routes are authenticated by default**.
 
-`PipelineStep.model` is a free `CharField` in the database; validity is enforced
-by the serializer against the catalogue, not by the DB.
+### `deps.py`
 
-### `urls.py`
-
-Routing table only. A DRF `DefaultRouter` registers `PipelineViewSet` at
-`pipelines/`; function views cover auth, chat, models, run, and generate. See
-[api-reference.md](api-reference.md).
-
-### `endpoints/`
-
-| Module | Views | Notes |
-|---|---|---|
-| `auth.py` | `RegisterView` (public, `AllowAny`), `protected_view` | Login/refresh are SimpleJWT's own views, wired in `urls.py` |
-| `chat.py` | `chat_view` | Returns `StreamingHttpResponse` from `services/chat.stream_reply` |
-| `models.py` | `list_models` | `{"models": [...], "default": "..."}` |
-| `pipelines.py` | `PipelineViewSet`, `run_pipeline`, `generate_pipeline` | Queryset always via `repository.for_user` |
-
-### `serializers/`
-
-Re-exported from `api/serializers/__init__.py`, so import from `api.serializers`.
-
-| Serializer | Contract |
+| Dependency | Gives the endpoint |
 |---|---|
-| `RegisterSerializer` | `username`, `password` (write-only, Django password validators) |
-| `ChatRequestSerializer` | `prompt` (non-blank) |
-| `PipelineStepSerializer` | `id`, `order`, `prompt`, `model` — `model` checked by `_validate_model_id` |
-| `PipelineSerializer` | `id`, `name`, `user` (read-only), `created_at` (read-only), nested `steps` (at least one). `create`/`update` delegate to the repository |
-| `RunPipelineSerializer` | `input` (non-blank) |
-| `GeneratePipelineSerializer` | `description` (non-blank), `planner_model` (optional, validated, defaults to the default model) |
+| `DbSession` | A SQLAlchemy `Session` for the request, closed afterwards |
+| `AppSettings` | The `Settings` |
+| `Signer` | A `TokenSigner` configured from the settings |
+| `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` |
+| `Providers` | A factory for the configured `LLMProvider`. Endpoints call it after validation, so a bad body is a 400 even when no provider is configured |
 
-### `repositories/pipelines.py`
+Tests replace any of these with `app.dependency_overrides`.
 
-| Function | Purpose |
+### `models.py` and `db.py`
+
+| Model (table) | Fields | Invariants |
+|---|---|---|
+| `User` (`users`) | `username` (unique), `password_hash`, `created_at` | — |
+| `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at` | `steps` load ordered by `(stage, order)` |
+| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `is_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
+
+`PipelineStep.model` is a plain string column; the request schemas check it
+against the catalogue. `db.Database` owns the engine and session factory. SQLite
+connections are allowed across threads (endpoints run in a threadpool) and have
+foreign keys switched on; `sqlite://` uses one shared in-memory connection.
+
+### `endpoints/` and `schemas/`
+
+| Endpoint module | Routes | Schemas (`api/schemas/`) |
+|---|---|---|
+| `auth.py` | `POST /register`, `POST /login`, `POST /token/refresh` (public); `GET /protected` | `auth.py`: `RegisterRequest`, `LoginRequest`, `TokenPairResponse`, `RefreshRequest`, `AccessTokenResponse`, `WhoAmIResponse` |
+| `chat.py` | `POST /chat` (streams `text/plain`) | `chat.py`: `ChatRequest` (non-blank `prompt`) |
+| `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
+| `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
+
+`schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
+empty) and `ModelId` (must be in the active catalogue). A step without `stage`
+gets `stage = order`. A pipeline needs at least one step, and step orders must
+be unique.
+
+### `repositories/`
+
+| Module | Functions |
 |---|---|
-| `for_user(user)` | Owned pipelines with `steps` prefetched |
-| `get_owned(user, id)` | One owned pipeline or `NotFound` |
-| `create_with_steps(...)` | Atomic create of pipeline + steps (`bulk_create`) |
-| `replace_steps(pipeline, name, steps)` | Atomic rename and/or delete-and-recreate of all steps |
+| `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename and/or replace every step in one transaction), `delete` |
+| `users.py` | `get`, `get_by_username`, `create` |
+| `legacy_import.py` | `import_django_database` — the one-off copy from the old Django SQLite file |
+
+Each write commits its own transaction.
 
 ### `services/`
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | `run` (the step loop, returns `RunResult`), `generate` + `parse_plan` (planner), `ensure_runnable`. DTOs `StepResult`, `RunResult`. Logs `pipeline.run` with id, step count, duration. |
-| `prompts.py` | `step_prompt` (replace `{input}`, else append `"\n\nInput: ..."`), `pipeline_generation_prompt`. |
+| `pipelines.py` | `run` (stages in order, parallel steps in a thread pool, returns `RunResult`), `generate` + `parse_plan` (planner), `ensure_runnable`, `output_orders`. Logs `pipeline.run` with id, stage and step counts, duration. |
+| `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`. |
 | `chat.py` | `stream_reply` — eager first chunk, then a generator that logs mid-stream failures. |
-| `llm.py` | **The only reader of provider settings.** `provider_config()` builds a `ProviderConfig`; `get_provider()` builds the provider via the registry. |
+| `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
+| `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
+| `llm.py` | **The only reader of provider settings.** `provider_config()` and `get_provider()`. |
 | `catalog.py` | `available_model_ids()` (default first) and `default_model_id()` for the active provider. |
 | `errors.py` | `PROVIDER_ERROR_MAP` and `as_domain_error()` — the one translation from `llm` errors to domain errors. |
 
-### `exceptions.py` and `errors.py`
+### `security.py`
 
-`DomainError(detail)` carries a class-level `code` and `status_code`.
-Subclasses: `ValidationFailed` (400), `NotFound` (404),
-`ProviderNotConfigured` (503), `ProviderUnavailable` (502),
-`ProviderTimedOut` (504), `UpstreamResponseInvalid` (502).
+Pure functions with no web framework. `hash_password` / `verify_password` use
+Django's `pbkdf2_sha256$<iterations>$<salt>$<hash>` format, so accounts imported
+from the old backend keep their passwords. `TokenSigner` issues and reads HS256
+JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 
-`errors.exception_handler` is registered in `REST_FRAMEWORK["EXCEPTION_HANDLER"]`.
-It renders `DomainError` directly, maps DRF errors by status via `STATUS_CODES`,
-and flattens nested DRF validation detail into one sentence (`_flatten`).
+### `exceptions.py`, `errors.py` and `middleware.py`
 
-### `http.py`
+`DomainError(detail)` carries a class-level `code`, `status_code` and optional
+`headers`. The subclasses are `ValidationFailed` (400), `NotAuthenticated` (401,
+`WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
+`ProviderUnavailable` (502), `ProviderTimedOut` (504) and
+`UpstreamResponseInvalid` (502).
 
-`authenticated_user(request)` narrows `request.user` from
-`User | AnonymousUser` to `User` for type safety.
+`errors.install_error_handlers` renders:
+- `DomainError` as its own code and status.
+- Request validation errors as 400 `validation_error`, one `field: message` per problem.
+- Framework HTTP errors (404, 405, …) by status via `STATUS_CODES`.
+- Anything unexpected as 500 `server_error`.
 
-### `management/commands/llm_probe.py`
+`middleware.py` adds the `Host` allowlist, CORS, and security headers
+(`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
+`Cross-Origin-Opener-Policy`, plus HSTS in production).
+
+### `cli.py`
 
 ```bash
 cd backend
-uv run python manage.py llm_probe --list-models     # what `make run-llm` does
-uv run python manage.py llm_probe "Say hi"          # one real call, default model
-uv run python manage.py llm_probe "Say hi" --model openai/gpt-oss-120b
+uv run python -m api.cli llm-probe --list-models     # what `make run-llm` does
+uv run python -m api.cli llm-probe "Say hi"          # one real call, default model
+uv run python -m api.cli llm-probe "Say hi" --model openai/gpt-oss-120b
+uv run python -m api.cli create-user alice            # asks for the password
+uv run python -m api.cli import-django-db db.sqlite3  # one-off, into an empty database
 ```
+
+## `migrations/` — Alembic
+
+`env.py` takes the URL from `config.settings` (or from the `sqlalchemy.url`
+option, which the tests use) and runs in batch mode, so SQLite can `ALTER`.
+
+```bash
+cd backend
+uv run alembic upgrade head                                   # make migrate
+uv run alembic revision --autogenerate -m "add pipeline tags"  # after changing models.py
+```
+
+Review every autogenerated revision before committing it.
+`test_database.py::test_migrations_build_exactly_the_models_schema` fails when
+the models and the migrations disagree.
 
 ## `llm/` — provider layer
 
@@ -125,22 +175,26 @@ Covered in [llm-providers.md](llm-providers.md).
 
 ## `tests/`
 
-pytest + pytest-django, settings `config.settings.test`. `conftest.py` provides:
+pytest with FastAPI's `TestClient`. `conftest.py` pins `TEST_SETTINGS` before any
+app is built: in-memory SQLite, one hashing iteration, and **empty provider keys**,
+so tests can never reach a real LLM.
 
 | Fixture / helper | Use |
 |---|---|
-| `FakeProvider` | Implements `LLMProvider` with canned `reply` / `chunks`; records `calls` |
-| `FailingProvider(error)` | Raises the given `LLMError` from `generate` and `stream` |
-| `fake_provider` | Monkeypatches `get_provider` in the pipelines and chat endpoints |
-| `user`, `password`, `client`, `auth_client` | A user and an authenticated `APIClient` |
+| `app`, `session` | A fresh app over a fresh in-memory database, and a session on it |
+| `client`, `auth_client` | A `TestClient`, and one that sends a valid bearer token |
+| `user`, `password`, `bearer(user)` | A saved account, its password, and an auth header |
+| `FakeProvider`, `FailingProvider(error)` | Canned replies / a chosen `LLMError` |
+| `fake_provider`, `use_provider(app, provider)` | Override the provider dependency |
 | `default_model` | The active default model id |
 
 | Test module | Covers |
 |---|---|
-| `test_endpoints.py` | HTTP behaviour: auth, CRUD, run, generate, chat, error shapes |
-| `test_pipeline_service.py` | `run`, `parse_plan`, prompt substitution |
-| `test_serializers.py` | Model-id validation, required steps |
-| `test_errors.py` | Error handler and flattening |
-| `test_llm_providers.py` | Adapter behaviour, error normalisation, registry |
-| `test_llm_catalog.py` | Catalogue lookups |
-| `test_settings_and_config.py` | Env helpers and production guards |
+| `test_endpoints.py` | HTTP behaviour: every non-public route needs auth, auth flows, CRUD, run, generate, chat |
+| `test_errors.py` | The error shape for 400/401/404/405/500 |
+| `test_schemas.py` | Model-id validation, stages, required steps, non-blank fields |
+| `test_security.py` | Django-compatible hashes (checked against a hash Django produced), password policy, tokens |
+| `test_database.py` | Migrations match the models; the Django import |
+| `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
+| `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
+| `test_settings_and_config.py` | Settings parsing, legacy names, production guards |

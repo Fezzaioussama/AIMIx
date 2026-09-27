@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from api.exceptions import (
@@ -16,20 +18,24 @@ from api.services.prompts import merge_stage_outputs, step_prompt
 from llm import exceptions as llm_exceptions
 from tests.conftest import FailingProvider, FakeProvider
 
-pytestmark = pytest.mark.django_db
 
-
-def make_pipeline(
-    user, steps: list[tuple[int, str, str]], stages: list[int] | None = None
-) -> Pipeline:
-    """Steps are ``(order, prompt, model)``; without ``stages`` they form a chain."""
-    pipeline = Pipeline.objects.create(user=user, name="Test")
-    for index, (order, prompt, model) in enumerate(steps):
-        stage = stages[index] if stages else order
-        PipelineStep.objects.create(
-            pipeline=pipeline, order=order, stage=stage, prompt=prompt, model=model
-        )
-    return pipeline
+def make_pipeline(steps: list[tuple[int, str, str]], stages: list[int] | None = None) -> Pipeline:
+    """An unsaved pipeline — the runner needs no database. Steps are
+    ``(order, prompt, model)``; without ``stages`` they form a chain."""
+    return Pipeline(
+        name="Test",
+        steps=[
+            PipelineStep(
+                order=order,
+                stage=stages[index] if stages else order,
+                title="",
+                is_output=False,
+                prompt=prompt,
+                model=model,
+            )
+            for index, (order, prompt, model) in enumerate(steps)
+        ],
+    )
 
 
 class EchoProvider(FakeProvider):
@@ -53,10 +59,8 @@ def test_step_prompt_leaves_braces_in_the_input_alone() -> None:
     assert step_prompt("Echo: {input}", "{not_a_field}") == "Echo: {not_a_field}"
 
 
-def test_run_feeds_each_output_into_the_next_step(user, default_model: str) -> None:
-    pipeline = make_pipeline(
-        user, [(1, "one {input}", default_model), (2, "two {input}", default_model)]
-    )
+def test_run_feeds_each_output_into_the_next_step(default_model: str) -> None:
+    pipeline = make_pipeline([(1, "one {input}", default_model), (2, "two {input}", default_model)])
     provider = FakeProvider(reply="out")
 
     result = service.run(pipeline, provider, "start")
@@ -70,10 +74,9 @@ def test_run_feeds_each_output_into_the_next_step(user, default_model: str) -> N
 
 
 def test_steps_in_one_stage_share_the_input_and_their_outputs_are_merged(
-    user, default_model: str
+    default_model: str,
 ) -> None:
     pipeline = make_pipeline(
-        user,
         [
             (1, "a {input}", default_model),
             (2, "b {input}", default_model),
@@ -92,9 +95,9 @@ def test_steps_in_one_stage_share_the_input_and_their_outputs_are_merged(
     assert result.final_output == merge.output
 
 
-def test_a_parallel_last_stage_makes_the_merged_outputs_final(user, default_model: str) -> None:
+def test_a_parallel_last_stage_makes_the_merged_outputs_final(default_model: str) -> None:
     pipeline = make_pipeline(
-        user, [(1, "a {input}", default_model), (2, "b {input}", default_model)], stages=[1, 1]
+        [(1, "a {input}", default_model), (2, "b {input}", default_model)], stages=[1, 1]
     )
 
     result = service.run(pipeline, EchoProvider(), "x")
@@ -102,32 +105,29 @@ def test_a_parallel_last_stage_makes_the_merged_outputs_final(user, default_mode
     assert result.final_output == merge_stage_outputs([(1, "<a x>"), (2, "<b x>")])
 
 
-def test_a_failing_parallel_step_fails_the_run(user, default_model: str) -> None:
-    pipeline = make_pipeline(
-        user, [(1, "a", default_model), (2, "b", default_model)], stages=[1, 1]
-    )
+def test_a_failing_parallel_step_fails_the_run(default_model: str) -> None:
+    pipeline = make_pipeline([(1, "a", default_model), (2, "b", default_model)], stages=[1, 1])
     provider = FailingProvider(llm_exceptions.ProviderRequestError("bad"))
 
     with pytest.raises(ProviderUnavailable):
         service.run(pipeline, provider, "start")
 
 
-def test_marked_steps_are_the_outputs_even_mid_pipeline(user, default_model: str) -> None:
+def test_marked_steps_are_the_outputs_even_mid_pipeline(default_model: str) -> None:
     pipeline = make_pipeline(
-        user,
         [(1, "a", default_model), (2, "b", default_model), (3, "c", default_model)],
         stages=[1, 1, 2],
     )
-    PipelineStep.objects.filter(pipeline=pipeline, order__in=[1, 3]).update(is_output=True)
+    for step in pipeline.steps:
+        step.is_output = step.order in (1, 3)
 
     result = service.run(pipeline, EchoProvider(), "x")
 
     assert [r.is_output for r in result.intermediate_results] == [True, False, True]
 
 
-def test_without_marked_steps_the_last_stage_is_the_output(user, default_model: str) -> None:
+def test_without_marked_steps_the_last_stage_is_the_output(default_model: str) -> None:
     pipeline = make_pipeline(
-        user,
         [(1, "a", default_model), (2, "b", default_model), (3, "c", default_model)],
         stages=[1, 2, 2],
     )
@@ -144,30 +144,30 @@ def test_merge_passes_a_single_output_through_and_labels_parallel_ones() -> None
     )
 
 
-def test_run_translates_a_provider_timeout(user, default_model: str) -> None:
-    pipeline = make_pipeline(user, [(1, "p", default_model)])
+def test_run_translates_a_provider_timeout(default_model: str) -> None:
+    pipeline = make_pipeline([(1, "p", default_model)])
     provider = FailingProvider(llm_exceptions.ProviderTimeout("slow"))
 
     with pytest.raises(ProviderTimedOut):
         service.run(pipeline, provider, "start")
 
 
-def test_run_translates_a_provider_request_error(user, default_model: str) -> None:
-    pipeline = make_pipeline(user, [(1, "p", default_model)])
+def test_run_translates_a_provider_request_error(default_model: str) -> None:
+    pipeline = make_pipeline([(1, "p", default_model)])
     provider = FailingProvider(llm_exceptions.ProviderRequestError("bad"))
 
     with pytest.raises(ProviderUnavailable):
         service.run(pipeline, provider, "start")
 
 
-def test_ensure_runnable_rejects_an_empty_pipeline(user) -> None:
-    pipeline = Pipeline.objects.create(user=user, name="Empty")
+def test_ensure_runnable_rejects_an_empty_pipeline() -> None:
+    pipeline = Pipeline(name="Empty")
     with pytest.raises(ValidationFailed):
         service.ensure_runnable(pipeline)
 
 
 class TestParsePlan:
-    models = ["vendor/good", "vendor/also-good"]
+    models: ClassVar[list[str]] = ["vendor/good", "vendor/also-good"]
 
     def test_accepts_json_wrapped_in_prose(self) -> None:
         raw = 'Sure! {"name": "P", "steps": [{"order": 1, "prompt": "x", "model": "vendor/good"}]}'

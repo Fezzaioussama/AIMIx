@@ -6,10 +6,40 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 import pytest
-from django.contrib.auth.models import User
-from rest_framework.test import APIClient
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from api.deps import provider_factory, token_signer
+from api.main import create_app
+from api.models import Base, User
+from api.repositories import users
+from api.security import hash_password
+from config.settings import Settings, pin_settings
 from llm import exceptions as llm_exceptions
+from llm.base import LLMProvider
+
+#: Pinned before any app is built, so no .env value can change a test's outcome.
+TEST_SETTINGS = Settings(
+    _env_file=None,
+    app_env="test",
+    secret_key="testing-key-not-used-outside-tests",
+    allowed_hosts=["testserver"],
+    database_url="sqlite://",
+    # Hashing is the slowest part of auth-heavy tests.
+    password_hash_iterations=1,
+    log_level="WARNING",
+    llm_provider="openrouter",
+    llm_timeout_seconds=1.0,
+    pipeline_max_parallel_steps=4,
+    openrouter_api_key="",
+    togetherai_api_key="",
+    openrouter_base_url="",
+    togetherai_base_url="",
+    openrouter_default_model="deepseek/deepseek-v4-flash",
+    togetherai_default_model="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+)
+pin_settings(TEST_SETTINGS)
 
 
 class FakeProvider:
@@ -47,33 +77,57 @@ class FailingProvider:
         yield ""  # pragma: no cover - unreachable, keeps this a generator
 
 
+def use_provider(app: FastAPI, provider: LLMProvider) -> None:
+    """Make every endpoint that needs a provider get this one."""
+    app.dependency_overrides[provider_factory] = lambda: lambda: provider
+
+
+@pytest.fixture
+def app() -> Iterator[FastAPI]:
+    """A fresh app over a fresh in-memory database for every test."""
+    application = create_app()
+    engine = application.state.database.engine
+    Base.metadata.create_all(engine)
+    yield application
+    engine.dispose()
+
+
+@pytest.fixture
+def session(app: FastAPI) -> Iterator[Session]:
+    with app.state.database.session() as db:
+        yield db
+
+
 @pytest.fixture
 def password() -> str:
     return "pipeline-test-pass-123"
 
 
 @pytest.fixture
-def user(db, password: str) -> User:
-    return User.objects.create_user(username="tester", password=password)
+def user(session: Session, password: str) -> User:
+    return users.create(session, "tester", hash_password(password, 1))
 
 
 @pytest.fixture
-def client() -> APIClient:
-    return APIClient()
+def client(app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def bearer(user: User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token_signer(TEST_SETTINGS).issue(user.id, 'access')}"}
 
 
 @pytest.fixture
-def auth_client(client: APIClient, user: User) -> APIClient:
-    client.force_authenticate(user=user)
+def auth_client(client: TestClient, user: User) -> TestClient:
+    client.headers.update(bearer(user))
     return client
 
 
 @pytest.fixture
-def fake_provider(monkeypatch: pytest.MonkeyPatch) -> FakeProvider:
-    """Replace the provider factory everywhere the endpoints look it up."""
+def fake_provider(app: FastAPI) -> FakeProvider:
     provider = FakeProvider()
-    monkeypatch.setattr("api.endpoints.pipelines.get_provider", lambda: provider)
-    monkeypatch.setattr("api.endpoints.chat.get_provider", lambda: provider)
+    use_provider(app, provider)
     return provider
 
 

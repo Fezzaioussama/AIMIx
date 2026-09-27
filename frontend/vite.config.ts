@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-// The dev server proxies /api to Django so the browser sees a single origin
+// The dev server proxies /api to the FastAPI backend so the browser sees a single origin
 // and no CORS or absolute backend URL ever reaches the client bundle.
 export default defineConfig({
   plugins: [react(), tailwindcss()],

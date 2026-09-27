@@ -1,8 +1,9 @@
 # LLM provider layer
 
 `backend/llm/` is a small, **framework-agnostic** package: it never imports
-Django, `api`, or `config`. Everything it needs arrives as a `ProviderConfig`.
-That keeps it unit-testable with a fake client and reusable outside Django.
+FastAPI, SQLAlchemy, `api`, or `config`. Everything it needs arrives as a
+`ProviderConfig`. That keeps it unit-testable with a fake client and reusable
+outside this app.
 
 ```
 llm/
@@ -20,6 +21,7 @@ llm/
 ```python
 class LLMProvider(Protocol):
     name: str
+
     def generate(self, prompt: str, model: str | None = None) -> str: ...
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]: ...
 ```
@@ -88,7 +90,7 @@ to the first catalogue entry. `available_model_ids()` puts the default first.
 
 1. Add a `ModelInfo(...)` attribute to the right class in `llm/catalog.py`,
    using the exact id the provider expects.
-2. Check it: `cd backend && uv run python manage.py llm_probe "hi" --model <id>`.
+2. Check it: `cd backend && uv run python -m api.cli llm-probe "hi" --model <id>`.
 3. `make check`. The frontend picks it up automatically from `/api/models`.
 
 ## Recipe: add a provider
@@ -122,8 +124,10 @@ Example: a hypothetical `groq` provider with an OpenAI-compatible API.
    spellings to `ALIASES`.
 3. `llm/catalog.py`: add a `GroqModels(ModelCatalog)` class and a `CATALOGS`
    entry.
-4. `config/settings/base.py`: add `"groq"` to `LLM_API_KEYS`, `LLM_BASE_URLS`,
-   and `LLM_DEFAULT_MODELS`; mirror the empty key in `settings/test.py`.
+4. `config/settings.py`: add `groq_api_key`, `groq_base_url` and
+   `groq_default_model` fields, and a `"groq"` entry in the `llm_api_keys`,
+   `llm_base_urls` and `llm_default_models` properties; set the empty key in
+   `TEST_SETTINGS` (`tests/conftest.py`).
 5. `backend/.env.example`: document `GROQ_API_KEY`, `GROQ_BASE_URL`,
    `GROQ_DEFAULT_MODEL`, and add `groq` to the supported values comment.
 6. Tests in `tests/test_llm_providers.py`: build fails without a key; errors

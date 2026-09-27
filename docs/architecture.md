@@ -4,9 +4,9 @@
 
 ```mermaid
 graph LR
-    Browser["React SPA<br/>Vite :4200"] -->|"/api/* + Bearer JWT<br/>(proxied in dev)"| Django["Django + DRF<br/>:8000"]
-    Django -->|ORM| DB[("SQLite")]
-    Django -->|"HTTPS, API key,<br/>LLM_TIMEOUT_SECONDS"| LLM["OpenRouter / TogetherAI"]
+    Browser["React SPA<br/>Vite :4200"] -->|"/api/* + Bearer JWT<br/>(proxied in dev)"| API["FastAPI + Uvicorn<br/>:8000"]
+    API -->|SQLAlchemy| DB[("SQLite")]
+    API -->|"HTTPS, API key,<br/>LLM_TIMEOUT_SECONDS"| LLM["OpenRouter / TogetherAI"]
 ```
 
 The backend is a **chokepoint**: it holds the provider API key (the browser never
@@ -17,27 +17,32 @@ outbound call with a timeout.
 
 ```mermaid
 graph TD
-    urls["api/urls.py<br/>routing only"] --> endpoints
-    endpoints["api/endpoints/*<br/>HTTP boundary"] --> serializers["api/serializers/*<br/>contracts"]
+    routes["api/routes.py<br/>routing only"] --> endpoints
+    endpoints["api/endpoints/*<br/>HTTP boundary"] --> schemas["api/schemas/*<br/>contracts"]
+    endpoints --> deps["api/deps.py<br/>session, user, provider"]
     endpoints --> services["api/services/*<br/>business logic"]
-    endpoints --> repositories
-    serializers --> repositories["api/repositories/*<br/>data access"]
-    services --> models["api/models.py"]
+    endpoints --> repositories["api/repositories/*<br/>data access"]
+    services --> repositories
+    services --> models["api/models.py<br/>SQLAlchemy"]
     repositories --> models
-    services --> llm["llm/*<br/>provider layer (no Django)"]
+    services --> llm["llm/*<br/>provider layer (no web or DB)"]
     services -. raise .-> exceptions["api/exceptions.py<br/>DomainError"]
     exceptions -. mapped by .-> errors["api/errors.py<br/>one error shape"]
 ```
 
 Rules that keep this shape (full text in [AGENTS.md §2](../AGENTS.md)):
 
-- **Endpoints are thin**: validate with a serializer, call a service or
-  repository, return a `Response`. No business `if`s, no prompt building.
+- **Endpoints are thin**: FastAPI validates the body against a pydantic schema,
+  the endpoint calls a service or repository and returns a response schema. No
+  business `if`s, no prompt building.
+- **Protected by default**: every router except those in `PUBLIC_ROUTERS` is
+  mounted behind the `current_user` dependency.
 - **Services never touch HTTP**: they take and return plain Python values and
   dataclasses, and signal failure by raising a `DomainError`.
 - **Only `api/errors.py` builds error responses**, always as
   `{"error": "<code>", "detail": "<message>"}`.
-- **`llm/` never imports Django**: it receives a `ProviderConfig` dataclass.
+- **`llm/` never imports the web framework, the database or settings**: it
+  receives a `ProviderConfig` dataclass.
   Only `api/services/llm.py` reads provider settings.
 - **Ownership filtering lives in `api/repositories/`**, so "another user's
   pipeline" and "no such pipeline" look identical (404).
@@ -73,10 +78,10 @@ sequenceDiagram
     participant P as llm OpenAICompatibleProvider
     UI->>C: runPipeline(id, input) (timeout 1 h)
     C->>E: POST + Bearer token
-    E->>E: RunPipelineSerializer validates {"input"}
+    E->>E: FastAPI validates {"input"} against RunRequest
     E->>R: get_owned(user, id)
     R-->>E: Pipeline or raise NotFound (404)
-    E->>S: ensure_runnable() then run(pipeline, get_provider(), input)
+    E->>S: ensure_runnable() then run(pipeline, providers(), input)
     loop each step, ordered by `order`
         S->>S: step_prompt(template, current)
         S->>P: generate(prompt, step.model)
@@ -84,7 +89,7 @@ sequenceDiagram
         S->>S: current = output
     end
     S-->>E: RunResult dataclass
-    E-->>C: 200 asdict(RunResult)
+    E-->>C: 200 RunResponse
     C-->>UI: PipelineRunResponse
 ```
 
@@ -97,19 +102,19 @@ A provider error inside the loop is converted by
 1. `useChatStream.send` adds the user message and an empty AI message, then
    iterates `streamChatReply()` → `client.streamText()`, which reads
    `response.body.getReader()` and yields decoded chunks.
-2. `endpoints/chat.chat_view` validates `{"prompt"}` and calls
+2. `endpoints/chat.chat` validates `{"prompt"}` and calls
    `services/chat.stream_reply(provider, prompt)`.
 3. `stream_reply` **pulls the first chunk eagerly**. If the provider fails before
    producing anything, a `DomainError` is raised while the response is still
    uncommitted, so the client gets a real 5xx with the standard error body.
-4. After the first chunk the response is a `StreamingHttpResponse`
-   (`text/plain`). A failure mid-stream can no longer change the status, so it is
+4. After the first chunk the response is a `StreamingResponse`
+   (`text/plain`); Starlette pulls the sync generator in a threadpool. A failure mid-stream can no longer change the status, so it is
    logged (`chat.stream_interrupted`) and the stream simply ends.
 5. The hook appends each chunk to the AI message; unmounting aborts the fetch.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 
-1. `GeneratePipelineSerializer` validates `description` and an optional
+1. `GenerateRequest` validates `description` and an optional
    `planner_model` (defaults to the configured default model).
 2. `services/pipelines.generate` builds the planner prompt with
    `prompts.pipeline_generation_prompt` (it lists the allowed model ids) and
@@ -127,15 +132,15 @@ A provider error inside the loop is converted by
 llm/ raises LLMError subclass
   → services translate via api/services/errors.PROVIDER_ERROR_MAP
   → DomainError (code + status) propagates out of the endpoint
-  → DRF calls api/errors.exception_handler
+  → FastAPI calls the handler installed by api/errors.install_error_handlers
   → {"error": code, "detail": message} with the mapped status
   → core/api/client.ts turns it into ApiError(message, status, code)
 ```
 
-DRF's own errors (validation, 401, 403, 404, 405, ...) go through the same
-handler and are mapped by `STATUS_CODES` in `api/errors.py`. An unexpected
-exception is **not** caught: Django returns a 500 — never a 200 with an error
-inside.
+Request validation errors become 400 `validation_error`. Framework HTTP errors
+(unknown route 404, 405, …) are mapped by `STATUS_CODES` in `api/errors.py`. An
+unexpected exception becomes a 500 `server_error` and is still logged by the
+server — never a 200 with an error inside.
 
 ## Design patterns in use
 
@@ -144,7 +149,9 @@ inside.
 | Registry + Factory | `llm/registry.py`, `api/services/llm.get_provider` | New provider = one dict entry, no `if` chain |
 | Adapter | `llm/base.OpenAICompatibleProvider` | Wraps both SDKs behind one contract and one error set |
 | Strategy map | `api/services/errors.PROVIDER_ERROR_MAP` | Provider error → domain error, in one place |
-| Repository | `api/repositories/pipelines.py` | Ownership-scoped queries and atomic writes |
+| Repository | `api/repositories/pipelines.py`, `users.py` | Ownership-scoped queries and atomic writes |
+| Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
+| Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |
 | Builder | `api/services/prompts.py` | Prompt text kept apart from transport |
 | DTO / Value Object | `StepResult`, `RunResult`, `ProviderConfig`, `ModelInfo` | Frozen dataclasses across layers |
 | Gateway | `frontend/src/core/api/client.ts` | Token, timeout, error mapping in one place |

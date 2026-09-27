@@ -1,9 +1,9 @@
-.PHONY: install run-llm run-backend run-frontend run-aimix superuser migrate \
-        lint format typecheck test check kill-back kill-front kill-all
+.PHONY: install run-llm run-backend run-frontend run-aimix migrate create-user \
+        import-django-db lint format typecheck test check kill-back kill-front kill-all
 
 UV ?= uv
 NPM ?= npm
-MANAGE := cd backend && $(UV) run python manage.py
+BACKEND := cd backend && $(UV) run
 
 # Install all dependencies
 install:
@@ -12,9 +12,9 @@ install:
 
 # --- Run ---------------------------------------------------------------------
 
-# Run the Django Backend
+# Run the FastAPI backend (auto-reloads on code changes)
 run-backend:
-	$(MANAGE) runserver
+	$(BACKEND) uvicorn api.main:create_app --factory --reload --port 8000
 
 # Run the React Frontend
 run-frontend:
@@ -26,15 +26,21 @@ run-aimix:
 
 # Send one prompt to the configured LLM provider (credentials smoke test)
 run-llm:
-	$(MANAGE) llm_probe --list-models
+	$(BACKEND) python -m api.cli llm-probe --list-models
 
 # --- Database ----------------------------------------------------------------
 
+# Create or upgrade the database schema
 migrate:
-	$(MANAGE) migrate
+	$(BACKEND) alembic upgrade head
 
-superuser:
-	$(MANAGE) createsuperuser
+# Create an account: make create-user USERNAME=alice
+create-user:
+	$(BACKEND) python -m api.cli create-user $(USERNAME)
+
+# One-off: copy accounts and pipelines from the old Django database
+import-django-db:
+	$(BACKEND) python -m api.cli import-django-db db.sqlite3
 
 # --- Quality gates -----------------------------------------------------------
 
@@ -53,9 +59,9 @@ test:
 	$(UV) run pytest
 	cd frontend && $(NPM) test
 
-# Everything CI would run
+# Everything CI would run. The pytest suite also checks that the Alembic
+# migrations build exactly the models' schema.
 check: lint typecheck
-	$(MANAGE) check
 	$(UV) run pytest
 	cd frontend && $(NPM) test
 	cd frontend && $(NPM) run build
@@ -63,7 +69,7 @@ check: lint typecheck
 # --- Stop --------------------------------------------------------------------
 
 kill-back:
-	-pkill -f "manage.py runserver"
+	-pkill -f "uvicorn api.main"
 	@echo "Backend killed."
 
 kill-front:

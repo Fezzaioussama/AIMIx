@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.request import Request
-from rest_framework.response import Response
+from fastapi import APIRouter
 
+from api.schemas.pipelines import ModelsResponse
 from api.services.catalog import available_model_ids, default_model_id
 
+router = APIRouter(tags=["models"])
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def list_models(request: Request) -> Response:
-    return Response({"models": available_model_ids(), "default": default_model_id()})
+
+@router.get("/models")
+def list_models() -> ModelsResponse:
+    return ModelsResponse(models=available_model_ids(), default=default_model_id())

@@ -3,12 +3,18 @@
 Base path: `/api`. JSON in and out, except `POST /chat` which streams plain text.
 
 **Auth:** every endpoint requires `Authorization: Bearer <access>` unless marked
-**public**. DRF denies by default (`IsAuthenticated` in settings).
+**public**. Routes are protected by default (`PROTECTED_ROUTERS` in
+`api/routes.py`); a missing, invalid or expired token is `401 not_authenticated`
+with `WWW-Authenticate: Bearer`.
+
+Outside production the OpenAPI schema is served at `/api/openapi.json` and an
+interactive explorer at `/api/docs`.
 
 **Errors:** every error body is `{"error": "<code>", "detail": "<message>"}`.
 The code list is in the [README error contract](../README.md#error-contract);
-other DRF codes you may see are `method_not_allowed` (405), `not_acceptable`
-(406), `unsupported_media_type` (415), and `throttled` (429).
+other codes you may see are `method_not_allowed` (405) and `server_error` (500,
+an unexpected failure). A validation error's `detail` lists each problem as
+`field: message`, e.g. `"steps.0.model: Unknown model 'x'. Choose one of: ..."`.
 
 ---
 
@@ -20,9 +26,11 @@ other DRF codes you may see are `method_not_allowed` (405), `not_acceptable`
 { "username": "alice", "password": "a-long-pass-123" }
 ```
 
-`201` → `{ "username": "alice" }`. The password must pass Django's validators
-(length, common passwords, not all numeric, not similar to username) or a
-`400 validation_error` is returned.
+`201` → `{ "username": "alice" }`. The username is up to 150 letters, digits and
+`@ . + - _`. The password must pass the same rules the Django version applied
+(at least 8 characters, not a common password, not all numeric, not similar to
+the username) or a `400 validation_error` lists what is wrong. A taken username
+is also a `400`.
 
 ### `POST /login` — public
 
@@ -39,7 +47,7 @@ Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
 
 ### `GET /protected`
 
-`200` → `{ "message": "Hello alice, your token is valid.", "user_id": 1, "email": "" }`.
+`200` → `{ "message": "Hello alice, your token is valid.", "user_id": 1 }`.
 
 ---
 
@@ -90,7 +98,7 @@ A pipeline object:
 
 `user`, `created_at`, and the step `id`s are read-only. `steps` must contain at
 least one step; each `model` must be in `GET /models`. `order` must be unique
-within a pipeline.
+within a pipeline (a repeated `order` is a `400 validation_error`).
 
 `stage` (integer ≥ 1, optional, defaults to the step's `order`) sets how steps
 run. Stages run one after another in ascending order; **steps that share a stage

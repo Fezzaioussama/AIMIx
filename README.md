@@ -5,14 +5,14 @@
 AIMIx lets you define a sequence of steps, each with its own model and prompt,
 and run them as a chain: the output of step 1 becomes the input to step 2.
 
-A Django backend owns pipelines, auth, and every outbound AI call; a React
+A FastAPI backend owns pipelines, auth, and every outbound AI call; a React
 frontend provides the builder UI.
 
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Backend | Django, Django REST Framework, SimpleJWT, `django-cors-headers` |
+| Backend | FastAPI + Uvicorn, SQLAlchemy 2.0 + Alembic, pydantic-settings, PyJWT |
 | Frontend | React 19 + Vite, React Router, Tailwind CSS 4, Marked |
 | LLM | TogetherAI via the Together Python SDK |
 | Database | SQLite |
@@ -23,10 +23,15 @@ frontend provides the builder UI.
 ```bash
 make install                        # uv sync + npm install (frontend)
 cp backend/.env.example backend/.env  # then fill in your LLM key
+make migrate                        # create the database (backend/aimix.sqlite3)
 make run-aimix                      # backend :8000, frontend :4200
 ```
 
-`make superuser` creates a Django admin account if you need one.
+Register in the app, or run `make create-user USERNAME=alice`. The API's
+interactive docs are at <http://127.0.0.1:8000/api/docs> (not in production).
+
+Coming from the Django version? `make migrate && make import-django-db` copies your
+accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 
 ## Documentation
 
@@ -41,11 +46,12 @@ provider layer, the full API reference, a development guide, and known issues.
 | `make install` | Python venv via `uv` + npm deps for the frontend |
 | `make run-aimix` | Run backend and frontend concurrently |
 | `make run-backend` / `run-frontend` | Run one service |
-| `make run-llm` | Probe the configured provider (`manage.py llm_probe`) |
-| `make migrate` / `make superuser` | Apply migrations · create an admin user |
+| `make run-llm` | Probe the configured provider (`python -m api.cli llm-probe`) |
+| `make migrate` / `make create-user USERNAME=…` | Apply Alembic migrations · create an account |
+| `make import-django-db` | One-off: copy data from the old Django `db.sqlite3` |
 | `make lint` / `make format` / `make typecheck` | Ruff · Ruff --fix · mypy |
 | `make test` | Backend pytest + frontend vitest |
-| `make check` | Everything CI runs: lint, types, Django check, both suites, build |
+| `make check` | Everything CI runs: lint, types, both suites (incl. migrations check), build |
 | `make kill-back` / `kill-front` / `kill-all` | Stop services |
 
 ## Architecture
@@ -53,7 +59,7 @@ provider layer, the full API reference, a development guide, and known issues.
 ```mermaid
 graph LR
     User -->|Browser| FE["React :4200"]
-    FE -->|"HTTP + JWT"| BE["Django :8000"]
+    FE -->|"HTTP + JWT"| BE["FastAPI :8000"]
     BE -->|SQL| DB[("SQLite")]
     BE -->|"API key + timeout"| AI["LLM provider"]
 ```
@@ -83,7 +89,7 @@ never reaches the browser, and every outbound call is bounded by
 
 ### Chat streaming
 
-The chat endpoint uses `StreamingHttpResponse` over the provider's own stream.
+The chat endpoint returns a `StreamingResponse` over the provider's own stream.
 `api/services/chat.py` pulls the first chunk eagerly, so a failure that happens
 before the response is committed still becomes a proper status code rather than a
 200 with an error inside it.
@@ -102,19 +108,22 @@ protected request must carry `Authorization: Bearer <access_token>`. An
 ```
 backend/
   config/
-    settings/            # base.py + local · test · production
-    urls.py              # project routes
+    settings.py          # typed settings from env / backend/.env
+  migrations/            # Alembic revisions
   api/
-    urls.py              # route table, no logic
-    endpoints/           # thin DRF views: auth · chat · models · pipelines
-    serializers/         # request + response contracts
-    services/            # business logic: pipelines, chat, prompts, llm, catalog
+    main.py              # create_app(): the application factory
+    routes.py            # route table, no logic; protected by default
+    endpoints/           # thin routers: auth · chat · models · pipelines
+    schemas/             # pydantic request + response contracts
+    deps.py              # dependencies: db session, current user, provider
+    services/            # business logic: pipelines, chat, accounts, prompts, llm
     repositories/        # data access; ownership filtering lives here
-    models.py            # Pipeline, PipelineStep
+    models.py            # SQLAlchemy: User, Pipeline, PipelineStep
+    security.py          # password hashing + JWT signing
     exceptions.py        # domain errors (code + HTTP status)
     errors.py            # ★ the one place that shapes an error response
-    management/commands/ # llm_probe
-  llm/                   # provider layer — no Django import anywhere in here
+    cli.py               # llm-probe · create-user · import-django-db
+  llm/                   # provider layer — no web or database import in here
     base.py              # ★ LLMProvider Protocol + the shared transport
     providers/           # openrouter.py · together.py
     registry.py          # name -> factory map
@@ -138,7 +147,7 @@ frontend/src/
 
 The split to respect: `endpoints/` stays thin — validate, call a service, shape
 the result — while `services/` holds the logic. Services raise domain errors
-instead of building responses, and `llm/` knows nothing about Django, so it can
+instead of building responses, and `llm/` knows nothing about FastAPI, so it can
 be tested with a fake client and reused elsewhere.
 
 On the frontend the same rule applies outward: components render and handle
@@ -161,10 +170,11 @@ All routes under `/api`.
 | Auth | `POST /register`, `POST /login`, `POST /token/refresh`, `GET /protected` |
 | Chat | `POST /chat` (streaming) |
 | Models | `GET /models` — the model ids the pipeline services accept |
-| Pipelines | `GET\|POST /pipelines/` (ViewSet), `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
+| Pipelines | `GET\|POST /pipelines/`, `GET\|PUT\|PATCH\|DELETE /pipelines/<id>/`, `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
 
-Everything except `POST /register` and `POST /login` requires
-`Authorization: Bearer <access>`; DRF is configured to deny by default.
+Everything except `POST /register`, `POST /login` and `POST /token/refresh`
+requires `Authorization: Bearer <access>`; routes are protected by default in
+`api/routes.py`.
 
 ### Error contract
 
@@ -180,7 +190,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 
 | Code | Status | Meaning |
 |---|---|---|
-| `validation_error` | 400 | The request body failed its serializer |
+| `validation_error` | 400 | The request body failed its schema |
 | `not_authenticated` | 401 | Missing or expired access token |
 | `permission_denied` | 403 | Authenticated but not allowed |
 | `not_found` | 404 | No such record, or it belongs to someone else |
@@ -188,6 +198,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `provider_unavailable` | 502 | The provider rejected the request |
 | `provider_timeout` | 504 | The provider exceeded `LLM_TIMEOUT_SECONDS` |
 | `upstream_response_invalid` | 502 | The planner returned unusable output |
+| `server_error` | 500 | An unexpected failure (logged by the server) |
 
 ## Configuration
 
@@ -195,7 +206,9 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DJANGO_SECRET_KEY` | In production | App refuses to start without it |
+| `SECRET_KEY` | In production | Signs the JWTs; production refuses to start without it |
+| `APP_ENV` | No | `local` (default) or `production` |
+| `DATABASE_URL` | No | SQLAlchemy URL (default `backend/aimix.sqlite3`) |
 | `LLM_PROVIDER` | No | `openrouter` (default) or `togetherai` |
 | `OPEN_ROUTER_KEY` | For OpenRouter | Provider API key |
 | `TOGAI_API_KEY` | For TogetherAI | Provider API key |
@@ -204,10 +217,9 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 
 See [`backend/.env.example`](backend/.env.example) for the full list.
 
-Settings are split under `backend/config/settings/`: `local.py` (the `manage.py`
-default), `test.py` (offline and deterministic), and `production.py`, which
-refuses to start with `DEBUG=True`, a missing `SECRET_KEY`, or empty
-`ALLOWED_HOSTS`.
+Settings are one typed class in `backend/config/settings.py`. The old `DJANGO_*`
+variable names are still accepted. With `APP_ENV=production` the app refuses to
+start with `DEBUG=True`, a missing `SECRET_KEY`, or empty `ALLOWED_HOSTS`.
 
 ## Extending
 
@@ -229,14 +241,16 @@ the component.
 
 **New backend endpoint**
 
-1. If you need storage, add a model in `api/models.py`, then `makemigrations` and
-   `migrate`. Put queryset logic in `api/repositories/`.
-2. Declare the request contract as a serializer in `api/serializers/`.
+1. If you need storage, add a model in `api/models.py`, then
+   `cd backend && uv run alembic revision --autogenerate -m "…"` (review it) and
+   `make migrate`. Put query logic in `api/repositories/`.
+2. Declare the request and response contracts as pydantic models in `api/schemas/`.
 3. Put the logic in `api/services/`. Raise a `DomainError` from
    `api/exceptions.py` to signal failure — never build an error response.
-4. Add a thin view in `api/endpoints/`: validate, call the service, shape the
-   result.
-5. Register the path in `api/urls.py`, and add a test under `backend/tests/`.
+4. Add a thin route in `api/endpoints/` on an `APIRouter`: take the schema, the
+   dependencies it needs from `api/deps.py`, call the service, return a schema.
+5. Add the router to `PROTECTED_ROUTERS` in `api/routes.py` (or, deliberately,
+   `PUBLIC_ROUTERS`), and add a test under `backend/tests/`.
 
 **New LLM provider**
 
@@ -245,14 +259,14 @@ the component.
    `LLMProvider` protocol in `llm/base.py`.
 2. Add one entry to `FACTORIES` in `llm/registry.py` — no `if` chain to edit.
 3. Add its catalogue to `llm/catalog.py` and to `CATALOGS`.
-4. Add its key and default model to `config/settings/base.py` and
-   `.env.example`.
+4. Add its key, base URL and default model to `config/settings.py` (and the
+   `llm_*` dict properties) and `.env.example`.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| CORS error | The Vite dev server proxies `/api` to Django, so there is normally no cross-origin request at all; check `vite.config.ts` |
+| CORS error | The Vite dev server proxies `/api` to the backend, so there is normally no cross-origin request at all; check `vite.config.ts` |
 | `not_authenticated` | Access token expired; log out and back in |
 | `provider_not_configured` | No API key for `LLM_PROVIDER` in `backend/.env` |
 | `provider_timeout` | Provider slower than `LLM_TIMEOUT_SECONDS`; raise it or pick a faster model |

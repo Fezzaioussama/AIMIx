@@ -1,7 +1,7 @@
 """Pipeline orchestration: run a saved pipeline, and plan a new one with an LLM.
 
-Takes and returns plain Python values — no Django request or response objects
-(AGENTS.md §2).
+Takes and returns plain Python values — no web-framework request or response
+objects (AGENTS.md §2).
 """
 
 from __future__ import annotations
@@ -17,13 +17,12 @@ from operator import attrgetter
 from time import perf_counter
 from typing import Any
 
-from django.conf import settings
-
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
 from api.models import STEP_TITLE_MAX_LENGTH, Pipeline, PipelineStep
 from api.services.catalog import available_model_ids, default_model_id
 from api.services.errors import as_domain_error
 from api.services.prompts import merge_stage_outputs, pipeline_generation_prompt, step_prompt
+from config.settings import get_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
 
@@ -61,7 +60,7 @@ def run(pipeline: Pipeline, provider: LLMProvider, initial_input: str) -> RunRes
     """
     current = initial_input
     results: list[StepResult] = []
-    steps = list(pipeline.steps.all())
+    steps = list(pipeline.steps)
     stages = group_by_stage(steps)
     outputs = output_orders(steps)
     started = perf_counter()
@@ -75,7 +74,7 @@ def run(pipeline: Pipeline, provider: LLMProvider, initial_input: str) -> RunRes
 
     logger.info(
         "pipeline.run pipeline_id=%s stages=%s steps=%s duration_ms=%.0f",
-        pipeline.pk,
+        pipeline.id,
         len(stages),
         len(results),
         (perf_counter() - started) * 1000,
@@ -121,7 +120,9 @@ def _run_stage(
     if len(steps) == 1:
         return [run_step(steps[0])]
 
-    pool = ThreadPoolExecutor(max_workers=min(len(steps), settings.PIPELINE_MAX_PARALLEL_STEPS))
+    pool = ThreadPoolExecutor(
+        max_workers=min(len(steps), get_settings().pipeline_max_parallel_steps)
+    )
     try:
         return list(pool.map(run_step, steps))
     finally:
@@ -209,5 +210,5 @@ def _sanitise_step(
 
 def ensure_runnable(pipeline: Pipeline) -> None:
     """Guard against running a pipeline that has no steps."""
-    if not pipeline.steps.exists():
+    if not pipeline.steps:
         raise ValidationFailed("This pipeline has no steps to run.")
