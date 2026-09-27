@@ -56,9 +56,16 @@ backend/
     views.py             # re-export surface only (keep it a facade, no logic)
   server_llm/            # LLM provider layer: data_models.py (schemas) + server_llm.py
   backend/settings.py    # configuration from environment, no business values
-frontend/src/app/
-  core/                  # cross-feature singletons: services, guards, interceptors, models
-  features/<feature>/    # one folder per feature, standalone components
+frontend/src/
+  main.tsx               # entry point: router + providers, no logic
+  App.tsx                # route table + nav shell
+  core/                  # cross-feature singletons, the only outward-facing layer:
+    api/                 #   endpoints.ts (paths), types.ts (payloads),
+                         #   client.ts (bearer token, timeout, error mapping),
+                         #   one module per resource
+    auth/                #   tokenStorage.ts (sole localStorage owner), context, route guard
+    hooks/               #   shared data hooks
+  features/<feature>/    # one folder per feature: pages, feature hooks, subcomponents
 ```
 
 The repository is backend + frontend only. Automation engines (n8n or any other) are
@@ -72,10 +79,12 @@ through an adapter in `services/` (§7), never a runtime checked into this repo.
   prompt building, that code belongs in `services/`.
 - `services/` must never import Django request/response objects. Services take and return
   plain Python types / dataclasses, so they stay testable and reusable.
-- Angular components handle presentation and user interaction. Any `HttpClient` call,
-  token handling, polling, or mapping of API payloads belongs in a service under `core/`
-  (or `features/<feature>/<feature>.service.ts` if it is feature-local).
-- Components must never read `localStorage` directly — go through the auth/storage service.
+- React components handle presentation and user interaction. Any `fetch` call, token
+  handling, polling, or mapping of API payloads belongs in `core/api/` (or a
+  `features/<feature>/use<Feature>.ts` hook if the state is feature-local). A component
+  never calls `fetch` itself.
+- Components must never read `localStorage` directly — go through `core/auth/tokenStorage`.
+- No `/api/...` string literal outside `core/api/endpoints.ts`.
 
 ---
 
@@ -88,9 +97,9 @@ through an adapter in `services/` (§7), never a runtime checked into this repo.
 - Extract to the right place:
   - shared backend logic → `api/services/` module (or a `api/services/common.py`-style
     helper module), not a copy in each endpoint;
-  - shared HTTP/auth logic → `core/` Angular service or an `HttpInterceptor`;
-  - shared markup → a small standalone component; shared styles → a Tailwind utility class
-    or a shared CSS layer, not a copy in each `*.component.css`.
+  - shared HTTP/auth logic → `core/api/client.ts` (the single gateway), never a per-call copy;
+  - shared markup → a small component; shared styles → a Tailwind utility class or a shared
+    CSS layer, not a copy per component.
 - **Single source of truth** for every value: endpoint paths, model names, retry counts,
   status enums, error codes. Declare once, import everywhere.
 - Duplication that is *not* a DRY violation: two things that merely look alike today but
@@ -103,16 +112,16 @@ through an adapter in `services/` (§7), never a runtime checked into this repo.
 
 - **File: hard cap 700 lines.** A file that would exceed 700 lines must be split *in the
   same change*, by responsibility — never by arbitrary "part 1 / part 2" cuts.
-- Target sizes: Python module ≤ 300 lines, Angular component class ≤ 300 lines, template
-  ≤ 200 lines, function ≤ 50 lines, class ≤ 200 lines.
+- Target sizes: Python module ≤ 300 lines, React component file ≤ 300 lines, function ≤ 50
+  lines, class ≤ 200 lines. A component whose JSX outgrows the file should shed a
+  subcomponent, and its data logic should move to a hook.
 - Split strategies (in order of preference): extract a service/use-case module, extract a
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
 **Files already over budget (technical debt).** None — every file is currently within the
-700-line cap, and the largest is
-`frontend/src/app/features/pipelines/auto-pipeline/auto-pipeline.component.css` (433).
-When a file first crosses a budget, list it here with its line count so the next change
-knows not to grow it.
+700-line cap, and the largest is `backend/server_llm/data_models.py` (179). When a file
+first crosses a budget, list it here with its line count so the next change knows not to
+grow it.
 
 ---
 
@@ -137,7 +146,7 @@ services over one `ApiService`.
 **D — Dependency Inversion.** High-level code depends on abstractions, not concretions.
 Services receive their collaborators (HTTP client, LLM client, clock) via constructor or
 parameter, so tests can substitute them. No `import requests` buried inside a business
-function, and no `new HttpClient()` in a component — inject it.
+function, and no `fetch` call inside a component — go through `core/api/`.
 
 ---
 
@@ -183,8 +192,8 @@ Preferred patterns for this codebase:
 | Multi-step build of a pipeline payload | **Builder** | `services/pipeline_generation.py` |
 | Ordered, independently testable transformations | **Pipeline / Chain of Responsibility** | `services/pipeline_runner.py` |
 | Data access shape shared by several services | **Repository** | around `models.py` |
-| Cross-cutting HTTP concerns (auth header, error mapping, retry) | **Interceptor / Decorator** | Angular `core/` interceptor; Python decorator for endpoints |
-| Reactive state shared across components | **Observer** (RxJS / Angular signals) | `core/` services |
+| Cross-cutting HTTP concerns (auth header, error mapping, timeout) | **Gateway / Decorator** | `core/api/client.ts`; Python decorator for endpoints |
+| State shared across components | **Provider / Context** | `core/auth/AuthContext.tsx` |
 | Typed, immutable data across layers | **Value Object / DTO** (`@dataclass`, TS `interface`) | `server_llm/data_models.py`, frontend models |
 
 Anti-patterns to reject: god class/service, anemic endpoint containing business logic,
@@ -202,14 +211,18 @@ branching, `any` as a habit in TypeScript, catching `Exception` and returning `2
 - Model changes always ship with the generated migration.
 - f-strings, 4-space indent, imports grouped stdlib / third-party / local.
 
-**TypeScript / Angular 21**
-- Standalone components; `strict` TypeScript — no `any` unless justified in a comment.
-- Prefer signals / `OnPush`-friendly patterns over manual `ChangeDetectorRef` calls; if
-  manual detection is required, explain why in a comment.
-- Unsubscribe every long-lived subscription (`takeUntilDestroyed`) — no leaks.
-- Types for API payloads declared once in a shared model file and imported, not redeclared
+**TypeScript / React 19 (Vite)**
+- Function components with hooks; `strict` TypeScript — no `any` unless justified in a
+  comment. Prefer `unknown` plus a narrowing check in `catch`.
+- Data fetching and mutation live in a hook or a `core/api/` module, never inline in JSX.
+- Every effect that starts async work must cancel it on unmount (an `AbortController` or an
+  `active` flag) — no state updates after teardown.
+- Types for API payloads declared once in `core/api/types.ts` and imported, not redeclared
   per component.
-- Tailwind utilities first; component CSS only for what utilities cannot express.
+- Tailwind utilities first; hand-written CSS only for what utilities cannot express
+  (keyframes, rendered-Markdown styling).
+- Never render model output with `dangerouslySetInnerHTML` unless it has been sanitised by
+  `core/markdown/renderMarkdown`.
 
 **No linter/formatter is configured yet.** Match the style of surrounding code. Frontend
 formatting follows the Prettier config in `frontend/package.json` (100 cols, single quotes).

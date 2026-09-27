@@ -1,68 +1,12 @@
-# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+# Build output
+dist/
+# Dependencies
+node_modules/
+# TypeScript incremental build info
+*.tsbuildinfo
 
-# Compiled output
-/dist
-/tmp
-/out-tsc
-/bazel-out
-
-# Node
-/node_modules
-npm-debug.log
-yarn-error.log
-pnpm-debug.log*
-
-# Environment variables and local config
-.env
-.env.*
-!.env.example
-!.env.*.example
-*.local
-*.local.*
-
-# Secrets and credentials
-*.pem
-*.key
-*.crt
-*.cer
-*.cert
-*.p12
-*.pfx
-secrets.*
-*.secret
-*.credentials
-*.token
-
-# IDEs and editors
-.idea/
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-.history/*
-
-# Miscellaneous
-/.angular/cache
-.sass-cache/
-/connect.lock
-/coverage
+# Vite / vitest caches
+.vite/
 coverage/
-*.lcov
-/libpeerconnection.log
-testem.log
-/typings
-__screenshots__/
-
-# System files
-.DS_Store
-Thumbs.db
-*Zone.Identifier
+# Logs
+npm-debug.log*

@@ -16,7 +16,7 @@ run-llm:
 run-backend:
 	cd backend && PYTHONPATH=$(CURDIR) $(UV) run python manage.py runserver
 
-# Run the Angular Frontend
+# Run the React Frontend
 run-frontend:
 	cd frontend && $(NPM) start
 
@@ -33,10 +33,10 @@ kill-back:
 	-pkill -f "manage.py runserver"
 	@echo "Backend killed."
 
-# Kill the Angular Frontend
+# Kill the React Frontend
 kill-front:
 	-pkill -f "npm start"
-	-pkill -f "ng serve"
+	-pkill -f "vite"
 	@echo "Frontend killed."
 
 # Kill all AIMIx processes

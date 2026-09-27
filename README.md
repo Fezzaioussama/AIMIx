@@ -5,7 +5,7 @@
 AIMIx lets you define a sequence of steps, each with its own model and prompt,
 and run them as a chain: the output of step 1 becomes the input to step 2.
 
-A Django backend owns pipelines, auth, and every outbound AI call; an Angular
+A Django backend owns pipelines, auth, and every outbound AI call; a React
 frontend provides the builder UI.
 
 ## Stack
@@ -13,7 +13,7 @@ frontend provides the builder UI.
 | Layer | Technology |
 |---|---|
 | Backend | Django, Django REST Framework, SimpleJWT, `django-cors-headers` |
-| Frontend | Angular 21 (standalone components), RxJS, Marked |
+| Frontend | React 19 + Vite, React Router, Tailwind CSS 4, Marked |
 | LLM | TogetherAI via the Together Python SDK |
 | Database | SQLite |
 | Tooling | `uv` (Python), npm |
@@ -43,7 +43,7 @@ make run-aimix                      # backend :8000, frontend :4200
 
 ```mermaid
 graph LR
-    User -->|Browser| FE["Angular :4200"]
+    User -->|Browser| FE["React :4200"]
     FE -->|"HTTP + JWT"| BE["Django :8000"]
     BE -->|SQL| DB[("SQLite")]
     BE -->|API key| AI["TogetherAI"]
@@ -94,16 +94,28 @@ backend/
     data_models.py
   backend/settings.py
 
-frontend/src/app/
-  core/auth/             # auth.service.ts — login and registration
+frontend/src/
+  main.tsx               # entry: router + auth provider
+  App.tsx                # nav shell + route table
+  core/
+    api/                 # ★ the only place that calls the backend
+                         #   endpoints.ts (paths), types.ts (payloads),
+                         #   client.ts (bearer token, timeout, error mapping)
+    auth/                # tokenStorage.ts (sole localStorage owner),
+                         #   AuthContext.tsx, RequireAuth.tsx (route guard)
+    hooks/useModels.ts   # model catalogue from GET /api/models
+    markdown/            # sanitised Markdown rendering
   features/
     auth/ chat/ pipelines/
-  app.routes.ts
 ```
 
 The split to respect: `endpoints/` stays thin — validation and response shaping
 only — while `services/` holds the logic. Anything that calls a model belongs in
 `services/llm.py` or `server_llm/`.
+
+On the frontend the same rule applies outward: components render and handle
+input, while every HTTP call, the bearer token and all payload types live in
+`src/core/`. A component never calls `fetch` and never touches `localStorage`.
 
 ### Data model
 
@@ -120,6 +132,7 @@ All routes under `/api`.
 |---|---|
 | Auth | `POST /register`, `POST /login`, `POST /token/refresh`, `GET /protected` |
 | Chat | `POST /chat` (streaming) |
+| Models | `GET /models` — the model ids the pipeline services accept |
 | Pipelines | `GET\|POST /pipelines/` (ViewSet), `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
 
 ## Configuration
@@ -137,15 +150,19 @@ the Django and LLM-provider settings.
 
 **New frontend page**
 
-```bash
-cd frontend && npx ng generate component features/my-feature
+Add a component under `src/features/<feature>/`.
+
+Then add it to the route table in `src/App.tsx`, inside the guarded block so it
+inherits authentication:
+
+```tsx
+<Route element={<AppShell />}>
+  <Route path="/my-feature" element={<MyFeaturePage />} />
+</Route>
 ```
 
-Then add the route in `src/app/app.routes.ts`:
-
-```typescript
-{ path: 'my-feature', component: MyFeatureComponent, canActivate: [authGuard] }
-```
+Give it a typed API function in `src/core/api/` rather than calling `fetch` from
+the component.
 
 **New backend endpoint**
 
@@ -159,7 +176,7 @@ Then add the route in `src/app/app.routes.ts`:
 
 | Symptom | Cause |
 |---|---|
-| CORS error | `django-cors-headers` config in `settings.py` — it ships pre-configured |
+| CORS error | The Vite dev server proxies `/api` to Django, so there is normally no cross-origin request at all; check `vite.config.ts` |
 | "Unauthorized" | Access token expired; log out and back in |
 
 ## License

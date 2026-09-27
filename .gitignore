@@ -108,13 +108,12 @@ ENV/
 env.bak/
 venv.bak/
 
-# Node.js and Angular
+# Node.js and Vite
 node_modules/
 dist/
 tmp/
 out-tsc/
-bazel-out/
-.angular/
+*.tsbuildinfo
 .npm/
 .pnpm-store/
 .parcel-cache/

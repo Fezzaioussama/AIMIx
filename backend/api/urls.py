@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import (
 )
 from api.endpoints.auth import RegisterView, protected_view
 from api.endpoints.chat import chat_view
+from api.endpoints.models import list_models
 from api.endpoints.pipelines import PipelineViewSet, generate_pipeline, run_pipeline
 
 router = DefaultRouter()
@@ -18,6 +19,7 @@ urlpatterns = [
     path('token/refresh', TokenRefreshView.as_view(), name='token_refresh'),
     path('protected', protected_view, name='protected_view'),
     path('chat', chat_view, name='chat_view'),
+    path('models', list_models, name='list_models'),
     path('pipelines/<int:pipeline_id>/run', run_pipeline, name='run_pipeline'),
     path('pipelines/generate', generate_pipeline, name='generate_pipeline'),
 ]
