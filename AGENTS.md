@@ -47,15 +47,29 @@ Put new code in the layer that owns the responsibility. Never skip a layer.
 
 ```
 backend/
-  api/
-    urls.py              # routing table ONLY — no logic
-    endpoints/*.py       # HTTP boundary: parse request, call a service, shape response
-    services/*.py        # ALL business logic, orchestration, external calls (LLM)
-    serializers.py       # validation + (de)serialization contracts
-    models.py            # persistence + invariants that belong to the entity
-    views.py             # re-export surface only (keep it a facade, no logic)
-  server_llm/            # LLM provider layer: data_models.py (schemas) + server_llm.py
-  backend/settings.py    # configuration from environment, no business values
+  manage.py              # defaults to config.settings.local
+  config/                # project wiring, no business logic
+    settings/            #   base.py (shared) + local / test / production
+    urls.py              #   project routes; app routes live in api/urls.py
+    wsgi.py asgi.py      #   default to config.settings.production
+  api/                   # the HTTP application
+    urls.py              #   routing table ONLY — no logic
+    endpoints/*.py       #   HTTP boundary: validate, call a service, shape the response
+    serializers/*.py     #   request + response contracts (one module per resource)
+    services/*.py        #   ALL business logic and orchestration
+    repositories/*.py    #   data access; ownership filtering lives here
+    models.py            #   persistence + invariants that belong to the entity
+    exceptions.py        #   domain errors carrying a code + HTTP status
+    errors.py            #   the ONE place that shapes an error response
+    http.py              #   HTTP-boundary helpers (e.g. narrowing request.user)
+    management/commands/ #   operational entry points (llm_probe)
+  llm/                   # provider layer — framework-agnostic, no Django import
+    base.py              #   LLMProvider Protocol + the shared transport
+    providers/*.py       #   one module per provider, each just builds a client
+    registry.py          #   name -> factory map (add an entry, never an if branch)
+    catalog.py           #   model metadata; source of truth for valid model ids
+    exceptions.py        #   the failure contract every provider honours
+  tests/                 # pytest suite, mirroring the layers above
 frontend/src/
   main.tsx               # entry point: router + providers, no logic
   App.tsx                # route table + nav shell
@@ -72,6 +86,10 @@ The repository is backend + frontend only. Automation engines (n8n or any other)
 not vendored or run here; if one is ever integrated, it is an external service reached
 through an adapter in `services/` (§7), never a runtime checked into this repo.
 
+**Dependency direction, backend:** `endpoints → serializers/services → repositories/models`
+and `services → llm`. `llm/` never imports `api/`, `config/` or Django settings — it
+receives a `ProviderConfig` (§5 D). Only `api/services/llm.py` reads provider settings.
+
 **Layer rules**
 
 - An `endpoints/` function must be thin: validate input, delegate to a service, map the
@@ -79,6 +97,12 @@ through an adapter in `services/` (§7), never a runtime checked into this repo.
   prompt building, that code belongs in `services/`.
 - `services/` must never import Django request/response objects. Services take and return
   plain Python types / dataclasses, so they stay testable and reusable.
+- Services signal failure by raising a `DomainError` subclass from `api/exceptions.py`.
+  They never build a `Response`, never return an error tuple, and never swallow an error
+  into a falsy success value.
+- No endpoint constructs an error response. `api/errors.exception_handler` owns the error
+  shape; an endpoint that needs a new failure mode adds a domain exception instead.
+- Queryset logic belongs in `api/repositories/`, not inline in an endpoint or serializer.
 - React components handle presentation and user interaction. Any `fetch` call, token
   handling, polling, or mapping of API payloads belongs in `core/api/` (or a
   `features/<feature>/use<Feature>.ts` hook if the state is feature-local). A component
@@ -119,9 +143,9 @@ through an adapter in `services/` (§7), never a runtime checked into this repo.
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
 **Files already over budget (technical debt).** None — every file is currently within the
-700-line cap, and the largest is `backend/server_llm/data_models.py` (179). When a file
-first crosses a budget, list it here with its line count so the next change knows not to
-grow it.
+700-line cap. The largest files are `backend/tests/test_endpoints.py` (185) and
+`backend/config/settings/base.py` (179). When a file first crosses a budget, list it here
+with its line count so the next change knows not to grow it.
 
 ---
 
@@ -186,15 +210,15 @@ Preferred patterns for this codebase:
 
 | Problem | Pattern | Where |
 |---|---|---|
-| Growing `if type == ...` over step/provider kinds | **Strategy + Registry** | `services/pipeline_runner.py` |
-| Choosing an implementation by config (LLM provider, engine) | **Factory** | `server_llm/`, `services/llm.py` |
-| Wrapping a third-party API behind our own contract | **Adapter / Gateway** | a dedicated module in `services/` |
-| Multi-step build of a pipeline payload | **Builder** | `services/pipeline_generation.py` |
-| Ordered, independently testable transformations | **Pipeline / Chain of Responsibility** | `services/pipeline_runner.py` |
-| Data access shape shared by several services | **Repository** | around `models.py` |
+| Growing `if type == ...` over provider/failure kinds | **Strategy + Registry** | `llm/registry.py`, `api/services/errors.py` |
+| Choosing an implementation by config (LLM provider) | **Factory** | `api/services/llm.py` over `llm/registry.py` |
+| Wrapping a third-party SDK behind our own contract | **Adapter / Gateway** | `llm/base.py` (`OpenAICompatibleProvider`) |
+| Building a prompt separately from sending it | **Builder** | `api/services/prompts.py` |
+| Ordered, independently testable transformations | **Pipeline** | `api/services/pipelines.py` (`run`) |
+| Data access shape shared by several callers | **Repository** | `api/repositories/pipelines.py` |
 | Cross-cutting HTTP concerns (auth header, error mapping, timeout) | **Gateway / Decorator** | `core/api/client.ts`; Python decorator for endpoints |
 | State shared across components | **Provider / Context** | `core/auth/AuthContext.tsx` |
-| Typed, immutable data across layers | **Value Object / DTO** (`@dataclass`, TS `interface`) | `server_llm/data_models.py`, frontend models |
+| Typed, immutable data across layers | **Value Object / DTO** (`@dataclass`, TS `interface`) | `llm/catalog.py`, `api/services/pipelines.py`, `core/api/types.ts` |
 
 Anti-patterns to reject: god class/service, anemic endpoint containing business logic,
 singleton used as a global variable, deep inheritance (prefer composition), stringly-typed
@@ -205,11 +229,18 @@ branching, `any` as a habit in TypeScript, catching `Exception` and returning `2
 ## 8. Language & stack conventions
 
 **Python / Django**
-- Type hints on all public functions; `@dataclass` for structured data.
-- Raise domain exceptions in services; translate them to HTTP status codes in `endpoints/`.
-- Never catch a bare `except:`; catch the specific exception and re-raise or map it.
+- Type hints on every function, including tests; `mypy` must pass (see §9).
+- `from __future__ import annotations` at the top of each module, so annotations stay cheap
+  and `X | None` works on Python 3.10.
+- `@dataclass(frozen=True)` for structured data crossing a layer boundary.
+- Raise `DomainError` subclasses in services; `api/errors.py` turns them into HTTP. Never
+  build an error `Response` by hand.
+- Catching broad `Exception` is allowed in exactly one place: an adapter wrapping a
+  third-party SDK, and only to re-raise it as one of our own errors with `from cause`
+  (`llm/base.py`). Never swallow it, and never return a falsy value to mean failure.
+- Every outbound call passes an explicit timeout from settings (§6).
 - Model changes always ship with the generated migration.
-- f-strings, 4-space indent, imports grouped stdlib / third-party / local.
+- f-strings, 4-space indent, imports grouped stdlib / third-party / local (Ruff enforces).
 
 **TypeScript / React 19 (Vite)**
 - Function components with hooks; `strict` TypeScript — no `any` unless justified in a
@@ -224,8 +255,10 @@ branching, `any` as a habit in TypeScript, catching `Exception` and returning `2
 - Never render model output with `dangerouslySetInnerHTML` unless it has been sanitised by
   `core/markdown/renderMarkdown`.
 
-**No linter/formatter is configured yet.** Match the style of surrounding code. Frontend
-formatting follows the Prettier config in `frontend/package.json` (100 cols, single quotes).
+**Tooling.** Ruff lints and formats the Python (100 cols, config in `pyproject.toml`);
+`mypy` type-checks `api/`, `llm/` and `config/`; `pytest` runs the backend suite. Run
+`make format` before finishing. Frontend formatting follows the Prettier config in
+`frontend/package.json` (100 cols, single quotes).
 
 ---
 
@@ -239,11 +272,18 @@ formatting follows the Prettier config in `frontend/package.json` (100 cols, sin
 - [ ] External calls have timeouts; errors map to the standard error shape (§6).
 - [ ] No secrets or environment-specific values in code; `.env.example` updated if needed.
 - [ ] Migration generated for any model change; frontend updated for any contract change.
+- [ ] New or changed behaviour has a test; the suite covers the failure path too.
 - [ ] Checks run and reported honestly (paste real output; never claim a check that was
-      skipped):
+      skipped). One command runs all of them:
   ```bash
+  make check
+  ```
+  which is equivalent to:
+  ```bash
+  uv run ruff check . && uv run ruff format --check .
+  uv run mypy
   cd backend && uv run python manage.py check
-  cd backend && uv run python manage.py test
+  uv run pytest
   cd frontend && npm test
   cd frontend && npm run build
   ```

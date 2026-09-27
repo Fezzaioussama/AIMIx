@@ -36,27 +36,41 @@ describe('api client', () => {
     expect(headers.has('Authorization')).toBe(false);
   });
 
-  it('maps the backend {error, details} shape to a single message', async () => {
+  it('reads the code and detail from the canonical error contract', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({ error: 'AI Service not configured', details: 'Key missing.' }, 503),
+      jsonResponse({ error: 'provider_timeout', detail: 'openrouter did not respond.' }, 504),
     );
 
-    await expect(request(API.chat)).rejects.toThrow('AI Service not configured Key missing.');
+    await expect(request(API.chat)).rejects.toMatchObject({
+      code: 'provider_timeout',
+      status: 504,
+      message: 'openrouter did not respond.',
+    });
   });
 
-  it('maps a DRF field error to its first message', async () => {
+  it('falls back to the status line for a body that is not from the API', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({ username: ['A user with that username already exists.'] }, 400),
+      new Response('<html>502 Bad Gateway</html>', { status: 502 }),
     );
 
-    await expect(request(API.register)).rejects.toThrow(
-      'A user with that username already exists.',
-    );
+    await expect(request(API.chat)).rejects.toMatchObject({
+      code: 'error',
+      message: 'Request failed (502)',
+    });
+  });
+
+  it('tags an unreachable server distinctly from an API error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+
+    await expect(request(API.models)).rejects.toMatchObject({
+      code: 'network_error',
+      status: 0,
+    });
   });
 
   it('clears the stored session on a 401 so the guard can redirect', async () => {
     saveTokens({ access: 'stale', refresh: 'stale-refresh' });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ detail: 'Token expired' }, 401));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ error: 'not_authenticated', detail: 'Token expired' }, 401));
 
     await expect(request(API.pipelines)).rejects.toBeInstanceOf(ApiError);
     expect(getAccessToken()).toBeNull();

@@ -13,32 +13,34 @@ export const STREAM_TIMEOUT_MS = 300_000;
 export class ApiError extends Error {
   readonly status: number;
 
-  constructor(message: string, status: number) {
+  /**
+   * Stable machine-readable code from the backend's error contract, e.g.
+   * 'validation_error' or 'provider_timeout'. Branch on this rather than on
+   * the message, which is meant for people. 'network_error' is set by this
+   * module when the request never reached the server.
+   */
+  readonly code: string;
+
+  constructor(message: string, status: number, code = 'error') {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
 /**
- * The backend does not yet emit one consistent error shape, so this normalises
- * the variants actually in use: {detail}, {error}, {error, details} and DRF
- * field errors.
+ * The API answers every error with {"error": "<code>", "detail": "<message>"}.
+ * Anything else reaching this function did not come from the API itself — a
+ * proxy error page, say — so it degrades to the status line.
  */
-function messageFromBody(body: unknown, fallback: string): string {
-  if (typeof body !== 'object' || body === null) return fallback;
+function parseError(body: unknown, fallback: string): { code: string; detail: string } {
+  if (typeof body !== 'object' || body === null) return { code: 'error', detail: fallback };
   const record = body as Record<string, unknown>;
 
-  const direct = record['detail'] ?? record['error'];
-  if (typeof direct === 'string' && direct.trim()) {
-    const extra = record['details'];
-    return typeof extra === 'string' && extra.trim() ? `${direct} ${extra}` : direct;
-  }
-
-  const firstFieldError = Object.values(record).find(
-    (value): value is string[] => Array.isArray(value) && typeof value[0] === 'string',
-  );
-  return firstFieldError?.[0] ?? fallback;
+  const code = typeof record['error'] === 'string' ? record['error'] : 'error';
+  const detail = typeof record['detail'] === 'string' ? record['detail'].trim() : '';
+  return { code, detail: detail || fallback };
 }
 
 async function toApiError(response: Response): Promise<ApiError> {
@@ -48,7 +50,8 @@ async function toApiError(response: Response): Promise<ApiError> {
   } catch {
     // Non-JSON error body; fall back to the status line.
   }
-  return new ApiError(messageFromBody(body, `Request failed (${response.status})`), response.status);
+  const { code, detail } = parseError(body, `Request failed (${response.status})`);
+  return new ApiError(detail, response.status, code);
 }
 
 function authHeaders(extra?: HeadersInit): Headers {
@@ -83,7 +86,11 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     });
   } catch (cause) {
     const timedOut = cause instanceof DOMException && cause.name === 'TimeoutError';
-    throw new ApiError(timedOut ? 'The request timed out.' : 'Could not reach the server.', 0);
+    throw new ApiError(
+      timedOut ? 'The request timed out.' : 'Could not reach the server.',
+      0,
+      timedOut ? 'timeout' : 'network_error',
+    );
   }
 
   if (!response.ok) {
@@ -113,7 +120,8 @@ export async function* streamText(
     handleUnauthorized(response.status);
     throw await toApiError(response);
   }
-  if (!response.body) throw new ApiError('Streaming is not supported by this browser.', 0);
+  if (!response.body)
+    throw new ApiError('Streaming is not supported by this browser.', 0, 'unsupported');
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

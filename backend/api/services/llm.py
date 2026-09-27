@@ -1,40 +1,33 @@
-import os
-from pathlib import Path
+"""Builds the configured LLM provider (AGENTS.md §7 Factory).
 
-from dotenv import load_dotenv
+This is the only module that reads provider configuration out of Django
+settings; the llm package itself receives plain values (§5 D).
+"""
 
-from server_llm.data_models import LLMTogetherAI, OpenRouterLLM
-from server_llm.server_llm import OpenRouterServerLLM, TogetherAIsServerLLM
+from __future__ import annotations
 
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+from django.conf import settings
+
+from api.exceptions import ProviderNotConfigured
+from api.services.catalog import default_model_id
+from llm import exceptions as llm_exceptions
+from llm.base import LLMProvider, ProviderConfig
+from llm.registry import canonical_name, create_provider
 
 
-def get_ai_service():
-    """
-    Initialize the configured LLM provider.
+def provider_config(provider: str) -> ProviderConfig:
+    return ProviderConfig(
+        api_key=settings.LLM_API_KEYS.get(provider, ""),
+        default_model=default_model_id(),
+        timeout_seconds=settings.LLM_TIMEOUT_SECONDS,
+        base_url=settings.LLM_BASE_URLS.get(provider) or None,
+    )
 
-    LLM_PROVIDER accepts:
-    - openrouter: OpenRouterServerLLM, default
-    - togetherai: TogetherAIsServerLLM
-    """
-    provider = os.getenv("LLM_PROVIDER", "openrouter").strip().lower()
 
-    if provider in {"openrouter", "open_router"}:
-        api_key = os.getenv("OPEN_ROUTER_KEY") or os.getenv("OPENROUTER_API_KEY")
-        if not api_key or "your_api_key_here" in api_key:
-            return None, None, "OPEN_ROUTER_KEY or OPENROUTER_API_KEY is missing or invalid in .env"
-        try:
-            return OpenRouterServerLLM(api_key_openrouter=api_key), OpenRouterLLM.DeepSeek_V4_Flash, None
-        except Exception as exc:
-            return None, None, str(exc)
-
-    if provider in {"togetherai", "together_ai", "together"}:
-        api_key = os.getenv("TOGAI_API_KEY")
-        if not api_key or "your_api_key_here" in api_key:
-            return None, None, "TOGAI_API_KEY is missing or invalid in .env"
-        try:
-            return TogetherAIsServerLLM(api_key_togai=api_key), LLMTogetherAI.Llama4_Maverick_17B_128E, None
-        except Exception as exc:
-            return None, None, str(exc)
-
-    return None, None, f"Unsupported LLM_PROVIDER '{provider}'. Use 'openrouter' or 'togetherai'"
+def get_provider() -> LLMProvider:
+    """Return the configured provider, or raise a domain error the API can map."""
+    try:
+        provider = canonical_name(settings.LLM_PROVIDER)
+        return create_provider(provider, provider_config(provider))
+    except llm_exceptions.ProviderNotConfigured as cause:
+        raise ProviderNotConfigured(str(cause)) from cause
