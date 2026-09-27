@@ -80,6 +80,7 @@ frontend/src/
     auth/                #   tokenStorage.ts (sole localStorage owner), context, route guard
     hooks/               #   shared data hooks
   features/<feature>/    # one folder per feature: pages, feature hooks, subcomponents
+docs/                    # developer documentation; update it with the behaviour it describes
 ```
 
 The repository is backend + frontend only. Automation engines (n8n or any other) are

@@ -28,6 +28,12 @@ make run-aimix                      # backend :8000, frontend :4200
 
 `make superuser` creates a Django admin account if you need one.
 
+## Documentation
+
+In-depth guides live in [`docs/`](docs/README.md): getting started,
+architecture and request traces, backend and frontend references, the LLM
+provider layer, the full API reference, a development guide, and known issues.
+
 ## Commands
 
 | Command | Does |

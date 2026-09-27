@@ -1,22 +1,34 @@
-# Environment variables and local config
+# ─────────────────────────────────────────────────────────────────────────────
+# Editing rule: a pattern WITHOUT a leading slash matches at every depth. That
+# is how an entry like `lib/` ends up silently hiding frontend/src/lib/. So:
+#   • anchor anything naming a build, cache, env or output directory  -> /dist/
+#   • leave unanchored only what legitimately appears at any depth
+#     (__pycache__/, node_modules/, editor and OS droppings)
+# Verify a change with:  git check-ignore -v <path>
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Secrets and local configuration ──────────────────────────────────────────
 .env
+.claude
 .env.*
 !.env.example
 !.env.*.example
-*.local
-*.local.*
 .envrc
 .direnv/
 local_settings.py
 settings.local.py
+# Per-developer overrides, e.g. .claude/settings.local.json. A shared
+# .claude/settings.json stays tracked on purpose.
+*.local
+*.local.*
 
-# Secrets and credentials
+# Key material and credential dumps. Deliberately broad: a mis-ignored source
+# file is a nuisance, a committed private key is an incident.
 *.pem
 *.key
 *.crt
 *.cer
 *.cert
-*.cert.pem
 *.csr
 *.p12
 *.pfx
@@ -39,88 +51,77 @@ credentials.*
 *.passwd
 *.password
 
-# Databases and runtime state
-db.sqlite3
-db.sqlite3-*
+# ── Databases and runtime state ──────────────────────────────────────────────
 *.db
 *.sqlite
 *.sqlite3
 *.sqlite3-*
 *.pid
 *.pid.lock
-*.seed
 
-# Logs and reports
+# ── Logs, coverage and reports ───────────────────────────────────────────────
 *.log
-logs/
+/logs/
+/backend/logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 .coverage
 .coverage.*
-coverage/
-htmlcov/
+/coverage/
+/frontend/coverage/
+/htmlcov/
 *.lcov
 
-# AI assistants and local agent state
-.codex/
-.agents/
-.agents-server/
-
-# Python / Django
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
+# Packaging output (anchored: `build/` and `dist/` unanchored would hide source
+# folders of the same name).
+/build/
+/dist/
+/sdist/
+/downloads/
+/*.egg-info/
 *.egg
 MANIFEST
+# Tool caches
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
 .tox/
 .nox/
 .hypothesis/
-staticfiles/
-media/
+# Compiled translations — the .po sources stay tracked.
+*.mo
 
-# Virtual environments
-.venv/
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# ── Virtual environments (repo root only) ────────────────────────────────────
+/.venv/
+/venv/
+/env/
+/ENV/
+/venv.bak/
+/env.bak/
 
-# Node.js and Vite
+# ── Node / Vite ──────────────────────────────────────────────────────────────
 node_modules/
-dist/
-tmp/
-out-tsc/
+/frontend/dist/
+/frontend/.vite/
 *.tsbuildinfo
 .npm/
-.pnpm-store/
-.parcel-cache/
-.turbo/
-.vite/
+.eslintcache
 
-# IDEs, editors, and OS metadata
+# ── Django runtime output ────────────────────────────────────────────────────
+# collectstatic target and user uploads; anchored so a frontend media/ or a
+# static/ source folder is still tracked.
+/backend/staticfiles/
+/backend/media/
+/staticfiles/
+/media/
+
+# ── Editors, OS and merge artifacts ──────────────────────────────────────────
 .DS_Store
 .DS_Store?
 ._*
@@ -131,13 +132,24 @@ Thumbs.db
 *Zone.Identifier
 .vscode/
 .idea/
+.history/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 *.sublime-workspace
-.history/
+*~
+*.bak
+*.orig
+*.rej
 
-# Other local notes
+# ── AI assistant local state ─────────────────────────────────────────────────
+# Tracked on purpose: AGENTS.md, CLAUDE.md, and any .cursor/ or .github/
+# pointer files — they are shared rules, not local state.
+.codex/
+.agents/
+.agents-server/
+
+# ── Local notes ──────────────────────────────────────────────────────────────
 doc_understanding.md
