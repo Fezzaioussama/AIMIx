@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { GeneratedSteps } from './GeneratedSteps';
+import { PipelineGraph } from './PipelineGraph';
 import { PipelineNav } from './PipelineNav';
 import { Spinner } from './Spinner';
 import { modelLabel } from './modelLabel';
@@ -119,6 +120,10 @@ export function AutoPipelinePage() {
                 onChange={(event) => actions.rename(event.target.value)}
                 className="rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-400"
               />
+            </div>
+
+            <div className="mb-6">
+              <PipelineGraph steps={generated.steps} />
             </div>
 
             <GeneratedSteps

@@ -2,14 +2,13 @@ import { useState } from 'react';
 
 import { useModels } from '../../core/hooks/useModels';
 import { PipelineNav } from './PipelineNav';
-import { RunResults } from './RunResults';
-import { Spinner } from './Spinner';
+import { PipelineRunView } from './PipelineRunView';
 import { StepEditor } from './StepEditor';
 import { usePipelineBuilder } from './usePipelineBuilder';
 
 export function PipelineBuilderPage() {
   const { models, defaultModel, error: modelsError } = useModels();
-  const { pipeline, saved, results, finalOutput, status, message, actions } =
+  const { pipeline, saved, results, finalOutput, elapsedMs, status, message, actions } =
     usePipelineBuilder(defaultModel);
   const [input, setInput] = useState('');
 
@@ -96,7 +95,7 @@ export function PipelineBuilderPage() {
       </aside>
 
       <main className="flex-1 overflow-y-auto p-12">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-6xl">
           <div className="mb-8 rounded-2xl border border-white/10 bg-slate-800/50 p-8">
             <h2 className="mb-4 text-xl font-semibold">Run Execution</h2>
             <textarea
@@ -118,14 +117,14 @@ export function PipelineBuilderPage() {
             )}
           </div>
 
-          {isRunning && (
-            <div className="mb-8 flex flex-col items-center gap-3 text-slate-400">
-              <Spinner />
-              <p>Processing pipeline steps…</p>
-            </div>
-          )}
-
-          <RunResults results={results} finalOutput={finalOutput} />
+          <PipelineRunView
+            steps={pipeline.steps}
+            results={results}
+            finalOutput={finalOutput}
+            isRunning={isRunning}
+            input={input}
+            elapsedMs={elapsedMs}
+          />
         </div>
       </main>
     </div>

@@ -94,13 +94,20 @@ Both pipeline screens use it; the frontend never hard-codes a model list.
 
 | File | Role |
 |---|---|
-| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, steps, run input, results |
-| `usePipelineBuilder.ts` | State + transport: `pipeline`, `saved`, `results`, `finalOutput`, `status`, `message`, and `actions` (`reset`, `select`, `patchStep`, `addStep`, `removeStep`, `rename`, `save`, `run`). Requires a saved pipeline (`id`) before running. |
-| `AutoPipelinePage.tsx` | Describe → generate → edit → save |
+| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, steps, run input, diagram + results |
+| `usePipelineBuilder.ts` | State + transport: `pipeline`, `saved`, `results`, `finalOutput`, `elapsedMs`, `status`, `message`, and `actions` (`reset`, `select`, `patchStep`, `addStep`, `removeStep`, `rename`, `save`, `run`). Requires a saved pipeline (`id`) before running. |
+| `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit → save |
 | `useAutoPipeline.ts` | `generated`, `status`, messages, `actions` (`generate`, `save`, `patchStep`, `rename`, `reset`) |
-| `StepEditor.tsx` | One step's prompt + model selector |
-| `GeneratedSteps.tsx` | Editable list of generated steps |
-| `RunResults.tsx` | Intermediate results + final output |
+| `StepEditor.tsx` | Builder sidebar: each step's stage, model and prompt |
+| `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
+| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Output with fork/merge brackets; node status (not run / running / done); clicking a finished node opens its output |
+| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`) and the `OutputTarget` type |
+| `PipelineRunView.tsx` | Diagram + "Final output" / "All steps" tabs + run stats (steps, stages, seconds) |
+| `RunResults.tsx` | Every step's output, grouped by stage |
+| `OutputCard.tsx` | One output: rendered/raw toggle, copy, the input it saw, folding for long text |
+| `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
+| `stages.ts` | `groupByStage` / `nextStage`, shared by editors, diagram and results |
+| `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
 | `PipelineNav.tsx` | Switch between Builder and Auto |
 | `Spinner.tsx` | Loading indicator |
 | `modelLabel.ts` | Human-friendly label for a model id |

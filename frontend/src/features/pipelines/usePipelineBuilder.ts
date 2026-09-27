@@ -14,6 +14,7 @@ export function usePipelineBuilder(defaultModel: string) {
   const [saved, setSaved] = useState<Pipeline[]>([]);
   const [results, setResults] = useState<StepResult[]>([]);
   const [finalOutput, setFinalOutput] = useState('');
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [status, setStatus] = useState<'idle' | 'saving' | 'running'>('idle');
   const [message, setMessage] = useState('');
 
@@ -43,6 +44,7 @@ export function usePipelineBuilder(defaultModel: string) {
     setPipeline(emptyPipeline(defaultModel));
     setResults([]);
     setFinalOutput('');
+    setElapsedMs(null);
     setMessage('');
   }, [defaultModel]);
 
@@ -50,6 +52,7 @@ export function usePipelineBuilder(defaultModel: string) {
     setPipeline(structuredClone(chosen));
     setResults([]);
     setFinalOutput('');
+    setElapsedMs(null);
     setMessage('');
   }, []);
 
@@ -113,10 +116,13 @@ export function usePipelineBuilder(defaultModel: string) {
       setMessage('');
       setResults([]);
       setFinalOutput('');
+      setElapsedMs(null);
+      const started = performance.now();
       try {
         const response = await pipelinesApi.runPipeline(pipeline.id, input);
         setResults(response.intermediate_results);
         setFinalOutput(response.final_output);
+        setElapsedMs(performance.now() - started);
       } catch (cause) {
         setMessage(cause instanceof Error ? cause.message : 'Execution failed.');
       } finally {
@@ -131,6 +137,7 @@ export function usePipelineBuilder(defaultModel: string) {
     saved,
     results,
     finalOutput,
+    elapsedMs,
     status,
     message,
     actions: { reset, select, patchStep, addStep, removeStep, rename, save, run },
