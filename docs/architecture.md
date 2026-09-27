@@ -71,7 +71,7 @@ sequenceDiagram
     participant R as repositories/pipelines
     participant S as services/pipelines.run
     participant P as llm OpenAICompatibleProvider
-    UI->>C: runPipeline(id, input) (timeout 180 s)
+    UI->>C: runPipeline(id, input) (timeout 1 h)
     C->>E: POST + Bearer token
     E->>E: RunPipelineSerializer validates {"input"}
     E->>R: get_owned(user, id)

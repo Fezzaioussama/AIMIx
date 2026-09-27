@@ -11,6 +11,9 @@ Each step should have:
 previous stage's output
 2. A recommended model from this list: {models}
 3. A unique "order" (1, 2, 3, ...) and a "stage" number
+4. A short "title" of 2-4 words naming what the step produces, e.g. "Tweet draft"
+5. "is_output": true if its result is something the user asked to receive, \
+false if it is intermediate work that only feeds later steps
 
 Steps can run sequentially or in parallel:
 - Stages run one after another, in ascending order.
@@ -21,14 +24,22 @@ that stage had several steps, their outputs are joined, each under a \
 "{heading}" heading.
 - If the user wants one combined answer after parallel steps, end with a single \
 step in its own stage that merges them.
+- A pipeline can have several outputs, from any stage: mark every deliverable the \
+user will want to read (e.g. each of several drafts, plus a final pick). Output \
+steps still feed the next stage.
 
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 {{
   "name": "Pipeline Name",
   "steps": [
-    {{"order": 1, "stage": 1, "prompt": "Your prompt with {{input}}", "model": "model-name"}},
-    {{"order": 2, "stage": 1, "prompt": "A parallel prompt with {{input}}", "model": "model-name"}},
-    {{"order": 3, "stage": 2, "prompt": "Merge these results: {{input}}", "model": "model-name"}}
+    {{"order": 1, "stage": 1, "title": "Key facts", "is_output": false, \
+"prompt": "Your prompt with {{input}}", "model": "model-name"}},
+    {{"order": 2, "stage": 2, "title": "Tweet draft", "is_output": true, \
+"prompt": "A prompt with {{input}}", "model": "model-name"}},
+    {{"order": 3, "stage": 2, "title": "Email draft", "is_output": true, \
+"prompt": "A parallel prompt with {{input}}", "model": "model-name"}},
+    {{"order": 4, "stage": 3, "title": "Best pick", "is_output": true, \
+"prompt": "Pick the best of these: {{input}}", "model": "model-name"}}
   ]
 }}
 

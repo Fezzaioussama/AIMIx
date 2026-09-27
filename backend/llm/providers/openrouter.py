@@ -18,5 +18,8 @@ def build(config: ProviderConfig) -> LLMProvider:
         base_url=config.base_url or DEFAULT_BASE_URL,
         api_key=config.api_key,
         timeout=config.timeout_seconds,
+        # No hidden SDK retries: with a long timeout they would multiply the wait,
+        # and the documented policy is that failures surface at once.
+        max_retries=0,
     )
     return OpenAICompatibleProvider(NAME, client, config)

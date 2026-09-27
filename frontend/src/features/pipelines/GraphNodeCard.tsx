@@ -1,5 +1,6 @@
 import type { GraphNode, NodeStatus } from './pipelineGraph';
 import { modelLabel } from './modelLabel';
+import { stepLabel } from './stages';
 
 // Fixed height: the fork/merge brackets in PipelineGraph meet node centres.
 const nodeBase =
@@ -28,8 +29,10 @@ export function GraphNodeCard({ node, selected, onClick }: GraphNodeCardProps) {
       disabled={!onClick}
       onClick={onClick}
       title={node.prompt}
-      aria-label={`Step ${node.order}, ${modelLabel(node.model)}, ${style.label}`}
-      className={`${nodeBase} w-52 ${style.border} ${
+      aria-label={`${stepLabel(node)}, ${modelLabel(node.model)}, ${
+        node.isOutput ? 'output' : 'intermediate'
+      }, ${style.label}`}
+      className={`${nodeBase} w-56 ${style.border} ${node.isOutput ? 'bg-amber-400/5' : ''} ${
         selected ? 'ring-2 ring-sky-400' : ''
       } enabled:cursor-pointer enabled:hover:bg-slate-800 disabled:cursor-default`}
     >
@@ -37,11 +40,24 @@ export function GraphNodeCard({ node, selected, onClick }: GraphNodeCardProps) {
         <span className="rounded bg-sky-400/15 px-1.5 py-0.5 font-semibold text-sky-400">
           #{node.order}
         </span>
-        <span className="flex-1 truncate font-medium text-slate-200">{modelLabel(node.model)}</span>
-        <span className={`size-2 rounded-full ${style.dot}`} title={style.label} />
+        <span className="flex-1 truncate font-semibold text-slate-100">{stepLabel(node)}</span>
+        <span className={`size-2 shrink-0 rounded-full ${style.dot}`} title={style.label} />
       </span>
-      <span className="line-clamp-2 text-xs text-slate-400">{summary}</span>
+      <span className="flex items-center gap-2 text-[11px] text-slate-400">
+        <span className="truncate">{modelLabel(node.model)}</span>
+        {node.isOutput && <OutputBadge />}
+      </span>
+      <span className="truncate text-[11px] text-slate-500">{summary}</span>
     </button>
+  );
+}
+
+/** Marks a step whose result is one of the pipeline's outputs. */
+export function OutputBadge() {
+  return (
+    <span className="shrink-0 rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-300 uppercase">
+      Output
+    </span>
   );
 }
 

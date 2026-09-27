@@ -13,6 +13,10 @@ export interface PipelineStep {
   order: number;
   /** Steps sharing a stage run in parallel; stages run in ascending order. */
   stage: number;
+  /** Short name shown in the UI; may be empty. */
+  title: string;
+  /** A deliverable of the pipeline rather than intermediate work. */
+  is_output: boolean;
   prompt: string;
   model: string;
 }
@@ -26,9 +30,12 @@ export interface Pipeline {
 export interface StepResult {
   step_order: number;
   stage: number;
+  title: string;
   model: string;
   input_used: string;
   output: string;
+  /** Decided by the backend: marked steps, or the last stage if none are marked. */
+  is_output: boolean;
 }
 
 export interface PipelineRunResponse {

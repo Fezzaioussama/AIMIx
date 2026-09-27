@@ -165,7 +165,7 @@ SIMPLE_JWT = {
 # The llm package never reads the environment itself; these values are handed
 # to it by api.services.llm (§5 D).
 LLM_PROVIDER = env_str("LLM_PROVIDER", "openrouter")
-LLM_TIMEOUT_SECONDS = env_float("LLM_TIMEOUT_SECONDS", 60.0)
+LLM_TIMEOUT_SECONDS = env_float("LLM_TIMEOUT_SECONDS", 3600.0)
 # Upper bound on provider calls one pipeline run makes at once for a stage whose
 # steps run in parallel.
 PIPELINE_MAX_PARALLEL_STEPS = max(1, int(env_float("PIPELINE_MAX_PARALLEL_STEPS", 4)))

@@ -199,7 +199,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `LLM_PROVIDER` | No | `openrouter` (default) or `togetherai` |
 | `OPEN_ROUTER_KEY` | For OpenRouter | Provider API key |
 | `TOGAI_API_KEY` | For TogetherAI | Provider API key |
-| `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 60) |
+| `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 
 See [`backend/.env.example`](backend/.env.example) for the full list.

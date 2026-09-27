@@ -8,7 +8,7 @@ import { usePipelineBuilder } from './usePipelineBuilder';
 
 export function PipelineBuilderPage() {
   const { models, defaultModel, error: modelsError } = useModels();
-  const { pipeline, saved, results, finalOutput, elapsedMs, status, message, actions } =
+  const { pipeline, saved, results, elapsedMs, status, message, actions } =
     usePipelineBuilder(defaultModel);
   const [input, setInput] = useState('');
 
@@ -120,7 +120,6 @@ export function PipelineBuilderPage() {
           <PipelineRunView
             steps={pipeline.steps}
             results={results}
-            finalOutput={finalOutput}
             isRunning={isRunning}
             input={input}
             elapsedMs={elapsedMs}

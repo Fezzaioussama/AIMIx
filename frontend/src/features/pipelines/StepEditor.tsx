@@ -1,5 +1,6 @@
 import type { PipelineStep } from '../../core/api/types';
 import { StageInput } from './StageInput';
+import { StepRoleFields } from './StepRoleFields';
 import { modelLabel } from './modelLabel';
 
 interface StepEditorProps {
@@ -32,6 +33,7 @@ export function StepEditor({ steps, availableModels, onChange, onRemove }: StepE
               &times;
             </button>
           </div>
+          <StepRoleFields step={step} onChange={(patch) => onChange(index, patch)} />
           <label className="mb-1 block text-xs text-slate-400">Model</label>
           <select
             value={step.model}

@@ -112,6 +112,31 @@ def test_a_failing_parallel_step_fails_the_run(user, default_model: str) -> None
         service.run(pipeline, provider, "start")
 
 
+def test_marked_steps_are_the_outputs_even_mid_pipeline(user, default_model: str) -> None:
+    pipeline = make_pipeline(
+        user,
+        [(1, "a", default_model), (2, "b", default_model), (3, "c", default_model)],
+        stages=[1, 1, 2],
+    )
+    PipelineStep.objects.filter(pipeline=pipeline, order__in=[1, 3]).update(is_output=True)
+
+    result = service.run(pipeline, EchoProvider(), "x")
+
+    assert [r.is_output for r in result.intermediate_results] == [True, False, True]
+
+
+def test_without_marked_steps_the_last_stage_is_the_output(user, default_model: str) -> None:
+    pipeline = make_pipeline(
+        user,
+        [(1, "a", default_model), (2, "b", default_model), (3, "c", default_model)],
+        stages=[1, 2, 2],
+    )
+
+    result = service.run(pipeline, EchoProvider(), "x")
+
+    assert [r.is_output for r in result.intermediate_results] == [False, True, True]
+
+
 def test_merge_passes_a_single_output_through_and_labels_parallel_ones() -> None:
     assert merge_stage_outputs([(1, "only")]) == "only"
     assert merge_stage_outputs([(2, "b"), (3, "c")]) == (
@@ -168,6 +193,21 @@ class TestParsePlan:
         )
         steps = service.parse_plan(raw, self.models)["steps"]
         assert [(s["order"], s["stage"]) for s in steps] == [(1, 1), (2, 1), (3, 2)]
+
+    def test_keeps_titles_and_output_flags(self) -> None:
+        raw = (
+            '{"name": "P", "steps": ['
+            '{"title": "  Tweet  ", "is_output": true, "prompt": "a", "model": "vendor/good"}]}'
+        )
+        step = service.parse_plan(raw, self.models)["steps"][0]
+        assert (step["title"], step["is_output"]) == ("Tweet", True)
+
+    def test_defaults_a_missing_title_and_a_non_boolean_output_flag(self) -> None:
+        raw = (
+            '{"name": "P", "steps": [{"is_output": "yes", "prompt": "a", "model": "vendor/good"}]}'
+        )
+        step = service.parse_plan(raw, self.models)["steps"][0]
+        assert (step["title"], step["is_output"]) == ("", False)
 
     @pytest.mark.parametrize("stage", ["0", '"1"', "true", "-2"])
     def test_an_invalid_stage_falls_back_to_sequential(self, stage: str) -> None:

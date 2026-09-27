@@ -1,5 +1,5 @@
 import type { PipelineStep, StepResult } from '../../core/api/types';
-import { GraphNodeCard, GraphTerminal } from './GraphNodeCard';
+import { GraphNodeCard, GraphTerminal, OutputBadge } from './GraphNodeCard';
 import { buildGraph, type GraphNode, type OutputTarget } from './pipelineGraph';
 
 interface PipelineGraphProps {
@@ -7,7 +7,6 @@ interface PipelineGraphProps {
   results?: StepResult[];
   isRunning?: boolean;
   input?: string;
-  hasFinalOutput?: boolean;
   selected?: OutputTarget | null;
   onSelect?: (target: OutputTarget) => void;
 }
@@ -21,11 +20,12 @@ export function PipelineGraph({
   results = [],
   isRunning = false,
   input = '',
-  hasFinalOutput = false,
   selected = null,
   onSelect,
 }: PipelineGraphProps) {
   const stages = buildGraph(steps, results, isRunning);
+  const outputCount = stages.flatMap((stage) => stage.items).filter((node) => node.isOutput).length;
+  const hasRun = results.length > 0;
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/40 p-6">
@@ -44,12 +44,13 @@ export function PipelineGraph({
         ))}
         <Connector />
         <GraphTerminal
-          label="Output"
-          detail={hasFinalOutput ? 'View final output' : 'Final result'}
-          active={selected === 'final'}
-          onClick={hasFinalOutput && onSelect ? () => onSelect('final') : undefined}
+          label={outputCount === 1 ? 'Output' : 'Outputs'}
+          detail={`${outputCount} ${outputCount === 1 ? 'result' : 'results'}${hasRun ? ' · view' : ''}`}
+          active={selected === 'outputs'}
+          onClick={hasRun && onSelect ? () => onSelect('outputs') : undefined}
         />
       </div>
+      <Legend />
     </div>
   );
 }
@@ -84,6 +85,18 @@ function StageColumn({ stage, nodes, selected, onSelect }: StageColumnProps) {
           onClick={node.status === 'done' && onSelect ? () => onSelect(node.order) : undefined}
         />
       ))}
+    </div>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
+      <span className="flex items-center gap-1.5">
+        <OutputBadge /> result you receive
+      </span>
+      <span>Unmarked steps are intermediate work feeding the next stage.</span>
+      <span>Stacked steps run in parallel.</span>
     </div>
   );
 }

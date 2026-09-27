@@ -43,8 +43,9 @@ original request once.
 `POST /pipelines/<id>/run` calls every step synchronously inside the request, so
 a long pipeline holds a worker for minutes (up to stages × `LLM_TIMEOUT_SECONDS`).
 This conflicts with AGENTS.md §6 ("no long-running work in the request path").
-The frontend allows 180 s, so a slow multi-step run can time out on the client
-while the server keeps going.
+The frontend waits up to one hour, but `LLM_TIMEOUT_SECONDS` bounds each call,
+so a run with several slow stages can still time out on the client while the
+server keeps going.
 
 **Fix options:** stream step results as they complete (like chat), or run the
 pipeline as a background job and let the client poll a run resource.

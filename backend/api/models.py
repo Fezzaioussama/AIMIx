@@ -5,6 +5,8 @@ from __future__ import annotations
 from django.contrib.auth.models import User
 from django.db import models
 
+STEP_TITLE_MAX_LENGTH = 100
+
 
 class Pipeline(models.Model):
     """A named, ordered chain of LLM steps owned by one user."""
@@ -26,6 +28,10 @@ class PipelineStep(models.Model):
 
     Steps sharing a ``stage`` run in parallel on the same input; stages run in
     ascending order, so ``stage == order`` for every step is a plain chain.
+
+    ``is_output`` marks a step whose result is a deliverable of the pipeline
+    rather than intermediate work. When no step is marked, the last stage's
+    steps are the outputs. Output steps still feed any later stage.
     """
 
     pipeline = models.ForeignKey(Pipeline, related_name="steps", on_delete=models.CASCADE)
@@ -39,6 +45,15 @@ class PipelineStep(models.Model):
     )
     stage = models.PositiveIntegerField(
         help_text="Execution stage. Steps in the same stage run in parallel."
+    )
+    title = models.CharField(
+        max_length=STEP_TITLE_MAX_LENGTH,
+        blank=True,
+        default="",
+        help_text="Short name shown in the UI.",
+    )
+    is_output = models.BooleanField(
+        default=False, help_text="Show this step's result as a pipeline output."
     )
 
     class Meta:

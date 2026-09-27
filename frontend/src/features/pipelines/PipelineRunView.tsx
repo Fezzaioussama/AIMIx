@@ -5,37 +5,46 @@ import { OutputCard } from './OutputCard';
 import { PipelineGraph } from './PipelineGraph';
 import { RunResults } from './RunResults';
 import { Spinner } from './Spinner';
+import { StepHeading } from './StepHeading';
 import type { OutputTarget } from './pipelineGraph';
 
-type Tab = 'final' | 'steps';
+type Tab = 'outputs' | 'steps';
 
 interface PipelineRunViewProps {
   steps: PipelineStep[];
   results: StepResult[];
-  finalOutput: string;
   isRunning: boolean;
   input: string;
   elapsedMs: number | null;
 }
 
 /** The pipeline diagram plus the latest run's outputs; diagram nodes open outputs. */
-export function PipelineRunView(props: PipelineRunViewProps) {
-  const { steps, results, finalOutput, isRunning, input, elapsedMs } = props;
-  const [tab, setTab] = useState<Tab>('final');
+export function PipelineRunView({
+  steps,
+  results,
+  isRunning,
+  input,
+  elapsedMs,
+}: PipelineRunViewProps) {
+  const [tab, setTab] = useState<Tab>('outputs');
   const [focus, setFocus] = useState<OutputTarget | null>(null);
   const [shownResults, setShownResults] = useState(results);
+  const outputs = results.filter((result) => result.is_output);
 
-  // A new run starts on its final output (React's "adjust state on prop change").
+  // A new run starts on its outputs (React's "adjust state on prop change").
   if (shownResults !== results) {
     setShownResults(results);
-    setTab('final');
+    setTab('outputs');
     setFocus(null);
   }
 
   function select(target: OutputTarget) {
-    setTab(target === 'final' ? 'final' : 'steps');
+    const isOutput = target === 'outputs' || outputs.some((r) => r.step_order === target);
+    setTab(isOutput ? 'outputs' : 'steps');
     setFocus(target);
   }
+
+  const focusedStep = typeof focus === 'number' ? focus : null;
 
   return (
     <section>
@@ -44,7 +53,6 @@ export function PipelineRunView(props: PipelineRunViewProps) {
         results={results}
         isRunning={isRunning}
         input={input}
-        hasFinalOutput={Boolean(finalOutput)}
         selected={focus}
         onSelect={select}
       />
@@ -60,28 +68,48 @@ export function PipelineRunView(props: PipelineRunViewProps) {
         <div className="mt-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-1 rounded-lg bg-slate-800/70 p-1" role="tablist">
-              <TabButton active={tab === 'final'} onClick={() => select('final')}>
-                Final output
+              <TabButton active={tab === 'outputs'} onClick={() => setTab('outputs')}>
+                Outputs ({outputs.length})
               </TabButton>
               <TabButton active={tab === 'steps'} onClick={() => setTab('steps')}>
                 All steps ({results.length})
               </TabButton>
             </div>
-            <RunStats results={results} elapsedMs={elapsedMs} />
+            <RunStats results={results} outputCount={outputs.length} elapsedMs={elapsedMs} />
           </div>
 
-          {tab === 'final' ? (
-            <OutputCard
-              heading={<span className="text-lg font-semibold">Final output</span>}
-              output={finalOutput}
-              foldable={false}
-            />
+          {tab === 'outputs' ? (
+            <OutputsPanel outputs={outputs} focusedStep={focusedStep} />
           ) : (
-            <RunResults results={results} focusedStep={typeof focus === 'number' ? focus : null} />
+            <RunResults results={results} focusedStep={focusedStep} />
           )}
         </div>
       )}
     </section>
+  );
+}
+
+function OutputsPanel({
+  outputs,
+  focusedStep,
+}: {
+  outputs: StepResult[];
+  focusedStep: number | null;
+}) {
+  const single = outputs.length === 1;
+  return (
+    <div className={single ? '' : 'grid gap-4 xl:grid-cols-2'}>
+      {outputs.map((result) => (
+        <OutputCard
+          key={result.step_order}
+          heading={<StepHeading result={result} />}
+          output={result.output}
+          input={result.input_used}
+          highlighted={focusedStep === result.step_order}
+          foldable={!single}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -107,9 +135,19 @@ function TabButton({ active, onClick, children }: TabButtonProps) {
   );
 }
 
-function RunStats({ results, elapsedMs }: { results: StepResult[]; elapsedMs: number | null }) {
+interface RunStatsProps {
+  results: StepResult[];
+  outputCount: number;
+  elapsedMs: number | null;
+}
+
+function RunStats({ results, outputCount, elapsedMs }: RunStatsProps) {
   const stageCount = new Set(results.map((result) => result.stage)).size;
-  const parts = [`${results.length} steps`, `${stageCount} stages`];
+  const parts = [
+    `${outputCount} ${outputCount === 1 ? 'output' : 'outputs'}`,
+    `${results.length} steps`,
+    `${stageCount} stages`,
+  ];
   if (elapsedMs !== null) parts.push(`${(elapsedMs / 1000).toFixed(1)} s`);
   return <p className="text-xs text-slate-400">{parts.join(' · ')}</p>;
 }

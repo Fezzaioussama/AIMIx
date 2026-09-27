@@ -13,5 +13,6 @@ NAME = "togetherai"
 def build(config: ProviderConfig) -> LLMProvider:
     if not config.api_key:
         raise ProviderNotConfigured("TOGAI_API_KEY is not set.")
-    client = Together(api_key=config.api_key, timeout=config.timeout_seconds)
+    # max_retries=0 for the same reason as the OpenRouter client.
+    client = Together(api_key=config.api_key, timeout=config.timeout_seconds, max_retries=0)
     return OpenAICompatibleProvider(NAME, client, config)

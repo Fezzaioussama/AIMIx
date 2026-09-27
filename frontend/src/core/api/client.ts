@@ -7,8 +7,11 @@ import { clearTokens, getAccessToken } from '../auth/tokenStorage';
  */
 export const REQUEST_TIMEOUT_MS = 30_000;
 
-/** Streaming responses legitimately stay open far longer than a JSON call. */
-export const STREAM_TIMEOUT_MS = 300_000;
+/**
+ * Anything that waits on a model: chat streams, pipeline generation and runs.
+ * Matches the backend's LLM_TIMEOUT_SECONDS default (one hour).
+ */
+export const GENERATION_TIMEOUT_MS = 60 * 60 * 1000;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -108,7 +111,7 @@ export async function* streamText(
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const headers = authHeaders({ 'Content-Type': 'application/json' });
-  const timeout = AbortSignal.timeout(STREAM_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
   const response = await fetch(path, {
     method: 'POST',
     headers,

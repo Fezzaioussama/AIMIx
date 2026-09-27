@@ -3,11 +3,24 @@ import { describe, expect, it } from 'vitest';
 import type { PipelineStep, StepResult } from '../../core/api/types';
 import { buildGraph } from './pipelineGraph';
 
-const steps: PipelineStep[] = [
-  { order: 1, stage: 1, prompt: 'a', model: 'v/m' },
-  { order: 2, stage: 1, prompt: 'b', model: 'v/m' },
-  { order: 3, stage: 2, prompt: 'c', model: 'v/m' },
-];
+function step(order: number, stage: number, isOutput = false): PipelineStep {
+  return { order, stage, title: '', is_output: isOutput, prompt: 'p', model: 'v/m' };
+}
+
+function result(order: number, stage: number, isOutput: boolean): StepResult {
+  return {
+    step_order: order,
+    stage,
+    title: '',
+    model: 'v/m',
+    input_used: 'x',
+    output: 'hello',
+    is_output: isOutput,
+  };
+}
+
+const steps = [step(1, 1), step(2, 1), step(3, 2)];
+const nodesOf = (graph: ReturnType<typeof buildGraph>) => graph.flatMap((stage) => stage.items);
 
 describe('buildGraph', () => {
   it('groups steps by stage and marks unrun steps pending', () => {
@@ -17,18 +30,27 @@ describe('buildGraph', () => {
   });
 
   it('marks every step running while a run is in flight', () => {
-    const graph = buildGraph(steps, [], true);
-    expect(graph.flatMap((stage) => stage.items).every((node) => node.status === 'running')).toBe(
+    expect(nodesOf(buildGraph(steps, [], true)).every((node) => node.status === 'running')).toBe(
       true,
     );
   });
 
   it('marks steps with a result done and reports the output length', () => {
-    const results: StepResult[] = [
-      { step_order: 1, stage: 1, model: 'v/m', input_used: 'x', output: 'hello' },
-    ];
-    const [first] = buildGraph(steps, results, false);
+    const [first] = buildGraph(steps, [result(1, 1, false)], false);
     expect(first.items[0]).toMatchObject({ status: 'done', outputLength: 5 });
     expect(first.items[1]).toMatchObject({ status: 'pending', outputLength: null });
+  });
+
+  it('predicts outputs before a run and takes them from the results after', () => {
+    const marked = [step(1, 1, true), step(2, 2)];
+    expect(nodesOf(buildGraph(marked, [], false)).map((node) => node.isOutput)).toEqual([
+      true,
+      false,
+    ]);
+    const ran = [result(1, 1, false), result(2, 2, true)];
+    expect(nodesOf(buildGraph(marked, ran, false)).map((node) => node.isOutput)).toEqual([
+      false,
+      true,
+    ]);
   });
 });

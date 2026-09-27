@@ -41,6 +41,13 @@ def test_a_step_without_a_stage_runs_in_its_own_stage(default_model: str) -> Non
     assert serializer.validated_data["steps"][0]["stage"] == 3
 
 
+def test_a_step_can_be_titled_and_marked_as_an_output(default_model: str) -> None:
+    step = {"order": 1, "title": "Tweet", "is_output": True, "prompt": "x", "model": default_model}
+    serializer = PipelineSerializer(data={"name": "P", "steps": [step]})
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["steps"][0]["is_output"] is True
+
+
 def test_a_stage_must_be_positive(default_model: str) -> None:
     step = {"order": 1, "stage": 0, "prompt": "x", "model": default_model}
     serializer = PipelineSerializer(data={"name": "P", "steps": [step]})

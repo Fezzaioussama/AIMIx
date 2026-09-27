@@ -2,7 +2,7 @@ import type { StepResult } from '../../core/api/types';
 import { OutputCard } from './OutputCard';
 import { StageArrow } from './StageArrow';
 import { StageHeader } from './StageHeader';
-import { modelLabel } from './modelLabel';
+import { StepHeading } from './StepHeading';
 import { groupByStage } from './stages';
 
 interface RunResultsProps {
@@ -34,18 +34,5 @@ export function RunResults({ results, focusedStep }: RunResultsProps) {
         </div>
       ))}
     </div>
-  );
-}
-
-function StepHeading({ result }: { result: StepResult }) {
-  return (
-    <>
-      <span className="rounded-md bg-sky-400/15 px-2 py-1 text-xs font-semibold text-sky-400">
-        Step {result.step_order}
-      </span>
-      <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-slate-400">
-        {modelLabel(result.model)}
-      </span>
-    </>
   );
 }

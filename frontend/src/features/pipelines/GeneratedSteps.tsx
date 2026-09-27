@@ -2,8 +2,9 @@ import type { Pipeline, PipelineStep } from '../../core/api/types';
 import { StageArrow } from './StageArrow';
 import { StageHeader } from './StageHeader';
 import { StageInput } from './StageInput';
+import { StepRoleFields } from './StepRoleFields';
 import { modelLabel } from './modelLabel';
-import { groupByStage } from './stages';
+import { groupByStage, stepLabel } from './stages';
 
 interface GeneratedStepsProps {
   pipeline: Pipeline;
@@ -53,7 +54,7 @@ function GeneratedStep({ step, availableModels, onChange }: GeneratedStepProps) 
           <span className="flex size-7 items-center justify-center rounded-full bg-sky-400/15 text-sm font-semibold text-sky-400">
             {step.order}
           </span>
-          <span className="font-semibold text-slate-200">Step {step.order}</span>
+          <span className="font-semibold text-slate-200">{stepLabel(step)}</span>
         </div>
         <StageInput
           value={step.stage}
@@ -61,6 +62,8 @@ function GeneratedStep({ step, availableModels, onChange }: GeneratedStepProps) 
           onChange={(stage) => onChange({ stage })}
         />
       </div>
+
+      <StepRoleFields step={step} onChange={onChange} />
 
       <label className="mb-1 block text-xs text-slate-400">Prompt Template:</label>
       <textarea

@@ -117,6 +117,8 @@ def test_running_a_pipeline_returns_every_step(
     body = response.json()
     assert body["pipeline_name"] == "Runner"
     assert [step["stage"] for step in body["intermediate_results"]] == [1, 2]
+    # No step is marked, so the last stage is the pipeline's output.
+    assert [step["is_output"] for step in body["intermediate_results"]] == [False, True]
     assert body["final_output"] == "fake reply"
 
 

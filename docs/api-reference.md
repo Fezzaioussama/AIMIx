@@ -82,8 +82,8 @@ A pipeline object:
   "user": 1,
   "created_at": "2026-09-27T10:00:00Z",
   "steps": [
-    { "id": 12, "order": 1, "stage": 1, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
-    { "id": 13, "order": 2, "stage": 2, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
+    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "is_output": false, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
+    { "id": 13, "order": 2, "stage": 2, "title": "French summary", "is_output": true, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
   ]
 }
 ```
@@ -96,6 +96,12 @@ within a pipeline.
 run. Stages run one after another in ascending order; **steps that share a stage
 run in parallel** on the same input. Giving every step its own stage is a plain
 sequential chain.
+
+`title` (optional, ≤ 100 characters) names the step in the UI. `is_output`
+(optional, default `false`) marks a step whose result is a **pipeline output**
+rather than intermediate work; a pipeline can have several, in any stage, and
+an output step still feeds the next stage. When no step is marked, the last
+stage's steps are the outputs.
 
 ### `GET /pipelines/`
 
@@ -132,27 +138,31 @@ deleted and recreated** in one transaction.
   "pipeline_name": "Summarise then translate",
   "final_output": "Résumé ...",
   "intermediate_results": [
-    { "step_order": 1, "stage": 1, "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ..." },
-    { "step_order": 2, "stage": 2, "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ..." }
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ...", "is_output": false },
+    { "step_order": 2, "stage": 2, "title": "French summary", "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ...", "is_output": true }
   ]
 }
 ```
 
-`intermediate_results` holds every step's output, ordered by stage then `order`.
+`intermediate_results` holds every step's output, ordered by stage then `order`;
+`is_output` is `true` on the results that are the pipeline's outputs (the marked
+steps, or the last stage when none is marked).
 Each step's prompt has `{input}` replaced by its stage's input; if the template
 has no `{input}`, the value is appended as `"\n\nInput: <value>"`.
 
 A stage's input is the previous stage's output. When that stage ran several
 steps in parallel, their outputs are joined, each under a
 `## Output of step <order>` heading. `final_output` is the last stage's output,
-joined the same way if it is parallel. At most `PIPELINE_MAX_PARALLEL_STEPS`
+joined the same way if it is parallel; it is kept for compatibility, and the
+UI shows the `is_output` results instead. At most `PIPELINE_MAX_PARALLEL_STEPS`
 (default 4) steps of one stage call the provider at once; if any of them fails,
 the run fails.
 Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
 `502/503/504` provider failures (the run stops; no partial result is returned).
 
 The call is synchronous: it takes as long as its stages combined, and a parallel
-stage takes as long as its slowest step. The frontend allows 180 s.
+stage takes as long as its slowest step. The frontend waits up to one hour
+(`GENERATION_TIMEOUT_MS`).
 
 ### `POST /pipelines/generate`
 
@@ -168,9 +178,9 @@ stage takes as long as its slowest step. The frontend allows 180 s.
   "generated_pipeline": {
     "name": "Review responder",
     "steps": [
-      { "order": 1, "stage": 1, "prompt": "List the pros in: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 2, "stage": 1, "prompt": "List the cons in: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 3, "stage": 2, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
+      { "order": 1, "stage": 1, "title": "Pros", "is_output": false, "prompt": "List the pros in: {input}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 2, "stage": 1, "title": "Cons", "is_output": false, "prompt": "List the cons in: {input}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 3, "stage": 2, "title": "Reply", "is_output": true, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
     ]
   },
   "available_models": ["deepseek/deepseek-v4-flash", "..."]
@@ -179,6 +189,7 @@ stage takes as long as its slowest step. The frontend allows 180 s.
 
 Nothing is saved. The planner decides which steps can run in parallel by giving
 them the same `stage`. Unknown model ids in the plan are replaced by the
-default, `order` is renumbered 1..N, and a missing or invalid `stage` falls back
-to the step's position (sequential).
+default, `order` is renumbered 1..N, a missing or invalid `stage` falls back
+to the step's position (sequential), a missing `title` becomes `""`, and any
+`is_output` other than `true` becomes `false`.
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.

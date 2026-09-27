@@ -49,8 +49,9 @@ class implements the transport for both:
 The call sends a single user message; there is no system prompt, history,
 temperature, or max-tokens setting today.
 
-**Retries:** none. Calls are not retried; a failure surfaces to the user
-immediately. Add bounded retries with backoff only for idempotent calls
+**Retries:** none. Both SDK clients are built with `max_retries=0` (the SDKs
+retry twice by default, which would multiply a long timeout), so a failure
+surfaces to the user immediately. Add bounded retries with backoff only for idempotent calls
 (AGENTS.md §6).
 
 ## How a provider gets built

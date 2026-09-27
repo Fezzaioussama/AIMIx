@@ -23,3 +23,20 @@ export function groupByStage<T>(items: T[], stageOf: (item: T) => number): Stage
 export function nextStage(steps: { stage: number }[]): number {
   return steps.reduce((highest, step) => Math.max(highest, step.stage), 0) + 1;
 }
+
+/**
+ * Steps that are the pipeline's outputs, for previews before a run. Mirrors
+ * `output_orders` in backend/api/services/pipelines.py, which decides for real
+ * runs (run results carry `is_output`): marked steps, else the last stage.
+ */
+export function outputOrders(steps: { order: number; stage: number; is_output: boolean }[]) {
+  const marked = steps.filter((step) => step.is_output);
+  if (marked.length > 0) return new Set(marked.map((step) => step.order));
+  const lastStage = Math.max(0, ...steps.map((step) => step.stage));
+  return new Set(steps.filter((step) => step.stage === lastStage).map((step) => step.order));
+}
+
+/** A step's display name: its title, or its position when it has none. */
+export function stepLabel(step: { order: number; title: string }): string {
+  return step.title.trim() || `Step ${step.order}`;
+}

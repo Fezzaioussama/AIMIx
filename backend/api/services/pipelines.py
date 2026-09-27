@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from itertools import groupby
 from operator import attrgetter
@@ -20,7 +20,7 @@ from typing import Any
 from django.conf import settings
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
-from api.models import Pipeline, PipelineStep
+from api.models import STEP_TITLE_MAX_LENGTH, Pipeline, PipelineStep
 from api.services.catalog import available_model_ids, default_model_id
 from api.services.errors import as_domain_error
 from api.services.prompts import merge_stage_outputs, pipeline_generation_prompt, step_prompt
@@ -38,9 +38,11 @@ class StepResult:
 
     step_order: int
     stage: int
+    title: str
     model: str
     input_used: str
     output: str
+    is_output: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,11 +56,14 @@ def run(pipeline: Pipeline, provider: LLMProvider, initial_input: str) -> RunRes
     """Execute the stages in order (§7 Pipeline).
 
     Steps within a stage run in parallel on the same input; the stage's merged
-    output becomes the next stage's input. Every step's result is returned.
+    output becomes the next stage's input. Every step's result is returned,
+    with the pipeline's outputs flagged.
     """
     current = initial_input
     results: list[StepResult] = []
-    stages = group_by_stage(list(pipeline.steps.all()))
+    steps = list(pipeline.steps.all())
+    stages = group_by_stage(steps)
+    outputs = output_orders(steps)
     started = perf_counter()
 
     for steps in stages:
@@ -76,8 +81,25 @@ def run(pipeline: Pipeline, provider: LLMProvider, initial_input: str) -> RunRes
         (perf_counter() - started) * 1000,
     )
     return RunResult(
-        pipeline_name=pipeline.name, final_output=current, intermediate_results=results
+        pipeline_name=pipeline.name,
+        final_output=current,
+        intermediate_results=[
+            replace(result, is_output=result.step_order in outputs) for result in results
+        ],
     )
+
+
+def output_orders(steps: list[PipelineStep]) -> set[int]:
+    """The steps whose results are the pipeline's outputs.
+
+    Marked steps when there are any; otherwise the last stage, which is what a
+    pipeline produced before steps could be marked.
+    """
+    marked = {step.order for step in steps if step.is_output}
+    if marked:
+        return marked
+    last_stage = max((step.stage for step in steps), default=0)
+    return {step.order for step in steps if step.stage == last_stage}
 
 
 def group_by_stage(steps: list[PipelineStep]) -> list[list[PipelineStep]]:
@@ -114,6 +136,7 @@ def _run_step(step: PipelineStep, provider: LLMProvider, stage_input: str) -> St
     return StepResult(
         step_order=step.order,
         stage=step.stage,
+        title=step.title,
         model=step.model,
         input_used=stage_input,
         output=output,
@@ -166,7 +189,8 @@ def parse_plan(raw: str, available_models: list[str]) -> dict[str, Any]:
 def _sanitise_step(
     step: dict[str, Any], index: int, available_models: list[str], fallback_model: str
 ) -> None:
-    """Make a planner step storable: unique order, a valid stage, a known model.
+    """Make a planner step storable: unique order, a valid stage, a known model,
+    a short title and a boolean output flag.
 
     ``order`` is renumbered by position because planners that group steps into
     parallel stages tend to repeat it; a missing or invalid stage falls back to
@@ -178,6 +202,9 @@ def _sanitise_step(
         step["stage"] = index
     if step.get("model") not in available_models:
         step["model"] = fallback_model
+    title = step.get("title")
+    step["title"] = title.strip()[:STEP_TITLE_MAX_LENGTH] if isinstance(title, str) else ""
+    step["is_output"] = step.get("is_output") is True
 
 
 def ensure_runnable(pipeline: Pipeline) -> None:

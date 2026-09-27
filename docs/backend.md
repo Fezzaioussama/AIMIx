@@ -28,7 +28,7 @@ LLM-related settings (all from env, see `.env.example`):
 | Setting | Source | Meaning |
 |---|---|---|
 | `LLM_PROVIDER` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
-| `LLM_TIMEOUT_SECONDS` | `LLM_TIMEOUT_SECONDS` | Timeout passed to the SDK client (default 60) |
+| `LLM_TIMEOUT_SECONDS` | `LLM_TIMEOUT_SECONDS` | Timeout passed to the SDK client, per call (default 3600 = one hour) |
 | `LLM_API_KEYS[provider]` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`), `TOGAI_API_KEY` | Credentials |
 | `LLM_BASE_URLS[provider]` | `OPENROUTER_BASE_URL`, `TOGETHERAI_BASE_URL` | Optional override (proxy/gateway) |
 | `LLM_DEFAULT_MODELS[provider]` | `OPENROUTER_DEFAULT_MODEL`, `TOGETHERAI_DEFAULT_MODEL` | Default model id |

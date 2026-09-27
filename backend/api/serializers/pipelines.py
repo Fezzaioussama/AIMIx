@@ -30,7 +30,7 @@ class PipelineStepSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PipelineStep
-        fields = ("id", "order", "stage", "prompt", "model")
+        fields = ("id", "order", "stage", "title", "is_output", "prompt", "model")
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         attrs.setdefault("stage", attrs["order"])
