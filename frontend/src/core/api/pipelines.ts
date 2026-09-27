@@ -7,7 +7,10 @@ export function listPipelines(): Promise<Pipeline[]> {
 }
 
 export function savePipeline(pipeline: Pipeline): Promise<Pipeline> {
-  return request<Pipeline>(API.pipelines, { method: 'POST', body: pipeline });
+  return request<Pipeline>(
+    pipeline.id === undefined ? API.pipelines : API.pipeline(pipeline.id),
+    { method: pipeline.id === undefined ? 'POST' : 'PUT', body: pipeline },
+  );
 }
 
 export function runPipeline(pipelineId: number, input: string): Promise<PipelineRunResponse> {

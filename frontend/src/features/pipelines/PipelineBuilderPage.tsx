@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { PipelineNav } from './PipelineNav';
@@ -7,17 +8,30 @@ import { StepEditor } from './StepEditor';
 import { usePipelineBuilder } from './usePipelineBuilder';
 
 export function PipelineBuilderPage() {
+  const routeState: unknown = useLocation().state;
+  const initialId =
+    routeState !== null &&
+    typeof routeState === 'object' &&
+    'pipelineId' in routeState &&
+    typeof routeState.pipelineId === 'number'
+      ? routeState.pipelineId
+      : undefined;
   const { models, defaultModel, error: modelsError } = useModels();
-  const { pipeline, saved, results, elapsedMs, status, message, actions } =
-    usePipelineBuilder(defaultModel);
+  const { pipeline, saved, results, elapsedMs, status, message, dirty, actions } =
+    usePipelineBuilder(defaultModel, typeof initialId === 'number' ? initialId : undefined);
   const [input, setInput] = useState('');
 
   const isSaving = status === 'saving';
   const isRunning = status === 'running';
+  const stageCount = new Set(pipeline.steps.map((step) => step.stage)).size;
+
+  function editStep(order: number) {
+    document.getElementById(`step-editor-${order}`)?.scrollIntoView?.({ behavior: 'smooth' });
+  }
 
   return (
-    <div className="flex h-[calc(100vh-60px)] bg-slate-900 text-slate-50">
-      <aside className="flex w-[350px] shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-slate-800/70 p-6 backdrop-blur-xl">
+    <div className="flex min-h-[calc(100vh-60px)] flex-col bg-slate-900 text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
+      <aside inert={isRunning || isSaving} className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-800/70 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0">
         <div className="mb-4 text-lg font-extrabold">
           <span className="bg-gradient-to-r from-[#00d2ff] to-[#3a7bd5] bg-clip-text text-transparent">
             AI
@@ -79,6 +93,9 @@ export function PipelineBuilderPage() {
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">
           Workflow Steps
         </h3>
+        <p className="mb-3 text-xs text-slate-400">
+          Give each step a title and prompt. Choose Output for every result you want to receive.
+        </p>
         <StepEditor
           steps={pipeline.steps}
           availableModels={models}
@@ -94,36 +111,52 @@ export function PipelineBuilderPage() {
         </button>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-12">
+      <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-8 lg:p-12">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-8 rounded-2xl border border-white/10 bg-slate-800/50 p-8">
-            <h2 className="mb-4 text-xl font-semibold">Run Execution</h2>
-            <textarea
-              value={input}
-              placeholder="Enter your initial input here..."
-              onChange={(event) => setInput(event.target.value)}
-              className="mb-4 h-28 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-4 text-sm outline-none focus:border-sky-400"
-            />
-            <button
-              type="button"
-              onClick={() => void actions.run(input)}
-              disabled={isRunning || !input.trim()}
-              className="rounded-lg bg-gradient-to-br from-sky-500 to-indigo-500 px-8 py-4 font-semibold text-white transition-transform hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(99,102,241,0.4)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+          <div className="mb-8">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="mb-1 text-xs font-semibold tracking-widest text-sky-400 uppercase">Workflow canvas</p>
+                <h1 className="text-2xl font-bold">{pipeline.name || 'New Pipeline'}</h1>
+              </div>
+              <p className="text-sm text-slate-400">{stageCount} {stageCount === 1 ? 'stage' : 'stages'} · {pipeline.steps.length} {pipeline.steps.length === 1 ? 'step' : 'steps'}</p>
+            </div>
+            <PipelineRunView
+              steps={pipeline.steps}
+              results={results}
+              isRunning={isRunning}
+              input={input}
+              elapsedMs={elapsedMs}
+              onEditStep={isRunning || isSaving ? undefined : editStep}
+              onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
+              onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
             >
-              {isRunning ? 'Executing…' : 'Run Pipeline'}
-            </button>
-            {(message || modelsError) && (
-              <p className="mt-4 text-sm text-amber-300">{message || modelsError}</p>
-            )}
+              <div className="mt-8 rounded-2xl border border-white/10 bg-slate-800/50 p-8">
+                <h2 className="mb-4 text-xl font-semibold">Run Execution</h2>
+                <textarea
+                  value={input}
+                  disabled={isRunning}
+                  placeholder="Enter your initial input here..."
+                  onChange={(event) => setInput(event.target.value)}
+                  className="mb-4 h-28 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-4 text-sm outline-none focus:border-sky-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => void actions.run(input)}
+                  disabled={isRunning || !input.trim() || dirty}
+                  className="rounded-lg bg-gradient-to-br from-sky-500 to-indigo-500 px-8 py-4 font-semibold text-white transition-transform hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(99,102,241,0.4)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+                >
+                  {isRunning ? 'Executing…' : 'Run Pipeline'}
+                </button>
+                {dirty && pipeline.id !== undefined && (
+                  <p className="mt-3 text-xs text-sky-300">Save your changes to run this version.</p>
+                )}
+                {(message || modelsError) && (
+                  <p className="mt-4 text-sm text-amber-300">{message || modelsError}</p>
+                )}
+              </div>
+            </PipelineRunView>
           </div>
-
-          <PipelineRunView
-            steps={pipeline.steps}
-            results={results}
-            isRunning={isRunning}
-            input={input}
-            elapsedMs={elapsedMs}
-          />
         </div>
       </main>
     </div>

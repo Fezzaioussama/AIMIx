@@ -24,6 +24,34 @@ export function nextStage(steps: { stage: number }[]): number {
   return steps.reduce((highest, step) => Math.max(highest, step.stage), 0) + 1;
 }
 
+/** Insert a step beside a stage or in a new stage immediately after it. */
+interface InsertStepOptions {
+  model: string;
+  stage: number;
+  parallel: boolean;
+  isOutput?: boolean;
+}
+
+export function insertStep(steps: PipelineStep[], options: InsertStepOptions): PipelineStep[] {
+  const { model, stage, parallel, isOutput = false } = options;
+  const updated = parallel
+    ? steps
+    : steps.map((step) => ({ ...step, stage: step.stage > stage ? step.stage + 1 : step.stage }));
+  return [
+    ...updated,
+    {
+      order: Math.max(0, ...steps.map((step) => step.order)) + 1,
+      stage: parallel ? stage : stage + 1,
+      title: '',
+      is_output: isOutput,
+      prompt: '',
+      model,
+    },
+  ]
+    .sort((first, second) => first.stage - second.stage || first.order - second.order)
+    .map((step, index) => ({ ...step, order: index + 1 }));
+}
+
 /**
  * Steps that are the pipeline's outputs, for previews before a run. Mirrors
  * `output_orders` in backend/api/services/pipelines.py, which decides for real
@@ -40,3 +68,4 @@ export function outputOrders(steps: { order: number; stage: number; is_output: b
 export function stepLabel(step: { order: number; title: string }): string {
   return step.title.trim() || `Step ${step.order}`;
 }
+import type { PipelineStep } from '../../core/api/types';

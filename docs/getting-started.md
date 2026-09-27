@@ -70,10 +70,13 @@ Run one side only with `make run-backend` or `make run-frontend`.
 ## Try each feature
 
 1. **Chat** (`/chat`) — type a prompt; the reply streams token by token.
-2. **Pipeline Builder** (`/pipeline`) — add steps, pick a model per step, write
-   prompts using `{input}`, **Save**, then **Run** with an input.
+2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
+   steps or insert a new stage, then edit each step in the sidebar. Mark every
+   deliverable as **Output**, write prompts using `{input}`, **Save**, then **Run**
+   with an input. Run results group deliverables by stage.
 3. **Auto Pipeline** (`/auto-pipeline`) — describe a workflow in plain language;
-   a planner model returns steps you can edit and save.
+   name the deliverables you want. Review the generated stages, add more outputs
+   where needed, fill in their prompts, then save and open the builder.
 
 ## Talking to the API directly
 

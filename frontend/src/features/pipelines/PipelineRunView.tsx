@@ -7,6 +7,7 @@ import { RunResults } from './RunResults';
 import { Spinner } from './Spinner';
 import { StepHeading } from './StepHeading';
 import type { OutputTarget } from './pipelineGraph';
+import { groupByStage } from './stages';
 
 type Tab = 'outputs' | 'steps';
 
@@ -16,6 +17,10 @@ interface PipelineRunViewProps {
   isRunning: boolean;
   input: string;
   elapsedMs: number | null;
+  onEditStep?: (order: number) => void;
+  onAddParallel?: (stage: number) => void;
+  onAddAfter?: (stage: number) => void;
+  children?: ReactNode;
 }
 
 /** The pipeline diagram plus the latest run's outputs; diagram nodes open outputs. */
@@ -25,6 +30,10 @@ export function PipelineRunView({
   isRunning,
   input,
   elapsedMs,
+  onEditStep,
+  onAddParallel,
+  onAddAfter,
+  children,
 }: PipelineRunViewProps) {
   const [tab, setTab] = useState<Tab>('outputs');
   const [focus, setFocus] = useState<OutputTarget | null>(null);
@@ -55,7 +64,12 @@ export function PipelineRunView({
         input={input}
         selected={focus}
         onSelect={select}
+        onEditStep={onEditStep}
+        onAddParallel={onAddParallel}
+        onAddAfter={onAddAfter}
       />
+
+      {children}
 
       {isRunning && (
         <div className="mt-8 flex flex-col items-center gap-3 text-slate-400">
@@ -96,18 +110,27 @@ function OutputsPanel({
   outputs: StepResult[];
   focusedStep: number | null;
 }) {
-  const single = outputs.length === 1;
+  const stages = groupByStage(outputs, (result) => result.stage);
   return (
-    <div className={single ? '' : 'grid gap-4 xl:grid-cols-2'}>
-      {outputs.map((result) => (
-        <OutputCard
-          key={result.step_order}
-          heading={<StepHeading result={result} />}
-          output={result.output}
-          input={result.input_used}
-          highlighted={focusedStep === result.step_order}
-          foldable={!single}
-        />
+    <div className="space-y-6">
+      {stages.map((group) => (
+        <section key={group.stage} aria-label={`Stage ${group.stage} outputs`}>
+          <h3 className="mb-3 text-sm font-semibold text-slate-300">
+            Stage {group.stage} <span className="text-slate-500">· {group.items.length} {group.items.length === 1 ? 'output' : 'outputs'}</span>
+          </h3>
+          <div className={group.items.length > 1 ? 'grid gap-4 xl:grid-cols-2' : ''}>
+            {group.items.map((result) => (
+              <OutputCard
+                key={result.step_order}
+                heading={<StepHeading result={result} />}
+                output={result.output}
+                input={result.input_used}
+                highlighted={focusedStep === result.step_order}
+                foldable={outputs.length > 1}
+              />
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );

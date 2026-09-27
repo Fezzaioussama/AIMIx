@@ -1,6 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupByStage, nextStage, outputOrders, stepLabel } from './stages';
+import { groupByStage, insertStep, nextStage, outputOrders, stepLabel } from './stages';
+import type { PipelineStep } from '../../core/api/types';
+
+const workflow: PipelineStep[] = [1, 2, 3].map((order) => ({
+  order,
+  stage: order,
+  title: '',
+  is_output: false,
+  prompt: 'Use {input}',
+  model: 'vendor/model',
+}));
+
+describe('insertStep', () => {
+  it('adds parallel work to the selected stage', () => {
+    const steps = insertStep(workflow, { model: 'vendor/model', stage: 2, parallel: true });
+    expect(steps.map((step) => step.stage)).toEqual([1, 2, 2, 3]);
+    expect(steps.map((step) => step.order)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('inserts a new stage and moves later work after it', () => {
+    const steps = insertStep(workflow, { model: 'vendor/model', stage: 1, parallel: false });
+    expect(steps.map((step) => step.stage)).toEqual([1, 2, 3, 4]);
+    expect(groupByStage(steps, (step) => step.stage).map((group) => group.stage)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(workflow[1].stage).toBe(2);
+  });
+});
 
 describe('groupByStage', () => {
   it('orders stages ascending and keeps item order inside a stage', () => {

@@ -9,6 +9,7 @@ export const API = {
   chat: '/api/chat',
   models: '/api/models',
   pipelines: '/api/pipelines/',
+  pipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/`,
   generatePipeline: '/api/pipelines/generate',
   runPipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/run`,
 } as const;

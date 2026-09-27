@@ -95,15 +95,15 @@ Both pipeline screens use it; the frontend never hard-codes a model list.
 | File | Role |
 |---|---|
 | `PipelineBuilderPage.tsx` | Builder screen: saved list, name, steps, run input, diagram + results |
-| `usePipelineBuilder.ts` | State + transport: `pipeline`, `saved`, `results`, `elapsedMs`, `status`, `message`, and `actions` (`reset`, `select`, `patchStep`, `addStep`, `removeStep`, `rename`, `save`, `run`). Requires a saved pipeline (`id`) before running. |
+| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit → save |
-| `useAutoPipeline.ts` | `generated`, `status`, messages, `actions` (`generate`, `save`, `patchStep`, `rename`, `reset`) |
+| `useAutoPipeline.ts` | Generation, editing, adding or removing output steps and saving the proposed workflow (later saves update it) |
 | `StepEditor.tsx` | Builder sidebar: each step's stage, title, role, model and prompt |
 | `StepRoleFields.tsx` | A step's title and its Intermediate / Output toggle, shared by both editors |
 | `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
-| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets and a legend; nodes show title, model, status (not run / running / done) and an Output badge; clicking a finished node opens its output |
+| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; nodes show title, model, status and an Output badge; clicking a finished node opens its output |
 | `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`) and the `OutputTarget` type |
-| `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds); several outputs sit side by side |
+| `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds); deliverables are grouped by stage |
 | `StepHeading.tsx` | Title row of a step's output card (name, model, Output badge) |
 | `RunResults.tsx` | Every step's output, grouped by stage |
 | `OutputCard.tsx` | One output: rendered/raw toggle, copy, the input it saw, folding for long text |

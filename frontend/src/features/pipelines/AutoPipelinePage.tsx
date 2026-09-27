@@ -27,7 +27,8 @@ export function AutoPipelinePage() {
   const isSaving = status === 'saving';
 
   async function handleSaveAndRun() {
-    if (await actions.save()) navigate('/pipeline');
+    const stored = await actions.save();
+    if (stored?.id !== undefined) navigate('/pipeline', { state: { pipelineId: stored.id } });
   }
 
   return (
@@ -45,7 +46,8 @@ export function AutoPipelinePage() {
           </div>
           <PipelineNav />
           <p className="mt-3 text-sm text-slate-400">
-            Describe your workflow and let AI create the pipeline for you
+            Describe your workflow and the outputs you need. Review the generated stages before
+            saving.
           </p>
         </header>
 
@@ -54,7 +56,7 @@ export function AutoPipelinePage() {
           <textarea
             value={description}
             disabled={isGenerating}
-            placeholder="Example: I want a pipeline that takes a code snippet, translates it to Python, adds detailed documentation, and then creates a step-by-step tutorial..."
+            placeholder="Example: Analyze this product idea, then produce a launch email and three social posts in parallel. Finish with a short summary."
             onChange={(event) => setDescription(event.target.value)}
             className="mb-4 h-32 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-4 text-sm outline-none focus:border-sky-400 disabled:opacity-60"
           />
@@ -110,7 +112,7 @@ export function AutoPipelinePage() {
         )}
 
         {generated && !isGenerating && (
-          <section className={cardClass}>
+          <section inert={isSaving} className={cardClass}>
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
               <h2 className="text-xl font-semibold">Generated Pipeline</h2>
               <input
@@ -123,13 +125,23 @@ export function AutoPipelinePage() {
             </div>
 
             <div className="mb-6">
-              <PipelineGraph steps={generated.steps} />
+              <PipelineGraph
+                steps={generated.steps}
+                onAddParallel={(stage) => actions.addOutput(stage, true)}
+                onAddAfter={(stage) => actions.addOutput(stage, false)}
+                parallelLabel="+ Parallel output"
+                nextLabel="+ Next output"
+              />
+              <p className="mt-2 text-xs text-slate-400">
+                Added outputs need a prompt before saving. Edit the cards below to define each result.
+              </p>
             </div>
 
             <GeneratedSteps
               pipeline={generated}
               availableModels={models}
               onChange={actions.patchStep}
+              onRemove={actions.removeStep}
             />
 
             <div className="mt-6 flex flex-wrap gap-3">
@@ -154,7 +166,7 @@ export function AutoPipelinePage() {
                 disabled={isSaving}
                 className="rounded-lg bg-gradient-to-br from-sky-500 to-indigo-500 px-5 py-3 text-sm font-semibold transition-colors disabled:opacity-60"
               >
-                {isSaving ? 'Saving…' : '▶ Save & Execute'}
+                {isSaving ? 'Saving…' : 'Save & Open Builder'}
               </button>
             </div>
           </section>

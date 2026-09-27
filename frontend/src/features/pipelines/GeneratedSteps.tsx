@@ -10,10 +10,13 @@ interface GeneratedStepsProps {
   pipeline: Pipeline;
   availableModels: string[];
   onChange: (index: number, patch: Partial<PipelineStep>) => void;
+  onRemove: (index: number) => void;
 }
 
 /** The planned pipeline, drawn stage by stage; parallel steps sit side by side. */
-export function GeneratedSteps({ pipeline, availableModels, onChange }: GeneratedStepsProps) {
+export function GeneratedSteps({
+  pipeline, availableModels, onChange, onRemove,
+}: GeneratedStepsProps) {
   // Keep each step's position in the pipeline so edits patch the right one.
   const indexed = pipeline.steps.map((step, index) => ({ step, index }));
   const stages = groupByStage(indexed, ({ step }) => step.stage);
@@ -30,6 +33,8 @@ export function GeneratedSteps({ pipeline, availableModels, onChange }: Generate
                 step={step}
                 availableModels={availableModels}
                 onChange={(patch) => onChange(index, patch)}
+                onRemove={() => onRemove(index)}
+                canRemove={pipeline.steps.length > 1}
               />
             ))}
           </div>
@@ -44,9 +49,11 @@ interface GeneratedStepProps {
   step: PipelineStep;
   availableModels: string[];
   onChange: (patch: Partial<PipelineStep>) => void;
+  onRemove: () => void;
+  canRemove: boolean;
 }
 
-function GeneratedStep({ step, availableModels, onChange }: GeneratedStepProps) {
+function GeneratedStep({ step, availableModels, onChange, onRemove, canRemove }: GeneratedStepProps) {
   return (
     <div className="rounded-xl border border-white/10 bg-slate-900/40 p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -56,11 +63,18 @@ function GeneratedStep({ step, availableModels, onChange }: GeneratedStepProps) 
           </span>
           <span className="font-semibold text-slate-200">{stepLabel(step)}</span>
         </div>
-        <StageInput
-          value={step.stage}
-          label={`Stage of step ${step.order}`}
-          onChange={(stage) => onChange({ stage })}
-        />
+        <div className="flex items-center gap-3">
+          <StageInput
+            value={step.stage}
+            label={`Stage of step ${step.order}`}
+            onChange={(stage) => onChange({ stage })}
+          />
+          {canRemove && (
+            <button type="button" onClick={onRemove} aria-label={`Remove step ${step.order}`} className="text-lg leading-none text-slate-400 hover:text-red-400">
+              &times;
+            </button>
+          )}
+        </div>
       </div>
 
       <StepRoleFields step={step} onChange={onChange} />
@@ -68,6 +82,7 @@ function GeneratedStep({ step, availableModels, onChange }: GeneratedStepProps) 
       <label className="mb-1 block text-xs text-slate-400">Prompt Template:</label>
       <textarea
         value={step.prompt}
+        placeholder="Describe this result using {input}"
         onChange={(event) => onChange({ prompt: event.target.value })}
         className="mb-4 h-24 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-slate-100 outline-none focus:border-sky-400"
       />

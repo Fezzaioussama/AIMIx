@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
+import { vi } from 'vitest';
 
 import type { PipelineStep, StepResult } from '../../core/api/types';
 import { PipelineRunView } from './PipelineRunView';
@@ -61,6 +62,9 @@ describe('PipelineRunView', () => {
     );
     expect(screen.getByText('Tweet text')).toBeInTheDocument();
     expect(screen.getByText('Email text')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Stage 2 outputs' })).toContainElement(
+      screen.getByText('Tweet text'),
+    );
     expect(screen.queryByText('Facts text')).not.toBeInTheDocument();
     expect(screen.getByText('2 outputs · 3 steps · 2 stages · 2.5 s')).toBeInTheDocument();
   });
@@ -83,5 +87,26 @@ describe('PipelineRunView', () => {
     expect(screen.getByText('bold').tagName).toBe('STRONG');
     await userEvent.click(screen.getByRole('button', { name: 'Raw' }));
     expect(screen.getByText('**bold**')).toBeInTheDocument();
+  });
+
+  it('groups deliverables from separate stages', () => {
+    const staged = [result({ ...steps[0], is_output: true }, 'Facts text'), ...results.slice(1)];
+    renderView({ results: staged });
+    expect(screen.getByRole('region', { name: 'Stage 1 outputs' })).toContainElement(
+      screen.getByText('Facts text'),
+    );
+    expect(screen.getByRole('region', { name: 'Stage 2 outputs' })).toContainElement(
+      screen.getByText('Email text'),
+    );
+  });
+
+  it('lets an unrun diagram add parallel work and a following stage', async () => {
+    const addParallel = vi.fn();
+    const addAfter = vi.fn();
+    renderView({ results: [], elapsedMs: null, onAddParallel: addParallel, onAddAfter: addAfter });
+    await userEvent.click(screen.getAllByRole('button', { name: '+ Parallel step' })[0]);
+    await userEvent.click(screen.getAllByRole('button', { name: '+ Next stage' })[0]);
+    expect(addParallel).toHaveBeenCalledWith(1);
+    expect(addAfter).toHaveBeenCalledWith(1);
   });
 });

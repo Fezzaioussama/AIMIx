@@ -27,6 +27,9 @@ step in its own stage that merges them.
 - A pipeline can have several outputs, from any stage: mark every deliverable the \
 user will want to read (e.g. each of several drafts, plus a final pick). Output \
 steps still feed the next stage.
+- When the request names several deliverables, create a separate output step for \
+each one. Group independent deliverables in the same stage so they can run in \
+parallel; add a later synthesis stage only if the request calls for one.
 
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 {{

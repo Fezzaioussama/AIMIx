@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 
 import * as pipelinesApi from '../../core/api/pipelines';
 import type { Pipeline, PipelineStep } from '../../core/api/types';
+import { insertStep } from './stages';
 
 type Status = 'idle' | 'generating' | 'saving';
 
@@ -31,24 +32,26 @@ export function useAutoPipeline() {
     }
   }, []);
 
-  /** Returns true only when the pipeline reached the backend. */
-  const save = useCallback(async (): Promise<boolean> => {
-    if (!generated) return false;
+  /** Returns the saved pipeline so the builder can open it. */
+  const save = useCallback(async (): Promise<Pipeline | null> => {
+    if (!generated) return null;
     setStatus('saving');
     setErrorMessage('');
     try {
       const stored = await pipelinesApi.savePipeline(generated);
+      setGenerated(stored);
       setSuccessMessage(`Pipeline "${stored.name}" saved successfully!`);
-      return true;
+      return stored;
     } catch (cause) {
       setErrorMessage(cause instanceof Error ? cause.message : 'Failed to save pipeline.');
-      return false;
+      return null;
     } finally {
       setStatus('idle');
     }
   }, [generated]);
 
   const patchStep = useCallback((index: number, patch: Partial<PipelineStep>) => {
+    setSuccessMessage('');
     setGenerated((current) =>
       current === null
         ? current
@@ -60,7 +63,34 @@ export function useAutoPipeline() {
   }, []);
 
   const rename = useCallback((name: string) => {
+    setSuccessMessage('');
     setGenerated((current) => (current === null ? current : { ...current, name }));
+  }, []);
+
+  const addOutput = useCallback((stage: number, parallel: boolean) => {
+    setSuccessMessage('');
+    setGenerated((current) => {
+      if (current === null) return null;
+      const model = current.steps.find((step) => step.stage === stage)?.model ?? current.steps[0].model;
+      return {
+        ...current,
+        steps: insertStep(current.steps, { model, stage, parallel, isOutput: true }),
+      };
+    });
+  }, []);
+
+  const removeStep = useCallback((index: number) => {
+    setSuccessMessage('');
+    setGenerated((current) =>
+      current === null || current.steps.length === 1
+        ? current
+        : {
+            ...current,
+            steps: current.steps
+              .filter((_, position) => position !== index)
+              .map((step, position) => ({ ...step, order: position + 1 })),
+          },
+    );
   }, []);
 
   const reset = useCallback(() => {
@@ -74,6 +104,6 @@ export function useAutoPipeline() {
     status,
     errorMessage,
     successMessage,
-    actions: { generate, save, patchStep, rename, reset },
+    actions: { generate, save, patchStep, rename, addOutput, removeStep, reset },
   };
 }

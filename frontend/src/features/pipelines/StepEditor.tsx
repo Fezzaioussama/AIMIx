@@ -14,7 +14,7 @@ export function StepEditor({ steps, availableModels, onChange, onRemove }: StepE
   return (
     <>
       {steps.map((step, index) => (
-        <div key={index} className="mb-3 rounded-lg border border-white/10 bg-slate-900/40 p-3">
+        <div id={`step-editor-${step.order}`} key={step.order} className="mb-3 scroll-mt-4 rounded-lg border border-white/10 bg-slate-900/40 p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="flex size-6 items-center justify-center rounded-full bg-sky-400/15 text-xs font-semibold text-sky-400">
               {step.order}
@@ -28,6 +28,7 @@ export function StepEditor({ steps, availableModels, onChange, onRemove }: StepE
               type="button"
               onClick={() => onRemove(index)}
               aria-label={`Remove step ${step.order}`}
+              disabled={steps.length === 1}
               className="text-lg leading-none text-slate-400 transition-colors hover:text-red-400"
             >
               &times;
