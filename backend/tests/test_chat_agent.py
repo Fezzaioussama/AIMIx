@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
-import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -49,13 +48,9 @@ async def test_agent_streams_model_text_and_hides_tool_output(
         """A native tool available alongside MCP tools."""
         return "local"
 
-    class FakeMCPClient:
-        def __init__(self, configured: object, *, tool_name_prefix: bool) -> None:
-            captured["configured"] = configured
-            captured["prefix"] = tool_name_prefix
-
-        async def get_tools(self) -> list[str]:
-            return ["example_tool"]
+    async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
+        captured["configured"] = configured
+        return [*native, "example_tool"]
 
     class FakeGraph:
         async def astream(self, state: object, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
@@ -81,26 +76,21 @@ async def test_agent_streams_model_text_and_hides_tool_output(
         captured["tools"] = tools
         return FakeGraph()
 
-    monkeypatch.setattr(agent_service, "MultiServerMCPClient", FakeMCPClient)
+    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
     monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
     agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9))  # type: ignore[arg-type]
     assert [part async for part in agent.stream("hello")] == ["Hello ", "world"]
     assert captured["tools"] == [local_tool, "example_tool"]
-    assert captured["prefix"] is True
     assert captured["state"] == {"messages": [{"role": "user", "content": "hello"}]}
     assert captured["kwargs"]["config"] == {"recursion_limit": 9}
 
 
 @pytest.mark.asyncio
 async def test_mcp_discovery_failure_is_a_domain_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FailingMCPClient:
-        def __init__(self, configured: object, *, tool_name_prefix: bool) -> None:
-            pass
+    async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
+        raise ToolUnavailable("An MCP server is unavailable.")
 
-        async def get_tools(self) -> list[str]:
-            raise httpx.ConnectError("offline")
-
-    monkeypatch.setattr(agent_service, "MultiServerMCPClient", FailingMCPClient)
+    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
     agent = LangGraphChatAgent(object(), AgentToolset({}, []), AgentLimits(10, 9))  # type: ignore[arg-type]
     with pytest.raises(ToolUnavailable):
         _ = [part async for part in agent.stream("hello")]
@@ -127,14 +117,10 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
         called.append(number)
         return number + 1
 
-    class FakeMCPClient:
-        def __init__(self, configured: object, *, tool_name_prefix: bool) -> None:
-            pass
+    async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
+        return [*native, increment]
 
-        async def get_tools(self) -> list[Any]:
-            return [increment]
-
-    monkeypatch.setattr(agent_service, "MultiServerMCPClient", FakeMCPClient)
+    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
     monkeypatch.setattr(
         FakeMessagesListChatModel,
         "bind_tools",

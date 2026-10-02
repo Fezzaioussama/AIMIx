@@ -14,9 +14,8 @@ import openai
 from exceptiongroup import ExceptionGroup
 from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
-from langchain_core.tools import BaseTool
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.tools import BaseTool, ToolException
 from langchain_mcp_adapters.sessions import Connection
 from langgraph.errors import GraphRecursionError
 from mcp import McpError
@@ -32,9 +31,11 @@ from api.exceptions import (
 )
 from api.models import User
 from api.services.agent_tools import built_in_tools
+from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
 from api.services.llm import get_agent_model
 from api.services.mcp import connections
 from api.services.pipelines import StepGenerator
+from api.services.tool_catalog import discover_tools
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -50,15 +51,30 @@ AGENT_FAILURES = (
     OpenRouterError,
     NoResponseError,
     GraphRecursionError,
+    ToolException,
 )
 
 
 def _as_domain_error(cause: Exception) -> DomainError:
     if isinstance(cause, (TimeoutError, httpx.TimeoutException, openai.APITimeoutError)):
         return ProviderTimedOut("The agent timed out.")
-    if isinstance(cause, (McpError, ExceptionGroup)):
+    if isinstance(cause, (McpError, ExceptionGroup, ToolException)):
         return ToolUnavailable("An MCP server or tool is unavailable.")
     return ProviderUnavailable("The agent could not complete the request.")
+
+
+def _tool_trace(messages: list[BaseMessage]) -> list[ToolCallTrace]:
+    names: dict[str, str] = {}
+    calls: list[ToolCallTrace] = []
+    for message in messages:
+        if isinstance(message, AIMessage):
+            names.update(
+                {str(call["id"]): call["name"] for call in message.tool_calls if call.get("id")}
+            )
+        elif isinstance(message, ToolMessage):
+            name = names.get(message.tool_call_id, message.name or "unknown")
+            calls.append(ToolCallTrace(name=name, status=message.status))
+    return calls
 
 
 @dataclass(frozen=True)
@@ -79,14 +95,21 @@ class LangGraphChatAgent:
         self._toolset = toolset
         self._limits = limits
 
-    async def _load_tools(self) -> list[BaseTool]:
-        client = MultiServerMCPClient(self._toolset.mcp_connections, tool_name_prefix=True)
-        try:
-            mcp_tools = await client.get_tools()
-        except (McpError, ExceptionGroup, httpx.HTTPError) as cause:
-            logger.warning("chat.mcp_discovery_failed error=%s", type(cause).__name__)
-            raise ToolUnavailable("An MCP server is unavailable.") from cause
-        return [*self._toolset.native_tools, *mcp_tools]
+    async def _load_tools(self, allowed: list[str] | None = None) -> list[BaseTool]:
+        if allowed == []:
+            return []
+        native = self._toolset.native_tools
+        if allowed is not None and set(allowed) <= {item.name for item in native}:
+            return [item for item in native if item.name in allowed]
+        tools = await discover_tools(
+            self._toolset.mcp_connections, native, get_settings().mcp_timeout_seconds
+        )
+        if allowed is None:
+            return tools
+        selected = [item for item in tools if item.name in allowed]
+        if len(selected) != len(allowed):
+            raise ToolUnavailable("A selected agent tool is unavailable.")
+        return selected
 
     async def _execute(self, prompt: str, queue: asyncio.Queue[str | None]) -> None:
         started = monotonic()
@@ -124,15 +147,18 @@ class LangGraphChatAgent:
         finally:
             queue.put_nowait(None)
 
-    async def reply(self, prompt: str) -> str:
-        """Return only the final assistant message after all tool calls."""
+    async def reply(self, task: AgentTask) -> AgentOutcome:
+        """Return the final answer and a metadata-only trace of tool calls."""
         started = monotonic()
         try:
             with anyio.fail_after(self._limits.timeout_seconds):
-                tools = await self._load_tools()
-                graph = create_agent(self._model, tools)
+                tools = await self._load_tools(task.allowed_tools)
+                system_prompt = (
+                    f"You are the {task.role} agent in an AIMIx pipeline." if task.role else None
+                )
+                graph = create_agent(self._model, tools, system_prompt=system_prompt)
                 state = await graph.ainvoke(
-                    {"messages": [{"role": "user", "content": prompt}]},
+                    {"messages": [{"role": "user", "content": task.prompt}]},
                     config={"recursion_limit": self._limits.recursion_limit},
                 )
         except AGENT_FAILURES as cause:
@@ -147,7 +173,7 @@ class LangGraphChatAgent:
             len(tools),
             (monotonic() - started) * 1000,
         )
-        return message.text
+        return AgentOutcome(message.text, _tool_trace(messages))
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         queue: asyncio.Queue[str | None] = asyncio.Queue()

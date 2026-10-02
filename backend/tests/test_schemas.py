@@ -35,6 +35,19 @@ def test_a_step_can_be_titled_and_marked_as_an_output(default_model: str) -> Non
     assert (step.title, step.is_output) == ("Tweet", True)
 
 
+def test_agent_role_and_tool_policy_are_validated(default_model: str) -> None:
+    step = PipelineIn.model_validate(
+        pipeline(model=default_model, role="Researcher", allowed_tools=["docs_search"])
+    ).steps[0]
+    assert (step.role, step.allowed_tools) == ("Researcher", ["docs_search"])
+    with pytest.raises(ValidationError, match="unique"):
+        PipelineIn.model_validate(
+            pipeline(model=default_model, allowed_tools=["docs_search", "docs_search"])
+        )
+    with pytest.raises(ValidationError):
+        PipelineIn.model_validate(pipeline(model=default_model, allowed_tools=[" "]))
+
+
 def test_a_stage_must_be_positive(default_model: str) -> None:
     with pytest.raises(ValidationError):
         PipelineIn.model_validate(pipeline(model=default_model, stage=0))

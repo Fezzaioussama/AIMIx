@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from api.models import Pipeline, PipelineStep, User
 from api.repositories import users
 from api.security import hash_password
+from api.services.catalog import default_model_id
 from llm import exceptions as llm_exceptions
 from tests.conftest import (
     FailingProvider,
@@ -26,13 +27,18 @@ from tests.conftest import (
 PUBLIC_PATHS = {"/api/register", "/api/login", "/api/token/refresh"}
 
 
-def make_pipeline(session: Session, owner: User, name: str, model: str, steps: int = 1) -> Pipeline:
+def make_pipeline(session: Session, owner: User, name: str, steps: int = 1) -> Pipeline:
     pipeline = Pipeline(
         user=owner,
         name=name,
         steps=[
             PipelineStep(
-                order=n, stage=n, title="", is_output=False, prompt=f"s{n} {{input}}", model=model
+                order=n,
+                stage=n,
+                title="",
+                is_output=False,
+                prompt=f"s{n} {{input}}",
+                model=default_model_id(),
             )
             for n in range(1, steps + 1)
         ],
@@ -150,7 +156,7 @@ def test_creating_a_pipeline_assigns_the_caller_as_owner(
 def test_a_pipeline_can_be_read_replaced_patched_and_deleted(
     auth_client: TestClient, user: User, session: Session, default_model: str
 ) -> None:
-    pipeline = make_pipeline(session, user, "Draft", default_model, steps=2)
+    pipeline = make_pipeline(session, user, "Draft", steps=2)
     path = f"/api/pipelines/{pipeline.id}/"
 
     assert auth_client.get(path).json()["name"] == "Draft"
@@ -173,7 +179,7 @@ def test_a_pipeline_can_be_read_replaced_patched_and_deleted(
 def test_replacing_steps_can_reuse_their_orders(
     auth_client: TestClient, user: User, session: Session, default_model: str
 ) -> None:
-    pipeline = make_pipeline(session, user, "Reorder", default_model, steps=2)
+    pipeline = make_pipeline(session, user, "Reorder", steps=2)
     steps = [
         {"order": 2, "prompt": "b", "model": default_model},
         {"order": 1, "prompt": "a", "model": default_model},
@@ -192,11 +198,9 @@ def test_duplicate_step_orders_are_a_validation_error(
     assert "unique order" in response.json()["detail"]
 
 
-def test_pipelines_are_scoped_to_their_owner(
-    auth_client: TestClient, session: Session, default_model: str
-) -> None:
+def test_pipelines_are_scoped_to_their_owner(auth_client: TestClient, session: Session) -> None:
     stranger = users.create(session, "stranger", hash_password("x-pass-2891", 1))
-    theirs = make_pipeline(session, stranger, "Theirs", default_model)
+    theirs = make_pipeline(session, stranger, "Theirs")
 
     assert auth_client.get("/api/pipelines/").json() == []
 
@@ -207,19 +211,17 @@ def test_pipelines_are_scoped_to_their_owner(
     assert auth_client.delete(f"/api/pipelines/{theirs.id}/").status_code == 404
 
 
-def test_the_list_is_newest_first(
-    auth_client: TestClient, user: User, session: Session, default_model: str
-) -> None:
-    make_pipeline(session, user, "Older", default_model)
-    make_pipeline(session, user, "Newer", default_model)
+def test_the_list_is_newest_first(auth_client: TestClient, user: User, session: Session) -> None:
+    make_pipeline(session, user, "Older")
+    make_pipeline(session, user, "Newer")
     names = [row["name"] for row in auth_client.get("/api/pipelines/").json()]
     assert names == ["Newer", "Older"]
 
 
 def test_running_a_pipeline_returns_every_step(
-    auth_client: TestClient, user: User, session: Session, fake_provider, default_model: str
+    auth_client: TestClient, user: User, session: Session, fake_provider
 ) -> None:
-    pipeline = make_pipeline(session, user, "Runner", default_model, steps=2)
+    pipeline = make_pipeline(session, user, "Runner", steps=2)
 
     response = auth_client.post(f"/api/pipelines/{pipeline.id}/run", json={"input": "seed"})
 
@@ -244,9 +246,9 @@ def test_running_a_stepless_pipeline_is_a_validation_error(
 
 
 def test_provider_timeout_surfaces_as_504(
-    app: FastAPI, auth_client: TestClient, user: User, session: Session, default_model: str
+    app: FastAPI, auth_client: TestClient, user: User, session: Session
 ) -> None:
-    pipeline = make_pipeline(session, user, "Slow", default_model)
+    pipeline = make_pipeline(session, user, "Slow")
     use_pipeline_generator(app, FailingProvider(llm_exceptions.ProviderTimeout("slow")))
 
     response = auth_client.post(f"/api/pipelines/{pipeline.id}/run", json={"input": "go"})
@@ -260,7 +262,8 @@ def test_generate_returns_a_plan_and_the_catalogue(
     plan = json.dumps(
         {"name": "Generated", "steps": [{"order": 1, "prompt": "p", "model": default_model}]}
     )
-    use_provider(app, FakeProvider(reply=plan))
+    provider = FakeProvider(reply=plan)
+    use_provider(app, provider)
 
     response = auth_client.post("/api/pipelines/generate", json={"description": "do a thing"})
 
@@ -268,6 +271,7 @@ def test_generate_returns_a_plan_and_the_catalogue(
     body = response.json()
     assert body["generated_pipeline"]["name"] == "Generated"
     assert body["available_models"][0] == default_model
+    assert "list_pipelines" in provider.calls[0][0]
 
 
 def test_chat_streams_the_reply(app: FastAPI, auth_client: TestClient) -> None:

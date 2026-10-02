@@ -8,6 +8,7 @@ export const API = {
   refresh: '/api/token/refresh',
   chat: '/api/chat',
   models: '/api/models',
+  agentTools: '/api/agent-tools',
   pipelines: '/api/pipelines/',
   pipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/`,
   generatePipeline: '/api/pipelines/generate',

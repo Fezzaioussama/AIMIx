@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="LLM_TIMEOUT_SECONDS")
     agent_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="AGENT_TIMEOUT_SECONDS")
     agent_recursion_limit: int = Field(25, ge=2, validation_alias="AGENT_RECURSION_LIMIT")
+    agent_tool_description_max_chars: int = Field(
+        300, ge=1, validation_alias="AGENT_TOOL_DESCRIPTION_MAX_CHARS"
+    )
     mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
     # Upper bound on provider calls one pipeline run makes at once for a stage

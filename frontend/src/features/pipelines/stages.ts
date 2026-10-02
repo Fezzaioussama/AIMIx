@@ -46,6 +46,8 @@ export function insertStep(steps: PipelineStep[], options: InsertStepOptions): P
       is_output: isOutput,
       prompt: '',
       model,
+      role: '',
+      allowed_tools: null,
     },
   ]
     .sort((first, second) => first.stage - second.stage || first.order - second.order)

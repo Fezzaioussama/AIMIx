@@ -15,7 +15,9 @@ from api.main import create_app
 from api.models import Base, User
 from api.repositories import users
 from api.security import hash_password
+from api.services.agent_types import AgentOutcome, AgentTask
 from api.services.chat import ChatAgent
+from api.services.pipelines import StepGenerator
 from config.settings import Settings, pin_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
@@ -62,6 +64,9 @@ class FakeProvider:
         self.calls.append((prompt, model))
         return self.reply
 
+    def execute(self, task: AgentTask) -> AgentOutcome:
+        return AgentOutcome(self.generate(task.prompt, task.model), [])
+
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]:
         self.calls.append((prompt, model))
         yield from self.chunks
@@ -77,6 +82,9 @@ class FailingProvider:
 
     def generate(self, prompt: str, model: str | None = None) -> str:
         raise self.error
+
+    def execute(self, task: AgentTask) -> AgentOutcome:
+        return AgentOutcome(self.generate(task.prompt, task.model), [])
 
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]:
         raise self.error
@@ -103,7 +111,7 @@ def use_provider(app: FastAPI, provider: LLMProvider) -> None:
     app.dependency_overrides[provider_factory] = lambda: lambda: provider
 
 
-def use_pipeline_generator(app: FastAPI, generator: LLMProvider) -> None:
+def use_pipeline_generator(app: FastAPI, generator: StepGenerator) -> None:
     app.dependency_overrides[pipeline_agent_factory] = lambda: lambda: generator
 
 

@@ -7,6 +7,7 @@ graph LR
     Browser["React SPA<br/>Vite :4200"] -->|"/api/* + Bearer JWT<br/>(proxied in dev)"| API["FastAPI + Uvicorn<br/>:8000"]
     API -->|SQLAlchemy| DB[("SQLite")]
     API -->|"HTTPS, API key,<br/>LLM_TIMEOUT_SECONDS"| LLM["OpenRouter / TogetherAI"]
+    API -->|"configured MCP tools<br/>MCP_TIMEOUT_SECONDS"| MCP["MCP servers"]
 ```
 
 The backend is a **chokepoint**: it holds the provider API key (the browser never
@@ -76,6 +77,7 @@ sequenceDiagram
     participant R as repositories/pipelines
     participant S as services/pipelines.run
     participant A as services/pipeline_agents
+    participant T as services/tool_catalog
     participant M as configured MCP servers
     UI->>C: runPipeline(id, input) (timeout 1 h)
     C->>E: POST + Bearer token
@@ -83,22 +85,29 @@ sequenceDiagram
     E->>R: get_owned(user, id)
     R-->>E: Pipeline or raise NotFound (404)
     E->>S: ensure_runnable() then run(pipeline, agent generator, input)
-    loop each step, ordered by `order`
+    loop each stage in order; its steps in parallel
         S->>S: step_prompt(template, current)
-        S->>A: generate(prompt, step.model)
-        A->>M: discover and call configured tools when selected
-        A-->>S: final agent text, or DomainError
-        S->>S: current = output
+        S->>A: execute(prompt, model, role, allowed_tools)
+        A->>T: discover selected tools as needed
+        T->>M: discover configured MCP tools
+        A->>M: call MCP tool if the agent selects it
+        A-->>S: final text and tool name/status trace, or DomainError
+        S->>S: merge stage outputs into next input
     end
     S-->>E: RunResult dataclass
     E-->>C: 200 RunResponse
     C-->>UI: PipelineRunResponse
 ```
 
-The agent uses its selected model, the signed-in user's pipeline list and
-inspect tools, and all configured MCP tools. Model, tool, and timeout failures
-stop the whole run; there are no partial results. The planner still uses the
-direct provider adapter.
+Each agent uses its selected model and optional role. `allowed_tools: null`
+grants the signed-in user's pipeline list and inspect tools plus all configured
+MCP tools; `[]` grants none; an explicit list grants only named tools. A missing
+selected tool raises `tool_unavailable`. The response contains tool call names
+and success/error statuses, without arguments or tool output. Model, tool, and
+timeout failures stop the whole run; no partial result is returned.
+
+The stage loop still runs in the HTTP request. There is no durable run record,
+LangGraph checkpoint for the pipeline, or approval flow for tool actions.
 
 ### 2. Stream chat — `POST /api/chat`
 
@@ -125,15 +134,19 @@ direct provider adapter.
 
 1. `GenerateRequest` validates `description` and an optional
    `planner_model` (defaults to the configured default model).
-2. `services/pipelines.generate` builds the planner prompt with
-   `prompts.pipeline_generation_prompt` (it lists the allowed model ids) and
-   calls the provider.
+2. `services/tool_catalog` discovers the native pipeline tools and the
+   configured MCP tools. `services/pipelines.generate` builds a prompt with
+   their names and descriptions plus the allowed model ids, then calls the
+   direct provider adapter.
 3. `parse_plan` extracts the first `{...}` block, parses JSON, requires `name`
-   and a non-empty `steps` list, fills a missing `order`, and **replaces any
-   model id not in the catalogue with the default model**. Unusable output →
-   `upstream_response_invalid` (502).
+   and a non-empty `steps` list, fills a missing `order`, replaces unknown model
+   ids with the default, and removes unavailable names from explicit tool
+   allowlists. Unusable output → `upstream_response_invalid` (502).
 4. The endpoint returns the plan **without saving it**. The user edits it in
    `AutoPipelinePage` and saves through the normal `POST /api/pipelines/`.
+
+`GET /api/agent-tools` uses the same catalogue and returns each tool's exact
+name, description, and `AIMIx` or `MCP` source for the builder.
 
 ## Error flow
 

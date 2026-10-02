@@ -56,8 +56,9 @@ and may take as long as a normal pipeline run. Chat history is not persisted.
 
 Chat uses a LangGraph agent with the same `LLM_PROVIDER` and default model as
 pipelines. Each pipeline step uses its selected model. Set `MCP_SERVERS` in
-`backend/.env` to a JSON object. Every tool advertised by every configured
-server is available to authenticated chat users and pipeline steps.
+`backend/.env` to a JSON object. Chat can use every tool advertised by the
+configured servers. Each pipeline step can use all tools, no tools, or a
+selected set according to its `allowed_tools` setting.
 No server is configured by default. The connectors in a coding assistant or IDE
 are separate and do not automatically become AIMIx server tools.
 
@@ -83,6 +84,14 @@ credentials are shared by the backend. MCP discovery and calls have an explicit
 `MCP_TIMEOUT_SECONDS` limit (30 seconds by default), and the full agent has
 `AGENT_TIMEOUT_SECONDS` (one hour) and `AGENT_RECURSION_LIMIT` (25). There are
 no automatic retries. The selected model must support tool calling.
+
+After starting the backend, `GET /api/agent-tools` lists each pipeline tool's
+name, description, and source (`AIMIx` or `MCP`). The builder uses this list to
+offer tool choices. Give a step an **Agent role** and choose **All tools**, **No
+tools**, or exact named tools. All tools is the default for older pipelines;
+the two native pipeline tools are `list_pipelines` and `inspect_pipeline`.
+An explicit tool list fails at run time if one of its names is no longer
+available. Tool actions run without an approval prompt.
 
 ### Coming from the Django version
 
@@ -112,17 +121,20 @@ Open <http://localhost:4200>, register an account, sign in.
 - Stop everything with `make kill-all`.
 
 Run one side only with `make run-backend` or `make run-frontend`.
+The backend start target applies pending database migrations before launching the API.
 
 ## Try each feature
 
 1. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and configured MCP tools.
 2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
-   steps or insert a new stage, then edit each step in the sidebar. Mark every
-   deliverable as **Output**, write prompts using `{input}`, **Save**, then **Run**
-   with an input. Run results group deliverables by stage.
+   steps or insert a new stage. Give each step a role, prompt, model, and tool
+   access; mark deliverables as **Output**. Write prompts using `{input}`,
+   **Save**, then **Run** with an input. Run results group deliverables by stage
+   and show each called tool's name and success/error status.
 3. **Auto Pipeline** (`/auto-pipeline`) — describe a workflow in plain language;
-   name the deliverables you want. Review the generated stages, add more outputs
-   where needed, fill in their prompts, then save and open the builder.
+   name the deliverables you want. The planner sees the available tools and
+   proposes a role and tool list for each step. Review the generated stages and
+   tool choices, then save and open the builder.
 
 ## Talking to the API directly
 

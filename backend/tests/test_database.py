@@ -11,7 +11,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from api.exceptions import ValidationFailed
@@ -22,12 +22,17 @@ from tests.test_security import DJANGO_HASH, DJANGO_PASSWORD
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
-def test_migrations_build_exactly_the_models_schema(tmp_path: Path) -> None:
-    """Like `makemigrations --check`: a model change without a migration fails here."""
-    url = f"sqlite:///{tmp_path / 'migrated.sqlite3'}"
+def migration_config(url: str) -> Config:
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", url)
     config.attributes["configure_logger"] = False
+    return config
+
+
+def test_migrations_build_exactly_the_models_schema(tmp_path: Path) -> None:
+    """Like `makemigrations --check`: a model change without a migration fails here."""
+    url = f"sqlite:///{tmp_path / 'migrated.sqlite3'}"
+    config = migration_config(url)
     command.upgrade(config, "head")
 
     engine = create_engine(url)
@@ -35,6 +40,31 @@ def test_migrations_build_exactly_the_models_schema(tmp_path: Path) -> None:
         differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
     engine.dispose()
     assert differences == []
+
+
+def test_agent_step_migration_preserves_old_pipeline_steps(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'old.sqlite3'}"
+    config = migration_config(url)
+    command.upgrade(config, "0001")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO users VALUES (1, 'owner', 'hash', CURRENT_TIMESTAMP)"))
+        connection.execute(text("INSERT INTO pipelines VALUES (1, 'Old', 1, CURRENT_TIMESTAMP)"))
+        connection.execute(
+            text(
+                "INSERT INTO pipeline_steps VALUES "
+                "(1, 1, 1, 1, 'Step', 1, 'Do {input}', 'model/id')"
+            )
+        )
+    engine.dispose()
+    command.upgrade(config, "head")
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        role, allowed = connection.execute(
+            text("SELECT role, allowed_tools FROM pipeline_steps WHERE id = 1")
+        ).one()
+    engine.dispose()
+    assert (role, allowed) == ("", None)
 
 
 def legacy_database(path: Path, *, with_stage_columns: bool = True) -> Path:

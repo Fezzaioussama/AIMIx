@@ -49,7 +49,7 @@ Goal: `POST /api/pipelines/<id>/duplicate` returns a copy of an owned pipeline.
 
 1. **Repository** — `api/repositories/pipelines.py`:
    ```python
-   COPIED_FIELDS = ("order", "stage", "title", "is_output", "prompt", "model")
+   COPIED_FIELDS = ("order", "stage", "title", "role", "allowed_tools", "is_output", "prompt", "model")
 
 
    def duplicate(session: Session, pipeline: Pipeline) -> Pipeline:
@@ -92,8 +92,10 @@ disagree. If the field is exposed, update the schema in `api/schemas/`,
 
 - **Never call a real provider.** Use the `fake_provider` fixture or
   `use_provider(app, FailingProvider(...))` (both override the provider
-  dependency), or pass `FakeProvider` / `FailingProvider` directly to a service
-  function. The test settings leave every provider key empty.
+  dependency). For pipeline runs, override the step agent dependency with
+  `use_pipeline_generator(app, FakeProvider())`, or pass a fake implementing
+  `execute(AgentTask) -> AgentOutcome` to the service. The test settings leave
+  every provider key empty.
 - Test the failure path too: e.g. `FailingProvider(ProviderTimeout("..."))` →
   expect `504` and `{"error": "provider_timeout", ...}`.
 - Services are plain functions: test them without HTTP where possible
@@ -118,6 +120,7 @@ def test_run_returns_each_step(auth_client, fake_provider, session, user, defaul
 
     assert response.status_code == 200
     assert response.json()["final_output"] == "fake reply"
+    assert response.json()["intermediate_results"][0]["tool_calls"] == []
     assert fake_provider.calls == [("A x", default_model)]
 ```
 

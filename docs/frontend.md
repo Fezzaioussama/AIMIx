@@ -11,7 +11,7 @@ frontend/src/
   core/             # cross-feature, the only layer that talks to the backend
     api/            # client.ts, endpoints.ts, types.ts, one module per resource
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
-    hooks/          # useModels.ts
+    hooks/          # useModels.ts, useAgentTools.ts
     markdown/       # renderMarkdown.ts
   features/
     auth/           # LoginPage, RegisterPage, AuthCard
@@ -39,11 +39,12 @@ resolves the session before the first render without a redirect flash.
 | File | Contents |
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
-| `types.ts` | Payload interfaces: `AuthTokens`, `Pipeline`, `PipelineStep`, `StepResult`, `PipelineRunResponse`, `GeneratedPipelineResponse`, `ModelsResponse`. |
+| `types.ts` | Payload interfaces: auth, pipelines, agent tools, and run results with tool call metadata. |
 | `client.ts` | `request<T>()` for JSON and `streamText()` for streaming; `ApiError`. |
 | `auth.ts` | `login`, `register` |
 | `chat.ts` | `streamChatReply` |
 | `models.ts` | `fetchModels` |
+| `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
 
 ### What `client.ts` does for every call
@@ -75,6 +76,12 @@ Branch on `error.code`, never on `error.message`.
 Loads `GET /api/models` once and returns `{ models, defaultModel, error }`.
 Both pipeline screens use it; the frontend never hard-codes a model list.
 
+## `core/hooks/useAgentTools.ts`
+
+Loads `GET /api/agent-tools` for the builder's tool picker. The catalogue
+contains exact names, descriptions, and `AIMIx` or `MCP` sources; pipeline
+steps store names rather than copying tool definitions.
+
 ## `core/markdown/renderMarkdown.ts`
 
 `marked` → HTML → `DOMPurify.sanitize`. Model output is untrusted, so any
@@ -98,14 +105,15 @@ Both pipeline screens use it; the frontend never hard-codes a model list.
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit → save |
 | `useAutoPipeline.ts` | Generation, editing, adding or removing output steps and saving the proposed workflow (later saves update it) |
-| `StepEditor.tsx` | Builder sidebar: each step's stage, title, role, model and prompt |
+| `StepEditor.tsx` | Builder sidebar: each step's stage, title, agent role, tool access, model and prompt |
+| `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise) |
 | `StepRoleFields.tsx` | A step's title and its Intermediate / Output toggle, shared by both editors |
 | `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
 | `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; nodes show title, model, status and an Output badge; clicking a finished node opens its output |
 | `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`) and the `OutputTarget` type |
 | `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds); deliverables are grouped by stage |
 | `StepHeading.tsx` | Title row of a step's output card (name, model, Output badge) |
-| `RunResults.tsx` | Every step's output, grouped by stage |
+| `RunResults.tsx`, `ToolCallTrace.tsx` | Every step's output grouped by stage, with called tool names and success/error statuses |
 | `OutputCard.tsx` | One output: rendered/raw toggle, copy, the input it saw, folding for long text |
 | `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
 | `stages.ts` | `groupByStage`, `nextStage`, `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |

@@ -37,9 +37,10 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
 | `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
-| `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Chat run limit (3600 seconds) / graph step limit (25) |
+| `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Per chat or pipeline step agent limit (3600 seconds) / graph step limit (25) |
+| `agent_tool_description_max_chars` | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | Maximum tool description length in the catalogue and planner prompt (300) |
 | `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds) / configured server JSON |
-| `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Provider calls one parallel stage makes at once (4) |
+| `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
@@ -66,7 +67,9 @@ refresh) are open. Every router in `PROTECTED_ROUTERS` is mounted behind the
 | `AppSettings` | The `Settings` |
 | `Signer` | A `TokenSigner` configured from the settings |
 | `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` |
-| `Providers` | A factory for the configured `LLMProvider` used by pipelines |
+| `Providers` | A factory for the configured `LLMProvider` used by planning |
+| `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context |
+| `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
 
 Tests replace any of these with `app.dependency_overrides`.
@@ -77,12 +80,15 @@ Tests replace any of these with `app.dependency_overrides`.
 |---|---|---|
 | `User` (`users`) | `username` (unique), `password_hash`, `created_at` | — |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at` | `steps` load ordered by `(stage, order)` |
-| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `is_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
+| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
 
 `PipelineStep.model` is a plain string column; the request schemas check it
-against the catalogue. `db.Database` owns the engine and session factory. SQLite
-connections are allowed across threads (endpoints run in a threadpool) and have
-foreign keys switched on; `sqlite://` uses one shared in-memory connection.
+against the catalogue. `role` defaults to `""`; `allowed_tools` is JSON with
+`null` for all tools, `[]` for none, or exact tool names. The migration gives
+existing steps the original all-tools behavior. `db.Database` owns the engine
+and session factory. SQLite connections are allowed across threads (endpoints
+run in a threadpool) and have foreign keys switched on; `sqlite://` uses one
+shared in-memory connection.
 
 ### `endpoints/` and `schemas/`
 
@@ -91,12 +97,15 @@ foreign keys switched on; `sqlite://` uses one shared in-memory connection.
 | `auth.py` | `POST /register`, `POST /login`, `POST /token/refresh` (public); `GET /protected` | `auth.py`: `RegisterRequest`, `LoginRequest`, `TokenPairResponse`, `RefreshRequest`, `AccessTokenResponse`, `WhoAmIResponse` |
 | `chat.py` | `POST /chat` (streams `text/plain`) | `chat.py`: `ChatRequest` (non-blank `prompt`) |
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
+| `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |
 | `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
 empty) and `ModelId` (must be in the active catalogue). A step without `stage`
 gets `stage = order`. A pipeline needs at least one step, and step orders must
-be unique.
+be unique. Step `role` is optional (up to 100 characters); `allowed_tools` is
+optional and, when explicit, contains unique, non-blank names. Tool availability
+is checked when the agent runs.
 
 ### `repositories/`
 
@@ -112,12 +121,15 @@ Each write commits its own transaction.
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | `run` (stages in order, parallel steps in a thread pool, returns `RunResult`), `generate` + `parse_plan` (planner), `ensure_runnable`, `output_orders`. Logs `pipeline.run` with id, stage and step counts, duration. |
+| `pipelines.py` | `run` (stages in order, parallel agents in a thread pool, returns `RunResult` with tool call metadata), `generate` + `parse_plan` (tool-aware planner), `ensure_runnable`, `output_orders`. Logs `pipeline.run` with id, stage and step counts, duration. |
 | `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`. |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
-| `agent.py` | Builds the LangGraph agent, combines native and MCP tools, and streams assistant text. |
+| `agent.py` | Builds the LangGraph agent, filters tools by step policy, streams chat text, and returns a pipeline step's final text plus tool call names/statuses. |
+| `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
 | `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. |
 | `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
+| `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
+| `pipeline_agents.py` | Creates a user-bound LangGraph agent for each pipeline step. |
 | `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
 | `llm.py` | **The only reader of provider settings.** `provider_config()`, `get_provider()` and `get_agent_model()`. |

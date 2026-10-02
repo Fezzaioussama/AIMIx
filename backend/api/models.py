@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, MetaData, String, Text, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, MetaData, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 STEP_TITLE_MAX_LENGTH = 100
+STEP_ROLE_MAX_LENGTH = 100
 USERNAME_MAX_LENGTH = 150
 PIPELINE_NAME_MAX_LENGTH = 255
 MODEL_ID_MAX_LENGTH = 200
@@ -84,6 +85,8 @@ class PipelineStep(Base):
     order: Mapped[int]
     stage: Mapped[int]
     title: Mapped[str] = mapped_column(String(STEP_TITLE_MAX_LENGTH), default="")
+    role: Mapped[str] = mapped_column(String(STEP_ROLE_MAX_LENGTH), default="")
+    allowed_tools: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     is_output: Mapped[bool] = mapped_column(default=False)
     prompt: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH))

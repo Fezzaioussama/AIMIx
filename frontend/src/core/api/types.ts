@@ -19,6 +19,16 @@ export interface PipelineStep {
   is_output: boolean;
   prompt: string;
   model: string;
+  /** Agent identity and specialization; empty means the default agent role. */
+  role: string;
+  /** null grants all configured tools; an empty list grants none. */
+  allowed_tools: string[] | null;
+}
+
+export interface AgentTool {
+  name: string;
+  description: string;
+  source: string;
 }
 
 export interface Pipeline {
@@ -36,6 +46,7 @@ export interface StepResult {
   output: string;
   /** Decided by the backend: marked steps, or the last stage if none are marked. */
   is_output: boolean;
+  tool_calls: { name: string; status: 'success' | 'error' }[];
 }
 
 export interface PipelineRunResponse {

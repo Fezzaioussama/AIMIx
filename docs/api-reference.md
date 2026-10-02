@@ -65,6 +65,27 @@ only values accepted for a step's `model` or a `planner_model`.
 
 ---
 
+## Agent tools
+
+### `GET /agent-tools`
+
+`200` → an array of tools currently available to pipeline steps:
+
+```json
+[
+  { "name": "list_pipelines", "description": "List your saved AIMIx pipelines...", "source": "AIMIx" },
+  { "name": "inspect_pipeline", "description": "Inspect one of your saved AIMIx pipelines...", "source": "AIMIx" }
+]
+```
+
+Configured MCP tools also appear with `source: "MCP"` and names prefixed by
+their server name. Use the exact `name` values in a step's `allowed_tools`.
+Descriptions may be shortened by `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. If a
+configured MCP server is unavailable, discovery returns `502 tool_unavailable`.
+Pipeline steps cannot call the chat-only `run_pipeline` function.
+
+---
+
 ## Chat
 
 ### `POST /chat`
@@ -98,8 +119,8 @@ A pipeline object:
   "user": 1,
   "created_at": "2026-09-27T10:00:00Z",
   "steps": [
-    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "is_output": false, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
-    { "id": 13, "order": 2, "stage": 2, "title": "French summary", "is_output": true, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
+    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
+    { "id": 13, "order": 2, "stage": 2, "title": "French summary", "role": "Translator", "allowed_tools": null, "is_output": true, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
   ]
 }
 ```
@@ -113,12 +134,21 @@ run. Stages run one after another in ascending order; **steps that share a stage
 run in parallel** on the same input. Giving every step its own stage is a plain
 sequential chain.
 
-On a run, each step is a LangGraph agent using its selected `model`. It can call
-`list_pipelines()` and `inspect_pipeline(pipeline_id)` for the signed-in user,
-plus every tool from every configured MCP server. A step cannot start another
-pipeline run. Tools are discovered for each step run; if an MCP server is
-unavailable, the pipeline stops with `502 tool_unavailable`. Configure servers
-through `MCP_SERVERS`; without configured servers, native tools remain available.
+On a run, each step is a LangGraph agent using its selected `model`. Its optional
+`role` (up to 100 characters, default `""`) gives the agent a specialty.
+`allowed_tools` controls its tool access:
+
+| Value | Access |
+|---|---|
+| `null` or omitted | All currently configured pipeline tools (the default) |
+| `[]` | No tools |
+| `["list_pipelines", "..."]` | Only the exact named tools returned by `GET /agent-tools` |
+
+Names in an explicit list must be non-blank and unique. If a selected tool is
+no longer available when the step runs, the run stops with `502 tool_unavailable`.
+The native pipeline tools are scoped to the signed-in user; MCP servers come
+from `MCP_SERVERS`. A step cannot start another pipeline run. Existing steps
+receive `role: ""` and `allowed_tools: null` when the migration is applied.
 
 `title` (optional, ≤ 100 characters) names the step in the UI. `is_output`
 (optional, default `false`) marks a step whose result is a **pipeline output**
@@ -161,8 +191,8 @@ deleted and recreated** in one transaction.
   "pipeline_name": "Summarise then translate",
   "final_output": "Résumé ...",
   "intermediate_results": [
-    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ...", "is_output": false },
-    { "step_order": 2, "stage": 2, "title": "French summary", "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ...", "is_output": true }
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ...", "is_output": false, "tool_calls": [] },
+    { "step_order": 2, "stage": 2, "title": "French summary", "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ...", "is_output": true, "tool_calls": [{ "name": "list_pipelines", "status": "success" }] }
   ]
 }
 ```
@@ -170,6 +200,8 @@ deleted and recreated** in one transaction.
 `intermediate_results` holds every step's output, ordered by stage then `order`;
 `is_output` is `true` on the results that are the pipeline's outputs (the marked
 steps, or the last stage when none is marked).
+`tool_calls` records only each called tool's name and `success`/`error` status;
+it does not include arguments, tool results, or a durable execution trace.
 Each step's prompt has `{input}` replaced by its stage's input; if the template
 has no `{input}`, the value is appended as `"\n\nInput: <value>"`.
 
@@ -185,7 +217,8 @@ Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
 
 The call is synchronous: it takes as long as its stages combined, and a parallel
 stage takes as long as its slowest step. The frontend waits up to one hour
-(`GENERATION_TIMEOUT_MS`).
+(`GENERATION_TIMEOUT_MS`). Runs are not persisted or resumable and tool actions
+have no approval flow.
 
 ### `POST /pipelines/generate`
 
@@ -201,18 +234,22 @@ stage takes as long as its slowest step. The frontend waits up to one hour
   "generated_pipeline": {
     "name": "Review responder",
     "steps": [
-      { "order": 1, "stage": 1, "title": "Pros", "is_output": false, "prompt": "List the pros in: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 2, "stage": 1, "title": "Cons", "is_output": false, "prompt": "List the cons in: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 3, "stage": 2, "title": "Reply", "is_output": true, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
+      { "order": 1, "stage": 1, "title": "Pros", "role": "Analyst", "allowed_tools": [], "is_output": false, "prompt": "List the pros in: {input}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 2, "stage": 1, "title": "Cons", "role": "Analyst", "allowed_tools": [], "is_output": false, "prompt": "List the cons in: {input}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 3, "stage": 2, "title": "Reply", "role": "Writer", "allowed_tools": [], "is_output": true, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
     ]
   },
   "available_models": ["deepseek/deepseek-v4-flash", "..."]
 }
 ```
 
-Nothing is saved. The planner decides which steps can run in parallel by giving
-them the same `stage`. Unknown model ids in the plan are replaced by the
-default, `order` is renumbered 1..N, a missing or invalid `stage` falls back
-to the step's position (sequential), a missing `title` becomes `""`, and any
-`is_output` other than `true` becomes `false`.
+Nothing is saved. Before planning, AIMIx discovers the same pipeline tool
+catalogue as `GET /agent-tools` and gives its names and descriptions to the
+planner. The planner chooses roles and tool allowlists for its steps. Unknown
+tool names are removed from explicit allowlists; repeated names are deduplicated.
+If the planner omits an allowlist or does not return a list, it becomes `null`
+(all tools). Unknown model ids are replaced by the default, `order` is
+renumbered 1..N, a missing or invalid `stage` falls back to the step's position
+(sequential), a missing `title` or `role` becomes `""`, and any `is_output`
+other than `true` becomes `false`.
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.

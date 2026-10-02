@@ -27,6 +27,8 @@ def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
                 "title": step.title,
                 "prompt": step.prompt,
                 "model": step.model,
+                "role": step.role,
+                "allowed_tools": step.allowed_tools,
                 "is_output": step.is_output,
             }
             for step in pipeline.steps
@@ -34,14 +36,8 @@ def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
     }
 
 
-def built_in_tools(
-    database: Database,
-    user: User,
-    generator_factory: Callable[[], pipeline_service.StepGenerator],
-    *,
-    include_run: bool = True,
-) -> list[BaseTool]:
-    """Bind pipeline functions to the authenticated user for one agent run."""
+def read_only_tools(database: Database, user: User) -> list[BaseTool]:
+    """Bind native inspection functions to one authenticated user."""
 
     @tool
     def list_pipelines() -> list[dict[str, int | str]]:
@@ -58,6 +54,21 @@ def built_in_tools(
         with database.session() as session:
             return _pipeline_details(repository.get_owned(session, user, pipeline_id))
 
+    return [list_pipelines, inspect_pipeline]
+
+
+def built_in_tools(
+    database: Database,
+    user: User,
+    generator_factory: Callable[[], pipeline_service.StepGenerator],
+    *,
+    include_run: bool = True,
+) -> list[BaseTool]:
+    """Bind pipeline functions to the authenticated user for one agent run."""
+    native = read_only_tools(database, user)
+    if not include_run:
+        return native
+
     @tool
     def run_pipeline(pipeline_id: int, input_text: str) -> dict[str, Any]:
         """Run one of your saved AIMIx pipelines on input_text and return its step results."""
@@ -68,5 +79,4 @@ def built_in_tools(
             pipeline_service.ensure_runnable(pipeline)
         return asdict(pipeline_service.run(pipeline, generator_factory(), input_text))
 
-    tools = [list_pipelines, inspect_pipeline]
-    return [*tools, run_pipeline] if include_run else tools
+    return [*native, run_pipeline]

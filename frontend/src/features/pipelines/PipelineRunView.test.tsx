@@ -14,6 +14,8 @@ function step(order: number, stage: number, title: string, isOutput: boolean): P
     is_output: isOutput,
     prompt: `${title} {input}`,
     model: 'v/writer',
+    role: '',
+    allowed_tools: null,
   };
 }
 
@@ -26,6 +28,7 @@ function result(source: PipelineStep, output: string): StepResult {
     input_used: 'bottle',
     output,
     is_output: source.is_output,
+    tool_calls: [],
   };
 }
 
@@ -98,6 +101,20 @@ describe('PipelineRunView', () => {
     expect(screen.getByRole('region', { name: 'Stage 2 outputs' })).toContainElement(
       screen.getByText('Email text'),
     );
+  });
+
+  it('shows tool call names and outcomes in All steps', async () => {
+    const traced = result(steps[0], 'Facts text');
+    traced.tool_calls = [
+      { name: 'mcp_search', status: 'success' },
+      { name: 'mcp_fetch', status: 'error' },
+    ];
+    renderView({ results: [traced, ...results.slice(1)] });
+    await userEvent.click(screen.getByRole('tab', { name: /All steps/ }));
+    await userEvent.click(screen.getByText('Tools used (2)'));
+    expect(screen.getByText('mcp_search')).toBeInTheDocument();
+    expect(screen.getByText('mcp_fetch')).toBeInTheDocument();
+    expect(screen.getByText('Error')).toBeInTheDocument();
   });
 
   it('lets an unrun diagram add parallel work and a following stage', async () => {

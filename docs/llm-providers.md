@@ -82,7 +82,7 @@ provider name to its catalogue.
 
 It is used in three places, which is why they can never disagree:
 
-1. `PipelineStepSerializer` and `GeneratePipelineSerializer` reject unknown ids.
+1. `PipelineStepIn` and `GenerateRequest` reject unknown ids.
 2. `GET /api/models` serves the list to the frontend (`useModels`).
 3. The planner prompt lists the allowed ids, and `parse_plan` replaces any
    other id with the default.

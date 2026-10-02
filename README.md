@@ -1,9 +1,11 @@
 # AIMIx
 
-> AI pipeline builder — chain multi-step LLM workflows.
+> AI pipeline builder — coordinate agents across workflow stages.
 
-AIMIx lets you define a sequence of steps, each with its own model and prompt,
-and run them as a chain: the output of step 1 becomes the input to step 2.
+AIMIx lets you build pipelines of agents, each with a role, model, prompt, and
+tool policy. Stages run in order; agents in the same stage run in parallel, and
+their results feed the next stage. Agents can use built-in pipeline functions
+and configured MCP tools.
 
 A FastAPI backend owns pipelines, auth, and every outbound AI call; a React
 frontend provides the builder UI.
@@ -14,7 +16,7 @@ frontend provides the builder UI.
 |---|---|
 | Backend | FastAPI + Uvicorn, SQLAlchemy 2.0 + Alembic, pydantic-settings, PyJWT |
 | Frontend | React 19 + Vite, React Router, Tailwind CSS 4, Marked |
-| LLM | TogetherAI via the Together Python SDK |
+| Agents and LLMs | LangGraph with OpenRouter (default) or TogetherAI models; MCP tools |
 | Database | SQLite |
 | Tooling | `uv` (Python), npm |
 
@@ -44,8 +46,8 @@ provider layer, the full API reference, a development guide, and known issues.
 | Command | Does |
 |---|---|
 | `make install` | Python venv via `uv` + npm deps for the frontend |
-| `make run-aimix` | Run backend and frontend concurrently |
-| `make run-backend` / `run-frontend` | Run one service |
+| `make run-aimix` | Apply pending migrations, then run backend and frontend concurrently |
+| `make run-backend` / `run-frontend` | Run one service; backend applies pending migrations first |
 | `make run-llm` | Probe the configured provider (`python -m api.cli llm-probe`) |
 | `make migrate` / `make create-user USERNAME=…` | Apply Alembic migrations · create an account |
 | `make import-django-db` | One-off: copy data from the old Django `db.sqlite3` |
@@ -65,16 +67,16 @@ graph LR
     BE -->|"configured tools"| MCP["MCP servers"]
 ```
 
-The backend is a deliberate chokepoint: it holds the provider key, so the key
-never reaches the browser. Provider calls use `LLM_TIMEOUT_SECONDS`; MCP calls
-use `MCP_TIMEOUT_SECONDS`, and a chat run has `AGENT_TIMEOUT_SECONDS`.
+The backend holds provider and MCP credentials, so they never reach the browser.
+Provider calls use `LLM_TIMEOUT_SECONDS`; MCP calls use `MCP_TIMEOUT_SECONDS`,
+and each chat or pipeline agent has `AGENT_TIMEOUT_SECONDS`.
 
 ### Pipeline execution
 
 `api/services/pipelines.py` → `run` is the core loop. On
 `POST /api/pipelines/<id>/run` with `{"input": "..."}`:
 
-1. The endpoint validates the body with `RunPipelineSerializer`.
+1. The endpoint validates the body with `RunRequest`.
 2. `repositories/pipelines.get_owned` fetches the pipeline **scoped to the
    caller**, so someone else's pipeline is indistinguishable from a missing one.
 3. The service groups `PipelineStep` records by `stage` and runs the stages in
@@ -82,11 +84,16 @@ use `MCP_TIMEOUT_SECONDS`, and a chat run has `AGENT_TIMEOUT_SECONDS`.
    `PIPELINE_MAX_PARALLEL_STEPS` at once) on the same input, which is
    substituted into each prompt — replacing `{input}` where present, otherwise
    appending it.
-4. Each step calls the configured provider, bounded by `LLM_TIMEOUT_SECONDS`. A
-   provider failure raises a domain error, never an empty string.
+4. Each step runs a LangGraph agent with its selected model and role. Its
+   `allowed_tools` policy grants all configured tools (`null`), none (`[]`), or
+   named tools from `GET /api/agent-tools`. The agent may call tools before
+   producing its final text.
 5. A stage's output becomes the next stage's input; parallel outputs are joined
-   under a heading per step. The final output plus every step's result is
-   returned for display, grouped by stage.
+   under a heading per step. The response includes every step's output and a
+   metadata-only list of tool calls (name and success/error status).
+
+Runs still execute synchronously in the HTTP request. They have no persisted
+run history, resumable checkpoint, or approval flow for tool actions.
 
 ### Chat streaming
 
@@ -161,7 +168,7 @@ input, while every HTTP call, the bearer token and all payload types live in
 | Model | Purpose |
 |---|---|
 | `Pipeline` | Named pipeline owned by a user |
-| `PipelineStep` | `order`, `prompt` (with `{input}` placeholder), `model` |
+| `PipelineStep` | Stage/order, prompt, model, role, `allowed_tools` policy, output flag |
 
 ### API
 
@@ -172,6 +179,7 @@ All routes under `/api`.
 | Auth | `POST /register`, `POST /login`, `POST /token/refresh`, `GET /protected` |
 | Chat | `POST /chat` (streaming) |
 | Models | `GET /models` — the model ids the pipeline services accept |
+| Agent tools | `GET /agent-tools` — available pipeline tools and their sources |
 | Pipelines | `GET\|POST /pipelines/`, `GET\|PUT\|PATCH\|DELETE /pipelines/<id>/`, `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
 
 Everything except `POST /register`, `POST /login` and `POST /token/refresh`
@@ -217,10 +225,11 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `TOGAI_API_KEY` | For TogetherAI | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
-| `MCP_SERVERS` | No | JSON object of MCP servers whose tools the chat agent can use (default `{}`) |
+| `MCP_SERVERS` | No | JSON object of MCP servers available to chat and pipeline agents (default `{}`) |
 | `MCP_TIMEOUT_SECONDS` | No | Bounds MCP discovery and tool calls (default 30) |
-| `AGENT_TIMEOUT_SECONDS` | No | Bounds one chat agent run (default 3600) |
+| `AGENT_TIMEOUT_SECONDS` | No | Bounds one chat or pipeline step agent run (default 3600) |
 | `AGENT_RECURSION_LIMIT` | No | Limits agent model/tool steps (default 25) |
+| `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | No | Maximum tool description length in the catalogue and planner prompt (default 300) |
 
 See [`backend/.env.example`](backend/.env.example) for the full list.
 

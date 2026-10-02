@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
-from api.models import PIPELINE_NAME_MAX_LENGTH, STEP_TITLE_MAX_LENGTH
+from api.models import PIPELINE_NAME_MAX_LENGTH, STEP_ROLE_MAX_LENGTH, STEP_TITLE_MAX_LENGTH
 from api.schemas.common import ModelId, NonBlank
 from api.services.catalog import default_model_id
 
@@ -18,9 +26,18 @@ class PipelineStepIn(BaseModel):
     # without a stage gets its own, which is the old sequential behaviour.
     stage: int | None = Field(None, ge=1)
     title: str = Field("", max_length=STEP_TITLE_MAX_LENGTH)
+    role: str = Field("", max_length=STEP_ROLE_MAX_LENGTH)
+    allowed_tools: list[NonBlank] | None = None
     is_output: bool = False
     prompt: NonBlank
     model: ModelId
+
+    @field_validator("allowed_tools")
+    @classmethod
+    def _unique_tools(cls, tools: list[str] | None) -> list[str] | None:
+        if tools is not None and len(tools) != len(set(tools)):
+            raise ValueError("Each allowed tool must be unique.")
+        return tools
 
     @model_validator(mode="after")
     def _default_stage(self) -> PipelineStepIn:
@@ -63,6 +80,8 @@ class PipelineStepOut(BaseModel):
     order: int
     stage: int
     title: str
+    role: str
+    allowed_tools: list[str] | None
     is_output: bool
     prompt: str
     model: str
@@ -89,6 +108,11 @@ class RunRequest(BaseModel):
     input: NonBlank
 
 
+class ToolCallOut(BaseModel):
+    name: str
+    status: Literal["success", "error"]
+
+
 class StepResultOut(BaseModel):
     step_order: int
     stage: int
@@ -97,6 +121,7 @@ class StepResultOut(BaseModel):
     input_used: str
     output: str
     is_output: bool
+    tool_calls: list[ToolCallOut]
 
 
 class RunResponse(BaseModel):

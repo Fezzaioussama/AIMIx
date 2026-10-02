@@ -7,7 +7,18 @@ import { insertStep, nextStage } from './stages';
 function emptyPipeline(defaultModel: string): Pipeline {
   return {
     name: 'New Pipeline',
-    steps: [{ order: 1, stage: 1, title: '', is_output: false, prompt: '', model: defaultModel }],
+    steps: [
+      {
+        order: 1,
+        stage: 1,
+        title: '',
+        is_output: false,
+        prompt: '',
+        model: defaultModel,
+        role: '',
+        allowed_tools: null,
+      },
+    ],
   };
 }
 
@@ -31,8 +42,8 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
   useEffect(() => {
     if (!defaultModel) return;
     setPipeline((current) =>
-      current.id === undefined && current.steps.length === 1 && current.steps[0].prompt === ''
-        ? emptyPipeline(defaultModel)
+      current.id === undefined && current.steps.length === 1 && current.steps[0].model === ''
+        ? { ...current, steps: [{ ...current.steps[0], model: defaultModel }] }
         : current,
     );
   }, [defaultModel]);
@@ -45,16 +56,19 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
     setDirty(false);
   }, []);
 
-  const refresh = useCallback(async (openId?: number) => {
-    try {
-      const pipelines = await pipelinesApi.listPipelines();
-      setSaved(pipelines);
-      const chosen = pipelines.find((candidate) => candidate.id === openId);
-      if (chosen) select(chosen);
-    } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : 'Could not load pipelines.');
-    }
-  }, [select]);
+  const refresh = useCallback(
+    async (openId?: number) => {
+      try {
+        const pipelines = await pipelinesApi.listPipelines();
+        setSaved(pipelines);
+        const chosen = pipelines.find((candidate) => candidate.id === openId);
+        if (chosen) select(chosen);
+      } catch (cause) {
+        setMessage(cause instanceof Error ? cause.message : 'Could not load pipelines.');
+      }
+    },
+    [select],
+  );
 
   useEffect(() => {
     void refresh(initialId);
@@ -68,13 +82,16 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
     setDirty(false);
   }, [defaultModel]);
 
-  const patchStep = useCallback((index: number, patch: Partial<PipelineStep>) => {
-    markChanged();
-    setPipeline((current) => ({
-      ...current,
-      steps: current.steps.map((step, i) => (i === index ? { ...step, ...patch } : step)),
-    }));
-  }, [markChanged]);
+  const patchStep = useCallback(
+    (index: number, patch: Partial<PipelineStep>) => {
+      markChanged();
+      setPipeline((current) => ({
+        ...current,
+        steps: current.steps.map((step, i) => (i === index ? { ...step, ...patch } : step)),
+      }));
+    },
+    [markChanged],
+  );
 
   const addAtStage = useCallback(
     (stage: number | undefined, parallel: boolean) => {
@@ -95,27 +112,33 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
   const addParallelStep = useCallback((stage: number) => addAtStage(stage, true), [addAtStage]);
   const addStepAfter = useCallback((stage: number) => addAtStage(stage, false), [addAtStage]);
 
-  const removeStep = useCallback((index: number) => {
-    markChanged();
-    setPipeline((current) => ({
-      ...current,
-      steps: current.steps
-        .filter((_, i) => i !== index)
-        .map((step, i) => ({ ...step, order: i + 1 })),
-    }));
-  }, [markChanged]);
+  const removeStep = useCallback(
+    (index: number) => {
+      markChanged();
+      setPipeline((current) => ({
+        ...current,
+        steps: current.steps
+          .filter((_, i) => i !== index)
+          .map((step, i) => ({ ...step, order: i + 1 })),
+      }));
+    },
+    [markChanged],
+  );
 
-  const rename = useCallback((name: string) => {
-    markChanged();
-    setPipeline((current) => ({ ...current, name }));
-  }, [markChanged]);
+  const rename = useCallback(
+    (name: string) => {
+      markChanged();
+      setPipeline((current) => ({ ...current, name }));
+    },
+    [markChanged],
+  );
 
   const save = useCallback(async () => {
     setStatus('saving');
     setMessage('');
     try {
       const stored = await pipelinesApi.savePipeline(pipeline);
-      setPipeline((current) => ({ ...current, id: stored.id }));
+      setPipeline(stored);
       setDirty(false);
       setMessage('Pipeline saved.');
       await refresh();
@@ -163,7 +186,16 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
     dirty,
     message,
     actions: {
-      reset, select, patchStep, addStep, addParallelStep, addStepAfter, removeStep, rename, save, run,
+      reset,
+      select,
+      patchStep,
+      addStep,
+      addParallelStep,
+      addStepAfter,
+      removeStep,
+      rename,
+      save,
+      run,
     },
   };
 }

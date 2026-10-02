@@ -22,15 +22,13 @@ If you are new to the repository, read these in order:
 
 ## What AIMIx is, in one paragraph
 
-A user signs in and builds a **pipeline**: an ordered list of steps, each with
-a prompt template and a model id. Running the pipeline sends the user's input to
-step 1; each step's output becomes the next step's input (substituted into
-`{input}`). AIMIx can also **generate** a pipeline from a plain-language
-description by asking a "planner" model for JSON, and offers a streaming
-**chat** screen backed by a LangGraph agent, native pipeline functions, and
-configured MCP tools. A FastAPI
-backend owns auth, persistence, and every call to the LLM provider (OpenRouter
-or TogetherAI); a React frontend is the UI.
+A user signs in and builds a **pipeline** of agent steps, each with a role,
+prompt, model, and tool policy. Stages run in order; steps in one stage run in
+parallel, and their text outputs feed the next stage through `{input}`. AIMIx
+can also **generate** a pipeline from a description using the discovered tool
+catalogue. A streaming **chat** agent can call native pipeline functions and
+configured MCP tools. The FastAPI backend owns auth, persistence, and calls to
+OpenRouter or TogetherAI; the React frontend provides the builder.
 
 ## Keeping these docs current
 

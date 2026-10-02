@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
+import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
 import { StepEditor } from './StepEditor';
@@ -17,6 +18,7 @@ export function PipelineBuilderPage() {
       ? routeState.pipelineId
       : undefined;
   const { models, defaultModel, error: modelsError } = useModels();
+  const { tools, error: toolsError } = useAgentTools();
   const { pipeline, saved, results, elapsedMs, status, message, dirty, actions } =
     usePipelineBuilder(defaultModel, typeof initialId === 'number' ? initialId : undefined);
   const [input, setInput] = useState('');
@@ -31,7 +33,10 @@ export function PipelineBuilderPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-60px)] flex-col bg-slate-900 text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
-      <aside inert={isRunning || isSaving} className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-800/70 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0">
+      <aside
+        inert={isRunning || isSaving}
+        className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-800/70 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0"
+      >
         <div className="mb-4 text-lg font-extrabold">
           <span className="bg-gradient-to-r from-[#00d2ff] to-[#3a7bd5] bg-clip-text text-transparent">
             AI
@@ -94,12 +99,14 @@ export function PipelineBuilderPage() {
           Workflow Steps
         </h3>
         <p className="mb-3 text-xs text-slate-400">
-          Each step is an agent with your configured MCP tools and pipeline list and inspect
-          functions. Give it a title and prompt. Choose Output for each result you want.
+          Each step is an agent. Give it a role, prompt, and access to the tools it needs. Choose
+          Output for each result you want.
         </p>
+        {toolsError && <p className="mb-3 text-xs text-amber-300">{toolsError}</p>}
         <StepEditor
           steps={pipeline.steps}
           availableModels={models}
+          availableTools={tools}
           onChange={actions.patchStep}
           onRemove={actions.removeStep}
         />
@@ -117,10 +124,15 @@ export function PipelineBuilderPage() {
           <div className="mb-8">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="mb-1 text-xs font-semibold tracking-widest text-sky-400 uppercase">Workflow canvas</p>
+                <p className="mb-1 text-xs font-semibold tracking-widest text-sky-400 uppercase">
+                  Workflow canvas
+                </p>
                 <h1 className="text-2xl font-bold">{pipeline.name || 'New Pipeline'}</h1>
               </div>
-              <p className="text-sm text-slate-400">{stageCount} {stageCount === 1 ? 'stage' : 'stages'} · {pipeline.steps.length} {pipeline.steps.length === 1 ? 'step' : 'steps'}</p>
+              <p className="text-sm text-slate-400">
+                {stageCount} {stageCount === 1 ? 'stage' : 'stages'} · {pipeline.steps.length}{' '}
+                {pipeline.steps.length === 1 ? 'step' : 'steps'}
+              </p>
             </div>
             <PipelineRunView
               steps={pipeline.steps}
@@ -150,7 +162,9 @@ export function PipelineBuilderPage() {
                   {isRunning ? 'Executing…' : 'Run Pipeline'}
                 </button>
                 {dirty && pipeline.id !== undefined && (
-                  <p className="mt-3 text-xs text-sky-300">Save your changes to run this version.</p>
+                  <p className="mt-3 text-xs text-sky-300">
+                    Save your changes to run this version.
+                  </p>
                 )}
                 {(message || modelsError) && (
                   <p className="mt-4 text-sm text-amber-300">{message || modelsError}</p>

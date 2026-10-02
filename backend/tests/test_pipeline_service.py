@@ -29,6 +29,8 @@ def make_pipeline(steps: list[tuple[int, str, str]], stages: list[int] | None = 
                 order=order,
                 stage=stages[index] if stages else order,
                 title="",
+                role="",
+                allowed_tools=None,
                 is_output=False,
                 prompt=prompt,
                 model=model,
@@ -57,6 +59,17 @@ def test_step_prompt_appends_when_there_is_no_placeholder() -> None:
 def test_step_prompt_leaves_braces_in_the_input_alone() -> None:
     # str.format would have raised on the braces in the input value.
     assert step_prompt("Echo: {input}", "{not_a_field}") == "Echo: {not_a_field}"
+
+
+def test_plan_keeps_roles_and_only_known_tool_names(default_model: str) -> None:
+    raw = (
+        '{"name":"P","steps":[{"prompt":"Use {input}","model":"'
+        + default_model
+        + '","role":"Researcher","allowed_tools":["docs_search","missing","docs_search"]}]}'
+    )
+    step = service.parse_plan(raw, [default_model], ["docs_search"])["steps"][0]
+    assert step["role"] == "Researcher"
+    assert step["allowed_tools"] == ["docs_search"]
 
 
 def test_run_feeds_each_output_into_the_next_step(default_model: str) -> None:

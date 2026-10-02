@@ -8,8 +8,26 @@ import { useAutoPipeline } from './useAutoPipeline';
 const planned: Pipeline = {
   name: 'Launch plan',
   steps: [
-    { order: 1, stage: 1, title: 'Facts', is_output: false, prompt: 'Find {input}', model: 'v/m' },
-    { order: 2, stage: 2, title: 'Email', is_output: true, prompt: 'Write {input}', model: 'v/m' },
+    {
+      order: 1,
+      stage: 1,
+      title: 'Facts',
+      is_output: false,
+      prompt: 'Find {input}',
+      model: 'v/m',
+      role: '',
+      allowed_tools: null,
+    },
+    {
+      order: 2,
+      stage: 2,
+      title: 'Email',
+      is_output: true,
+      prompt: 'Write {input}',
+      model: 'v/m',
+      role: '',
+      allowed_tools: null,
+    },
   ],
 };
 

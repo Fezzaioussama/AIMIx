@@ -21,6 +21,7 @@ from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.llm import get_provider
 from api.services.pipeline_agents import PipelineAgentGenerator
+from api.services.tool_catalog import PipelineToolCatalog
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
 
@@ -84,6 +85,13 @@ def pipeline_agent_factory(request: Request, user: CurrentUser) -> PipelineAgent
 
 
 PipelineAgents = Annotated[PipelineAgentFactory, Depends(pipeline_agent_factory)]
+
+
+def pipeline_tool_catalog(request: Request, user: CurrentUser) -> PipelineToolCatalog:
+    return PipelineToolCatalog(request.app.state.database, user)
+
+
+ToolCatalog = Annotated[PipelineToolCatalog, Depends(pipeline_tool_catalog)]
 
 
 @dataclass(frozen=True)

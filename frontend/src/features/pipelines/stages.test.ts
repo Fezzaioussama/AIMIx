@@ -10,6 +10,8 @@ const workflow: PipelineStep[] = [1, 2, 3].map((order) => ({
   is_output: false,
   prompt: 'Use {input}',
   model: 'vendor/model',
+  role: '',
+  allowed_tools: null,
 }));
 
 describe('insertStep', () => {
@@ -17,6 +19,7 @@ describe('insertStep', () => {
     const steps = insertStep(workflow, { model: 'vendor/model', stage: 2, parallel: true });
     expect(steps.map((step) => step.stage)).toEqual([1, 2, 2, 3]);
     expect(steps.map((step) => step.order)).toEqual([1, 2, 3, 4]);
+    expect(steps[2]).toMatchObject({ role: '', allowed_tools: null });
   });
 
   it('inserts a new stage and moves later work after it', () => {

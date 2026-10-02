@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
+import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { GeneratedSteps } from './GeneratedSteps';
 import { PipelineGraph } from './PipelineGraph';
 import { PipelineNav } from './PipelineNav';
@@ -14,6 +15,7 @@ const cardClass = 'mb-8 rounded-2xl border border-white/10 bg-slate-800/50 p-8';
 export function AutoPipelinePage() {
   const navigate = useNavigate();
   const { models, defaultModel, error: modelsError } = useModels();
+  const { tools, error: toolsError } = useAgentTools();
   const { generated, status, errorMessage, successMessage, actions } = useAutoPipeline();
   const [description, setDescription] = useState('');
   const [plannerModel, setPlannerModel] = useState('');
@@ -47,7 +49,7 @@ export function AutoPipelinePage() {
           <PipelineNav />
           <p className="mt-3 text-sm text-slate-400">
             Describe your workflow and the outputs you need. Review the generated stages before
-            saving. Each step runs as an agent with your configured MCP tools.
+            saving. Give each agent a role and choose which tools it can use.
           </p>
         </header>
 
@@ -92,9 +94,9 @@ export function AutoPipelinePage() {
             </button>
           </div>
 
-          {(errorMessage || modelsError) && (
+          {(errorMessage || modelsError || toolsError) && (
             <p className="mt-4 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              {errorMessage || modelsError}
+              {errorMessage || modelsError || toolsError}
             </p>
           )}
           {successMessage && (
@@ -133,13 +135,15 @@ export function AutoPipelinePage() {
                 nextLabel="+ Next output"
               />
               <p className="mt-2 text-xs text-slate-400">
-                Added outputs need a prompt before saving. Edit the cards below to define each result.
+                Added outputs need a prompt before saving. Edit the cards below to define each
+                result.
               </p>
             </div>
 
             <GeneratedSteps
               pipeline={generated}
               availableModels={models}
+              availableTools={tools}
               onChange={actions.patchStep}
               onRemove={actions.removeStep}
             />

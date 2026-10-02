@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Response
 
-from api.deps import CurrentUser, DbSession, PipelineRun, Providers
+from api.deps import CurrentUser, DbSession, PipelineRun, Providers, ToolCatalog
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import (
     GenerateRequest,
@@ -42,8 +42,11 @@ def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> 
 
 
 @router.post("/generate")
-def generate_pipeline(body: GenerateRequest, providers: Providers) -> GenerateResponse:
-    plan = pipeline_service.generate(providers(), body.description, body.planner_model or "")
+def generate_pipeline(
+    body: GenerateRequest, providers: Providers, catalog: ToolCatalog
+) -> GenerateResponse:
+    tools = catalog.available_sync()
+    plan = pipeline_service.generate(providers(), body.description, body.planner_model or "", tools)
     return GenerateResponse(generated_pipeline=plan, available_models=available_model_ids())
 
 

@@ -3,6 +3,7 @@ import { OutputCard } from './OutputCard';
 import { StageArrow } from './StageArrow';
 import { StageHeader } from './StageHeader';
 import { StepHeading } from './StepHeading';
+import { ToolCallTrace } from './ToolCallTrace';
 import { groupByStage } from './stages';
 
 interface RunResultsProps {
@@ -21,13 +22,15 @@ export function RunResults({ results, focusedStep }: RunResultsProps) {
           <StageHeader stage={group.stage} stepCount={group.items.length} />
           <div className={group.items.length > 1 ? 'grid gap-4 xl:grid-cols-2' : ''}>
             {group.items.map((result) => (
-              <OutputCard
-                key={result.step_order}
-                heading={<StepHeading result={result} />}
-                output={result.output}
-                input={result.input_used}
-                highlighted={focusedStep === result.step_order}
-              />
+              <div key={result.step_order}>
+                <OutputCard
+                  heading={<StepHeading result={result} />}
+                  output={result.output}
+                  input={result.input_used}
+                  highlighted={focusedStep === result.step_order}
+                />
+                <ToolCallTrace calls={result.tool_calls ?? []} />
+              </div>
             ))}
           </div>
           {position < stages.length - 1 && <StageArrow />}

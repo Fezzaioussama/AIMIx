@@ -4,7 +4,16 @@ import type { PipelineStep, StepResult } from '../../core/api/types';
 import { buildGraph } from './pipelineGraph';
 
 function step(order: number, stage: number, isOutput = false): PipelineStep {
-  return { order, stage, title: '', is_output: isOutput, prompt: 'p', model: 'v/m' };
+  return {
+    order,
+    stage,
+    title: '',
+    is_output: isOutput,
+    prompt: 'p',
+    model: 'v/m',
+    role: '',
+    allowed_tools: null,
+  };
 }
 
 function result(order: number, stage: number, isOutput: boolean): StepResult {
@@ -16,6 +25,7 @@ function result(order: number, stage: number, isOutput: boolean): StepResult {
     input_used: 'x',
     output: 'hello',
     is_output: isOutput,
+    tool_calls: [],
   };
 }
 

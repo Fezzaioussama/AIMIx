@@ -12,8 +12,8 @@ install:
 
 # --- Run ---------------------------------------------------------------------
 
-# Run the FastAPI backend (auto-reloads on code changes)
-run-backend:
+# Apply pending migrations before starting the FastAPI backend.
+run-backend: migrate
 	$(BACKEND) uvicorn api.main:create_app --factory --reload --port 8000
 
 # Run the React Frontend
