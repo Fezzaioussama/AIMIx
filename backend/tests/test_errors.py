@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.deps import provider_factory
+from api.deps import agent_factory
 from api.errors import error_body
 from api.exceptions import NotFound, ProviderTimedOut
 
@@ -76,7 +76,7 @@ def test_an_unexpected_failure_is_a_500_in_the_error_shape(
     def broken() -> None:
         raise RuntimeError("boom")
 
-    app.dependency_overrides[provider_factory] = broken
+    app.dependency_overrides[agent_factory] = broken
     with TestClient(app, raise_server_exceptions=False) as client:
         client.headers.update(auth_client.headers)
         response = client.post("/api/chat", json={"prompt": "hi"})

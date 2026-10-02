@@ -27,8 +27,10 @@ a prompt template and a model id. Running the pipeline sends the user's input to
 step 1; each step's output becomes the next step's input (substituted into
 `{input}`). AIMIx can also **generate** a pipeline from a plain-language
 description by asking a "planner" model for JSON, and offers a streaming
-**chat** screen. A FastAPI backend owns auth, persistence, and every call to the
-LLM provider (OpenRouter or TogetherAI); a React frontend is the UI.
+**chat** screen backed by a LangGraph agent, native pipeline functions, and
+configured MCP tools. A FastAPI
+backend owns auth, persistence, and every call to the LLM provider (OpenRouter
+or TogetherAI); a React frontend is the UI.
 
 ## Keeping these docs current
 

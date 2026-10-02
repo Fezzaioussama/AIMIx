@@ -38,6 +38,51 @@ The full variable list, with comments, is `backend/.env.example`. An existing
 `.env` from the Django version keeps working: `DJANGO_SECRET_KEY`,
 `DJANGO_ALLOWED_HOSTS` and the other `DJANGO_*` names are still read.
 
+### Chat's native pipeline tools
+
+The chat agent always has three Python functions:
+
+| Function | What it does |
+|---|---|
+| `list_pipelines()` | Lists your saved pipelines with ids, names, and step counts. |
+| `inspect_pipeline(pipeline_id)` | Shows one of your pipelines, including its steps, prompts, and models. |
+| `run_pipeline(pipeline_id, input_text)` | Runs one of your pipelines and returns its outputs and step results. |
+
+These functions use the authenticated user's identity. The agent cannot inspect
+or run another user's pipeline. Running a pipeline calls its configured models
+and may take as long as a normal pipeline run. Chat history is not persisted.
+
+### Give chat MCP tools
+
+Chat uses a LangGraph agent with the same `LLM_PROVIDER` and default model as
+pipelines. Set `MCP_SERVERS` in `backend/.env` to a JSON object. Every tool
+advertised by every configured server is available to authenticated chat users.
+No server is configured by default. The connectors in a coding assistant or IDE
+are separate and do not automatically become AIMIx server tools.
+
+For example, this public server exposes LangChain documentation tools:
+
+```dotenv
+MCP_SERVERS='{"docs":{"transport":"streamable_http","url":"https://docs.langchain.com/mcp"}}'
+```
+
+A local open-source MCP server can use stdio. For example, the [MCP filesystem
+server](https://github.com/modelcontextprotocol/servers/blob/main/src/filesystem/README.md)
+requires Node.js and an explicit directory grant:
+
+```dotenv
+MCP_SERVERS='{"files":{"transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/absolute/allowed/path"]}}'
+```
+
+Put several named entries in the same JSON object to load all their tools.
+HTTP entries may include a `headers` object; stdio entries may include `env`
+for credentials. Keep secrets in the ignored `backend/.env`. Configure only
+servers and filesystem paths that all AIMIx chat users may access; MCP server
+credentials are shared by the backend. MCP discovery and calls have an explicit
+`MCP_TIMEOUT_SECONDS` limit (30 seconds by default), and the full agent has
+`AGENT_TIMEOUT_SECONDS` (one hour) and `AGENT_RECURSION_LIMIT` (25). There are
+no automatic retries. The selected model must support tool calling.
+
 ### Coming from the Django version
 
 Your old data lives in `backend/db.sqlite3`. Copy it into the new database once:
@@ -69,7 +114,7 @@ Run one side only with `make run-backend` or `make run-frontend`.
 
 ## Try each feature
 
-1. **Chat** (`/chat`) — type a prompt; the reply streams token by token.
+1. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and configured MCP tools.
 2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage, then edit each step in the sidebar. Mark every
    deliverable as **Output**, write prompts using `{input}`, **Save**, then **Run**

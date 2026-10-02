@@ -1,37 +1,34 @@
-"""Chat streaming. Wraps the provider so the endpoint only deals with HTTP."""
+"""Chat streaming boundary: preserve HTTP errors until the first text chunk."""
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
+from typing import Protocol
 
-from api.services.errors import as_domain_error
-from llm import exceptions as llm_exceptions
-from llm.base import LLMProvider
+from api.exceptions import DomainError, UpstreamResponseInvalid
 
 logger = logging.getLogger(__name__)
 
 
-def stream_reply(provider: LLMProvider, prompt: str) -> Iterator[str]:
-    """Yield reply chunks as the provider produces them.
+class ChatAgent(Protocol):
+    def stream(self, prompt: str) -> AsyncIterator[str]: ...
 
-    A failure before the first chunk becomes a domain error, so the endpoint can
-    still answer with a proper status. Once streaming has begun the response is
-    already committed, so a later failure is logged and the stream ends.
-    """
-    stream = provider.stream(prompt)
+
+async def stream_reply(agent: ChatAgent, prompt: str) -> AsyncIterator[str]:
+    """Pull the first chunk before the endpoint commits a streaming response."""
+    stream = agent.stream(prompt)
     try:
-        first = next(stream)
-    except StopIteration:
-        return iter(())
-    except llm_exceptions.LLMError as cause:
-        raise as_domain_error(cause) from cause
+        first = await anext(stream)
+    except StopAsyncIteration as cause:
+        raise UpstreamResponseInvalid("The chat agent returned no reply.") from cause
 
-    def chunks() -> Iterator[str]:
+    async def chunks() -> AsyncIterator[str]:
         yield first
         try:
-            yield from stream
-        except llm_exceptions.LLMError as cause:
+            async for chunk in stream:
+                yield chunk
+        except DomainError as cause:
             logger.warning("chat.stream_interrupted error=%s", type(cause).__name__)
 
     return chunks()

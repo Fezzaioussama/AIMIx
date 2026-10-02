@@ -103,14 +103,20 @@ A provider error inside the loop is converted by
    iterates `streamChatReply()` → `client.streamText()`, which reads
    `response.body.getReader()` and yields decoded chunks.
 2. `endpoints/chat.chat` validates `{"prompt"}` and calls
-   `services/chat.stream_reply(provider, prompt)`.
-3. `stream_reply` **pulls the first chunk eagerly**. If the provider fails before
-   producing anything, a `DomainError` is raised while the response is still
-   uncommitted, so the client gets a real 5xx with the standard error body.
-4. After the first chunk the response is a `StreamingResponse`
-   (`text/plain`); Starlette pulls the sync generator in a threadpool. A failure mid-stream can no longer change the status, so it is
-   logged (`chat.stream_interrupted`) and the stream simply ends.
-5. The hook appends each chunk to the AI message; unmounting aborts the fetch.
+   `services/chat.stream_reply(agent, prompt)`.
+3. `services/agent` builds a LangGraph agent from the configured model, binds
+   the signed-in user's native pipeline tools, and discovers tools from every
+   server in `MCP_SERVERS`. Graph execution runs in one producer task, which
+   sends assistant text through a queue. Model and MCP calls have timeouts;
+   tool results stay out of the text stream.
+4. `stream_reply` **pulls the first chunk eagerly**. If agent setup or a tool
+   fails before text appears, a `DomainError` is raised while the response is
+   still uncommitted, so the client gets a real 5xx error body.
+5. After the first chunk the response is a `StreamingResponse`
+   (`text/plain`); Starlette iterates the async generator. A failure
+   mid-stream can no longer change the status, so it is logged
+   (`chat.stream_interrupted`) and the stream simply ends.
+6. The hook appends each chunk to the AI message; unmounting aborts the fetch.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 

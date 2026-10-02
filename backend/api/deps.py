@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from datetime import timedelta
+from functools import partial
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -15,6 +16,8 @@ from api.exceptions import NotAuthenticated
 from api.models import User
 from api.security import TokenSigner
 from api.services import accounts
+from api.services.agent import get_chat_agent
+from api.services.chat import ChatAgent
 from api.services.llm import get_provider
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
@@ -68,3 +71,14 @@ def provider_factory() -> ProviderFactory:
 
 
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
+
+
+AgentFactory = Callable[[], ChatAgent]
+
+
+def agent_factory(request: Request, user: CurrentUser, providers: Providers) -> AgentFactory:
+    """Defer agent construction until after the chat request is validated."""
+    return partial(get_chat_agent, request.app.state.database, user, providers)
+
+
+Agents = Annotated[AgentFactory, Depends(agent_factory)]

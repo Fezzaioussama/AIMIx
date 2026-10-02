@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, HttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -34,6 +34,22 @@ SECRET_PLACEHOLDERS = frozenset(
 LOCAL_SECRET_KEY = "insecure-local-development-key-change-me"
 
 CommaList = Annotated[list[str], NoDecode]
+
+
+class HttpMCPServer(BaseModel):
+    transport: Literal["streamable_http"]
+    url: HttpUrl
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class StdioMCPServer(BaseModel):
+    transport: Literal["stdio"]
+    command: str = Field(min_length=1)
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+
+
+MCPServer = Annotated[HttpMCPServer | StdioMCPServer, Field(discriminator="transport")]
 
 
 def _env(*names: str) -> AliasChoices:
@@ -74,6 +90,10 @@ class Settings(BaseSettings):
     # --- LLM provider layer: handed to llm/ by api.services.llm (§5 D) -------
     llm_provider: str = Field("openrouter", validation_alias="LLM_PROVIDER")
     llm_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="LLM_TIMEOUT_SECONDS")
+    agent_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="AGENT_TIMEOUT_SECONDS")
+    agent_recursion_limit: int = Field(25, ge=2, validation_alias="AGENT_RECURSION_LIMIT")
+    mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
+    mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
     # Upper bound on provider calls one pipeline run makes at once for a stage
     # whose steps run in parallel.
     pipeline_max_parallel_steps: int = Field(

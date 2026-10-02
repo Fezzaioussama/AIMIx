@@ -37,6 +37,8 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
 | `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
+| `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Chat run limit (3600 seconds) / graph step limit (25) |
+| `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds) / configured server JSON |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Provider calls one parallel stage makes at once (4) |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
@@ -64,7 +66,8 @@ refresh) are open. Every router in `PROTECTED_ROUTERS` is mounted behind the
 | `AppSettings` | The `Settings` |
 | `Signer` | A `TokenSigner` configured from the settings |
 | `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` |
-| `Providers` | A factory for the configured `LLMProvider`. Endpoints call it after validation, so a bad body is a 400 even when no provider is configured |
+| `Providers` | A factory for the configured `LLMProvider` used by pipelines |
+| `Agents` | A factory for the LangGraph chat agent, called after request validation |
 
 Tests replace any of these with `app.dependency_overrides`.
 
@@ -111,10 +114,13 @@ Each write commits its own transaction.
 |---|---|
 | `pipelines.py` | `run` (stages in order, parallel steps in a thread pool, returns `RunResult`), `generate` + `parse_plan` (planner), `ensure_runnable`, `output_orders`. Logs `pipeline.run` with id, stage and step counts, duration. |
 | `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`. |
-| `chat.py` | `stream_reply` — eager first chunk, then a generator that logs mid-stream failures. |
+| `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
+| `agent.py` | Builds the LangGraph agent, combines native and MCP tools, and streams assistant text. |
+| `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. |
+| `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
 | `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
-| `llm.py` | **The only reader of provider settings.** `provider_config()` and `get_provider()`. |
+| `llm.py` | **The only reader of provider settings.** `provider_config()`, `get_provider()` and `get_agent_model()`. |
 | `catalog.py` | `available_model_ids()` (default first) and `default_model_id()` for the active provider. |
 | `errors.py` | `PROVIDER_ERROR_MAP` and `as_domain_error()` — the one translation from `llm` errors to domain errors. |
 
@@ -130,7 +136,7 @@ JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 `DomainError(detail)` carries a class-level `code`, `status_code` and optional
 `headers`. The subclasses are `ValidationFailed` (400), `NotAuthenticated` (401,
 `WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
-`ProviderUnavailable` (502), `ProviderTimedOut` (504) and
+`ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504) and
 `UpstreamResponseInvalid` (502).
 
 `errors.install_error_handlers` renders:
@@ -185,7 +191,8 @@ so tests can never reach a real LLM.
 | `client`, `auth_client` | A `TestClient`, and one that sends a valid bearer token |
 | `user`, `password`, `bearer(user)` | A saved account, its password, and an auth header |
 | `FakeProvider`, `FailingProvider(error)` | Canned replies / a chosen `LLMError` |
-| `fake_provider`, `use_provider(app, provider)` | Override the provider dependency |
+| `fake_provider`, `use_provider(app, provider)` | Override the pipeline provider dependency |
+| `FakeAgent`, `use_agent(app, agent)` | Override the chat agent dependency |
 | `default_model` | The active default model id |
 
 | Test module | Covers |
@@ -197,4 +204,6 @@ so tests can never reach a real LLM.
 | `test_database.py` | Migrations match the models; the Django import |
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
+| `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
+| `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |

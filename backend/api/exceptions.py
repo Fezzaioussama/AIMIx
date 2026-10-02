@@ -47,6 +47,11 @@ class ProviderUnavailable(DomainError):
     status_code = 502
 
 
+class ToolUnavailable(DomainError):
+    code = "tool_unavailable"
+    status_code = 502
+
+
 class ProviderTimedOut(DomainError):
     code = "provider_timeout"
     status_code = 504

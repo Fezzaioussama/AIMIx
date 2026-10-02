@@ -73,9 +73,17 @@ only values accepted for a step's `model` or a `planner_model`.
 { "prompt": "Explain JWT in two sentences." }
 ```
 
-`200`, `Content-Type: text/plain; charset=utf-8`, body streamed in chunks.
-A provider failure **before** the first chunk returns a normal error status
-(502/503/504). A failure **after** streaming starts just ends the stream.
+`200`, `Content-Type: text/plain; charset=utf-8`, agent answer streamed in
+chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`,
+and `run_pipeline(pipeline_id, input_text)` for the signed-in user. LangGraph
+also loads all tools from `MCP_SERVERS` and keeps tool output out of the text
+stream. The configured provider supplies the model;
+there is no conversation history across requests.
+
+A provider or MCP failure **before** the first text chunk returns a normal
+error status (502/503/504), including `502 tool_unavailable` if an MCP server
+cannot be reached. A failure **after** streaming starts is logged and ends
+the stream.
 
 ---
 

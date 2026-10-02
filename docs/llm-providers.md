@@ -8,6 +8,7 @@ outside this app.
 ```
 llm/
   base.py          # ProviderConfig, LLMProvider Protocol, OpenAICompatibleProvider
+  agent_models.py  # LangChain model factory registry for LangGraph chat
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
   registry.py      # FACTORIES, ALIASES, canonical_name, create_provider
   catalog.py       # ModelInfo, ModelCatalog, OpenRouterModels, TogetherAIModels, CATALOGS
@@ -66,8 +67,11 @@ settings.LLM_PROVIDER ──► registry.canonical_name()  ("open_router" → "o
                       ──► OpenAICompatibleProvider(name, client, config)
 ```
 
-`get_provider()` is called per request; it is cheap (it builds an SDK client,
-no network call).
+`get_provider()` is called per pipeline request; it builds an SDK client with
+no network call. Chat uses `get_agent_model()` and the `agent_models.py`
+registry to construct a LangChain model for the same configured provider.
+LangGraph then orchestrates MCP tool calls. Both model adapters set explicit
+request timeouts and disable SDK retries.
 
 ## The model catalogue
 
@@ -132,7 +136,8 @@ Example: a hypothetical `groq` provider with an OpenAI-compatible API.
    `GROQ_DEFAULT_MODEL`, and add `groq` to the supported values comment.
 6. Tests in `tests/test_llm_providers.py`: build fails without a key; errors
    normalise to `ProviderTimeout` / `ProviderRequestError`.
-7. `make check`.
+7. Add a LangChain chat model builder in `llm/agent_models.py` so chat can use the provider.
+8. `make check`.
 
 If the new SDK is **not** OpenAI-shaped, write a separate adapter class that
 implements `LLMProvider` and honours the same error contract, rather than

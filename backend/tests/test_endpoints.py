@@ -13,7 +13,7 @@ from api.models import Pipeline, PipelineStep, User
 from api.repositories import users
 from api.security import hash_password
 from llm import exceptions as llm_exceptions
-from tests.conftest import FailingProvider, FakeProvider, bearer, use_provider
+from tests.conftest import FailingProvider, FakeAgent, FakeProvider, bearer, use_agent, use_provider
 
 PUBLIC_PATHS = {"/api/register", "/api/login", "/api/token/refresh"}
 
@@ -262,11 +262,14 @@ def test_generate_returns_a_plan_and_the_catalogue(
     assert body["available_models"][0] == default_model
 
 
-def test_chat_streams_the_reply(auth_client: TestClient, fake_provider) -> None:
+def test_chat_streams_the_reply(app: FastAPI, auth_client: TestClient) -> None:
+    agent = FakeAgent()
+    use_agent(app, agent)
     response = auth_client.post("/api/chat", json={"prompt": "hello"})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
     assert response.text == "fake reply"
+    assert agent.prompts == ["hello"]
 
 
 def test_chat_reports_an_unconfigured_provider_before_streaming(auth_client: TestClient) -> None:

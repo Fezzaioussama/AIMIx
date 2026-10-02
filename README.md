@@ -62,11 +62,12 @@ graph LR
     FE -->|"HTTP + JWT"| BE["FastAPI :8000"]
     BE -->|SQL| DB[("SQLite")]
     BE -->|"API key + timeout"| AI["LLM provider"]
+    BE -->|"configured tools"| MCP["MCP servers"]
 ```
 
 The backend is a deliberate chokepoint: it holds the provider key, so the key
-never reaches the browser, and every outbound call is bounded by
-`LLM_TIMEOUT_SECONDS`.
+never reaches the browser. Provider calls use `LLM_TIMEOUT_SECONDS`; MCP calls
+use `MCP_TIMEOUT_SECONDS`, and a chat run has `AGENT_TIMEOUT_SECONDS`.
 
 ### Pipeline execution
 
@@ -89,10 +90,11 @@ never reaches the browser, and every outbound call is bounded by
 
 ### Chat streaming
 
-The chat endpoint returns a `StreamingResponse` over the provider's own stream.
-`api/services/chat.py` pulls the first chunk eagerly, so a failure that happens
-before the response is committed still becomes a proper status code rather than a
-200 with an error inside it.
+The chat endpoint runs a LangGraph agent using the configured provider model.
+Its native tools list, inspect, and run the signed-in user's saved pipelines.
+It also loads all tools from the MCP servers in `MCP_SERVERS` and streams only
+the agent's text. `api/services/chat.py` pulls the first chunk eagerly, so a
+failure before the response is committed still becomes a proper status code.
 
 On the client, `core/api/client.ts` reads `response.body.getReader()` in a loop
 and `useChatStream` appends each chunk, giving the token-by-token typing effect.
@@ -196,7 +198,8 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `not_found` | 404 | No such record, or it belongs to someone else |
 | `provider_not_configured` | 503 | No API key for the selected provider |
 | `provider_unavailable` | 502 | The provider rejected the request |
-| `provider_timeout` | 504 | The provider exceeded `LLM_TIMEOUT_SECONDS` |
+| `provider_timeout` | 504 | A provider or agent request timed out |
+| `tool_unavailable` | 502 | A configured MCP server or tool is unavailable |
 | `upstream_response_invalid` | 502 | The planner returned unusable output |
 | `server_error` | 500 | An unexpected failure (logged by the server) |
 
@@ -214,6 +217,10 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `TOGAI_API_KEY` | For TogetherAI | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
+| `MCP_SERVERS` | No | JSON object of MCP servers whose tools the chat agent can use (default `{}`) |
+| `MCP_TIMEOUT_SECONDS` | No | Bounds MCP discovery and tool calls (default 30) |
+| `AGENT_TIMEOUT_SECONDS` | No | Bounds one chat agent run (default 3600) |
+| `AGENT_RECURSION_LIMIT` | No | Limits agent model/tool steps (default 25) |
 
 See [`backend/.env.example`](backend/.env.example) for the full list.
 

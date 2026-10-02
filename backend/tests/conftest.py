@@ -3,18 +3,19 @@ suite is deterministic and offline (AGENTS.md §6)."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from api.deps import provider_factory, token_signer
+from api.deps import agent_factory, provider_factory, token_signer
 from api.main import create_app
 from api.models import Base, User
 from api.repositories import users
 from api.security import hash_password
+from api.services.chat import ChatAgent
 from config.settings import Settings, pin_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
@@ -23,6 +24,7 @@ from llm.base import LLMProvider
 TEST_SETTINGS = Settings(
     _env_file=None,
     app_env="test",
+    debug=False,
     secret_key="testing-key-not-used-outside-tests",
     allowed_hosts=["testserver"],
     database_url="sqlite://",
@@ -31,6 +33,10 @@ TEST_SETTINGS = Settings(
     log_level="WARNING",
     llm_provider="openrouter",
     llm_timeout_seconds=1.0,
+    agent_timeout_seconds=1.0,
+    agent_recursion_limit=9,
+    mcp_timeout_seconds=1.0,
+    mcp_servers={},
     pipeline_max_parallel_steps=4,
     openrouter_api_key="",
     togetherai_api_key="",
@@ -75,6 +81,21 @@ class FailingProvider:
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]:
         raise self.error
         yield ""  # pragma: no cover - unreachable, keeps this a generator
+
+
+class FakeAgent:
+    def __init__(self, chunks: list[str] | None = None) -> None:
+        self.chunks = chunks if chunks is not None else ["fake ", "reply"]
+        self.prompts: list[str] = []
+
+    async def stream(self, prompt: str) -> AsyncIterator[str]:
+        self.prompts.append(prompt)
+        for chunk in self.chunks:
+            yield chunk
+
+
+def use_agent(app: FastAPI, agent: ChatAgent) -> None:
+    app.dependency_overrides[agent_factory] = lambda: lambda: agent
 
 
 def use_provider(app: FastAPI, provider: LLMProvider) -> None:
