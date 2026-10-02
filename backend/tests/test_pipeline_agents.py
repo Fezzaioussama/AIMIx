@@ -14,10 +14,10 @@ from sqlalchemy.orm import Session
 from api.exceptions import ToolUnavailable
 from api.models import Pipeline, User
 from api.repositories import pipelines
-from api.services import agent as agent_service
+from api.services import agent_runtime
 from api.services import llm as llm_service
-from api.services import pipeline_agents
 from api.services.catalog import default_model_id
+from api.services.multiagent import step_agent
 from llm.base import ProviderConfig
 
 
@@ -41,8 +41,8 @@ def test_tool_trace_records_error_without_tool_output() -> None:
         ),
         ToolMessage(content="private result", tool_call_id="call-1", status="error"),
     ]
-    assert agent_service._tool_trace(messages) == [
-        agent_service.ToolCallTrace(name="docs_search", status="error")
+    assert step_agent._tool_trace(messages) == [
+        step_agent.ToolCallTrace(name="docs_search", status="error")
     ]
 
 
@@ -101,8 +101,8 @@ def test_step_uses_its_model_and_discovered_tool(
         return self
 
     monkeypatch.setattr(FakeMessagesListChatModel, "bind_tools", bind_tools)
-    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
-    monkeypatch.setattr(pipeline_agents, "get_agent_model", fake_model)
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
+    monkeypatch.setattr(step_agent, "get_agent_model", fake_model)
 
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "2"})
 
@@ -138,8 +138,8 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
         observed["system_prompt"] = kwargs["system_prompt"]
         return FakeGraph()
 
-    monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
-    monkeypatch.setattr(pipeline_agents, "get_agent_model", lambda model_id=None: tool_call_model())
+    monkeypatch.setattr(step_agent, "create_agent", fake_create_agent)
+    monkeypatch.setattr(step_agent, "get_agent_model", lambda model_id=None: tool_call_model())
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "facts"})
     assert response.status_code == 200
     assert observed["tools"] == ["inspect_pipeline"]
@@ -157,9 +157,9 @@ def test_mcp_discovery_failure_stops_the_pipeline(
     async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
         raise ToolUnavailable("An MCP server is unavailable.")
 
-    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
     monkeypatch.setattr(
-        pipeline_agents,
+        step_agent,
         "get_agent_model",
         lambda model_id=None: FakeMessagesListChatModel(responses=[]),
     )
@@ -179,7 +179,7 @@ def test_missing_selected_tool_is_reported(
     saved = saved_pipeline(session, user, "Missing tool", "Use {input}")
     saved.steps[0].allowed_tools = ["missing_tool"]
     session.commit()
-    monkeypatch.setattr(pipeline_agents, "get_agent_model", lambda model_id=None: tool_call_model())
+    monkeypatch.setattr(step_agent, "get_agent_model", lambda model_id=None: tool_call_model())
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "seed"})
     assert response.status_code == 502
     assert response.json()["error"] == "tool_unavailable"
@@ -199,8 +199,8 @@ def test_tool_execution_error_is_reported(
         async def ainvoke(self, state: object, **kwargs: Any) -> dict[str, Any]:
             raise ToolException("failed")
 
-    monkeypatch.setattr(agent_service, "create_agent", lambda model, tools, **kw: FailingGraph())
-    monkeypatch.setattr(pipeline_agents, "get_agent_model", lambda model_id=None: tool_call_model())
+    monkeypatch.setattr(step_agent, "create_agent", lambda model, tools, **kw: FailingGraph())
+    monkeypatch.setattr(step_agent, "get_agent_model", lambda model_id=None: tool_call_model())
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "seed"})
     assert response.status_code == 502
     assert response.json()["error"] == "tool_unavailable"

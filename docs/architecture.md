@@ -76,7 +76,10 @@ sequenceDiagram
     participant E as endpoints/pipelines.run_pipeline
     participant R as repositories/pipelines
     participant S as services/pipelines.run
-    participant A as services/pipeline_agents
+    participant P as services/multiagent/mapper
+    participant G as services/multiagent/graph
+    participant A as services/multiagent/step_agent
+    participant U as services/agent_runtime
     participant T as services/tool_catalog
     participant M as configured MCP servers
     UI->>C: runPipeline(id, input) (timeout 1 h)
@@ -85,15 +88,20 @@ sequenceDiagram
     E->>R: get_owned(user, id)
     R-->>E: Pipeline or raise NotFound (404)
     E->>S: ensure_runnable() then run(pipeline, agent generator, input)
-    loop each stage in order; its steps in parallel
-        S->>S: step_prompt(template, current)
-        S->>A: execute(prompt, model, role, allowed_tools)
-        A->>T: discover selected tools as needed
+    S->>P: snapshot_pipeline(pipeline)
+    P-->>S: immutable PipelineSpec
+    S->>G: execute PipelineSpec as a StateGraph
+    loop each stage in order
+        G->>G: start step nodes on shared input (bounded concurrency)
+        G->>A: execute agent for each step (async)
+        A->>U: resolve selected tool policy
+        U->>T: discover selected tools as needed
         T->>M: discover configured MCP tools
         A->>M: call MCP tool if the agent selects it
-        A-->>S: final text and tool name/status trace, or DomainError
-        S->>S: merge stage outputs into next input
+        A-->>G: final text and tool name/status trace, or DomainError
+        G->>G: join all step nodes; merge in saved order
     end
+    G-->>S: RunResult dataclass
     S-->>E: RunResult dataclass
     E-->>C: 200 RunResponse
     C-->>UI: PipelineRunResponse
@@ -102,12 +110,22 @@ sequenceDiagram
 Each agent uses its selected model and optional role. `allowed_tools: null`
 grants the signed-in user's pipeline list and inspect tools plus all configured
 MCP tools; `[]` grants none; an explicit list grants only named tools. A missing
-selected tool raises `tool_unavailable`. The response contains tool call names
+selected tool raises `tool_unavailable`. The graph keeps step results in saved
+order even if agents finish out of order. The response contains tool call names
 and success/error statuses, without arguments or tool output. Model, tool, and
 timeout failures stop the whole run; no partial result is returned.
 
-The stage loop still runs in the HTTP request. There is no durable run record,
-LangGraph checkpoint for the pipeline, or approval flow for tool actions.
+The graph lives in `api/services/multiagent/`: `contracts.py` defines immutable
+pipeline and step snapshots, results, and the async step-agent contract;
+`mapper.py` copies loaded ORM records into a `PipelineSpec`; `graph.py` composes
+one node per saved step and a barrier after each stage; `step_agent.py` binds
+the selected model, role, and tools. `pipelines.py` remains the facade for saved
+run validation and planning. Chat and pipeline agents share tool policy and
+error mapping in `agent_runtime.py`. This is a modular package inside the
+FastAPI backend, with no change to the REST request or response.
+
+The HTTP request still waits for the graph to finish. There is no durable run
+record, LangGraph checkpoint for the pipeline, or approval flow for tool actions.
 
 ### 2. Stream chat — `POST /api/chat`
 
@@ -116,11 +134,12 @@ LangGraph checkpoint for the pipeline, or approval flow for tool actions.
    `response.body.getReader()` and yields decoded chunks.
 2. `endpoints/chat.chat` validates `{"prompt"}` and calls
    `services/chat.stream_reply(agent, prompt)`.
-3. `services/agent` builds a LangGraph agent from the configured model, binds
-   the signed-in user's native pipeline tools, and discovers tools from every
-   server in `MCP_SERVERS`. Graph execution runs in one producer task, which
-   sends assistant text through a queue. Model and MCP calls have timeouts;
-   tool results stay out of the text stream.
+3. `services/agent` builds a chat-only LangGraph agent from the configured
+   model, binds the signed-in user's native pipeline tools, and discovers tools
+   from every server in `MCP_SERVERS`. Graph execution runs in one producer
+   task, which sends assistant text through a queue. Model and MCP calls have
+   timeouts; tool results stay out of the text stream. Shared tool policy and
+   error mapping live in `services/agent_runtime`.
 4. `stream_reply` **pulls the first chunk eagerly**. If agent setup or a tool
    fails before text appears, a `DomainError` is raised while the response is
    still uncommitted, so the client gets a real 5xx error body.
@@ -169,9 +188,10 @@ server — never a 200 with an error inside.
 | Pattern | Where | Why |
 |---|---|---|
 | Registry + Factory | `llm/registry.py`, `api/services/llm.get_provider` | New provider = one dict entry, no `if` chain |
-| Adapter | `llm/base.OpenAICompatibleProvider` | Wraps both SDKs behind one contract and one error set |
+| Adapter | `llm/base.OpenAICompatibleProvider`, `api/services/multiagent/mapper.py`, `step_agent.py` | Wrap provider SDKs, snapshot ORM records, and bind agents to a graph port |
 | Strategy map | `api/services/errors.PROVIDER_ERROR_MAP` | Provider error → domain error, in one place |
 | Repository | `api/repositories/pipelines.py`, `users.py` | Ownership-scoped queries and atomic writes |
+| Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
 | Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |
 | Builder | `api/services/prompts.py` | Prompt text kept apart from transport |

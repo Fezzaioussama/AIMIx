@@ -64,7 +64,7 @@ class FakeProvider:
         self.calls.append((prompt, model))
         return self.reply
 
-    def execute(self, task: AgentTask) -> AgentOutcome:
+    async def execute(self, task: AgentTask) -> AgentOutcome:
         return AgentOutcome(self.generate(task.prompt, task.model), [])
 
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]:
@@ -83,7 +83,7 @@ class FailingProvider:
     def generate(self, prompt: str, model: str | None = None) -> str:
         raise self.error
 
-    def execute(self, task: AgentTask) -> AgentOutcome:
+    async def execute(self, task: AgentTask) -> AgentOutcome:
         return AgentOutcome(self.generate(task.prompt, task.model), [])
 
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]:

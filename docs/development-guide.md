@@ -37,6 +37,7 @@ make typecheck                                              # mypy only
 | Add a failure case | New `DomainError` subclass in `api/exceptions.py`; raise it from the service | Build a `Response` or raise `HTTPException` for an error |
 | Query data differently | `api/repositories/` | Write `select(...)` in an endpoint, schema or service |
 | Change a prompt | `api/services/prompts.py` | Build prompt strings in `pipelines.py` |
+| Change agent or stage execution | `api/services/multiagent/contracts.py` for the step-agent contract; `mapper.py` for ORM snapshots; `graph.py` for stage barriers and result ordering; `step_agent.py` for model/tool behavior; `api/services/agent_runtime.py` for shared chat/pipeline policy | Put graph execution in an endpoint or mix it with planning and database queries |
 | Add a provider or model | `llm/` — see [llm-providers.md](llm-providers.md) | Add an `if provider ==` anywhere |
 | Add a setting | A field on `Settings` in `config/settings.py`, document in `backend/.env.example` | Hard-code a URL, key, model id, or limit |
 | Change a model field | `api/models.py` + an Alembic revision in the same commit | Edit an applied migration |
@@ -94,7 +95,8 @@ disagree. If the field is exposed, update the schema in `api/schemas/`,
   `use_provider(app, FailingProvider(...))` (both override the provider
   dependency). For pipeline runs, override the step agent dependency with
   `use_pipeline_generator(app, FakeProvider())`, or pass a fake implementing
-  `execute(AgentTask) -> AgentOutcome` to the service. The test settings leave
+  `async execute(AgentTask) -> AgentOutcome` (the `StepAgent` protocol in
+  `multiagent/contracts.py`) to the service. The test settings leave
   every provider key empty.
 - Test the failure path too: e.g. `FailingProvider(ProviderTimeout("..."))` →
   expect `504` and `{"error": "provider_timeout", ...}`.

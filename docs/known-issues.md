@@ -18,9 +18,9 @@ original request once.
 
 ### 2. Pipeline runs block the request
 
-`POST /pipelines/<id>/run` calls every agent step synchronously inside the
-request, so a long pipeline holds a worker for minutes (up to stages ×
-`AGENT_TIMEOUT_SECONDS`).
+`POST /pipelines/<id>/run` waits for the multiagent graph to finish inside the
+request. Agent steps run asynchronously within a stage, but a long pipeline
+can still hold the request for minutes (up to stages × `AGENT_TIMEOUT_SECONDS`).
 This conflicts with AGENTS.md §6 ("no long-running work in the request path").
 The frontend waits up to one hour, but `AGENT_TIMEOUT_SECONDS` bounds each step,
 so a run with several slow stages can still time out on the client while the

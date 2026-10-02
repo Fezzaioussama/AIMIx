@@ -13,7 +13,9 @@ from pydantic import ValidationError
 
 from api.exceptions import ToolUnavailable
 from api.services import agent as agent_service
-from api.services.agent import AgentLimits, AgentToolset, LangGraphChatAgent
+from api.services import agent_runtime
+from api.services.agent import LangGraphChatAgent
+from api.services.agent_runtime import AgentLimits, AgentToolset
 from api.services.mcp import connections
 from config.settings import Settings
 from tests.conftest import FakeAgent, use_agent
@@ -76,9 +78,9 @@ async def test_agent_streams_model_text_and_hides_tool_output(
         captured["tools"] = tools
         return FakeGraph()
 
-    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
     monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
-    agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9))  # type: ignore[arg-type]
+    agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
     assert [part async for part in agent.stream("hello")] == ["Hello ", "world"]
     assert captured["tools"] == [local_tool, "example_tool"]
     assert captured["state"] == {"messages": [{"role": "user", "content": "hello"}]}
@@ -90,8 +92,8 @@ async def test_mcp_discovery_failure_is_a_domain_error(monkeypatch: pytest.Monke
     async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
         raise ToolUnavailable("An MCP server is unavailable.")
 
-    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
-    agent = LangGraphChatAgent(object(), AgentToolset({}, []), AgentLimits(10, 9))  # type: ignore[arg-type]
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
+    agent = LangGraphChatAgent(object(), AgentToolset({}, []), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
     with pytest.raises(ToolUnavailable):
         _ = [part async for part in agent.stream("hello")]
 
@@ -120,7 +122,7 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
     async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
         return [*native, increment]
 
-    monkeypatch.setattr(agent_service, "discover_tools", fake_discover)
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
     monkeypatch.setattr(
         FakeMessagesListChatModel,
         "bind_tools",
@@ -136,7 +138,7 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
             AIMessage(content="Result is 3"),
         ]
     )
-    agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9))
+    agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9, 1))
     assert "".join([part async for part in agent.stream("add one to two")]) == "Result is 3"
     assert called == [2]
 

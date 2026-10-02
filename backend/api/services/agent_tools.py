@@ -14,6 +14,7 @@ from api.exceptions import ValidationFailed
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services import pipelines as pipeline_service
+from api.services.multiagent.contracts import StepAgent
 
 
 def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
@@ -60,7 +61,7 @@ def read_only_tools(database: Database, user: User) -> list[BaseTool]:
 def built_in_tools(
     database: Database,
     user: User,
-    generator_factory: Callable[[], pipeline_service.StepGenerator],
+    generator_factory: Callable[[], StepAgent],
     *,
     include_run: bool = True,
 ) -> list[BaseTool]:

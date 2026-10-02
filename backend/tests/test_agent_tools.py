@@ -14,7 +14,7 @@ from api.security import hash_password
 from api.services import agent as agent_service
 from api.services import agent_tools
 from api.services.agent_tools import built_in_tools
-from tests.conftest import FakeProvider
+from tests.conftest import FakeProvider, use_pipeline_generator
 
 
 def test_native_tools_list_inspect_and_run_owned_pipeline(
@@ -99,3 +99,48 @@ def test_authenticated_chat_can_call_a_native_tool(
     assert response.status_code == 200
     assert response.text == "Found your pipeline."
     assert seen_users == [user.id]
+
+
+def test_chat_can_run_a_pipeline_through_the_graph(
+    app: FastAPI,
+    auth_client: TestClient,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    with app.state.database.session() as db_session:
+        owner = db_session.get(User, user.id)
+        assert owner is not None
+        saved = pipelines.create_with_steps(
+            db_session,
+            owner,
+            "Summary",
+            [{"order": 1, "stage": 1, "prompt": "Summarise {input}", "model": "m"}],
+        )
+    provider = FakeProvider(reply="summary")
+    use_pipeline_generator(app, provider)
+    model = FakeMessagesListChatModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "run_pipeline",
+                        "args": {"pipeline_id": saved.id, "input_text": "hello"},
+                        "id": "call-1",
+                    }
+                ],
+            ),
+            AIMessage(content="Pipeline complete."),
+        ]
+    )
+    monkeypatch.setattr(FakeMessagesListChatModel, "bind_tools", lambda self, tools, **kw: self)
+    monkeypatch.setattr(agent_service, "get_agent_model", lambda: model)
+
+    response = auth_client.post("/api/chat", json={"prompt": "Run my summary pipeline"})
+
+    assert response.status_code == 200
+    assert response.text == "Pipeline complete."
+    assert provider.calls == [("Summarise hello", "m")]

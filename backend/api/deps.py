@@ -20,7 +20,8 @@ from api.services import accounts
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.llm import get_provider
-from api.services.pipeline_agents import PipelineAgentGenerator
+from api.services.multiagent.contracts import StepAgent
+from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.tool_catalog import PipelineToolCatalog
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
@@ -76,7 +77,7 @@ def provider_factory() -> ProviderFactory:
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
 
 
-PipelineAgentFactory = Callable[[], PipelineAgentGenerator]
+PipelineAgentFactory = Callable[[], StepAgent]
 
 
 def pipeline_agent_factory(request: Request, user: CurrentUser) -> PipelineAgentFactory:

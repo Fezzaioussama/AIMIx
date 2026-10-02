@@ -73,26 +73,29 @@ and each chat or pipeline agent has `AGENT_TIMEOUT_SECONDS`.
 
 ### Pipeline execution
 
-`api/services/pipelines.py` → `run` is the core loop. On
+`api/services/pipelines.py` snapshots a saved pipeline through
+`api/services/multiagent/mapper.py`; `multiagent/graph.py` executes the immutable
+snapshot as a LangGraph `StateGraph`. On
 `POST /api/pipelines/<id>/run` with `{"input": "..."}`:
 
 1. The endpoint validates the body with `RunRequest`.
 2. `repositories/pipelines.get_owned` fetches the pipeline **scoped to the
    caller**, so someone else's pipeline is indistinguishable from a missing one.
-3. The service groups `PipelineStep` records by `stage` and runs the stages in
-   ascending order. Steps that share a stage run in parallel (at most
-   `PIPELINE_MAX_PARALLEL_STEPS` at once) on the same input, which is
-   substituted into each prompt — replacing `{input}` where present, otherwise
-   appending it.
+3. The graph runs stages in ascending order. Each saved step has its own agent
+   node. Nodes in one stage receive the same input and run concurrently, up to
+   `PIPELINE_MAX_PARALLEL_STEPS`; a join waits for the whole stage before the
+   next one starts. Input replaces `{input}` in the prompt where present and is
+   appended otherwise.
 4. Each step runs a LangGraph agent with its selected model and role. Its
    `allowed_tools` policy grants all configured tools (`null`), none (`[]`), or
    named tools from `GET /api/agent-tools`. The agent may call tools before
    producing its final text.
-5. A stage's output becomes the next stage's input; parallel outputs are joined
-   under a heading per step. The response includes every step's output and a
-   metadata-only list of tool calls (name and success/error status).
+5. A stage's output becomes the next stage's input; the join orders parallel
+   outputs by saved step order under a heading per step, regardless of when the
+   agents finish. The response includes every step's output and a metadata-only
+   list of tool calls (name and success/error status).
 
-Runs still execute synchronously in the HTTP request. They have no persisted
+The HTTP request still waits for the full run. Runs have no persisted
 run history, resumable checkpoint, or approval flow for tool actions.
 
 ### Chat streaming
@@ -126,6 +129,8 @@ backend/
     schemas/             # pydantic request + response contracts
     deps.py              # dependencies: db session, current user, provider
     services/            # business logic: pipelines, chat, accounts, prompts, llm
+      agent_runtime.py    # shared chat/pipeline tool policy and error mapping
+      multiagent/         # contracts, ORM mapper, stage graph, step agent
     repositories/        # data access; ownership filtering lives here
     models.py            # SQLAlchemy: User, Pipeline, PipelineStep
     security.py          # password hashing + JWT signing

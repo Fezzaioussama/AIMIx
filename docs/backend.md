@@ -121,15 +121,20 @@ Each write commits its own transaction.
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | `run` (stages in order, parallel agents in a thread pool, returns `RunResult` with tool call metadata), `generate` + `parse_plan` (tool-aware planner), `ensure_runnable`, `output_orders`. Logs `pipeline.run` with id, stage and step counts, duration. |
+| `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner). |
+| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` snapshots, run-result data, and the async `StepAgent` protocol. |
+| `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
+| `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
+| `multiagent/step_agent.py` | User-bound LangGraph step agent: selected model, role, native/MCP tools, final text, and tool call metadata. |
 | `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`. |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
-| `agent.py` | Builds the LangGraph agent, filters tools by step policy, streams chat text, and returns a pipeline step's final text plus tool call names/statuses. |
+| `agent.py` | Builds and streams the chat-only LangGraph agent. |
+| `agent_runtime.py` | Shared chat/pipeline tool policy, limits, and third-party failure translation. |
 | `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
 | `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. |
 | `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
 | `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
-| `pipeline_agents.py` | Creates a user-bound LangGraph agent for each pipeline step. |
+| `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
 | `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
 | `llm.py` | **The only reader of provider settings.** `provider_config()`, `get_provider()` and `get_agent_model()`. |
@@ -216,6 +221,7 @@ so tests can never reach a real LLM.
 | `test_security.py` | Django-compatible hashes (checked against a hash Django produced), password policy, tokens |
 | `test_database.py` | Migrations match the models; the Django import |
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
+| `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, and failure propagation |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
