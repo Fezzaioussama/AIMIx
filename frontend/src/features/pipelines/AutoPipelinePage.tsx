@@ -47,7 +47,7 @@ export function AutoPipelinePage() {
           <PipelineNav />
           <p className="mt-3 text-sm text-slate-400">
             Describe your workflow and the outputs you need. Review the generated stages before
-            saving.
+            saving. Each step runs as an agent with your configured MCP tools.
           </p>
         </header>
 

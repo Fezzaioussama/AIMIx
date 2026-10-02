@@ -49,14 +49,15 @@ The chat agent always has three Python functions:
 | `run_pipeline(pipeline_id, input_text)` | Runs one of your pipelines and returns its outputs and step results. |
 
 These functions use the authenticated user's identity. The agent cannot inspect
-or run another user's pipeline. Running a pipeline calls its configured models
+or run another user's pipeline. Running a pipeline starts an agent for each step
 and may take as long as a normal pipeline run. Chat history is not persisted.
 
-### Give chat MCP tools
+### Give chat and pipeline steps MCP tools
 
 Chat uses a LangGraph agent with the same `LLM_PROVIDER` and default model as
-pipelines. Set `MCP_SERVERS` in `backend/.env` to a JSON object. Every tool
-advertised by every configured server is available to authenticated chat users.
+pipelines. Each pipeline step uses its selected model. Set `MCP_SERVERS` in
+`backend/.env` to a JSON object. Every tool advertised by every configured
+server is available to authenticated chat users and pipeline steps.
 No server is configured by default. The connectors in a coding assistant or IDE
 are separate and do not automatically become AIMIx server tools.
 
@@ -77,7 +78,7 @@ MCP_SERVERS='{"files":{"transport":"stdio","command":"npx","args":["-y","@modelc
 Put several named entries in the same JSON object to load all their tools.
 HTTP entries may include a `headers` object; stdio entries may include `env`
 for credentials. Keep secrets in the ignored `backend/.env`. Configure only
-servers and filesystem paths that all AIMIx chat users may access; MCP server
+servers and filesystem paths that all authenticated AIMIx users may access; MCP server
 credentials are shared by the backend. MCP discovery and calls have an explicit
 `MCP_TIMEOUT_SECONDS` limit (30 seconds by default), and the full agent has
 `AGENT_TIMEOUT_SECONDS` (one hour) and `AGENT_RECURSION_LIMIT` (25). There are

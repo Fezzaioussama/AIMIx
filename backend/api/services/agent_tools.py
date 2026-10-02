@@ -14,7 +14,6 @@ from api.exceptions import ValidationFailed
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services import pipelines as pipeline_service
-from llm.base import LLMProvider
 
 
 def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
@@ -36,7 +35,11 @@ def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
 
 
 def built_in_tools(
-    database: Database, user: User, provider_factory: Callable[[], LLMProvider]
+    database: Database,
+    user: User,
+    generator_factory: Callable[[], pipeline_service.StepGenerator],
+    *,
+    include_run: bool = True,
 ) -> list[BaseTool]:
     """Bind pipeline functions to the authenticated user for one agent run."""
 
@@ -63,6 +66,7 @@ def built_in_tools(
         with database.session() as session:
             pipeline = repository.get_owned(session, user, pipeline_id)
             pipeline_service.ensure_runnable(pipeline)
-        return asdict(pipeline_service.run(pipeline, provider_factory(), input_text))
+        return asdict(pipeline_service.run(pipeline, generator_factory(), input_text))
 
-    return [list_pipelines, inspect_pipeline, run_pipeline]
+    tools = [list_pipelines, inspect_pipeline]
+    return [*tools, run_pipeline] if include_run else tools

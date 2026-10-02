@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from api.deps import agent_factory, provider_factory, token_signer
+from api.deps import agent_factory, pipeline_agent_factory, provider_factory, token_signer
 from api.main import create_app
 from api.models import Base, User
 from api.repositories import users
@@ -103,6 +103,10 @@ def use_provider(app: FastAPI, provider: LLMProvider) -> None:
     app.dependency_overrides[provider_factory] = lambda: lambda: provider
 
 
+def use_pipeline_generator(app: FastAPI, generator: LLMProvider) -> None:
+    app.dependency_overrides[pipeline_agent_factory] = lambda: lambda: generator
+
+
 @pytest.fixture
 def app() -> Iterator[FastAPI]:
     """A fresh app over a fresh in-memory database for every test."""
@@ -149,6 +153,7 @@ def auth_client(client: TestClient, user: User) -> TestClient:
 def fake_provider(app: FastAPI) -> FakeProvider:
     provider = FakeProvider()
     use_provider(app, provider)
+    use_pipeline_generator(app, provider)
     return provider
 
 

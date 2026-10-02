@@ -113,6 +113,13 @@ run. Stages run one after another in ascending order; **steps that share a stage
 run in parallel** on the same input. Giving every step its own stage is a plain
 sequential chain.
 
+On a run, each step is a LangGraph agent using its selected `model`. It can call
+`list_pipelines()` and `inspect_pipeline(pipeline_id)` for the signed-in user,
+plus every tool from every configured MCP server. A step cannot start another
+pipeline run. Tools are discovered for each step run; if an MCP server is
+unavailable, the pipeline stops with `502 tool_unavailable`. Configure servers
+through `MCP_SERVERS`; without configured servers, native tools remain available.
+
 `title` (optional, ≤ 100 characters) names the step in the UI. `is_output`
 (optional, default `false`) marks a step whose result is a **pipeline output**
 rather than intermediate work; a pipeline can have several, in any stage, and
@@ -171,10 +178,10 @@ steps in parallel, their outputs are joined, each under a
 `## Output of step <order>` heading. `final_output` is the last stage's output,
 joined the same way if it is parallel; it is kept for compatibility, and the
 UI shows the `is_output` results instead. At most `PIPELINE_MAX_PARALLEL_STEPS`
-(default 4) steps of one stage call the provider at once; if any of them fails,
+(default 4) steps of one stage run agents at once; if any of them fails,
 the run fails.
 Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
-`502/503/504` provider failures (the run stops; no partial result is returned).
+`502/503/504` agent or tool failures (the run stops; no partial result is returned).
 
 The call is synchronous: it takes as long as its stages combined, and a parallel
 stage takes as long as its slowest step. The frontend waits up to one hour

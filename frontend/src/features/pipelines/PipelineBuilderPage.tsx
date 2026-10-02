@@ -94,7 +94,8 @@ export function PipelineBuilderPage() {
           Workflow Steps
         </h3>
         <p className="mb-3 text-xs text-slate-400">
-          Give each step a title and prompt. Choose Output for every result you want to receive.
+          Each step is an agent with your configured MCP tools and pipeline list and inspect
+          functions. Give it a title and prompt. Choose Output for each result you want.
         </p>
         <StepEditor
           steps={pipeline.steps}

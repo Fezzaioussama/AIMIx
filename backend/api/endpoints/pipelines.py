@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Response
 
-from api.deps import CurrentUser, DbSession, Providers
+from api.deps import CurrentUser, DbSession, PipelineRun, Providers
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import (
     GenerateRequest,
@@ -77,10 +77,8 @@ def delete_pipeline(pipeline_id: int, user: CurrentUser, session: DbSession) -> 
 
 
 @router.post("/{pipeline_id}/run")
-def run_pipeline(
-    pipeline_id: int, body: RunRequest, user: CurrentUser, session: DbSession, providers: Providers
-) -> RunResponse:
-    pipeline = repository.get_owned(session, user, pipeline_id)
+def run_pipeline(pipeline_id: int, body: RunRequest, context: PipelineRun) -> RunResponse:
+    pipeline = repository.get_owned(context.session, context.user, pipeline_id)
     pipeline_service.ensure_runnable(pipeline)
-    result = pipeline_service.run(pipeline, providers(), body.input)
+    result = pipeline_service.run(pipeline, context.agents(), body.input)
     return RunResponse.model_validate(asdict(result))

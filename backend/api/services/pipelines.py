@@ -15,7 +15,7 @@ from functools import partial
 from itertools import groupby
 from operator import attrgetter
 from time import perf_counter
-from typing import Any
+from typing import Any, Protocol
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
 from api.models import STEP_TITLE_MAX_LENGTH, Pipeline, PipelineStep
@@ -51,7 +51,13 @@ class RunResult:
     intermediate_results: list[StepResult]
 
 
-def run(pipeline: Pipeline, provider: LLMProvider, initial_input: str) -> RunResult:
+class StepGenerator(Protocol):
+    """Narrow contract shared by direct providers and pipeline agents."""
+
+    def generate(self, prompt: str, model: str | None = None) -> str: ...
+
+
+def run(pipeline: Pipeline, generator: StepGenerator, initial_input: str) -> RunResult:
     """Execute the stages in order (§7 Pipeline).
 
     Steps within a stage run in parallel on the same input; the stage's merged
@@ -66,7 +72,7 @@ def run(pipeline: Pipeline, provider: LLMProvider, initial_input: str) -> RunRes
     started = perf_counter()
 
     for steps in stages:
-        stage_results = _run_stage(steps, provider, current)
+        stage_results = _run_stage(steps, generator, current)
         results.extend(stage_results)
         current = merge_stage_outputs(
             [(result.step_order, result.output) for result in stage_results]
@@ -108,15 +114,15 @@ def group_by_stage(steps: list[PipelineStep]) -> list[list[PipelineStep]]:
 
 
 def _run_stage(
-    steps: list[PipelineStep], provider: LLMProvider, stage_input: str
+    steps: list[PipelineStep], generator: StepGenerator, stage_input: str
 ) -> list[StepResult]:
     """Run one stage's steps concurrently; results keep the steps' order.
 
-    Provider calls are I/O-bound and each carries its own timeout, so a small
+    Agent calls are I/O-bound and each carries its own timeout, so a small
     thread pool is enough. The first failure is re-raised and queued steps are
-    cancelled rather than spending further provider calls.
+    cancelled rather than spending further agent calls.
     """
-    run_step = partial(_run_step, provider=provider, stage_input=stage_input)
+    run_step = partial(_run_step, generator=generator, stage_input=stage_input)
     if len(steps) == 1:
         return [run_step(steps[0])]
 
@@ -129,9 +135,9 @@ def _run_stage(
         pool.shutdown(wait=True, cancel_futures=True)
 
 
-def _run_step(step: PipelineStep, provider: LLMProvider, stage_input: str) -> StepResult:
+def _run_step(step: PipelineStep, generator: StepGenerator, stage_input: str) -> StepResult:
     try:
-        output = provider.generate(step_prompt(step.prompt, stage_input), step.model)
+        output = generator.generate(step_prompt(step.prompt, stage_input), step.model)
     except llm_exceptions.LLMError as cause:
         raise as_domain_error(cause) from cause
     return StepResult(

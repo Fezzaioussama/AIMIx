@@ -4,6 +4,7 @@ the signed-in user and the LLM provider (§5 D — tests override these)."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
 from typing import Annotated
@@ -19,6 +20,7 @@ from api.services import accounts
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.llm import get_provider
+from api.services.pipeline_agents import PipelineAgentGenerator
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
 
@@ -73,12 +75,41 @@ def provider_factory() -> ProviderFactory:
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
 
 
+PipelineAgentFactory = Callable[[], PipelineAgentGenerator]
+
+
+def pipeline_agent_factory(request: Request, user: CurrentUser) -> PipelineAgentFactory:
+    """Bind pipeline agents to the request's authenticated user."""
+    return partial(PipelineAgentGenerator, request.app.state.database, user)
+
+
+PipelineAgents = Annotated[PipelineAgentFactory, Depends(pipeline_agent_factory)]
+
+
+@dataclass(frozen=True)
+class PipelineRunContext:
+    user: User
+    session: Session
+    agents: PipelineAgentFactory
+
+
+def pipeline_run_context(
+    user: CurrentUser, session: DbSession, agents: PipelineAgents
+) -> PipelineRunContext:
+    return PipelineRunContext(user, session, agents)
+
+
+PipelineRun = Annotated[PipelineRunContext, Depends(pipeline_run_context)]
+
+
 AgentFactory = Callable[[], ChatAgent]
 
 
-def agent_factory(request: Request, user: CurrentUser, providers: Providers) -> AgentFactory:
+def agent_factory(
+    request: Request, user: CurrentUser, pipeline_agents: PipelineAgents
+) -> AgentFactory:
     """Defer agent construction until after the chat request is validated."""
-    return partial(get_chat_agent, request.app.state.database, user, providers)
+    return partial(get_chat_agent, request.app.state.database, user, pipeline_agents)
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]

@@ -6,6 +6,8 @@ settings; the llm package itself receives plain values (§5 D).
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from api.exceptions import ProviderNotConfigured
@@ -36,10 +38,13 @@ def get_provider() -> LLMProvider:
         raise ProviderNotConfigured(str(cause)) from cause
 
 
-def get_agent_model() -> BaseChatModel:
-    """Build the configured LangChain model for LangGraph chat."""
+def get_agent_model(model_id: str | None = None) -> BaseChatModel:
+    """Build a LangChain model, using a step's selected model when supplied."""
     try:
         provider = canonical_name(get_settings().llm_provider)
-        return create_agent_model(provider, provider_config(provider))
+        config = provider_config(provider)
+        return create_agent_model(
+            provider, replace(config, default_model=model_id) if model_id else config
+        )
     except llm_exceptions.ProviderNotConfigured as cause:
         raise ProviderNotConfigured(str(cause)) from cause

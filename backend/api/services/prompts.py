@@ -6,6 +6,10 @@ from __future__ import annotations
 PIPELINE_GENERATION_TEMPLATE = """You are an AI pipeline architect. Given a user's \
 description of a workflow, generate a structured multi-step pipeline.
 
+Each step runs as an agent that can call the user's pipeline list and inspect
+functions and every configured MCP tool. Write prompts that tell the agent when
+to use a tool if the workflow requires external information or an action.
+
 Each step should have:
 1. A clear, specific prompt template that uses {{input}} as a placeholder for the \
 previous stage's output

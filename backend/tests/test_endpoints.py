@@ -13,7 +13,15 @@ from api.models import Pipeline, PipelineStep, User
 from api.repositories import users
 from api.security import hash_password
 from llm import exceptions as llm_exceptions
-from tests.conftest import FailingProvider, FakeAgent, FakeProvider, bearer, use_agent, use_provider
+from tests.conftest import (
+    FailingProvider,
+    FakeAgent,
+    FakeProvider,
+    bearer,
+    use_agent,
+    use_pipeline_generator,
+    use_provider,
+)
 
 PUBLIC_PATHS = {"/api/register", "/api/login", "/api/token/refresh"}
 
@@ -239,7 +247,7 @@ def test_provider_timeout_surfaces_as_504(
     app: FastAPI, auth_client: TestClient, user: User, session: Session, default_model: str
 ) -> None:
     pipeline = make_pipeline(session, user, "Slow", default_model)
-    use_provider(app, FailingProvider(llm_exceptions.ProviderTimeout("slow")))
+    use_pipeline_generator(app, FailingProvider(llm_exceptions.ProviderTimeout("slow")))
 
     response = auth_client.post(f"/api/pipelines/{pipeline.id}/run", json={"input": "go"})
     assert response.status_code == 504

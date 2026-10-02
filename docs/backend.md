@@ -191,7 +191,8 @@ so tests can never reach a real LLM.
 | `client`, `auth_client` | A `TestClient`, and one that sends a valid bearer token |
 | `user`, `password`, `bearer(user)` | A saved account, its password, and an auth header |
 | `FakeProvider`, `FailingProvider(error)` | Canned replies / a chosen `LLMError` |
-| `fake_provider`, `use_provider(app, provider)` | Override the pipeline provider dependency |
+| `fake_provider`, `use_provider(app, provider)` | Override the planner's provider dependency |
+| `use_pipeline_generator(app, generator)` | Override the pipeline step agent dependency |
 | `FakeAgent`, `use_agent(app, agent)` | Override the chat agent dependency |
 | `default_model` | The active default model id |
 
@@ -205,5 +206,6 @@ so tests can never reach a real LLM.
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
+| `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |

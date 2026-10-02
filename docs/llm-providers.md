@@ -67,9 +67,9 @@ settings.LLM_PROVIDER ──► registry.canonical_name()  ("open_router" → "o
                       ──► OpenAICompatibleProvider(name, client, config)
 ```
 
-`get_provider()` is called per pipeline request; it builds an SDK client with
-no network call. Chat uses `get_agent_model()` and the `agent_models.py`
-registry to construct a LangChain model for the same configured provider.
+`get_provider()` builds an SDK client for pipeline planning. Chat and pipeline
+steps use `get_agent_model()` and the `agent_models.py` registry to construct a
+LangChain model for the configured provider; steps pass their selected model id.
 LangGraph then orchestrates MCP tool calls. Both model adapters set explicit
 request timeouts and disable SDK retries.
 

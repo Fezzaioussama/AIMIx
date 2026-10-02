@@ -75,17 +75,19 @@ sequenceDiagram
     participant E as endpoints/pipelines.run_pipeline
     participant R as repositories/pipelines
     participant S as services/pipelines.run
-    participant P as llm OpenAICompatibleProvider
+    participant A as services/pipeline_agents
+    participant M as configured MCP servers
     UI->>C: runPipeline(id, input) (timeout 1 h)
     C->>E: POST + Bearer token
     E->>E: FastAPI validates {"input"} against RunRequest
     E->>R: get_owned(user, id)
     R-->>E: Pipeline or raise NotFound (404)
-    E->>S: ensure_runnable() then run(pipeline, providers(), input)
+    E->>S: ensure_runnable() then run(pipeline, agent generator, input)
     loop each step, ordered by `order`
         S->>S: step_prompt(template, current)
-        S->>P: generate(prompt, step.model)
-        P-->>S: text, or ProviderTimeout / ProviderRequestError
+        S->>A: generate(prompt, step.model)
+        A->>M: discover and call configured tools when selected
+        A-->>S: final agent text, or DomainError
         S->>S: current = output
     end
     S-->>E: RunResult dataclass
@@ -93,9 +95,10 @@ sequenceDiagram
     C-->>UI: PipelineRunResponse
 ```
 
-A provider error inside the loop is converted by
-`api/services/errors.as_domain_error` (e.g. `ProviderTimeout` →
-`ProviderTimedOut`, 504) and the whole run fails; there are no partial results.
+The agent uses its selected model, the signed-in user's pipeline list and
+inspect tools, and all configured MCP tools. Model, tool, and timeout failures
+stop the whole run; there are no partial results. The planner still uses the
+direct provider adapter.
 
 ### 2. Stream chat — `POST /api/chat`
 
