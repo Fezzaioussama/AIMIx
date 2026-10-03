@@ -5,6 +5,10 @@ The top-level [README](../README.md) is the short pitch and quick start;
 [AGENTS.md](../AGENTS.md) holds the binding engineering rules. This folder
 explains **how the code actually works** and **how to change it safely**.
 
+For a visual introduction, open [the HTML codebase guide](codebase-guide.html) in
+your browser. It includes use-case stories, a step-by-step execution walkthrough,
+class and function relationships, and links to the implementation. It works offline.
+
 ## Reading order
 
 If you are new to the repository, read these in order:

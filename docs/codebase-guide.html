@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIMIx — A guided tour of the codebase</title>
+<style>
+:root { color-scheme: dark; --bg:#0c1220; --panel:#151f32; --line:#2b3b54; --text:#e5edf8; --muted:#aabbd2; --accent:#75ddcd; }
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.7 system-ui,sans-serif; }
+a { color:var(--accent); text-underline-offset:4px; }
+header, main, footer { max-width:1180px; margin:auto; padding:36px 28px; }
+header { padding-top:64px; }
+.eyebrow { color:var(--accent); text-transform:uppercase; letter-spacing:.16em; font-size:.8rem; }
+h1 { font-size:clamp(2.4rem,6vw,4.8rem); line-height:1.1; margin:16px 0; }
+h2 { font-size:1.9rem; line-height:1.3; }
+h3 { margin:0 0 12px; }
+p { margin:12px 0; }
+.lead { color:var(--muted); font-size:1.2rem; max-width:850px; }
+nav { display:flex; flex-wrap:wrap; gap:12px 22px; margin-top:30px; }
+section { scroll-margin-top:24px; margin-bottom:56px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px; }
+.card, details, .diagram, .note { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+.card p, .muted { color:var(--muted); }
+.source { font-family:ui-monospace,monospace; font-size:.8rem; overflow-wrap:anywhere; }
+code { color:#d3beff; font-family:ui-monospace,monospace; font-size:.9em; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:18px; border-radius:10px; background:#080e19; }
+.flow { display:flex; align-items:stretch; flex-wrap:wrap; gap:12px; }
+.node { flex:1; min-width:150px; background:#202e46; padding:16px; border-radius:10px; }
+.arrow { align-self:center; color:var(--accent); font-size:1.5rem; }
+.node small { display:block; color:var(--muted); }
+.diagram figcaption { color:var(--muted); margin-top:16px; }
+figure { margin:18px 0; }
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:.92rem; }
+th, td { text-align:left; padding:14px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { color:var(--accent); }
+summary { cursor:pointer; font-weight:650; }
+details { margin:14px 0; }
+ol li, ul li { margin:9px 0; }
+.note { border-left:4px solid var(--accent); margin:18px 0; }
+button { font:inherit; color:var(--text); border:1px solid var(--line); background:var(--panel); padding:10px 18px; border-radius:8px; cursor:pointer; }
+button:hover, button:focus-visible { border-color:var(--accent); }
+button:disabled { opacity:.45; cursor:default; }
+.controls { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:16px 0; }
+#walk-step { min-height:155px; }
+.skip { position:absolute; left:20px; top:-100px; }
+.skip:focus { top:10px; }
+footer { border-top:1px solid var(--line); color:var(--muted); }
+@media(max-width:600px) { header,main,footer { padding:24px 18px; } .arrow { display:none; } td,th { padding:10px; } }
+@media print { :root { color-scheme:light; --bg:white; --panel:#f5f7fa; --line:#cbd5e1; --text:#152238; --muted:#38465a; --accent:#086b62; } button,.controls,.skip { display:none; } .node,pre { background:#eef2f7; } code { color:#543484; } details { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#overview">Skip to guide</a>
+<header>
+<div class="eyebrow">Source-based developer field guide</div>
+<h1>Understand AIMIx.<br>From idea to agent workflow.</h1>
+<p class="lead">AIMIx is a signed-in workspace for building, generating, and running AI pipelines. This guide connects the user’s story to the React hooks, FastAPI functions, database entities, and LangGraph agents that make it happen.</p>
+<nav aria-label="Guide sections">
+<a href="#overview">Big picture</a><a href="#stories">Use-case stories</a><a href="#execution">Execution walkthrough</a><a href="#contracts">Classes &amp; contracts</a><a href="#map">Code map</a><a href="#failures">Failures &amp; limits</a><a href="#reading">Reading path</a>
+</nav>
+</header>
+<main>
+<section id="overview">
+<h2>01 / The big picture</h2>
+<div class="grid">
+<article class="card"><h3>Build</h3><p>Arrange steps into stages. Give each agent a title, specialty, prompt, model, and tool policy. Save the workflow under your account.</p></article>
+<article class="card"><h3>Generate</h3><p>Describe a workflow. A planner model proposes a pipeline using the model and tool catalogues. Review and edit the proposal before saving.</p></article>
+<article class="card"><h3>Run or chat</h3><p>Supply input to a saved pipeline and inspect its deliverables. Alternatively, ask the chat agent to inspect or run your workflows through tools.</p></article>
+</div>
+<figure class="diagram">
+<div class="flow"><div class="node">React pages<small>Presentation and interaction</small></div><span class="arrow" aria-hidden="true">→</span><div class="node">Hooks + API gateway<small>State, bearer token, transport</small></div><span class="arrow" aria-hidden="true">→</span><div class="node">FastAPI boundary<small>Schemas and dependencies</small></div><span class="arrow" aria-hidden="true">→</span><div class="node">Services<small>Planning, agents, graph</small></div></div>
+<div class="flow" style="margin-top:12px"><div class="node">Repository → SQLite<small>Users, pipelines, saved steps</small></div><div class="node">LLM adapters → providers<small>OpenRouter or TogetherAI</small></div><div class="node">Tool adapters → MCP<small>Configured external services</small></div></div>
+<figcaption>Request flow runs left to right. Services and endpoints use repositories for data; agent services use models and tools. External providers and MCP servers are outside this repository.</figcaption>
+</figure>
+<p>Two different AI paths exist: <strong>planning</strong> calls <code>LLMProvider.generate()</code> for a JSON definition; <strong>execution and chat</strong> build LangChain chat models and LangGraph agents that can call tools.</p>
+</section>
+<section id="stories">
+<h2>02 / Stories that explain the system</h2>
+<p class="muted">The campaign below is an illustrative workflow, not a bundled pipeline or a claim that external research tools are configured.</p>
+<details open><summary>Story A — Maya signs in and owns her workflows</summary>
+<ol><li>Maya registers. <code>AuthProvider.register()</code> calls the auth API; <code>accounts.register()</code> checks the password policy, hashes the password, and stores a <code>User</code>.</li><li>She signs in. <code>accounts.sign_in()</code> verifies the hash and uses <code>TokenSigner</code> to issue access and refresh tokens. <code>tokenStorage</code> stores them, and <code>RequireAuth</code> guards the screens.</li><li>Each protected request carries a bearer token through <code>client.request()</code>. <code>current_user()</code> authenticates the token and loads its user.</li><li><code>repository.get_owned()</code> includes the user ID in the database query. A missing pipeline and another user’s pipeline both produce a not-found error.</li></ol>
+<p><a class="source" href="../frontend/src/core/auth/AuthContext.tsx">frontend/src/core/auth/AuthContext.tsx</a> · <a class="source" href="../backend/api/services/accounts.py">backend/api/services/accounts.py</a> · <a class="source" href="../backend/api/deps.py">backend/api/deps.py</a> · <a class="source" href="../backend/api/repositories/pipelines.py">backend/api/repositories/pipelines.py</a></p>
+</details>
+<details open><summary>Story B — Maya builds a campaign pipeline manually</summary>
+<ol><li>In <code>PipelineBuilderPage</code>, she adds a “Key facts” agent in stage 1, “Email” and “Social post” agents in stage 2, and an “Editor” in stage 3.</li><li><code>usePipelineBuilder</code> owns the editable definition. Its actions insert steps, change roles and prompts, and mark unsaved edits dirty.</li><li><code>savePipeline()</code> creates a new pipeline or replaces an existing one. Pydantic validates the request; <code>create_with_steps()</code> or <code>replace_steps()</code> commits the definition.</li><li>She runs the saved definition on a product brief. The builder requires a saved, clean pipeline, so edits must be saved before running.</li><li><code>PipelineRunView</code> presents outputs, all step results, and timing. <code>OutputCard</code> shows the text and input used; <code>ToolCallTrace</code> shows tool names and statuses.</li></ol>
+<p><a class="source" href="../frontend/src/features/pipelines/usePipelineBuilder.ts">frontend/src/features/pipelines/usePipelineBuilder.ts</a> · <a class="source" href="../frontend/src/core/api/pipelines.ts">frontend/src/core/api/pipelines.ts</a> · <a class="source" href="../backend/api/endpoints/pipelines.py">backend/api/endpoints/pipelines.py</a></p>
+</details>
+<details><summary>Story C — Maya asks AI to propose the workflow</summary>
+<ol><li><code>useAutoPipeline.generate()</code> sends a description and planner model through <code>generatePipeline()</code>.</li><li><code>generate_pipeline()</code> obtains tool descriptors from <code>PipelineToolCatalog.available_sync()</code>.</li><li><code>pipeline_service.generate()</code> calls <code>pipeline_generation_prompt()</code>, then <code>provider.generate()</code>.</li><li><code>parse_plan()</code> extracts JSON and rejects missing or malformed steps. <code>_sanitise_step()</code> renumbers orders, normalises stage, title, role, and output flags, and repairs unknown models or tool selections.</li><li>The proposed definition is returned without being saved. Maya edits it and saves; subsequent saves update the saved proposal. Full persistence validation still happens at the save boundary.</li></ol>
+<p><a class="source" href="../frontend/src/features/pipelines/useAutoPipeline.ts">frontend/src/features/pipelines/useAutoPipeline.ts</a> · <a class="source" href="../backend/api/services/pipelines.py">backend/api/services/pipelines.py</a> · <a class="source" href="../backend/api/services/prompts.py">backend/api/services/prompts.py</a> · <a class="source" href="../backend/api/services/tool_catalog.py">backend/api/services/tool_catalog.py</a></p>
+</details>
+<details><summary>Story D — Maya asks chat to inspect or run a saved pipeline</summary>
+<ol><li><code>useChatStream.send()</code> appends a user message and empty assistant reply. <code>streamChatReply()</code> opens a streaming POST through <code>streamText()</code>.</li><li>The chat endpoint calls <code>stream_reply()</code>, which obtains the first text chunk before committing the HTTP streaming response.</li><li><code>LangGraphChatAgent</code> builds an agent with native tools and configured MCP tools. The model chooses whether to call a tool.</li><li>Native chat tools include <code>list_pipelines</code>, <code>inspect_pipeline</code>, and <code>run_pipeline</code>. They are bound to the authenticated user; running reuses the pipeline service and step-agent factory.</li><li>The agent streams model text through a queue; the frontend appends chunks. Unmounting the chat screen aborts the request.</li></ol>
+<p><a class="source" href="../frontend/src/features/chat/useChatStream.ts">frontend/src/features/chat/useChatStream.ts</a> · <a class="source" href="../backend/api/services/chat.py">backend/api/services/chat.py</a> · <a class="source" href="../backend/api/services/agent.py">backend/api/services/agent.py</a> · <a class="source" href="../backend/api/services/agent_tools.py">backend/api/services/agent_tools.py</a></p>
+<p class="note">The visible chat transcript lives in React state. The current request sends the prompt only; it does not send the full conversation history.</p>
+</details>
+</section>
+<section id="execution">
+<h2>03 / Follow one pipeline execution</h2>
+<figure class="diagram"><div class="flow"><div class="node">Product brief<small>Initial input</small></div><span class="arrow" aria-hidden="true">→</span><div class="node">Stage 1<small>Key facts</small></div><span class="arrow" aria-hidden="true">→</span><div class="node">Stage 2: fan-out<small>Email + Social post, same input</small></div><span class="arrow" aria-hidden="true">→</span><div class="node">Join → Stage 3<small>Editor receives both drafts</small></div></div><figcaption>The join is a barrier: every agent in a stage must finish before the next stage starts. Concurrency is capped by backend settings.</figcaption></figure>
+<p>Use the walkthrough controls to trace the call chain. Without JavaScript, the complete ordered trace remains visible below.</p>
+<div class="controls" id="walk-controls" hidden><button id="previous" type="button">← Previous</button><span id="walk-count"></span><button id="next" type="button">Next →</button></div>
+<div id="walk-step" class="card" aria-live="polite" hidden></div>
+<ol id="trace">
+<li><strong>UI → hook → gateway.</strong> <code>usePipelineBuilder.run(input)</code> calls <code>core/api/pipelines.runPipeline(id, input)</code>. <code>request()</code> supplies auth headers and the generation timeout, then waits for JSON.</li>
+<li><strong>Validate and resolve dependencies.</strong> <code>RunRequest</code> rejects blank input. <code>PipelineRunContext</code> bundles the authenticated user, database session, and user-bound agent factory.</li>
+<li><strong>Load and snapshot.</strong> <code>endpoints.run_pipeline()</code> loads the owned pipeline and calls <code>ensure_runnable()</code>. <code>services.run()</code> maps ORM entities through <code>snapshot_pipeline()</code> to immutable <code>PipelineSpec</code> and <code>StepSpec</code> values.</li>
+<li><strong>Construct the graph.</strong> <code>GraphPipelineRunner.run()</code> bridges to async <code>arun()</code>. <code>_group_by_stage()</code> sorts by stage and order. <code>_build_graph()</code> adds one agent node per step and a join node after every stage.</li>
+<li><strong>Execute each agent.</strong> <code>_agent_node()</code> substitutes the current input with <code>step_prompt()</code> and creates an <code>AgentTask</code>. <code>PipelineAgentGenerator.execute()</code> constructs the selected model, user-bound tools, and runtime limits.</li>
+<li><strong>Model ↔ tools loop.</strong> <code>LangGraphStepAgent.reply()</code> resolves the tool policy and uses <code>create_agent()</code>. The role becomes a system prompt. The agent runs under timeout and recursion limits and returns an <code>AgentOutcome</code> with text and tool traces.</li>
+<li><strong>Merge and advance.</strong> Parallel nodes write <code>StepResult</code> values into a reducer-backed results map. <code>_join_node()</code> calls <code>merge_stage_outputs()</code>: one result passes through; multiple results are labelled by step order.</li>
+<li><strong>Shape and display results.</strong> The runner marks deliverables and returns <code>RunResult</code>. The endpoint converts it to <code>RunResponse</code>. The hook stores <code>intermediate_results</code> and client-measured elapsed time for <code>PipelineRunView</code>.</li>
+</ol>
+<div class="note"><strong>Output does not mean “stop”.</strong> Marked output steps still feed later stages. If any steps are marked, those are deliverables; otherwise all steps in the final stage are deliverables. <code>final_output</code> is the final stage’s merged text, which may differ from the set of marked deliverables.</div>
+<p><a class="source" href="../backend/api/services/multiagent/graph.py">backend/api/services/multiagent/graph.py</a> · <a class="source" href="../backend/api/services/multiagent/mapper.py">backend/api/services/multiagent/mapper.py</a> · <a class="source" href="../backend/api/services/multiagent/step_agent.py">backend/api/services/multiagent/step_agent.py</a></p>
+</section>
+<section id="contracts"><h2>04 / Classes and contracts: who collaborates with whom?</h2>
+<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Responsibility and interaction</th><th>Source</th></tr></thead><tbody><tr><td><code>User / Pipeline / PipelineStep</code></td><td>SQLAlchemy entities for accounts and workflow definitions; relationships own cascading child records.</td><td><a class="source" href="../backend/api/models.py">backend/api/models.py</a></td></tr>
+<tr><td><code>PipelineRunContext</code></td><td>Request-scoped bundle injected into the run endpoint: user, session, and step-agent factory.</td><td><a class="source" href="../backend/api/deps.py">backend/api/deps.py</a></td></tr>
+<tr><td><code>PipelineSpec / StepSpec</code></td><td>Frozen snapshots consumed by graph nodes, without holding ORM entities.</td><td><a class="source" href="../backend/api/services/multiagent/contracts.py">backend/api/services/multiagent/contracts.py</a></td></tr>
+<tr><td><code>StepAgent</code></td><td>Protocol with async execute(AgentTask) → AgentOutcome. The graph depends on this port.</td><td><a class="source" href="../backend/api/services/multiagent/contracts.py">backend/api/services/multiagent/contracts.py</a></td></tr>
+<tr><td><code>GraphPipelineRunner</code></td><td>Builds and executes stages, caps concurrency, joins text, and marks output results.</td><td><a class="source" href="../backend/api/services/multiagent/graph.py">backend/api/services/multiagent/graph.py</a></td></tr>
+<tr><td><code>PipelineAgentGenerator</code></td><td>Implements the step-agent port; binds database, user, model factory, and runtime settings.</td><td><a class="source" href="../backend/api/services/multiagent/step_agent.py">backend/api/services/multiagent/step_agent.py</a></td></tr>
+<tr><td><code>LangGraphStepAgent</code></td><td>Runs one role-scoped model/tool loop and returns text plus tool-call traces.</td><td><a class="source" href="../backend/api/services/multiagent/step_agent.py">backend/api/services/multiagent/step_agent.py</a></td></tr>
+<tr><td><code>AgentTask / AgentOutcome / ToolCallTrace</code></td><td>Values exchanged between graph and agent: request settings, returned text, and tool name/status.</td><td><a class="source" href="../backend/api/services/agent_types.py">backend/api/services/agent_types.py</a></td></tr>
+<tr><td><code>RunResult / StepResult</code></td><td>Pipeline name, final merged text, and each step’s input, output, model, stage, and traces.</td><td><a class="source" href="../backend/api/services/multiagent/contracts.py">backend/api/services/multiagent/contracts.py</a></td></tr>
+<tr><td><code>LangGraphChatAgent / ChatAgent</code></td><td>Streaming implementation and narrow chat protocol; native tools can invoke the same pipeline runner.</td><td><a class="source" href="../backend/api/services/agent.py">backend/api/services/agent.py</a></td></tr>
+<tr><td><code>LLMProvider / OpenAICompatibleProvider</code></td><td>Planner-facing protocol and shared SDK transport; generate and stream share normalised provider failures.</td><td><a class="source" href="../backend/llm/base.py">backend/llm/base.py</a></td></tr>
+<tr><td><code>ProviderConfig</code></td><td>Frozen provider configuration passed into the framework-independent LLM layer.</td><td><a class="source" href="../backend/llm/base.py">backend/llm/base.py</a></td></tr>
+<tr><td><code>PipelineToolCatalog</code></td><td>Discovers native and MCP tools and exposes shortened descriptors for planning and the UI.</td><td><a class="source" href="../backend/api/services/tool_catalog.py">backend/api/services/tool_catalog.py</a></td></tr>
+<tr><td><code>Database / TokenSigner</code></td><td>Infrastructure: session lifecycle and pure JWT signing/verification, injected at the HTTP boundary.</td><td><a class="source" href="../backend/api/db.py">backend/api/db.py</a></td></tr></tbody></table></div>
+<h3 style="margin-top:28px">Persisted data versus runtime data</h3>
+<pre>User 1 ── owns ── * Pipeline 1 ── contains ── * PipelineStep
+                        │ snapshot_pipeline()
+                        ▼
+                   PipelineSpec ── StepSpec
+                        │ GraphPipelineRunner + StepAgent
+                        ▼
+                     RunResult ── StepResult ── ToolCallTrace</pre>
+<p>Saved steps hold <code>order</code>, <code>stage</code>, <code>title</code>, <code>role</code>, <code>prompt</code>, <code>model</code>, <code>allowed_tools</code>, and <code>is_output</code>. Order identifies a step; stage determines when it runs. The database enforces unique order within a pipeline and cascades deletion to its steps.</p>
+<p>Runs and chat messages have no dedicated persistence models in the current code. Execution results are returned to the client; they are not saved as a run-history table.</p>
+<h3 style="margin-top:28px">Tool policy is a three-way contract</h3>
+<div class="grid"><article class="card"><h3><code>null</code></h3><p>All tools available to this agent: native tools plus configured MCP tools.</p></article><article class="card"><h3><code>[]</code></h3><p>No tools. Resolution returns immediately without MCP discovery.</p></article><article class="card"><h3><code>[names]</code></h3><p>Only selected tools. Native-only selections avoid MCP discovery; unavailable selected tools raise a domain error.</p></article></div>
+<p>Pipeline agents receive the native inspection tools, not the native pipeline-running tool. Chat receives inspection and execution tools. Configured MCP tools can have their own capabilities; “read-only native tools” does not imply that every MCP tool is read-only.</p>
+</section>
+<section id="map"><h2>05 / Where to look when changing behavior</h2><div class="table-wrap"><table><thead><tr><th>Area / entry point</th><th>What it owns</th><th>Source</th></tr></thead><tbody><tr><td><code>create_app()</code></td><td>Wires settings, logging, database, middleware, errors, and routing.</td><td><a class="source" href="../backend/api/main.py">backend/api/main.py</a></td></tr>
+<tr><td><code>api_router() / PUBLIC_ROUTERS</code></td><td>Registers resources and applies authentication by default.</td><td><a class="source" href="../backend/api/routes.py">backend/api/routes.py</a></td></tr>
+<tr><td><code>PipelineIn / RunResponse</code></td><td>Validates saved definitions and describes serialized execution results.</td><td><a class="source" href="../backend/api/schemas/pipelines.py">backend/api/schemas/pipelines.py</a></td></tr>
+<tr><td><code>create_with_steps() / get_owned()</code></td><td>Persists workflow definitions and filters access by user.</td><td><a class="source" href="../backend/api/repositories/pipelines.py">backend/api/repositories/pipelines.py</a></td></tr>
+<tr><td><code>step_prompt() / merge_stage_outputs()</code></td><td>Substitutes {input}; labels and joins parallel text outputs.</td><td><a class="source" href="../backend/api/services/prompts.py">backend/api/services/prompts.py</a></td></tr>
+<tr><td><code>get_provider() / get_agent_model()</code></td><td>Reads provider settings and constructs planner or agent-model adapters.</td><td><a class="source" href="../backend/api/services/llm.py">backend/api/services/llm.py</a></td></tr>
+<tr><td><code>Provider registry</code></td><td>Maps configured provider names to factories; the catalogue owns model metadata.</td><td><a class="source" href="../backend/llm/registry.py">backend/llm/registry.py</a></td></tr>
+<tr><td><code>resolve_tools()</code></td><td>Applies all/none/selected policy across native and MCP tools.</td><td><a class="source" href="../backend/api/services/agent_runtime.py">backend/api/services/agent_runtime.py</a></td></tr>
+<tr><td><code>App / RequireAuth</code></td><td>Routes login, register, chat, builder, and auto-planner screens.</td><td><a class="source" href="../frontend/src/App.tsx">frontend/src/App.tsx</a></td></tr>
+<tr><td><code>usePipelineBuilder / useAutoPipeline</code></td><td>Owns editing, generation, saving, execution, and related UI state.</td><td><a class="source" href="../frontend/src/features/pipelines/usePipelineBuilder.ts">frontend/src/features/pipelines/usePipelineBuilder.ts</a></td></tr>
+<tr><td><code>PipelineGraph / PipelineRunView</code></td><td>Presents stage topology, deliverables, all steps, and result summaries.</td><td><a class="source" href="../frontend/src/features/pipelines/PipelineRunView.tsx">frontend/src/features/pipelines/PipelineRunView.tsx</a></td></tr>
+<tr><td><code>request() / streamText() / ApiError</code></td><td>Central browser gateway for bearer auth, timeouts, JSON errors, and text streams.</td><td><a class="source" href="../frontend/src/core/api/client.ts">frontend/src/core/api/client.ts</a></td></tr>
+<tr><td><code>renderMarkdown()</code></td><td>Sanitises model-produced Markdown for display.</td><td><a class="source" href="../frontend/src/core/markdown/renderMarkdown.ts">frontend/src/core/markdown/renderMarkdown.ts</a></td></tr>
+<tr><td><code>Settings / migrations</code></td><td>Environment configuration and versioned database schema changes.</td><td><a class="source" href="../backend/config/settings.py">backend/config/settings.py</a></td></tr></tbody></table></div>
+<p>The existing patterns have concrete purposes: <strong>Repository</strong> centralises ownership-aware queries; <strong>Gateway</strong> centralises browser transport; <strong>Factory + Registry</strong> selects providers; <strong>Adapter</strong> normalises SDK behavior; <strong>Strategy / port</strong> makes step agents replaceable; frozen <strong>DTOs</strong> detach graph execution from ORM state.</p>
+</section>
+<section id="failures"><h2>06 / Failure paths and current behavior</h2>
+<div class="grid"><article class="card"><h3>Boundary failures</h3><p>Invalid requests fail schema validation. Missing or expired tokens fail authentication. Ownership-aware lookup prevents access to another user’s pipelines.</p></article><article class="card"><h3>AI and tool failures</h3><p>Invalid planner JSON raises <code>UpstreamResponseInvalid</code>. Runtime timeout, provider, recursion, and MCP failures map to domain errors. A failed stage does not return a successful partial run response.</p></article><article class="card"><h3>One error contract</h3><p><code>api/errors.py</code> shapes HTTP errors as <code>{"error": "code", "detail": "message"}</code>. The browser gateway turns failed JSON requests into <code>ApiError</code>.</p></article></div>
+<ul><li><strong>Pipeline generation and runs wait for completion.</strong> They currently return one JSON response; there is no run polling endpoint or progressive step stream. Chat uses a plain-text stream.</li><li><strong>Streaming errors change after the first chunk.</strong> Before streaming starts, a domain error can become a normal HTTP error. Afterward, <code>stream_reply()</code> logs a domain failure and ends the stream; it does not send a structured error event.</li><li><strong>Limits come from configuration.</strong> Provider timeouts, agent timeouts, recursion, MCP timeouts, and pipeline concurrency are configured in backend settings. Consult the environment example for defaults.</li><li><strong>Refresh support exists on the backend.</strong> The frontend gateway clears tokens on a 401; it does not transparently refresh and retry that request.</li><li><strong>Markdown is a trust boundary.</strong> Model output passes through <code>renderMarkdown</code> sanitisation before HTML presentation.</li></ul>
+<p><a class="source" href="../backend/api/errors.py">backend/api/errors.py</a> · <a class="source" href="../backend/api/services/agent_runtime.py">backend/api/services/agent_runtime.py</a> · <a class="source" href="../frontend/src/core/api/client.ts">frontend/src/core/api/client.ts</a> · <a class="source" href="../backend/config/settings.py">backend/config/settings.py</a> · <a class="source" href="../backend/.env.example">backend/.env.example</a></p>
+</section>
+<section id="reading"><h2>07 / A practical reading path</h2>
+<ol><li><strong>Start with the screen:</strong> read <code>App.tsx</code>, then <code>PipelineBuilderPage</code> and <code>usePipelineBuilder</code> to connect buttons with actions.</li><li><strong>Cross the network:</strong> read the pipeline API module, gateway, endpoint, and request/response schemas.</li><li><strong>Follow the execution:</strong> read <code>services/pipelines.py</code>, the snapshot mapper, contracts, graph, and step-agent adapter.</li><li><strong>Explore capabilities:</strong> read <code>agent_runtime.py</code>, <code>agent_tools.py</code>, tool discovery, and model factories.</li><li><strong>Learn from tests:</strong> graph tests cover stage ordering, fan-out/join, and outputs; agent/tool tests cover policies and failures; endpoint and database tests cover auth, ownership, contracts, and migrations.</li></ol>
+<p><a class="source" href="../backend/tests/test_multiagent_graph.py">backend/tests/test_multiagent_graph.py</a> · <a class="source" href="../backend/tests/test_pipeline_agents.py">backend/tests/test_pipeline_agents.py</a> · <a class="source" href="../backend/tests/test_agent_tools.py">backend/tests/test_agent_tools.py</a> · <a class="source" href="../backend/tests/test_endpoints.py">backend/tests/test_endpoints.py</a> · <a class="source" href="../backend/tests/test_database.py">backend/tests/test_database.py</a></p>
+<div class="note"><strong>Local development:</strong> <code>make install</code> installs dependencies; <code>make run-aimix</code> starts the app (backend startup applies migrations). Use <code>make format</code> and <code>make check</code> for the repository’s quality gates. Read the setup guide before configuring credentials.</div>
+<p><a class="source" href="../docs/getting-started.md">docs/getting-started.md</a> · <a class="source" href="../docs/architecture.md">docs/architecture.md</a> · <a class="source" href="../docs/api-reference.md">docs/api-reference.md</a> · <a class="source" href="../docs/development-guide.md">docs/development-guide.md</a> · <a class="source" href="../AGENTS.md">AGENTS.md</a></p>
+</section>
+</main>
+<footer>This guide describes the checked-in implementation, not a roadmap. Source links are relative to this file and work when the repository is kept alongside it. Open this HTML directly in a browser; no server, account, external library, or network request is required.</footer>
+<script>
+const steps = Array.from(document.querySelectorAll('#trace li'));
+const panel = document.getElementById('walk-step');
+const counter = document.getElementById('walk-count');
+const previous = document.getElementById('previous');
+const next = document.getElementById('next');
+let position = 0;
+function renderStep() {
+  panel.replaceChildren(steps[position].cloneNode(true));
+  const item = panel.firstElementChild;
+  const paragraph = document.createElement('p');
+  paragraph.append(...item.childNodes);
+  panel.replaceChildren(paragraph);
+  counter.textContent = `Step ${position + 1} of ${steps.length}`;
+  previous.disabled = position === 0;
+  next.disabled = position === steps.length - 1;
+}
+previous.addEventListener('click', () => { position -= 1; renderStep(); });
+next.addEventListener('click', () => { position += 1; renderStep(); });
+document.getElementById('walk-controls').hidden = false;
+panel.hidden = false;
+renderStep();
+</script>
+</body>
+</html>
