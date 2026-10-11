@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-labelledby="title desc">
+  <title id="title">AIMIx project mark</title>
+  <desc id="desc">A glowing letter A formed by connected AI pipeline stages on a dark square.</desc>
+  <defs>
+    <linearGradient id="pipeline" x1="35" y1="128" x2="126" y2="31" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38bdf8"/>
+      <stop offset=".52" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="160" height="160" rx="34" fill="#0f172a"/>
+  <g fill="none" stroke="url(#pipeline)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 126 75 33h12l41 93M51 87h58" stroke-width="9"/>
+    <path d="m80 38-20 45m20-45 20 45M57 91l-18 31m64-31 18 31" stroke-width="3.5" opacity=".85"/>
+  </g>
+  <g fill="#0f172a" stroke="url(#pipeline)" stroke-width="5">
+    <circle cx="81" cy="34" r="9"/>
+    <circle cx="57" cy="87" r="9"/>
+    <circle cx="105" cy="87" r="9"/>
+    <circle cx="33" cy="127" r="9"/>
+    <circle cx="81" cy="127" r="9"/>
+    <circle cx="129" cy="127" r="9"/>
+  </g>
+  <path d="M81 98v19" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/>
+</svg>

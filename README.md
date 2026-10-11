@@ -1,24 +1,23 @@
-# AIMIx
+<p align="center">
+  <img src="docs/assets/aimix-mark.svg" width="128" height="128" alt="AIMIx — an A formed by connected AI pipeline stages">
+</p>
 
-> AI pipeline builder — coordinate agents across workflow stages.
+<h1 align="center">AIMIx</h1>
 
-AIMIx lets you build pipelines of agents, each with a role, model, prompt, and
-tool policy. Stages run in order; agents in the same stage run in parallel, and
-their results feed the next stage. Agents can use built-in pipeline functions
-and configured MCP tools.
+<p align="center"><strong>Design, coordinate, and run multi-agent workflows.</strong></p>
 
-A FastAPI backend owns pipelines, auth, and every outbound AI call; a React
-frontend provides the builder UI.
+<p align="center">
+  <img src="https://img.shields.io/badge/orchestration-LangGraph-4338ca" alt="Orchestration: LangGraph">
+  <img src="https://img.shields.io/badge/API-FastAPI-0369a1" alt="API: FastAPI">
+  <img src="https://img.shields.io/badge/UI-React_19-4338ca" alt="UI: React 19">
+  <img src="https://img.shields.io/badge/license-Apache_2.0-0f172a" alt="License: Apache 2.0">
+</p>
 
-## Stack
-
-| Layer | Technology |
-|---|---|
-| Backend | FastAPI + Uvicorn, SQLAlchemy 2.0 + Alembic, pydantic-settings, PyJWT |
-| Frontend | React 19 + Vite, React Router, Tailwind CSS 4, Marked |
-| Agents and LLMs | LangGraph with OpenRouter (default) or TogetherAI models; MCP tools |
-| Database | SQLite |
-| Tooling | `uv` (Python), npm |
+AIMIx is a visual AI pipeline builder. Give each agent a role, model, prompt,
+and tool policy; group agents into parallel stages; then pass their ordered
+results into the next stage. A FastAPI backend owns authentication, persistence,
+and every outbound AI or tool call, while a React interface keeps workflow
+design and execution approachable.
 
 ## Quick start
 
@@ -34,6 +33,42 @@ interactive docs are at <http://127.0.0.1:8000/api/docs> (not in production).
 
 Coming from the Django version? `make migrate && make import-django-db` copies your
 accounts (same passwords) and pipelines from `backend/db.sqlite3`.
+
+## What you can build
+
+- **Multi-stage agent pipelines** — stages run sequentially while agents within
+  a stage run concurrently, with deterministic result ordering.
+- **Tool-using agents** — grant every available tool, no tools, or an explicit
+  allowlist of AIMIx-native and configured MCP tools per step.
+- **Generated workflows** — describe an outcome, review the planner's proposed
+  stages, roles, models, deliverables, and tool access, then edit before saving.
+- **Streaming conversations** — chat with a LangGraph agent that can inspect and
+  run only the signed-in user's pipelines.
+
+```mermaid
+flowchart LR
+    Input[Workflow input] --> S1[Stage 1]
+    S1 --> A1[Agent A]
+    S1 --> A2[Agent B]
+    A1 --> Join[Ordered results]
+    A2 --> Join
+    Join --> S2[Stage 2 agent]
+    S2 --> Output[Deliverables + tool trace]
+```
+
+> **Current boundary:** pipeline runs wait on one HTTP request. Run history,
+> resumable checkpoints, and approval prompts for tool actions are not yet
+> implemented.
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI + Uvicorn, SQLAlchemy 2.0 + Alembic, pydantic-settings, PyJWT |
+| Frontend | React 19 + Vite, React Router, Tailwind CSS 4, Marked |
+| Agents and LLMs | LangGraph with OpenRouter (default) or TogetherAI models; MCP tools |
+| Database | SQLite |
+| Tooling | `uv` (Python), npm |
 
 ## Documentation
 
