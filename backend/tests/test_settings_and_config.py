@@ -52,6 +52,13 @@ def test_placeholder_credentials_are_treated_as_unset(placeholder: str) -> None:
     assert settings(OPEN_ROUTER_KEY="sk-a-real-looking-key").openrouter_api_key == (
         "sk-a-real-looking-key"
     )
+    assert settings(TAVILY_API_KEY=placeholder).tavily_api_key == ""
+
+
+def test_builtin_agent_tools_are_a_comma_list() -> None:
+    chosen = settings(AGENT_BUILTIN_TOOLS="calculator, current_datetime")
+    assert chosen.agent_builtin_tools == ["calculator", "current_datetime"]
+    assert settings(AGENT_BUILTIN_TOOLS="").agent_builtin_tools == []
 
 
 def test_legacy_django_variable_names_still_work() -> None:

@@ -108,13 +108,42 @@ sequenceDiagram
     C-->>UI: PipelineRunResponse
 ```
 
-Each agent uses its selected model and optional role. `allowed_tools: null`
-grants the signed-in user's pipeline list and inspect tools plus all configured
-MCP tools; `[]` grants none; an explicit list grants only named tools. A missing
-selected tool raises `tool_unavailable`. The graph keeps step results in saved
-order even if agents finish out of order. The response contains tool call names
-and success/error statuses, without arguments or tool output. Model, tool, and
-timeout failures stop the whole run; no partial result is returned.
+Each agent uses its selected model and optional role, and a system prompt from
+`prompts.step_agent_system_prompt` that, when the agent has tools, tells it to
+use them instead of guessing, cite web sources and adapt when a tool fails.
+`allowed_tools: null` grants the signed-in user's pipeline list and inspect
+tools, the enabled built-in tools (`web_search`, `fetch_url`, `calculator`,
+`current_datetime`; see below) and all configured MCP tools; `[]` grants none;
+an explicit list grants only named tools. A missing selected tool raises
+`tool_unavailable`. The graph keeps step results in saved order even if agents
+finish out of order. The response contains tool call names and success/error
+statuses, without arguments or tool output. A built-in tool that fails (a page
+that times out, a refused address, a bad expression) returns an error result
+to the agent, which can retry another way; the call shows as `error` in the
+trace and the run continues. Model, MCP, and timeout failures stop the whole
+run; no partial result is returned.
+
+### Built-in tools
+
+`api/services/toolbox/` gives agents real work to do without any MCP server.
+`registry.py` maps each tool name to a builder (Strategy + Registry);
+`AGENT_BUILTIN_TOOLS` picks the entries on offer, and a builder returns nothing
+when its tool is not configured, so `web_search` appears only when
+`TAVILY_API_KEY` is set. `tools.py` adapts the helpers into LangChain tools with
+`handle_tool_error`; `web.py` is the httpx gateway (Tavily search, page fetch);
+`calculator.py` evaluates arithmetic over a whitelisted AST, never `eval`;
+`html_text.py` reduces HTML to readable text. `agent_tools.native_tools` joins
+them with the pipeline tools, so pipeline agents, the chat agent, the planner
+and `GET /agent-tools` all see the same set.
+
+`fetch_url` only reaches public addresses: every redirect hop is resolved and
+refused if any address is loopback, private, link-local or otherwise
+non-global, which keeps a prompt-injected agent out of the server's network and
+cloud metadata endpoint. httpx resolves the host again when it connects, so a
+DNS-rebinding window remains; drop `fetch_url` from `AGENT_BUILTIN_TOOLS` where
+that is unacceptable. Downloads stop at `WEB_FETCH_MAX_BYTES`, the text handed
+to the model at `WEB_FETCH_MAX_CHARS`, and each request at
+`WEB_TIMEOUT_SECONDS`, with no retries.
 
 The graph lives in `api/services/multiagent/`: `contracts.py` defines immutable
 pipeline and step snapshots, results, and the async step-agent contract;

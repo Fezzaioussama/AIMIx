@@ -179,6 +179,7 @@ backend/
     services/            # business logic: pipelines, chat, accounts, prompts, llm
       agent_runtime.py    # shared chat/pipeline tool policy and error mapping
       multiagent/         # contracts, ORM mapper, stage graph, step agent
+      toolbox/            # built-in agent tools: web search, fetch, calculator, clock
     repositories/        # data access; ownership filtering lives here
     models.py            # SQLAlchemy: User, Pipeline, PipelineStep
     security.py          # password hashing + JWT signing

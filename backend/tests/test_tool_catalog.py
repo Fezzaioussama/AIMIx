@@ -17,9 +17,13 @@ from api.services import tool_catalog
 def test_catalog_endpoint_lists_native_tools_without_mcp(auth_client: TestClient) -> None:
     response = auth_client.get("/api/agent-tools")
     assert response.status_code == 200
+    # web_search needs TAVILY_API_KEY, which the test settings leave unset.
     assert {item["name"] for item in response.json()} == {
         "list_pipelines",
         "inspect_pipeline",
+        "fetch_url",
+        "calculator",
+        "current_datetime",
     }
     assert {item["source"] for item in response.json()} == {"AIMIx"}
 

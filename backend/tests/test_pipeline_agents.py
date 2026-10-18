@@ -19,6 +19,7 @@ from api.services import llm as llm_service
 from api.services.catalog import default_model_id
 from api.services.llm import LLMProfile
 from api.services.multiagent import step_agent
+from api.services.prompts import STEP_AGENT_TOOL_GUIDANCE, step_agent_system_prompt
 from llm.base import ProviderConfig
 
 
@@ -120,7 +121,14 @@ def test_step_uses_its_model_and_discovered_tool(
     assert called == [2]
     assert selected == [default_model]
     assert discovered == [True]
-    assert set(bound_tools) == {"list_pipelines", "inspect_pipeline", "increment"}
+    assert set(bound_tools) == {
+        "list_pipelines",
+        "inspect_pipeline",
+        "fetch_url",
+        "calculator",
+        "current_datetime",
+        "increment",
+    }
     assert response.json()["intermediate_results"][0]["tool_calls"] == [
         {"name": "increment", "status": "success"}
     ]
@@ -153,6 +161,13 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
     assert response.status_code == 200
     assert observed["tools"] == ["inspect_pipeline"]
     assert "Researcher" in observed["system_prompt"]
+    assert STEP_AGENT_TOOL_GUIDANCE in observed["system_prompt"]
+
+
+def test_step_without_tools_gets_no_tool_guidance() -> None:
+    prompt = step_agent_system_prompt("", has_tools=False)
+    assert prompt.startswith("You are an agent in an AIMIx pipeline.")
+    assert STEP_AGENT_TOOL_GUIDANCE not in prompt
 
 
 def test_mcp_discovery_failure_stops_the_pipeline(

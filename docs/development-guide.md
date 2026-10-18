@@ -39,6 +39,7 @@ make typecheck                                              # mypy only
 | Change a prompt | `api/services/prompts.py` | Build prompt strings in `pipelines.py` |
 | Change agent or stage execution | `api/services/multiagent/contracts.py` for the step-agent contract; `mapper.py` for ORM snapshots; `graph.py` for stage barriers and result ordering; `step_agent.py` for model/tool behavior; `api/services/agent_runtime.py` for shared chat/pipeline policy | Put graph execution in an endpoint or mix it with planning and database queries |
 | Add a provider or model | `llm/` — see [llm-providers.md](llm-providers.md) | Add an `if provider ==` anywhere |
+| Add a built-in agent tool | A factory and name constant in `api/services/toolbox/tools.py` (raise `ToolException` for failures the agent can recover from), an entry in `toolbox/registry.py`, its default in `AGENT_BUILTIN_TOOLS` | Branch on tool names in an agent, or let an outbound call run without a timeout |
 | Add a setting | A field on `Settings` in `config/settings.py`, document in `backend/.env.example` | Hard-code a URL, key, model id, or limit |
 | Change a model field | `api/models.py` + an Alembic revision in the same commit | Edit an applied migration |
 | Add a UI screen | `features/<feature>/` page + `use<Feature>.ts` hook, route in `App.tsx` | `fetch` or `localStorage` in a component |

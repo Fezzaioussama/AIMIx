@@ -23,10 +23,11 @@ from api.services.agent_runtime import (
     as_agent_error,
     resolve_tools,
 )
-from api.services.agent_tools import read_only_tools
+from api.services.agent_tools import native_tools
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
 from api.services.llm import LLMProfile, get_agent_model
 from api.services.mcp import connections
+from api.services.prompts import step_agent_system_prompt
 from config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -70,9 +71,7 @@ class LangGraphStepAgent:
                 tools = await resolve_tools(
                     self._toolset, task.allowed_tools, self._limits.mcp_timeout_seconds
                 )
-                system_prompt = (
-                    f"You are the {task.role} agent in an AIMIx pipeline." if task.role else None
-                )
+                system_prompt = step_agent_system_prompt(task.role, has_tools=bool(tools))
                 graph = create_agent(self._model, tools, system_prompt=system_prompt)
                 state = await graph.ainvoke(
                     {"messages": [{"role": "user", "content": task.prompt}]},
@@ -115,7 +114,7 @@ class PipelineAgentGenerator:
             self._dependencies.model_factory(task.model),
             AgentToolset(
                 connections(settings.mcp_servers, settings.mcp_timeout_seconds),
-                read_only_tools(self._database, self._user),
+                native_tools(self._database, self._user, settings),
             ),
             AgentLimits(
                 settings.agent_timeout_seconds,

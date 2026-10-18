@@ -137,12 +137,13 @@ Each write commits its own transaction.
 | `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
 | `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
 | `multiagent/step_agent.py` | User-bound LangGraph step agent: selected model, role, native/MCP tools, final text, and tool call metadata. |
-| `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`. |
+| `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`, `step_agent_system_prompt`. |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
 | `agent.py` | Builds and streams the chat-only LangGraph agent. |
 | `agent_runtime.py` | Shared chat/pipeline tool policy, limits, and third-party failure translation. |
 | `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
-| `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. |
+| `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. `native_tools` adds the built-in toolbox. |
+| `toolbox/` | Built-in agent tools: `registry.py` (name → builder, filtered by `AGENT_BUILTIN_TOOLS`), `tools.py` (LangChain adapters), `web.py` (Tavily search and SSRF-guarded page fetch over httpx), `calculator.py` (AST arithmetic), `html_text.py`, `config.py` (`ToolboxConfig` from settings). See [architecture.md](architecture.md#built-in-tools). |
 | `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
 | `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
@@ -240,4 +241,5 @@ so tests can never reach a real LLM.
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
+| `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, and a run that survives a failing tool |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |

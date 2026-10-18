@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from langchain_core.tools import BaseTool
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotFound, ValidationFailed
@@ -14,7 +15,13 @@ from api.security import hash_password
 from api.services import agent as agent_service
 from api.services import agent_tools
 from api.services.agent_tools import built_in_tools
+from api.services.multiagent.contracts import StepAgent
 from tests.conftest import FakeProvider, use_pipeline_generator
+
+
+def chat_tools(app: FastAPI, user: User, agent: StepAgent) -> dict[str, BaseTool]:
+    tools = built_in_tools(app.state.database, user, lambda: agent)
+    return {item.name: item for item in tools}
 
 
 def test_native_tools_list_inspect_and_run_owned_pipeline(
@@ -27,7 +34,10 @@ def test_native_tools_list_inspect_and_run_owned_pipeline(
         [{"order": 1, "stage": 1, "title": "Summary", "prompt": "Summarise {input}", "model": "m"}],
     )
     provider = FakeProvider(reply="summary")
-    listing, inspect, run = built_in_tools(app.state.database, user, lambda: provider)
+    tools = chat_tools(app, user, provider)
+    listing, inspect, run = (
+        tools[name] for name in ("list_pipelines", "inspect_pipeline", "run_pipeline")
+    )
 
     assert listing.name == "list_pipelines"
     assert listing.invoke({}) == [{"id": saved.id, "name": "Summarise", "step_count": 1}]
@@ -48,7 +58,10 @@ def test_native_tools_cannot_read_or_run_another_users_pipeline(
         [{"order": 1, "stage": 1, "prompt": "private {input}", "model": "m"}],
     )
     provider = FakeProvider()
-    listing, inspect, run = built_in_tools(app.state.database, user, lambda: provider)
+    tools = chat_tools(app, user, provider)
+    listing, inspect, run = (
+        tools[name] for name in ("list_pipelines", "inspect_pipeline", "run_pipeline")
+    )
 
     assert listing.invoke({}) == []
     with pytest.raises(NotFound):
@@ -59,9 +72,15 @@ def test_native_tools_cannot_read_or_run_another_users_pipeline(
 
 
 def test_native_run_rejects_blank_input(app: FastAPI, user: User) -> None:
-    run = built_in_tools(app.state.database, user, FakeProvider)[2]
+    run = chat_tools(app, user, FakeProvider())["run_pipeline"]
     with pytest.raises(ValidationFailed):
         run.invoke({"pipeline_id": 1, "input_text": "   "})
+
+
+def test_chat_tools_include_the_built_in_toolbox(app: FastAPI, user: User) -> None:
+    assert {"fetch_url", "calculator", "current_datetime"} <= set(
+        chat_tools(app, user, FakeProvider())
+    )
 
 
 def test_authenticated_chat_can_call_a_native_tool(

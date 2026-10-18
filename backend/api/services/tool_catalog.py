@@ -16,7 +16,7 @@ from mcp import McpError
 from api.db import Database
 from api.exceptions import ToolUnavailable
 from api.models import User
-from api.services.agent_tools import read_only_tools
+from api.services.agent_tools import native_tools
 from api.services.agent_types import ToolDescriptor
 from api.services.mcp import connections
 from config.settings import get_settings
@@ -50,7 +50,7 @@ class PipelineToolCatalog:
 
     async def available(self) -> list[ToolDescriptor]:
         settings = get_settings()
-        native = read_only_tools(self._database, self._user)
+        native = native_tools(self._database, self._user, settings)
         tools = await discover_tools(
             connections(settings.mcp_servers, settings.mcp_timeout_seconds),
             native,

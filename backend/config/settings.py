@@ -99,6 +99,19 @@ class Settings(BaseSettings):
     )
     mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
+    # --- Built-in agent tools (api/services/toolbox) --------------------------
+    agent_builtin_tools: CommaList = Field(
+        ["web_search", "fetch_url", "calculator", "current_datetime"],
+        validation_alias="AGENT_BUILTIN_TOOLS",
+    )
+    web_timeout_seconds: float = Field(15.0, gt=0, validation_alias="WEB_TIMEOUT_SECONDS")
+    web_fetch_max_bytes: int = Field(2_000_000, ge=1, validation_alias="WEB_FETCH_MAX_BYTES")
+    web_fetch_max_chars: int = Field(20_000, ge=1, validation_alias="WEB_FETCH_MAX_CHARS")
+    web_search_max_results: int = Field(5, ge=1, le=20, validation_alias="WEB_SEARCH_MAX_RESULTS")
+    tavily_api_key: str = Field("", validation_alias="TAVILY_API_KEY")
+    tavily_search_url: str = Field(
+        "https://api.tavily.com/search", validation_alias="TAVILY_SEARCH_URL"
+    )
     # Upper bound on provider calls one pipeline run makes at once for a stage
     # whose steps run in parallel.
     pipeline_max_parallel_steps: int = Field(
@@ -118,14 +131,16 @@ class Settings(BaseSettings):
         validation_alias="TOGETHERAI_DEFAULT_MODEL",
     )
 
-    @field_validator("allowed_hosts", "cors_allowed_origins", mode="before")
+    @field_validator("allowed_hosts", "cors_allowed_origins", "agent_builtin_tools", mode="before")
     @classmethod
     def _split_commas(cls, value: object) -> object:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("openrouter_api_key", "togetherai_api_key", "secret_key", mode="after")
+    @field_validator(
+        "openrouter_api_key", "togetherai_api_key", "tavily_api_key", "secret_key", mode="after"
+    )
     @classmethod
     def _drop_placeholders(cls, value: str) -> str:
         value = value.strip()

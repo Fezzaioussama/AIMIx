@@ -133,11 +133,16 @@ server's key, if any. Idempotent. `200` returns the same shape as `GET`.
 ```json
 [
   { "name": "list_pipelines", "description": "List your saved AIMIx pipelines...", "source": "AIMIx" },
-  { "name": "inspect_pipeline", "description": "Inspect one of your saved AIMIx pipelines...", "source": "AIMIx" }
+  { "name": "inspect_pipeline", "description": "Inspect one of your saved AIMIx pipelines...", "source": "AIMIx" },
+  { "name": "web_search", "description": "Search the web for current information...", "source": "AIMIx" },
+  { "name": "fetch_url", "description": "Read a public web page...", "source": "AIMIx" },
+  { "name": "calculator", "description": "Evaluate an arithmetic expression reliably...", "source": "AIMIx" },
+  { "name": "current_datetime", "description": "Return the current date and time in UTC...", "source": "AIMIx" }
 ]
 ```
 
-Configured MCP tools also appear with `source: "MCP"` and names prefixed by
+The built-in tools are the ones enabled by `AGENT_BUILTIN_TOOLS`; `web_search`
+is listed only when `TAVILY_API_KEY` is set. Configured MCP tools also appear with `source: "MCP"` and names prefixed by
 their server name. Use the exact `name` values in a step's `allowed_tools`.
 Descriptions may be shortened by `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. If a
 configured MCP server is unavailable, discovery returns `502 tool_unavailable`.
@@ -206,7 +211,10 @@ On a run, each step is a LangGraph agent using its selected `model`. Its optiona
 Names in an explicit list must be non-blank and unique. If a selected tool is
 no longer available when the step runs, the run stops with `502 tool_unavailable`.
 The native pipeline tools are scoped to the signed-in user; MCP servers come
-from `MCP_SERVERS`. A step cannot start another pipeline run. Existing steps
+from `MCP_SERVERS`. When a built-in tool fails during a step (for example
+`fetch_url` on a private address or a page that times out), the agent receives
+the error and the run continues; the call appears in `tool_calls` with
+`status: "error"`. A step cannot start another pipeline run. Existing steps
 receive `role: ""` and `allowed_tools: null` when the migration is applied.
 
 `title` (optional, ≤ 100 characters) names the step in the UI. `is_output`

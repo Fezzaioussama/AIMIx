@@ -142,6 +142,8 @@ Thumbs.db
 .codex/
 .agents/
 .agents-server/
+# Archify skill work folders (diagram candidates, receipts, browser evidence).
+/.archify/
 
 # ── Local notes ──────────────────────────────────────────────────────────────
 doc_understanding.md

@@ -1,4 +1,4 @@
-"""Native AIMIx functions exposed to the chat agent as LangChain tools."""
+"""Native AIMIx functions exposed to chat and pipeline agents as LangChain tools."""
 
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services import pipelines as pipeline_service
 from api.services.multiagent.contracts import StepAgent
+from api.services.toolbox.config import toolbox_config
+from api.services.toolbox.registry import toolbox_tools
+from config.settings import Settings, get_settings
 
 
 def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
@@ -58,6 +61,12 @@ def read_only_tools(database: Database, user: User) -> list[BaseTool]:
     return [list_pipelines, inspect_pipeline]
 
 
+def native_tools(database: Database, user: User, settings: Settings) -> list[BaseTool]:
+    """Every in-process tool an agent may use: pipeline inspection plus the
+    built-in toolbox (web search, page fetch, calculator, clock)."""
+    return [*read_only_tools(database, user), *toolbox_tools(toolbox_config(settings))]
+
+
 def built_in_tools(
     database: Database,
     user: User,
@@ -66,7 +75,7 @@ def built_in_tools(
     include_run: bool = True,
 ) -> list[BaseTool]:
     """Bind pipeline functions to the authenticated user for one agent run."""
-    native = read_only_tools(database, user)
+    native = native_tools(database, user, get_settings())
     if not include_run:
         return native
 

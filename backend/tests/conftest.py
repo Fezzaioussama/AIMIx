@@ -4,6 +4,7 @@ suite is deterministic and offline (AGENTS.md §6)."""
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -39,6 +40,14 @@ TEST_SETTINGS = Settings(
     agent_recursion_limit=9,
     mcp_timeout_seconds=1.0,
     mcp_servers={},
+    agent_builtin_tools=["web_search", "fetch_url", "calculator", "current_datetime"],
+    web_timeout_seconds=1.0,
+    web_fetch_max_bytes=2_000,
+    web_fetch_max_chars=1_000,
+    web_search_max_results=3,
+    # No search key: web_search stays out of the catalogue unless a test adds one.
+    tavily_api_key="",
+    tavily_search_url="https://search.test/search",
     pipeline_max_parallel_steps=4,
     openrouter_api_key="",
     togetherai_api_key="",
@@ -100,6 +109,11 @@ class FakeAgent:
         self.prompts.append(prompt)
         for chunk in self.chunks:
             yield chunk
+
+
+def tool_call(name: str, args: dict[str, Any], call_id: str = "call-1") -> dict[str, Any]:
+    """A tool invocation shaped as the agent sends it, so errors become messages."""
+    return {"type": "tool_call", "id": call_id, "name": name, "args": args}
 
 
 def use_agent(app: FastAPI, agent: ChatAgent) -> None:

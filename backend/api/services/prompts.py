@@ -12,6 +12,8 @@ Each step runs as an agent. These tools are currently available to its user:
 {tools}
 
 Give each step a role, a focused goal, and only the tools needed for that goal.
+A step that needs current facts, sources, exact numbers or today's date should get \
+the matching tools from the list rather than rely on the model's memory.
 Use exact tool names from the list. Use [] when a step needs no tools, or null
 to make all available tools accessible. A step's prompt should say when to use
 its tools and what result to deliver.
@@ -67,6 +69,18 @@ User's workflow description:
 
 PARALLEL_OUTPUT_HEADING = "## Output of step {order}"
 
+STEP_AGENT_TEMPLATE = (
+    "You are {identity} in an AIMIx pipeline. Your final reply is handed on as the "
+    "result of this step, so make it the complete deliverable, without remarks about "
+    "your process."
+)
+STEP_AGENT_TOOL_GUIDANCE = (
+    "Use your tools whenever the task depends on something you cannot be sure of, such "
+    "as current events, figures, calculations or the content of a web page, instead of "
+    "guessing. Cite the URL of every web source you rely on. When a tool returns an "
+    "error, adapt: try another query or source, or say what could not be verified."
+)
+
 
 def pipeline_generation_prompt(
     description: str, available_models: list[str], tools: list[ToolDescriptor] | None = None
@@ -79,6 +93,13 @@ def pipeline_generation_prompt(
         tools="\n".join(tool_lines) if tool_lines else "No tools are configured.",
     )
     return f"{header}{description}"
+
+
+def step_agent_system_prompt(role: str, has_tools: bool) -> str:
+    """The system prompt for one step's agent; tool guidance only when it has tools."""
+    identity = f"the {role} agent" if role else "an agent"
+    prompt = STEP_AGENT_TEMPLATE.format(identity=identity)
+    return f"{prompt}\n\n{STEP_AGENT_TOOL_GUIDANCE}" if has_tools else prompt
 
 
 def step_prompt(template: str, current_input: str) -> str:
