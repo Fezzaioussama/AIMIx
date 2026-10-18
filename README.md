@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/aimix-mark.svg" width="128" height="128" alt="AIMIx — an A formed by connected AI pipeline stages">
+  <img src="docs/assets/aimix-mark.png" width="128" height="128" alt="AIMIx — an A formed by connected AI pipeline stages">
 </p>
 
 <h1 align="center">AIMIx</h1>
@@ -13,6 +13,13 @@
   <img src="https://img.shields.io/badge/license-Apache_2.0-0f172a" alt="License: Apache 2.0">
 </p>
 
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#three-ways-to-work">Workspaces</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="docs/README.md">Documentation</a>
+</p>
+
 AIMIx is a visual AI pipeline builder. Give each agent a role, model, prompt,
 and tool policy; group agents into parallel stages; then pass their ordered
 results into the next stage. A FastAPI backend owns authentication, persistence,
@@ -20,6 +27,10 @@ and every outbound AI or tool call, while a React interface keeps workflow
 design and execution approachable.
 
 ## Quick start
+
+You need Python 3.10+, `uv`, Node.js 20+, npm, `make`, and an OpenRouter or
+TogetherAI key. See the [complete setup guide](docs/getting-started.md) for
+environment options and troubleshooting.
 
 ```bash
 make install                        # uv sync + npm install (frontend)
@@ -34,16 +45,15 @@ interactive docs are at <http://127.0.0.1:8000/api/docs> (not in production).
 Coming from the Django version? `make migrate && make import-django-db` copies your
 accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 
-## What you can build
+## Three ways to work
 
-- **Multi-stage agent pipelines** — stages run sequentially while agents within
-  a stage run concurrently, with deterministic result ordering.
-- **Tool-using agents** — grant every available tool, no tools, or an explicit
-  allowlist of AIMIx-native and configured MCP tools per step.
-- **Generated workflows** — describe an outcome, review the planner's proposed
-  stages, roles, models, deliverables, and tool access, then edit before saving.
-- **Streaming conversations** — chat with a LangGraph agent that can inspect and
-  run only the signed-in user's pipelines.
+| Workspace | Best for | What happens |
+|---|---|---|
+| **Chat** | Exploring ideas and invoking saved workflows | A streaming LangGraph agent can inspect or run only the signed-in user's pipelines and configured MCP tools. |
+| **Pipeline Builder** | Repeatable multi-stage workflows | You choose every role, model, prompt, output, and tool policy; stages run in order and agents within one stage run concurrently. |
+| **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes stages, roles, models, deliverables, and available tools without saving anything until you review it. |
+
+### Pipeline execution at a glance
 
 ```mermaid
 flowchart LR
@@ -331,3 +341,9 @@ the component.
 ## License
 
 Apache 2.0 — see [`LICENSE`](LICENSE).
+
+## Brand assets
+
+- [SVG source](docs/assets/aimix-mark.svg) — editable and resolution-independent.
+- [Transparent PNG](docs/assets/aimix-mark.png) — 512 × 512 pixels for profiles,
+  presentations, and repository artwork.
