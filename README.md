@@ -203,6 +203,8 @@ frontend/src/
                          #   AuthContext.tsx, RequireAuth.tsx (route guard)
     hooks/useModels.ts   # model catalogue from GET /api/models
     markdown/            # sanitised Markdown rendering
+    ui/                  # shared presentation + motion; reactbits/ = effects
+                         #   adapted from React Bits (Aurora, SpotlightCard, …)
   features/
     auth/ chat/ pipelines/
 ```

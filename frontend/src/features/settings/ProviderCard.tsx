@@ -1,4 +1,7 @@
+import { AnimatePresence, motion } from 'motion/react';
+
 import type { ProviderSettings } from '../../core/api/types';
+import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { providerLabel } from './providerLabel';
 import type { ProviderDraft } from './useLLMSettings';
 
@@ -12,7 +15,25 @@ interface ProviderCardProps {
 }
 
 const fieldClass =
-  'w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400';
+  'w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none transition-[border-color,box-shadow] focus:border-sky-400/60 focus:shadow-[0_0_0_3px_rgba(56,189,248,0.12)]';
+
+/** "Active" tag that pops in on the provider the picker selects. */
+function ActiveBadge({ shown }: { shown: boolean }) {
+  return (
+    <AnimatePresence>
+      {shown && (
+        <motion.span
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          className="rounded-full bg-sky-400/15 px-2.5 py-0.5 text-xs text-sky-300"
+        >
+          Active
+        </motion.span>
+      )}
+    </AnimatePresence>
+  );
+}
 
 function keyStatus(entry: ProviderSettings): string {
   if (entry.key_source === 'saved') return `Saved key ending in ${entry.key_hint}`;
@@ -35,19 +56,17 @@ export function ProviderCard({
   const missingKey = active && entry.key_source === 'none' && !draft.apiKey.trim();
 
   return (
-    <section
+    <SpotlightCard
+      as="section"
       aria-labelledby={`provider-${entry.name}`}
-      className={`rounded-xl border bg-slate-800/60 p-5 ${active ? 'border-sky-400/50' : 'border-white/10'}`}
+      variant={active ? 'highlighted' : 'plain'}
+      className="p-5"
     >
       <div className="mb-1 flex items-center justify-between">
         <h2 id={`provider-${entry.name}`} className="text-lg font-semibold">
           {label}
         </h2>
-        {active && (
-          <span className="rounded-full bg-sky-400/15 px-2.5 py-0.5 text-xs text-sky-300">
-            Active
-          </span>
-        )}
+        <ActiveBadge shown={active} />
       </div>
       <p className="mb-4 text-xs text-slate-400">{keyStatus(entry)}</p>
 
@@ -104,6 +123,6 @@ export function ProviderCard({
           This provider has no key yet. Model calls will fail until you add one.
         </p>
       )}
-    </section>
+    </SpotlightCard>
   );
 }

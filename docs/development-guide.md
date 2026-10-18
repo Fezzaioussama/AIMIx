@@ -42,7 +42,8 @@ make typecheck                                              # mypy only
 | Add a setting | A field on `Settings` in `config/settings.py`, document in `backend/.env.example` | Hard-code a URL, key, model id, or limit |
 | Change a model field | `api/models.py` + an Alembic revision in the same commit | Edit an applied migration |
 | Add a UI screen | `features/<feature>/` page + `use<Feature>.ts` hook, route in `App.tsx` | `fetch` or `localStorage` in a component |
-| Share UI markup | A small component in the feature folder (or `core/` if cross-feature) | Copy-paste JSX |
+| Share UI markup | A small component in the feature folder (or `core/ui/` if cross-feature) | Copy-paste JSX |
+| Add an animated effect | Adapt it from React Bits into `core/ui/reactbits/` (trimmed props, size budgets, reduced-motion and no-WebGL fallbacks) — see [frontend.md](frontend.md) | Paste a React Bits file unchanged, or add a second animation library |
 
 ## Recipe: add a backend endpoint (worked example)
 
