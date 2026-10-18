@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { AuthCard, AuthField } from './AuthCard';
 import { useAuth } from '../../core/auth/AuthContext';
@@ -33,30 +33,24 @@ export function LoginPage() {
 
   return (
     <AuthCard
-      title="User Login"
-      submitLabel="Log In"
+      title="Welcome back"
+      subtitle="Sign in to continue to your AIMIx workspace."
+      submitLabel="Log in"
       isSubmitting={isSubmitting}
       errorMessage={errorMessage}
       onSubmit={handleSubmit}
-      footer={
-        <p className="m-0">
-          Don&apos;t have an account?{' '}
-          <Link to="/register" className="text-[#007bff] underline">
-            Create new account
-          </Link>
-        </p>
-      }
+      footer={{ prompt: 'Don’t have an account?', to: '/register', label: 'Create one' }}
     >
       <AuthField
         id="username"
-        label="Username/Email:"
+        label="Username or email"
         type="text"
         value={username}
         onChange={setUsername}
       />
       <AuthField
         id="password"
-        label="Password:"
+        label="Password"
         type="password"
         value={password}
         onChange={setPassword}

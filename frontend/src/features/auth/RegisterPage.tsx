@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { AuthCard, AuthField } from './AuthCard';
 import { useAuth } from '../../core/auth/AuthContext';
@@ -38,31 +38,31 @@ export function RegisterPage() {
 
   return (
     <AuthCard
-      title="Create Account"
-      submitLabel="Register"
+      title="Create your account"
+      subtitle="Start chatting with models and building agent pipelines."
+      submitLabel="Create account"
       isSubmitting={isSubmitting}
       errorMessage={errorMessage}
       onSubmit={handleSubmit}
-      footer={
-        <p className="m-0">
-          Already have an account?{' '}
-          <Link to="/login" className="text-[#007bff] underline">
-            Log in here
-          </Link>
-        </p>
-      }
+      footer={{ prompt: 'Already have an account?', to: '/login', label: 'Log in' }}
     >
-      <AuthField id="username" label="Username:" type="text" value={username} onChange={setUsername} />
+      <AuthField
+        id="username"
+        label="Username"
+        type="text"
+        value={username}
+        onChange={setUsername}
+      />
       <AuthField
         id="password"
-        label="Password:"
+        label="Password"
         type="password"
         value={password}
         onChange={setPassword}
       />
       <AuthField
         id="confirmPassword"
-        label="Confirm Password:"
+        label="Confirm password"
         type="password"
         value={confirmPassword}
         onChange={setConfirmPassword}

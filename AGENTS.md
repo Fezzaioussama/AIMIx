@@ -84,6 +84,8 @@ frontend/src/
                          #   one module per resource
     auth/                #   tokenStorage.ts (sole localStorage owner), context, route guard
     hooks/               #   shared data hooks
+    ui/                  #   shared presentation + motion, no data access; ui/reactbits/
+                         #   holds effects adapted from React Bits (keep its LICENSE.md)
   features/<feature>/    # one folder per feature: pages, feature hooks, subcomponents
 docs/                    # developer documentation; update it with the behaviour it describes
 Dockerfile, railway.json # the one production image and its Railway settings (docs/deployment.md)

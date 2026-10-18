@@ -1,3 +1,5 @@
+import { motion } from 'motion/react';
+
 import type { PipelineStep, StepResult } from '../../core/api/types';
 import { GraphNodeCard, GraphTerminal, OutputBadge } from './GraphNodeCard';
 import { buildGraph, type GraphNode, type OutputTarget } from './pipelineGraph';
@@ -14,6 +16,19 @@ interface PipelineGraphProps {
   onAddAfter?: (stage: number) => void;
   parallelLabel?: string;
   nextLabel?: string;
+}
+
+/** Stages slide in left to right, one after another, as the diagram appears. */
+function stageEntrance(stage: number) {
+  return {
+    initial: { opacity: 0, x: -14 },
+    animate: { opacity: 1, x: 0 },
+    transition: {
+      duration: 0.45,
+      delay: Math.min(Math.max(stage - 1, 0), 8) * 0.07,
+      ease: [0.16, 1, 0.3, 1] as const,
+    },
+  };
 }
 
 /**
@@ -38,7 +53,7 @@ export function PipelineGraph({
   const hasRun = results.length > 0;
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/40 p-6">
+    <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/50 bg-[radial-gradient(rgba(148,163,184,0.09)_1px,transparent_1px)] bg-[size:18px_18px] p-6">
       <p className="mb-8 text-xs text-slate-400">
         Each stage receives the previous stage’s result. Steps in one stage share its input and
         run in parallel. Mark steps as Output to keep their results.
@@ -48,7 +63,7 @@ export function PipelineGraph({
         <GraphTerminal label="Input" detail={input || 'Your text'} />
         {stages.map((stage) => (
           <div key={stage.stage} className="flex items-start" role="listitem">
-            <Connector />
+            <Connector flowing={isRunning} />
             <StageColumn
               stage={stage.stage}
               nodes={stage.items}
@@ -62,7 +77,7 @@ export function PipelineGraph({
             />
           </div>
         ))}
-        <Connector />
+        <Connector flowing={isRunning} />
         <GraphTerminal
           label={outputCount === 1 ? 'Output' : 'Outputs'}
           detail={`${outputCount} ${outputCount === 1 ? 'result' : 'results'}${hasRun ? ' · view' : ''}`}
@@ -99,10 +114,10 @@ function StageColumn({
   nextLabel,
 }: StageColumnProps) {
   return (
-    <div className="flex flex-col gap-3">
+    <motion.div className="flex flex-col gap-3" {...stageEntrance(stage)}>
       <StageNodes {...{ stage, nodes, selected, onSelect, onEditStep }} />
       <StageActions {...{ stage, onAddParallel, onAddAfter, parallelLabel, nextLabel }} />
-    </div>
+    </motion.div>
   );
 }
 
@@ -179,11 +194,22 @@ function Legend() {
   );
 }
 
-function Connector() {
+/** Arrow between columns; while a run is in flight a pulse of light travels along it. */
+function Connector({ flowing }: { flowing: boolean }) {
   return (
     <div className="mt-11 flex w-10 items-center" aria-hidden="true">
-      <span className="h-px flex-1 bg-slate-500" />
-      <span className="border-y-4 border-l-[6px] border-y-transparent border-l-slate-500" />
+      <span
+        className={`h-px flex-1 ${
+          flowing
+            ? 'bg-[linear-gradient(90deg,#64748b_0%,#38bdf8_45%,#a855f7_55%,#64748b_100%)] bg-[length:200%_100%] motion-safe:animate-flow'
+            : 'bg-slate-500'
+        }`}
+      />
+      <span
+        className={`border-y-4 border-l-[6px] border-y-transparent ${
+          flowing ? 'border-l-sky-400' : 'border-l-slate-500'
+        }`}
+      />
     </div>
   );
 }

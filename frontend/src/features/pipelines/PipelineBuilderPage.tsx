@@ -3,8 +3,13 @@ import { useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
+import { BrandMark } from '../../core/ui/BrandMark';
+import { CountUp } from '../../core/ui/reactbits/CountUp';
+import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
+import { RecentPipelines } from './RecentPipelines';
+import { RunInputCard } from './RunInputCard';
 import { StepEditor } from './StepEditor';
 import { usePipelineBuilder } from './usePipelineBuilder';
 
@@ -32,16 +37,14 @@ export function PipelineBuilderPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-60px)] flex-col bg-slate-900 text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
+    <div className="flex min-h-[calc(100vh-60px)] flex-col text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
       <aside
         inert={isRunning || isSaving}
-        className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-800/70 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0"
+        className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-950/60 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0"
       >
-        <div className="mb-4 text-lg font-extrabold">
-          <span className="bg-gradient-to-r from-[#00d2ff] to-[#3a7bd5] bg-clip-text text-transparent">
-            AI
-          </span>
-          Mix Pipeline
+        <div className="mb-4 flex items-baseline gap-2">
+          <BrandMark className="text-lg" />
+          <span className="text-lg font-extrabold text-slate-200">Pipeline</span>
         </div>
         <div className="mb-6">
           <PipelineNav />
@@ -50,7 +53,7 @@ export function PipelineBuilderPage() {
         <button
           type="button"
           onClick={actions.reset}
-          className="mb-3 w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm transition-colors hover:bg-white/10"
+          className="mb-3 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm transition-colors hover:border-sky-400/30 hover:bg-white/10"
         >
           + Create New
         </button>
@@ -59,16 +62,16 @@ export function PipelineBuilderPage() {
           value={pipeline.name}
           placeholder="Pipeline Name"
           onChange={(event) => actions.rename(event.target.value)}
-          className="mb-3 w-full rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-sky-400"
+          className="mb-3 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm transition-[border-color,box-shadow] outline-none focus:border-sky-400/60 focus:shadow-[0_0_0_3px_rgba(56,189,248,0.12)]"
         />
         <button
           type="button"
           onClick={() => void actions.save()}
           disabled={isSaving}
-          className={`mb-6 w-full rounded-md px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${
+          className={`mb-6 w-full rounded-lg px-3 py-2 text-sm font-semibold transition-[background-color,box-shadow] disabled:opacity-60 ${
             pipeline.id === undefined
-              ? 'bg-sky-500 hover:bg-sky-400'
-              : 'bg-emerald-600 hover:bg-emerald-500'
+              ? 'bg-sky-500 hover:bg-sky-400 hover:shadow-[0_6px_20px_-8px_rgba(56,189,248,0.8)]'
+              : 'bg-emerald-600 hover:bg-emerald-500 hover:shadow-[0_6px_20px_-8px_rgba(16,185,129,0.8)]'
           }`}
         >
           {isSaving ? 'Saving…' : pipeline.id === undefined ? 'Save Pipeline' : 'Save Changes'}
@@ -77,23 +80,7 @@ export function PipelineBuilderPage() {
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">
           Recent Pipelines
         </h3>
-        <div className="mb-6">
-          {saved.map((candidate) => (
-            <button
-              key={candidate.id}
-              type="button"
-              onClick={() => actions.select(candidate)}
-              className={`mb-2 flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                candidate.id === pipeline.id
-                  ? 'border-sky-400/30 bg-sky-400/10 text-sky-300'
-                  : 'border-white/10 bg-white/5 hover:bg-white/10'
-              }`}
-            >
-              {candidate.name}
-              <span className="text-xs text-slate-400">{candidate.steps.length} steps</span>
-            </button>
-          ))}
-        </div>
+        <RecentPipelines pipelines={saved} activeId={pipeline.id} onSelect={actions.select} />
 
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">
           Workflow Steps
@@ -124,13 +111,21 @@ export function PipelineBuilderPage() {
           <div className="mb-8">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="mb-1 text-xs font-semibold tracking-widest text-sky-400 uppercase">
-                  Workflow canvas
+                <p className="mb-1 text-xs font-semibold tracking-widest uppercase">
+                  <ShinyText className="text-sky-400/80">Workflow canvas</ShinyText>
                 </p>
-                <h1 className="text-2xl font-bold">{pipeline.name || 'New Pipeline'}</h1>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  {pipeline.name || 'New Pipeline'}
+                </h1>
               </div>
               <p className="text-sm text-slate-400">
-                {stageCount} {stageCount === 1 ? 'stage' : 'stages'} · {pipeline.steps.length}{' '}
+                <CountUp to={stageCount} duration={0.6} className="font-semibold text-slate-200" />{' '}
+                {stageCount === 1 ? 'stage' : 'stages'} ·{' '}
+                <CountUp
+                  to={pipeline.steps.length}
+                  duration={0.6}
+                  className="font-semibold text-slate-200"
+                />{' '}
                 {pipeline.steps.length === 1 ? 'step' : 'steps'}
               </p>
             </div>
@@ -144,32 +139,15 @@ export function PipelineBuilderPage() {
               onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
               onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
             >
-              <div className="mt-8 rounded-2xl border border-white/10 bg-slate-800/50 p-8">
-                <h2 className="mb-4 text-xl font-semibold">Run Execution</h2>
-                <textarea
-                  value={input}
-                  disabled={isRunning}
-                  placeholder="Enter your initial input here..."
-                  onChange={(event) => setInput(event.target.value)}
-                  className="mb-4 h-28 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-4 text-sm outline-none focus:border-sky-400"
-                />
-                <button
-                  type="button"
-                  onClick={() => void actions.run(input)}
-                  disabled={isRunning || !input.trim() || dirty}
-                  className="rounded-lg bg-gradient-to-br from-sky-500 to-indigo-500 px-8 py-4 font-semibold text-white transition-transform hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(99,102,241,0.4)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
-                >
-                  {isRunning ? 'Executing…' : 'Run Pipeline'}
-                </button>
-                {dirty && pipeline.id !== undefined && (
-                  <p className="mt-3 text-xs text-sky-300">
-                    Save your changes to run this version.
-                  </p>
-                )}
-                {(message || modelsError) && (
-                  <p className="mt-4 text-sm text-amber-300">{message || modelsError}</p>
-                )}
-              </div>
+              <RunInputCard
+                input={input}
+                isRunning={isRunning}
+                dirty={dirty}
+                isSaved={pipeline.id !== undefined}
+                message={message || modelsError || ''}
+                onInputChange={setInput}
+                onRun={() => void actions.run(input)}
+              />
             </PipelineRunView>
           </div>
         </div>

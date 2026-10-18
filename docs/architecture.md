@@ -57,6 +57,7 @@ graph TD
     features --> coreapi["core/api/<br/>client.ts gateway, endpoints, types"]
     features --> coreauth["core/auth/<br/>AuthContext, RequireAuth"]
     features --> corehooks["core/hooks/useModels"]
+    features --> coreui["core/ui/<br/>shared presentation + React Bits motion"]
     coreapi --> tokens["core/auth/tokenStorage<br/>sole localStorage owner"]
     coreauth --> tokens
 ```
