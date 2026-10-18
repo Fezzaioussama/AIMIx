@@ -17,20 +17,22 @@ from api.db import Database
 from api.exceptions import DomainError
 from api.repositories.legacy_import import import_django_database
 from api.services import accounts
-from api.services.catalog import available_model_ids, default_model_id
 from api.services.llm import get_provider
+from api.services.llm_settings import environment_profile
 from config.settings import get_settings
 
 
 def llm_probe(args: argparse.Namespace) -> None:
+    """Probes the backend/.env credentials; keys saved on the Settings page are per user."""
+    profile = environment_profile()
     if args.list_models:
-        print("\n".join(available_model_ids()))
+        print("\n".join(profile.models))
         return
     if not args.prompt:
         raise DomainError("Provide a prompt, or pass --list-models.")
-    model = args.model or default_model_id()
+    model = args.model or profile.default_model
     print(f"model: {model}")
-    print(get_provider().generate(args.prompt, model))
+    print(get_provider(profile).generate(args.prompt, model))
 
 
 def create_user(args: argparse.Namespace) -> None:

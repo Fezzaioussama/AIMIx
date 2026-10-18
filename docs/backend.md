@@ -27,7 +27,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | Setting | Variable (legacy name also accepted) | Default / meaning |
 |---|---|---|
 | `app_env` | `APP_ENV` | `local`, `production` or `test`. Production refuses `DEBUG=true`, an empty `SECRET_KEY` or empty `ALLOWED_HOSTS`, adds HSTS, and turns off `/api/docs` |
-| `secret_key` | `SECRET_KEY` (`DJANGO_SECRET_KEY`) | Signs the JWTs. Outside production an empty value falls back to a throwaway key |
+| `secret_key` | `SECRET_KEY` (`DJANGO_SECRET_KEY`) | Signs the JWTs and encrypts saved API keys. Outside production an empty value falls back to a throwaway key |
 | `debug` | `DEBUG` (`DJANGO_DEBUG`) | FastAPI debug mode |
 | `allowed_hosts` | `ALLOWED_HOSTS` (`DJANGO_ALLOWED_HOSTS`) | Comma-separated `Host` allowlist (`localhost,127.0.0.1`) |
 | `cors_allowed_origins` | `CORS_ALLOWED_ORIGINS` (`DJANGO_CORS_ALLOWED_ORIGINS`) | Comma-separated origins (the Vite dev server) |
@@ -46,7 +46,9 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
 
 `llm_api_keys`, `llm_base_urls` and `llm_default_models` expose the provider
-settings as dicts keyed by provider name. `config/logging_setup.py` configures
+settings as dicts keyed by provider name. The provider, keys and default models
+are server-wide defaults: each user can override them on the Settings page
+(`services/llm_settings.py`). `config/logging_setup.py` configures
 logging once, from the app factory.
 
 ## `api/` — the HTTP application
@@ -67,7 +69,9 @@ refresh) are open. Every router in `PROTECTED_ROUTERS` is mounted behind the
 | `AppSettings` | The `Settings` |
 | `Signer` | A `TokenSigner` configured from the settings |
 | `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` |
-| `Providers` | A factory for the configured `LLMProvider` used by planning |
+| `Secrets` | A `SecretBox` keyed from the settings, for saved API keys |
+| `Profile` | The user's `LLMProfile`: provider, default model and saved key (Settings page, else `.env`) |
+| `Providers` | A factory for the user's `LLMProvider`, used by planning |
 | `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context |
 | `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
@@ -78,7 +82,8 @@ Tests replace any of these with `app.dependency_overrides`.
 
 | Model (table) | Fields | Invariants |
 |---|---|---|
-| `User` (`users`) | `username` (unique), `password_hash`, `created_at` | — |
+| `User` (`users`) | `username` (unique), `password_hash`, `created_at`, `llm_provider` (null = `LLM_PROVIDER`) | — |
+| `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at` | `steps` load ordered by `(stage, order)` |
 | `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
 
@@ -97,11 +102,12 @@ shared in-memory connection.
 | `auth.py` | `POST /register`, `POST /login`, `POST /token/refresh` (public); `GET /protected` | `auth.py`: `RegisterRequest`, `LoginRequest`, `TokenPairResponse`, `RefreshRequest`, `AccessTokenResponse`, `WhoAmIResponse` |
 | `chat.py` | `POST /chat` (streams `text/plain`) | `chat.py`: `ChatRequest` (non-blank `prompt`) |
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
+| `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
 | `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |
 | `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
-empty) and `ModelId` (must be in the active catalogue). A step without `stage`
+empty), `ModelId` (must be in some provider's catalogue) and `ProviderName`. A step without `stage`
 gets `stage = order`. A pipeline needs at least one step, and step orders must
 be unique. Step `role` is optional (up to 100 characters); `allowed_tools` is
 optional and, when explicit, contains unique, non-blank names. Tool availability
@@ -113,6 +119,7 @@ is checked when the agent runs.
 |---|---|
 | `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename and/or replace every step in one transaction), `delete` |
 | `users.py` | `get`, `get_by_username`, `create` |
+| `provider_settings.py` | `for_user`, `get`, `save` (active provider + per-provider upsert in one transaction), `clear_key` (idempotent) |
 | `legacy_import.py` | `import_django_database` — the one-off copy from the old Django SQLite file |
 
 Each write commits its own transaction.
@@ -137,8 +144,9 @@ Each write commits its own transaction.
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
 | `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
-| `llm.py` | **The only reader of provider settings.** `provider_config()`, `get_provider()` and `get_agent_model()`. |
-| `catalog.py` | `available_model_ids()` (default first) and `default_model_id()` for the active provider. |
+| `llm.py` | **The only reader of provider credentials and transport settings.** `LLMProfile`, `provider_config(profile)`, `get_provider(profile)` and `get_agent_model(profile, model_id)`. A saved key wins over the `.env` one. |
+| `llm_settings.py` | The Settings page: `resolve_profile()` (per request), `read()`, `save()`, `remove_key()`, and `environment_profile()` for the CLI. Keys are sealed with `SecretBox` and only their hint is returned. |
+| `catalog.py` | `available_model_ids()` (default first), `default_model_id()` and `known_model_ids()`, for a given provider or `LLM_PROVIDER`. |
 | `errors.py` | `PROVIDER_ERROR_MAP` and `as_domain_error()` — the one translation from `llm` errors to domain errors. |
 
 ### `security.py`
@@ -147,6 +155,8 @@ Pure functions with no web framework. `hash_password` / `verify_password` use
 Django's `pbkdf2_sha256$<iterations>$<salt>$<hash>` format, so accounts imported
 from the old backend keep their passwords. `TokenSigner` issues and reads HS256
 JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
+`SecretBox` encrypts saved API keys with Fernet, keyed by HKDF over
+`SECRET_KEY`; a key sealed under another `SECRET_KEY` raises `UnreadableSecret`.
 
 ### `exceptions.py`, `errors.py` and `middleware.py`
 

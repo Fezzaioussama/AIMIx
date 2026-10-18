@@ -1,5 +1,5 @@
 """FastAPI dependencies: the HTTP boundary's access to the database, settings,
-the signed-in user and the LLM provider (§5 D — tests override these)."""
+the signed-in user, their LLM profile and provider (§5 D — tests override these)."""
 
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 
 from api.exceptions import NotAuthenticated
 from api.models import User
-from api.security import TokenSigner
-from api.services import accounts
+from api.security import SecretBox, TokenSigner
+from api.services import accounts, llm_settings
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
-from api.services.llm import get_provider
+from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.tool_catalog import PipelineToolCatalog
@@ -65,13 +65,28 @@ def current_user(
 
 CurrentUser = Annotated[User, Depends(current_user)]
 
+
+def secret_box(settings: AppSettings) -> SecretBox:
+    return SecretBox(settings.secret_key)
+
+
+Secrets = Annotated[SecretBox, Depends(secret_box)]
+
+
+def llm_profile(user: CurrentUser, session: DbSession, box: Secrets) -> LLMProfile:
+    """The signed-in user's provider, default model and key (Settings page)."""
+    return llm_settings.resolve_profile(session, user, box)
+
+
+Profile = Annotated[LLMProfile, Depends(llm_profile)]
+
 ProviderFactory = Callable[[], LLMProvider]
 
 
-def provider_factory() -> ProviderFactory:
+def provider_factory(profile: Profile) -> ProviderFactory:
     """Hands endpoints the factory, not the provider, so the request body is
     validated before an unconfigured provider can fail the request."""
-    return get_provider
+    return partial(get_provider, profile)
 
 
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
@@ -80,9 +95,11 @@ Providers = Annotated[ProviderFactory, Depends(provider_factory)]
 PipelineAgentFactory = Callable[[], StepAgent]
 
 
-def pipeline_agent_factory(request: Request, user: CurrentUser) -> PipelineAgentFactory:
-    """Bind pipeline agents to the request's authenticated user."""
-    return partial(PipelineAgentGenerator, request.app.state.database, user)
+def pipeline_agent_factory(
+    request: Request, user: CurrentUser, profile: Profile
+) -> PipelineAgentFactory:
+    """Bind pipeline agents to the request's authenticated user and their profile."""
+    return partial(PipelineAgentGenerator, request.app.state.database, user, profile)
 
 
 PipelineAgents = Annotated[PipelineAgentFactory, Depends(pipeline_agent_factory)]
@@ -115,10 +132,10 @@ AgentFactory = Callable[[], ChatAgent]
 
 
 def agent_factory(
-    request: Request, user: CurrentUser, pipeline_agents: PipelineAgents
+    request: Request, user: CurrentUser, profile: Profile, pipeline_agents: PipelineAgents
 ) -> AgentFactory:
     """Defer agent construction until after the chat request is validated."""
-    return partial(get_chat_agent, request.app.state.database, user, pipeline_agents)
+    return partial(get_chat_agent, request.app.state.database, user, profile, pipeline_agents)
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]

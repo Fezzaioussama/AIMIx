@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from api.deps import Profile
 from api.schemas.pipelines import ModelsResponse
-from api.services.catalog import available_model_ids, default_model_id
 
 router = APIRouter(tags=["models"])
 
 
 @router.get("/models")
-def list_models() -> ModelsResponse:
-    return ModelsResponse(models=available_model_ids(), default=default_model_id())
+def list_models(profile: Profile) -> ModelsResponse:
+    """The signed-in user's provider catalogue and default (Settings page)."""
+    return ModelsResponse(models=profile.models, default=profile.default_model)

@@ -60,8 +60,58 @@ Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
   "default": "deepseek/deepseek-v4-flash" }
 ```
 
-The ids of the **active provider's** catalogue, default first. These are the
-only values accepted for a step's `model` or a `planner_model`.
+The ids of **your provider's** catalogue, your default first — the provider and
+default chosen on the Settings page (`/llm-settings`), else `LLM_PROVIDER` and
+its default from `backend/.env`. Offer these for a step's `model` or a
+`planner_model`. Requests accept any catalogued id; one from another provider's
+catalogue is rejected by that provider when the step runs.
+
+`503 provider_not_configured` when your saved key can no longer be decrypted
+(the server's `SECRET_KEY` changed): enter it again on the Settings page.
+
+---
+
+## LLM settings
+
+Per account. What you save here overrides `backend/.env` for your requests
+only; anything you leave unset falls back to it. Keys are stored encrypted
+(Fernet, keyed from `SECRET_KEY`) and are **never returned** — only their last
+four characters.
+
+### `GET /llm-settings`
+
+```json
+{
+  "provider": "openrouter",
+  "providers": [
+    { "name": "openrouter", "key_source": "saved", "key_hint": "9876",
+      "default_model": "x-ai/grok-4.20", "models": ["x-ai/grok-4.20", "..."] },
+    { "name": "togetherai", "key_source": "environment", "key_hint": "",
+      "default_model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", "models": ["..."] }
+  ]
+}
+```
+
+`key_source` is `saved` (yours), `environment` (the server's `backend/.env`) or
+`none`. `models` is that provider's catalogue, its default first.
+
+### `PUT /llm-settings`
+
+```json
+{ "provider": "openrouter",
+  "providers": [{ "name": "openrouter", "default_model": "x-ai/grok-4.20", "api_key": "sk-or-..." }] }
+```
+
+Sets the active provider and updates only the providers listed. Omit
+`api_key` (or send `null`) to keep the saved key. `200` returns the same shape
+as `GET`. `400 validation_error` for an unknown provider, a provider listed
+twice, a `default_model` outside that provider's catalogue, or a blank key or
+one containing spaces. Saving the same body twice leaves the same state.
+
+### `DELETE /llm-settings/keys/<provider>`
+
+Forgets your saved key for that provider, which then falls back to the
+server's key, if any. Idempotent. `200` returns the same shape as `GET`.
 
 ---
 
@@ -227,7 +277,7 @@ have no approval flow.
   "planner_model": "openai/gpt-oss-120b" }
 ```
 
-`planner_model` is optional (defaults to the default model). `200`:
+`planner_model` is optional (defaults to your default model). `200`:
 
 ```json
 {

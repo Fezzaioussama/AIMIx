@@ -1,4 +1,4 @@
-"""Password hashing, the password policy, and token signing."""
+"""Password hashing, the password policy, token signing and credential encryption."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from api.security import TokenSigner, hash_password, verify_password
+from api.security import SecretBox, TokenSigner, UnreadableSecret, hash_password, verify_password
 from api.services import password_policy
 
 #: Produced by Django 5.2's PBKDF2PasswordHasher (1,000 iterations), so this
@@ -64,3 +64,16 @@ def test_expired_and_foreign_tokens_are_rejected() -> None:
     foreign = TokenSigner("o" * 32, timedelta(minutes=5), timedelta(days=1)).issue(7, "access")
     assert SIGNER.user_id(expired, "access") is None
     assert SIGNER.user_id(foreign, "access") is None
+
+
+def test_secrets_round_trip_and_are_not_stored_in_clear() -> None:
+    box = SecretBox("server-secret")
+    sealed = box.seal("sk-or-v1-abcdef")
+    assert "sk-or-v1-abcdef" not in sealed
+    assert box.open(sealed) == "sk-or-v1-abcdef"
+
+
+def test_a_secret_sealed_under_another_key_is_unreadable() -> None:
+    sealed = SecretBox("old-secret").seal("sk-or-v1-abcdef")
+    with pytest.raises(UnreadableSecret):
+        SecretBox("new-secret").open(sealed)

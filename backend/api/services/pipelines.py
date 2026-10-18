@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
 from api.models import STEP_ROLE_MAX_LENGTH, STEP_TITLE_MAX_LENGTH, Pipeline
 from api.services.agent_types import ToolDescriptor
-from api.services.catalog import available_model_ids, default_model_id
 from api.services.errors import as_domain_error
+from api.services.llm import LLMProfile
 from api.services.multiagent.contracts import RunResult
 from api.services.multiagent.contracts import StepAgent as StepGenerator
 from api.services.multiagent.graph import GraphPipelineRunner
@@ -34,18 +35,26 @@ def run(pipeline: Pipeline, generator: StepGenerator, initial_input: str) -> Run
     )
 
 
+@dataclass(frozen=True)
+class PlanRequest:
+    """What to plan; no ``planner_model`` means the profile's default model."""
+
+    description: str
+    planner_model: str | None = None
+
+
 def generate(
     provider: LLMProvider,
-    description: str,
-    planner_model: str,
+    profile: LLMProfile,
+    request: PlanRequest,
     tools: list[ToolDescriptor] | None = None,
 ) -> dict[str, Any]:
     """Ask the planner model for a pipeline definition and validate the result."""
-    models = available_model_ids()
-    prompt = pipeline_generation_prompt(description, models, tools)
+    models = profile.models
+    prompt = pipeline_generation_prompt(request.description, models, tools)
 
     try:
-        raw = provider.generate(prompt, planner_model)
+        raw = provider.generate(prompt, request.planner_model or profile.default_model)
     except llm_exceptions.LLMError as cause:
         raise as_domain_error(cause) from cause
 
@@ -57,7 +66,9 @@ def parse_plan(
 ) -> dict[str, Any]:
     """Extract the JSON pipeline from a model response and sanitise its models.
 
-    Kept separate from the call so it can be tested without a provider.
+    ``available_models`` lists the default first; a step naming any other
+    model gets it. Kept separate from the call so it can be tested without a
+    provider.
     """
     match = JSON_OBJECT_PATTERN.search(raw or "")
     if match is None:
@@ -101,7 +112,7 @@ def _sanitise_step(
     if isinstance(stage, bool) or not isinstance(stage, int) or stage < 1:
         step["stage"] = index
     if step.get("model") not in available_models:
-        step["model"] = default_model_id()
+        step["model"] = available_models[0] if available_models else ""
     title = step.get("title")
     step["title"] = title.strip()[:STEP_TITLE_MAX_LENGTH] if isinstance(title, str) else ""
     role = step.get("role")

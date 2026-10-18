@@ -28,6 +28,7 @@ frontend/src/
 | `/chat` | `ChatPage` | guarded |
 | `/pipeline` | `PipelineBuilderPage` | guarded |
 | `/auto-pipeline` | `AutoPipelinePage` | guarded |
+| `/settings` | `SettingsPage` | guarded |
 | `*` | redirect to `/login` | — |
 
 Guarded routes render inside `AppShell` (fixed top nav + `RequireAuth` outlet).
@@ -121,6 +122,16 @@ steps store names rather than copying tool definitions.
 | `PipelineNav.tsx` | Switch between Builder and Auto |
 | `Spinner.tsx` | Loading indicator |
 | `modelLabel.ts` | Human-friendly label for a model id |
+
+### `features/settings`
+
+- `useLLMSettings()` loads `GET /api/llm-settings`, holds the form (active
+  provider, a typed key and a model per provider) and saves it. `toUpdate()`
+  sends only providers whose model changed or whose key was typed, so an
+  untouched provider keeps following the server default. A typed key is cleared
+  from the form once saved; the API never sends a key back.
+- `SettingsPage` renders the provider picker and one `ProviderCard` (key
+  status, password field, "Remove saved key", default-model select) each.
 
 ### `features/auth`
 

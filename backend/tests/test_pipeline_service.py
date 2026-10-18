@@ -14,6 +14,7 @@ from api.exceptions import (
 )
 from api.models import Pipeline, PipelineStep
 from api.services import pipelines as service
+from api.services.llm import LLMProfile
 from api.services.prompts import merge_stage_outputs, step_prompt
 from llm import exceptions as llm_exceptions
 from tests.conftest import FailingProvider, FakeProvider
@@ -187,10 +188,10 @@ class TestParsePlan:
         plan = service.parse_plan(raw, self.models)
         assert plan["name"] == "P"
 
-    def test_replaces_an_unknown_model_with_the_default(self, default_model: str) -> None:
+    def test_replaces_an_unknown_model_with_the_default(self) -> None:
         raw = '{"name": "P", "steps": [{"order": 1, "prompt": "x", "model": "stale/model"}]}'
         plan = service.parse_plan(raw, self.models)
-        assert plan["steps"][0]["model"] == default_model
+        assert plan["steps"][0]["model"] == self.models[0]
 
     def test_fills_in_a_missing_order_and_stage(self) -> None:
         raw = '{"name": "P", "steps": [{"prompt": "x", "model": "vendor/good"}]}'
@@ -247,4 +248,8 @@ class TestParsePlan:
 def test_generate_translates_provider_failures() -> None:
     provider = FailingProvider(llm_exceptions.ProviderTimeout("slow"))
     with pytest.raises(ProviderTimedOut):
-        service.generate(provider, "build me a thing", "vendor/good")
+        service.generate(
+            provider,
+            LLMProfile("openrouter", "vendor/good"),
+            service.PlanRequest("build me a thing"),
+        )

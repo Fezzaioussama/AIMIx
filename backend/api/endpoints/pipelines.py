@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Response
 
-from api.deps import CurrentUser, DbSession, PipelineRun, Providers, ToolCatalog
+from api.deps import CurrentUser, DbSession, PipelineRun, Profile, Providers, ToolCatalog
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import (
     GenerateRequest,
@@ -21,7 +21,6 @@ from api.schemas.pipelines import (
     RunResponse,
 )
 from api.services import pipelines as pipeline_service
-from api.services.catalog import available_model_ids
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
 
@@ -43,11 +42,11 @@ def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> 
 
 @router.post("/generate")
 def generate_pipeline(
-    body: GenerateRequest, providers: Providers, catalog: ToolCatalog
+    body: GenerateRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
 ) -> GenerateResponse:
-    tools = catalog.available_sync()
-    plan = pipeline_service.generate(providers(), body.description, body.planner_model or "", tools)
-    return GenerateResponse(generated_pipeline=plan, available_models=available_model_ids())
+    request = pipeline_service.PlanRequest(body.description, body.planner_model)
+    plan = pipeline_service.generate(providers(), profile, request, catalog.available_sync())
+    return GenerateResponse(generated_pipeline=plan, available_models=profile.models)
 
 
 @router.get("/{pipeline_id}/")

@@ -7,6 +7,7 @@ import { RegisterPage } from './features/auth/RegisterPage';
 import { ChatPage } from './features/chat/ChatPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
+import { SettingsPage } from './features/settings/SettingsPage';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -26,6 +27,9 @@ function AppNav() {
         </NavLink>
         <NavLink to="/pipeline" className={navLinkClass}>
           Pipelines
+        </NavLink>
+        <NavLink to="/settings" className={navLinkClass}>
+          Settings
         </NavLink>
       </div>
       <button
@@ -60,6 +64,7 @@ export function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/pipeline" element={<PipelineBuilderPage />} />
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

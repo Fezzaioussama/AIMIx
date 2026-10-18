@@ -17,6 +17,7 @@ from api.repositories import pipelines
 from api.services import agent_runtime
 from api.services import llm as llm_service
 from api.services.catalog import default_model_id
+from api.services.llm import LLMProfile
 from api.services.multiagent import step_agent
 from llm.base import ProviderConfig
 
@@ -31,6 +32,13 @@ def tool_call_model() -> FakeMessagesListChatModel:
             AIMessage(content="Result is 3"),
         ]
     )
+
+
+def tool_call_agent_model(
+    profile: LLMProfile, model_id: str | None = None
+) -> FakeMessagesListChatModel:
+    """Stands in for api.services.llm.get_agent_model."""
+    return tool_call_model()
 
 
 def test_tool_trace_records_error_without_tool_output() -> None:
@@ -56,15 +64,16 @@ def saved_pipeline(session: Session, user: User, name: str, prompt: str) -> Pipe
 
 
 def test_step_model_overrides_chat_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    selected: list[str] = []
+    selected: list[tuple[str, str]] = []
 
     def capture_model(provider: str, config: ProviderConfig) -> FakeMessagesListChatModel:
-        selected.append(config.default_model)
+        selected.append((config.default_model, config.api_key))
         return FakeMessagesListChatModel(responses=[])
 
     monkeypatch.setattr(llm_service, "create_agent_model", capture_model)
-    llm_service.get_agent_model("selected/model")
-    assert selected == ["selected/model"]
+    profile = LLMProfile("openrouter", "default/model", api_key="saved-key")
+    llm_service.get_agent_model(profile, "selected/model")
+    assert selected == [("selected/model", "saved-key")]
 
 
 def test_step_uses_its_model_and_discovered_tool(
@@ -92,7 +101,7 @@ def test_step_uses_its_model_and_discovered_tool(
 
     model = tool_call_model()
 
-    def fake_model(model_id: str | None = None) -> FakeMessagesListChatModel:
+    def fake_model(profile: LLMProfile, model_id: str | None = None) -> FakeMessagesListChatModel:
         selected.append(model_id)
         return model
 
@@ -139,7 +148,7 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
         return FakeGraph()
 
     monkeypatch.setattr(step_agent, "create_agent", fake_create_agent)
-    monkeypatch.setattr(step_agent, "get_agent_model", lambda model_id=None: tool_call_model())
+    monkeypatch.setattr(step_agent, "get_agent_model", tool_call_agent_model)
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "facts"})
     assert response.status_code == 200
     assert observed["tools"] == ["inspect_pipeline"]
@@ -161,7 +170,7 @@ def test_mcp_discovery_failure_stops_the_pipeline(
     monkeypatch.setattr(
         step_agent,
         "get_agent_model",
-        lambda model_id=None: FakeMessagesListChatModel(responses=[]),
+        lambda profile, model_id=None: FakeMessagesListChatModel(responses=[]),
     )
 
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "seed"})
@@ -179,7 +188,7 @@ def test_missing_selected_tool_is_reported(
     saved = saved_pipeline(session, user, "Missing tool", "Use {input}")
     saved.steps[0].allowed_tools = ["missing_tool"]
     session.commit()
-    monkeypatch.setattr(step_agent, "get_agent_model", lambda model_id=None: tool_call_model())
+    monkeypatch.setattr(step_agent, "get_agent_model", tool_call_agent_model)
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "seed"})
     assert response.status_code == 502
     assert response.json()["error"] == "tool_unavailable"
@@ -200,7 +209,7 @@ def test_tool_execution_error_is_reported(
             raise ToolException("failed")
 
     monkeypatch.setattr(step_agent, "create_agent", lambda model, tools, **kw: FailingGraph())
-    monkeypatch.setattr(step_agent, "get_agent_model", lambda model_id=None: tool_call_model())
+    monkeypatch.setattr(step_agent, "get_agent_model", tool_call_agent_model)
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "seed"})
     assert response.status_code == 502
     assert response.json()["error"] == "tool_unavailable"

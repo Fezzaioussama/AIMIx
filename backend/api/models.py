@@ -12,6 +12,8 @@ STEP_ROLE_MAX_LENGTH = 100
 USERNAME_MAX_LENGTH = 150
 PIPELINE_NAME_MAX_LENGTH = 255
 MODEL_ID_MAX_LENGTH = 200
+PROVIDER_NAME_MAX_LENGTH = 50
+API_KEY_HINT_LENGTH = 4
 
 
 def _utcnow() -> datetime:
@@ -41,10 +43,36 @@ class User(Base):
     #: accounts imported from the previous backend keep their passwords.
     password_hash: Mapped[str] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    #: The LLM provider this user's requests go to; None means LLM_PROVIDER.
+    llm_provider: Mapped[str | None] = mapped_column(String(PROVIDER_NAME_MAX_LENGTH))
 
     pipelines: Mapped[list[Pipeline]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    provider_settings: Mapped[list[ProviderSetting]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class ProviderSetting(Base):
+    """One user's API key and default model for one LLM provider.
+
+    The key is stored encrypted (``api.security.SecretBox``) and never leaves the
+    server; ``api_key_hint`` keeps its last characters so the UI can tell keys
+    apart. Empty strings mean "not saved": the environment's value applies.
+    """
+
+    __tablename__ = "provider_settings"
+    __table_args__ = (UniqueConstraint("user_id", "provider", name="uq_provider_setting_per_user"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(PROVIDER_NAME_MAX_LENGTH))
+    api_key_encrypted: Mapped[str] = mapped_column(Text, default="")
+    api_key_hint: Mapped[str] = mapped_column(String(API_KEY_HINT_LENGTH), default="")
+    default_model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH), default="")
+
+    user: Mapped[User] = relationship(back_populates="provider_settings")
 
 
 class Pipeline(Base):

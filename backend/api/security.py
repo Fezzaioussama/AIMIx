@@ -1,5 +1,5 @@
-"""Password hashing and token signing. Pure functions over plain values, so the
-auth service and the tests use them without any web framework.
+"""Password hashing, token signing and credential encryption. Pure functions over
+plain values, so the services and the tests use them without any web framework.
 
 Hashes use Django's ``pbkdf2_sha256$<iterations>$<salt>$<base64 hash>`` format:
 accounts imported from the previous Django backend verify unchanged, and new
@@ -18,11 +18,18 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import jwt
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 HASH_ALGORITHM = "pbkdf2_sha256"
 SALT_ALPHABET = string.ascii_letters + string.digits
 SALT_LENGTH = 22
 JWT_ALGORITHM = "HS256"
+
+#: HKDF context, so the encryption key differs from the JWT key derived from the
+#: same SECRET_KEY (domain separation).
+SECRET_BOX_CONTEXT = b"aimix provider credentials v1"
 
 TokenType = Literal["access", "refresh"]
 
@@ -79,3 +86,30 @@ class TokenSigner:
         if claims.get("token_type") != token_type or not isinstance(user_id, int):
             return None
         return user_id
+
+
+class UnreadableSecret(ValueError):
+    """A stored secret cannot be decrypted — SECRET_KEY changed since it was saved."""
+
+
+@dataclass(frozen=True)
+class SecretBox:
+    """Encrypts credentials at rest with Fernet (AES-CBC + HMAC), keyed by
+    HKDF over SECRET_KEY. Changing SECRET_KEY makes saved secrets unreadable."""
+
+    secret_key: str
+
+    def _fernet(self) -> Fernet:
+        key = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=SECRET_BOX_CONTEXT).derive(
+            self.secret_key.encode()
+        )
+        return Fernet(base64.urlsafe_b64encode(key))
+
+    def seal(self, plaintext: str) -> str:
+        return self._fernet().encrypt(plaintext.encode()).decode("ascii")
+
+    def open(self, token: str) -> str:
+        try:
+            return self._fernet().decrypt(token.encode("ascii")).decode()
+        except (InvalidToken, UnicodeError) as cause:
+            raise UnreadableSecret("The stored secret cannot be decrypted.") from cause

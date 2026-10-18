@@ -34,6 +34,13 @@ such as `your_api_key_here` or `change-me` are treated as **unset** by
 `config/settings.py`, so a half-filled `.env` fails fast
 with `provider_not_configured` instead of a confusing upstream 401.
 
+Prefer not to keep the key in `.env`? Leave it unset, sign in, and open
+**Settings** in the top bar: pick the provider, paste your API key and choose a
+default model. It is stored encrypted for your account only and used from your
+next request, with no restart. Anything you leave unset there falls back to
+`backend/.env`. Saved keys are encrypted with `SECRET_KEY`, so changing it
+means entering them again.
+
 The full variable list, with comments, is `backend/.env.example`. An existing
 `.env` from the Django version keeps working: `DJANGO_SECRET_KEY`,
 `DJANGO_ALLOWED_HOSTS` and the other `DJANGO_*` names are still read.
@@ -54,8 +61,8 @@ and may take as long as a normal pipeline run. Chat history is not persisted.
 
 ### Give chat and pipeline steps MCP tools
 
-Chat uses a LangGraph agent with the same `LLM_PROVIDER` and default model as
-pipelines. Each pipeline step uses its selected model. Set `MCP_SERVERS` in
+Chat uses a LangGraph agent with the same provider and default model as
+pipelines (yours from Settings, else `LLM_PROVIDER`). Each pipeline step uses its selected model. Set `MCP_SERVERS` in
 `backend/.env` to a JSON object. Chat can use every tool advertised by the
 configured servers. Each pipeline step can use all tools, no tools, or a
 selected set according to its `allowed_tools` setting.
@@ -168,11 +175,12 @@ HTTP to HTTPS, e.g. `uvicorn api.main:create_app --factory --proxy-headers`.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `provider_not_configured` (503) | Key missing or still a placeholder | Set the key matching `LLM_PROVIDER` in `backend/.env`, restart the backend |
+| `provider_not_configured` (503) | No key for your provider, either on the Settings page or in `backend/.env` (or it is still a placeholder) | Add one on the Settings page, or set it in `backend/.env` and restart the backend |
+| `provider_not_configured` "can no longer be read" | `SECRET_KEY` changed after you saved a key | Enter the key again on the Settings page |
 | `provider_unavailable` (502) | Provider rejected the call (bad key, unknown model, quota) | Run `make run-llm`, then `cd backend && uv run python -m api.cli llm-probe "hi"` to see the provider's message |
 | `provider_timeout` (504) | Model slower than `LLM_TIMEOUT_SECONDS` | Raise it in `.env`, or pick a faster model |
 | Redirected to `/login` unexpectedly | Access token expired (default 60 min); the client does not refresh it yet | Sign in again — see [known-issues.md](known-issues.md) |
 | `no such table: users` / `pipelines` | Migrations not applied | `make migrate` |
 | Frontend shows "Could not reach the server." | Backend not running on :8000 | `make run-backend` |
 | Port already in use | A previous run is still alive | `make kill-all` |
-| `validation_error` "Unknown model ..." | Model id not in the active provider's catalogue | Pick one from `GET /api/models`, or add it — see [llm-providers.md](llm-providers.md) |
+| `validation_error` "Unknown model ..." | Model id in no provider's catalogue | Pick one from `GET /api/models`, or add it — see [llm-providers.md](llm-providers.md) |

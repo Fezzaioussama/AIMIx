@@ -17,7 +17,6 @@ from pydantic import (
 
 from api.models import PIPELINE_NAME_MAX_LENGTH, STEP_ROLE_MAX_LENGTH, STEP_TITLE_MAX_LENGTH
 from api.schemas.common import ModelId, NonBlank
-from api.services.catalog import default_model_id
 
 
 class PipelineStepIn(BaseModel):
@@ -134,13 +133,8 @@ class GenerateRequest(BaseModel):
     """Contract for POST /api/pipelines/generate."""
 
     description: NonBlank
+    #: Omitted means the caller's default model.
     planner_model: ModelId | None = None
-
-    @model_validator(mode="after")
-    def _default_planner(self) -> GenerateRequest:
-        if self.planner_model is None:
-            self.planner_model = default_model_id()
-        return self
 
 
 class GenerateResponse(BaseModel):

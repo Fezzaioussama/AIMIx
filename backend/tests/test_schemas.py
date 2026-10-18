@@ -79,8 +79,9 @@ def test_run_requires_a_non_blank_input() -> None:
     assert RunRequest.model_validate({"input": " go "}).input == "go"
 
 
-def test_generate_defaults_the_planner_model(default_model: str) -> None:
-    assert GenerateRequest.model_validate({"description": "x"}).planner_model == default_model
+def test_generate_leaves_the_planner_to_the_callers_default() -> None:
+    # The default is per user (Settings page), so the service fills it in.
+    assert GenerateRequest.model_validate({"description": "x"}).planner_model is None
 
 
 def test_generate_rejects_an_unknown_planner_model() -> None:

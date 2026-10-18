@@ -60,14 +60,20 @@ surfaces to the user immediately. Add bounded retries with backoff only for idem
 ## How a provider gets built
 
 ```
-settings.LLM_PROVIDER ──► registry.canonical_name()  ("open_router" → "openrouter")
-                      ──► api/services/llm.provider_config()  → ProviderConfig
+user's Settings  ──┐
+  (else .env)     ├► api/services/llm_settings.resolve_profile() → LLMProfile
+settings.LLM_PROVIDER ┘    (provider, default model, saved key)
+                      ──► api/services/llm.provider_config(profile)  → ProviderConfig
+                          (saved key, else the .env key; timeout and base URL from .env)
                       ──► registry.create_provider(name, config)
                       ──► FACTORIES[name](config)  → providers/<name>.build()
                       ──► OpenAICompatibleProvider(name, client, config)
 ```
 
-`get_provider()` builds an SDK client for pipeline planning. Chat and pipeline
+`deps.llm_profile` resolves the profile once per request: the provider and
+default model the user saved on the Settings page, else `LLM_PROVIDER` and its
+`.env` default, and the user's decrypted key, if they saved one.
+`get_provider(profile)` builds an SDK client for pipeline planning. Chat and pipeline
 steps use `get_agent_model()` and the `agent_models.py` registry to construct a
 LangChain model for the configured provider; steps pass their selected model id.
 LangGraph then orchestrates MCP tool calls. Both model adapters set explicit
@@ -82,13 +88,15 @@ provider name to its catalogue.
 
 It is used in three places, which is why they can never disagree:
 
-1. `PipelineStepIn` and `GenerateRequest` reject unknown ids.
-2. `GET /api/models` serves the list to the frontend (`useModels`).
+1. `PipelineStepIn` and `GenerateRequest` reject ids no catalogue lists.
+2. `GET /api/models` serves the user's provider's list to the frontend
+   (`useModels`), and `GET /api/llm-settings` every provider's.
 3. The planner prompt lists the allowed ids, and `parse_plan` replaces any
    other id with the default.
 
-The default model comes from `LLM_DEFAULT_MODELS[provider]` (env), falling back
-to the first catalogue entry. `available_model_ids()` puts the default first.
+The default model is the one the user saved for that provider, else
+`llm_default_models[provider]` (env), else the first catalogue entry.
+`available_model_ids()` puts the default first.
 
 ## Recipe: add a model
 

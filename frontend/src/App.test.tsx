@@ -34,5 +34,6 @@ describe('App routing', () => {
     renderAt('/chat');
     expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Pipelines' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
   });
 });

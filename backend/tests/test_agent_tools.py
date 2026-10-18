@@ -86,7 +86,7 @@ def test_authenticated_chat_can_call_a_native_tool(
         ]
     )
     monkeypatch.setattr(FakeMessagesListChatModel, "bind_tools", lambda self, tools, **kw: self)
-    monkeypatch.setattr(agent_service, "get_agent_model", lambda: model)
+    monkeypatch.setattr(agent_service, "get_agent_model", lambda profile: model)
     seen_users: list[int] = []
     original = agent_tools.repository.for_user
 
@@ -137,7 +137,7 @@ def test_chat_can_run_a_pipeline_through_the_graph(
         ]
     )
     monkeypatch.setattr(FakeMessagesListChatModel, "bind_tools", lambda self, tools, **kw: self)
-    monkeypatch.setattr(agent_service, "get_agent_model", lambda: model)
+    monkeypatch.setattr(agent_service, "get_agent_model", lambda profile: model)
 
     response = auth_client.post("/api/chat", json={"prompt": "Run my summary pipeline"})
 

@@ -22,7 +22,7 @@ from api.services.agent_runtime import (
     resolve_tools,
 )
 from api.services.agent_tools import built_in_tools
-from api.services.llm import get_agent_model
+from api.services.llm import LLMProfile, get_agent_model
 from api.services.mcp import connections
 from api.services.multiagent.contracts import StepAgent
 from config.settings import get_settings
@@ -85,11 +85,14 @@ class LangGraphChatAgent:
 
 
 def get_chat_agent(
-    database: Database, user: User, generator_factory: Callable[[], StepAgent]
+    database: Database,
+    user: User,
+    profile: LLMProfile,
+    generator_factory: Callable[[], StepAgent],
 ) -> LangGraphChatAgent:
     settings = get_settings()
     return LangGraphChatAgent(
-        get_agent_model(),
+        get_agent_model(profile),
         AgentToolset(
             connections(settings.mcp_servers, settings.mcp_timeout_seconds),
             built_in_tools(database, user, generator_factory),

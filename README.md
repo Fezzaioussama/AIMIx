@@ -34,7 +34,7 @@ environment options and troubleshooting.
 
 ```bash
 make install                        # uv sync + npm install (frontend)
-cp backend/.env.example backend/.env  # then fill in your LLM key
+cp backend/.env.example backend/.env  # LLM key here, or later in the app's Settings page
 make migrate                        # create the database (backend/aimix.sqlite3)
 make run-aimix                      # backend :8000, frontend :4200
 ```
@@ -271,8 +271,8 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `APP_ENV` | No | `local` (default) or `production` |
 | `DATABASE_URL` | No | SQLAlchemy URL (default `backend/aimix.sqlite3`) |
 | `LLM_PROVIDER` | No | `openrouter` (default) or `togetherai` |
-| `OPEN_ROUTER_KEY` | For OpenRouter | Provider API key |
-| `TOGAI_API_KEY` | For TogetherAI | Provider API key |
+| `OPEN_ROUTER_KEY` | For OpenRouter, unless saved in Settings | Provider API key |
+| `TOGAI_API_KEY` | For TogetherAI, unless saved in Settings | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 | `MCP_SERVERS` | No | JSON object of MCP servers available to chat and pipeline agents (default `{}`) |
@@ -281,7 +281,10 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `AGENT_RECURSION_LIMIT` | No | Limits agent model/tool steps (default 25) |
 | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | No | Maximum tool description length in the catalogue and planner prompt (default 300) |
 
-See [`backend/.env.example`](backend/.env.example) for the full list.
+See [`backend/.env.example`](backend/.env.example) for the full list. The
+provider, API keys and default model are server-wide defaults: each user can
+override them on the **Settings** page, where keys are stored encrypted (with
+`SECRET_KEY`) and never shown again.
 
 Settings are one typed class in `backend/config/settings.py`. The old `DJANGO_*`
 variable names are still accepted. With `APP_ENV=production` the app refuses to
@@ -334,7 +337,7 @@ the component.
 |---|---|
 | CORS error | The Vite dev server proxies `/api` to the backend, so there is normally no cross-origin request at all; check `vite.config.ts` |
 | `not_authenticated` | Access token expired; log out and back in |
-| `provider_not_configured` | No API key for `LLM_PROVIDER` in `backend/.env` |
+| `provider_not_configured` | No API key for your provider on the Settings page or in `backend/.env` |
 | `provider_timeout` | Provider slower than `LLM_TIMEOUT_SECONDS`; raise it or pick a faster model |
 | Model rejected on save | The id is not in the provider catalogue — `make run-llm` lists the valid ones |
 

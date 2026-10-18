@@ -64,3 +64,34 @@ export interface ModelsResponse {
   models: string[];
   default: string;
 }
+
+/** Where the key a provider uses comes from. The key itself is never sent back. */
+export type KeySource = 'saved' | 'environment' | 'none';
+
+export interface ProviderSettings {
+  name: string;
+  key_source: KeySource;
+  /** Last characters of the saved key; empty when none is saved. */
+  key_hint: string;
+  default_model: string;
+  /** The provider's catalogue, its default first. */
+  models: string[];
+}
+
+export interface LLMSettings {
+  /** The provider this account's chat, pipelines and planner use. */
+  provider: string;
+  providers: ProviderSettings[];
+}
+
+export interface ProviderSettingsUpdate {
+  name: string;
+  default_model: string;
+  /** Omit to keep the saved key. */
+  api_key?: string;
+}
+
+export interface LLMSettingsUpdate {
+  provider: string;
+  providers: ProviderSettingsUpdate[];
+}

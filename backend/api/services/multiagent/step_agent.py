@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from time import monotonic
 
 import anyio
@@ -24,7 +25,7 @@ from api.services.agent_runtime import (
 )
 from api.services.agent_tools import read_only_tools
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
-from api.services.llm import get_agent_model
+from api.services.llm import LLMProfile, get_agent_model
 from api.services.mcp import connections
 from config.settings import Settings, get_settings
 
@@ -93,17 +94,20 @@ class LangGraphStepAgent:
 
 
 class PipelineAgentGenerator:
-    """Bind the step-agent adapter to one user and configured model factory."""
+    """Bind the step-agent adapter to one user, their LLM profile and a model factory."""
 
     def __init__(
         self,
         database: Database,
         user: User,
+        profile: LLMProfile,
         dependencies: StepAgentDependencies | None = None,
     ) -> None:
         self._database = database
         self._user = user
-        self._dependencies = dependencies or StepAgentDependencies(get_agent_model, get_settings())
+        self._dependencies = dependencies or StepAgentDependencies(
+            partial(get_agent_model, profile), get_settings()
+        )
 
     async def execute(self, task: AgentTask) -> AgentOutcome:
         settings = self._dependencies.settings
