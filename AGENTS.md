@@ -54,6 +54,7 @@ backend/
   migrations/            # Alembic env + versions/ — one revision per schema change
   api/                   # the HTTP application (FastAPI)
     main.py              #   create_app(): wires settings, database, middleware, routes
+    frontend.py          #   serves the built React app when FRONTEND_DIST_DIR is set
     routes.py            #   routing table ONLY — public vs protected routers, no logic
     endpoints/*.py       #   HTTP boundary: one APIRouter per resource; validate, call, shape
     schemas/*.py         #   pydantic request + response contracts (one module per resource)
@@ -85,6 +86,8 @@ frontend/src/
     hooks/               #   shared data hooks
   features/<feature>/    # one folder per feature: pages, feature hooks, subcomponents
 docs/                    # developer documentation; update it with the behaviour it describes
+Dockerfile, railway.json # the one production image and its Railway settings (docs/deployment.md)
+.github/workflows/ci.yml # CI: `make check` plus a build and smoke test of the image
 ```
 
 The repository is backend + frontend only. Automation engines (n8n or any other) are

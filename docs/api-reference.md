@@ -51,6 +51,15 @@ Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
 
 ---
 
+## Health
+
+### `GET /health` — public
+
+`200 {"status": "ok"}` while the process serves requests. Used by Railway's
+health check (`railway.json`).
+
+---
+
 ## Models
 
 ### `GET /models`

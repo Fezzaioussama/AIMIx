@@ -33,6 +33,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `cors_allowed_origins` | `CORS_ALLOWED_ORIGINS` (`DJANGO_CORS_ALLOWED_ORIGINS`) | Comma-separated origins (the Vite dev server) |
 | `database_url` | `DATABASE_URL` | SQLAlchemy URL; default `backend/aimix.sqlite3` |
 | `log_level` | `LOG_LEVEL` (`DJANGO_LOG_LEVEL`) | `INFO` |
+| `frontend_dist_dir` | `FRONTEND_DIST_DIR` | Built React app to serve next to `/api` (the image sets it); empty serves none |
 | `jwt_access_minutes` / `jwt_refresh_days` | `JWT_ACCESS_MINUTES` / `JWT_REFRESH_DAYS` | 60 minutes / 1 day |
 | `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
 | `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
@@ -58,7 +59,9 @@ logging once, from the app factory.
 `create_app()` builds the app: it creates the `Database`, installs the error
 handlers and middleware, and mounts `routes.api_router()` under `/api`.
 `routes.py` is the routing table. Routers in `PUBLIC_ROUTERS` (register, login,
-refresh) are open. Every router in `PROTECTED_ROUTERS` is mounted behind the
+refresh, health) are open. When `FRONTEND_DIST_DIR` is set, `frontend.py` then
+serves the built app at `/` with an `index.html` fallback for client routes;
+unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` is mounted behind the
 `current_user` dependency, so **new routes are authenticated by default**.
 
 ### `deps.py`
@@ -101,6 +104,7 @@ shared in-memory connection.
 |---|---|---|
 | `auth.py` | `POST /register`, `POST /login`, `POST /token/refresh` (public); `GET /protected` | `auth.py`: `RegisterRequest`, `LoginRequest`, `TokenPairResponse`, `RefreshRequest`, `AccessTokenResponse`, `WhoAmIResponse` |
 | `chat.py` | `POST /chat` (streams `text/plain`) | `chat.py`: `ChatRequest` (non-blank `prompt`) |
+| `health.py` | `GET /health` (public — the platform's health check) | `health.py`: `HealthResponse` |
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
 | `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
 | `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |

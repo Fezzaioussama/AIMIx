@@ -22,7 +22,8 @@ If you are new to the repository, read these in order:
 | 5 | [frontend.md](frontend.md) | The React app: routing, `core/`, features, auth, streaming |
 | 6 | [api-reference.md](api-reference.md) | Every HTTP endpoint with request and response examples |
 | 7 | [development-guide.md](development-guide.md) | Daily workflow, recipes for common changes, testing, quality gates |
-| 8 | [known-issues.md](known-issues.md) | Current gaps and technical debt, with suggested fixes |
+| 8 | [deployment.md](deployment.md) | CI, the production image, and deploying to Railway |
+| 9 | [known-issues.md](known-issues.md) | Current gaps and technical debt, with suggested fixes |
 
 ## What AIMIx is, in one paragraph
 

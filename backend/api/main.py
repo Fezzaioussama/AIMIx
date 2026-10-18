@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from api.db import Database
 from api.errors import install_error_handlers
+from api.frontend import install_frontend
 from api.middleware import install_middleware
 from api.routes import API_PREFIX, api_router
 from config.logging_setup import configure_logging
@@ -29,4 +30,6 @@ def create_app() -> FastAPI:
     install_error_handlers(app)
     install_middleware(app, settings)
     app.include_router(api_router())
+    # Last, so its catch-all route never shadows an API route.
+    install_frontend(app, settings.frontend_dist_dir)
     return app

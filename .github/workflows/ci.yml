@@ -1,0 +1,58 @@
+# Continuous integration. Railway deploys main only after this passes
+# ("Wait for CI" on the service, see docs/deployment.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Python comes from .python-version; dependencies from uv.lock.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # as in the Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+          npm ci --prefix frontend
+      # The same single command as locally (AGENTS.md §9), so the two cannot drift.
+      - name: make check
+        run: make check
+
+  image:
+    name: Production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -t aimix:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name aimix -p 8000:8000 \
+            -e SECRET_KEY=ci-only-not-a-secret -e ALLOWED_HOSTS=localhost aimix:ci
+          for _ in $(seq 60); do curl -fsS localhost:8000/api/health && break; sleep 1; done
+          curl -fsS localhost:8000/api/health | grep -q '"ok"'
+          curl -fsS localhost:8000/settings | grep -q '<div id="root">'
+      - name: Container logs
+        if: failure()
+        run: docker logs aimix

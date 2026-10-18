@@ -79,6 +79,8 @@ class Settings(BaseSettings):
         f"sqlite:///{BASE_DIR / 'aimix.sqlite3'}", validation_alias="DATABASE_URL"
     )
     log_level: str = Field("INFO", validation_alias=_env("LOG_LEVEL", "DJANGO_LOG_LEVEL"))
+    # Built React app (frontend/dist) to serve next to /api; empty serves none.
+    frontend_dist_dir: str = Field("", validation_alias="FRONTEND_DIST_DIR")
 
     jwt_access_minutes: float = Field(60, gt=0, validation_alias="JWT_ACCESS_MINUTES")
     jwt_refresh_days: float = Field(1, gt=0, validation_alias="JWT_REFRESH_DAYS")

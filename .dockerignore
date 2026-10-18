@@ -1,0 +1,27 @@
+# Keep the build context small, and secrets and local state out of the image.
+
+# Secrets — backend/.env holds real API keys and must never be baked in.
+**/.env
+**/.env.*
+!**/.env.example
+.claude/
+
+# Local state and build output
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.db
+**/__pycache__/
+**/*.py[cod]
+.venv/
+**/node_modules/
+frontend/dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Not needed at run time
+.git/
+.github/
+docs/
+backend/tests/
+**/*.log

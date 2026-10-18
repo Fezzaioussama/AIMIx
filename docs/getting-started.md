@@ -170,6 +170,8 @@ See [api-reference.md](api-reference.md) for every endpoint.
 
 In production run Uvicorn behind a TLS-terminating proxy that also redirects
 HTTP to HTTPS, e.g. `uvicorn api.main:create_app --factory --proxy-headers`.
+The `Dockerfile` does this for you; see [deployment.md](deployment.md) for the
+image, CI and Railway.
 
 ## Troubleshooting
 

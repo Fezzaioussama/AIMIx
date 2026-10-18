@@ -7,6 +7,7 @@
 <p align="center"><strong>Design, coordinate, and run multi-agent workflows.</strong></p>
 
 <p align="center">
+  <a href="https://github.com/Fezzaioussama/AIMIx/actions/workflows/ci.yml"><img src="https://github.com/Fezzaioussama/AIMIx/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/orchestration-LangGraph-4338ca" alt="Orchestration: LangGraph">
   <img src="https://img.shields.io/badge/API-FastAPI-0369a1" alt="API: FastAPI">
   <img src="https://img.shields.io/badge/UI-React_19-4338ca" alt="UI: React 19">
@@ -84,7 +85,8 @@ flowchart LR
 
 In-depth guides live in [`docs/`](docs/README.md): getting started,
 architecture and request traces, backend and frontend references, the LLM
-provider layer, the full API reference, a development guide, and known issues.
+provider layer, the full API reference, a development guide, deployment
+(CI, Docker, Railway), and known issues.
 
 ## Commands
 
@@ -99,6 +101,7 @@ provider layer, the full API reference, a development guide, and known issues.
 | `make lint` / `make format` / `make typecheck` | Ruff · Ruff --fix · mypy |
 | `make test` | Backend pytest + frontend vitest |
 | `make check` | Everything CI runs: lint, types, both suites (incl. migrations check), build |
+| `docker build -t aimix .` | The production image: one container serving `/api` and the app — see [deployment](docs/deployment.md) |
 | `make kill-back` / `kill-front` / `kill-all` | Stop services |
 
 ## Architecture

@@ -24,7 +24,7 @@ from tests.conftest import (
     use_provider,
 )
 
-PUBLIC_PATHS = {"/api/register", "/api/login", "/api/token/refresh"}
+PUBLIC_PATHS = {"/api/register", "/api/login", "/api/token/refresh", "/api/health"}
 
 
 def make_pipeline(session: Session, owner: User, name: str, steps: int = 1) -> Pipeline:
