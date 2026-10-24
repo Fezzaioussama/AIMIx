@@ -264,5 +264,5 @@ so tests can never reach a real LLM.
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
 | `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, and a run that survives a failing tool |
-| `test_sandbox_tool.py` / `test_sandbox_wiring.py` / `test_e2b_sandbox.py` | `run_python` over an in-memory sandbox (`sandbox_fakes.py`): report, timeouts, truncation, input confinement, output limits and no overwrites, always-closed sandboxes; the key and data-leak rules; the E2B adapter against a fake SDK (offline creation, error mapping, stream budget) |
+| `test_sandbox_tool.py` / `test_sandbox_lifecycle.py` / `test_sandbox_wiring.py` / `test_e2b_sandbox.py` | `run_python` over an in-memory sandbox (`sandbox_fakes.py`): the report, truncation, input confinement, output limits and no overwrites; fresh, always-closed sandboxes, one deadline, the boundary log; the key and data-leak rules; the E2B adapter against a fake SDK (`e2b_fakes.py`: offline creation, error mapping, stream and download budgets) |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |

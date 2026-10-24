@@ -1,4 +1,5 @@
-"""In-memory stand-ins for the CodeSandbox port, shared by the run_python tests.
+"""In-memory stand-ins for the CodeSandbox port and a run_python builder, shared
+by the run_python tests.
 
 No network and no E2B key: the E2B adapter itself is covered against a fake of
 the SDK in test_e2b_sandbox.py.
@@ -6,14 +7,31 @@ the SDK in test_e2b_sandbox.py.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import anyio
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 
-from api.services.toolbox.sandbox import CodeExecution, OutputEntry, SandboxError, SandboxFile
+from api.services.toolbox.code_runner import CodeRunner
+from api.services.toolbox.sandbox import (
+    CodeExecution,
+    OutputEntry,
+    SandboxError,
+    SandboxFile,
+    SandboxLimits,
+)
+from api.services.toolbox.tools import run_python_tool
+from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
 from tests.conftest import tool_call
+
+LIMITS = SandboxLimits(timeout_seconds=5.0, max_files=3, max_file_bytes=100, max_output_chars=500)
+WORKSPACE_LIMITS = WorkspaceLimits(100, 500, 20, 10, 5)
+#: The frozen clock every built tool uses, and the folder its files go to.
+NOW = datetime(2026, 10, 24, 21, 30, tzinfo=timezone.utc)
+FOLDER = "sandbox/20261024T213000.000000Z"
 
 
 class FakeSandbox:
@@ -84,6 +102,12 @@ class Opener:
         sandbox = self._waiting.pop(0) if self._waiting else FakeSandbox()
         self.opened.append(sandbox)
         return sandbox
+
+
+def run_python(root: Path, opener: Opener, limits: SandboxLimits = LIMITS) -> BaseTool:
+    """The run_python tool over ``opener``, a workspace at ``root`` and the frozen clock."""
+    workspace = LocalWorkspace(root, WORKSPACE_LIMITS)
+    return run_python_tool(CodeRunner(opener, workspace, limits, lambda: NOW))
 
 
 async def call(tool: BaseTool, **args: Any) -> ToolMessage:

@@ -1,41 +1,27 @@
-"""run_python's behaviour: a fresh sandbox per call that is always closed,
-workspace files in and out within the limits, and a bounded report.
+"""run_python's output: the report the agent reads, and workspace files going in
+and coming back out within the limits (the lifecycle is in
+test_sandbox_lifecycle.py).
 
 Every test uses the in-memory sandbox from sandbox_fakes: no network, no key.
 """
 
 from __future__ import annotations
 
-import logging
-from dataclasses import replace
-from datetime import datetime, timezone
 from pathlib import Path
 
-import anyio
 import pytest
-from langchain_core.tools import BaseTool
 
-from api.services.toolbox.code_runner import TRUNCATED_NOTE, CodeRunner
-from api.services.toolbox.sandbox import (
-    CodeError,
-    CodeExecution,
-    SandboxLimits,
-    SandboxTimedOut,
-    run_in_sandbox,
+from api.services.toolbox.code_runner import TRUNCATED_NOTE
+from api.services.toolbox.sandbox import CodeError, CodeExecution
+from tests.sandbox_fakes import (
+    FOLDER,
+    LIMITS,
+    WORKSPACE_LIMITS,
+    FakeSandbox,
+    Opener,
+    call,
+    run_python,
 )
-from api.services.toolbox.tools import run_python_tool
-from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
-from tests.sandbox_fakes import FakeSandbox, Opener, call
-
-LIMITS = SandboxLimits(timeout_seconds=5.0, max_files=3, max_file_bytes=100, max_output_chars=500)
-WORKSPACE_LIMITS = WorkspaceLimits(100, 500, 20, 10, 5)
-NOW = datetime(2026, 10, 24, 21, 30, tzinfo=timezone.utc)
-FOLDER = "sandbox/20261024T213000.000000Z"
-
-
-def run_python(root: Path, opener: Opener, limits: SandboxLimits = LIMITS) -> BaseTool:
-    workspace = LocalWorkspace(root, WORKSPACE_LIMITS)
-    return run_python_tool(CodeRunner(opener, workspace, limits, lambda: NOW))
 
 
 @pytest.mark.asyncio
@@ -75,19 +61,6 @@ async def test_a_chart_and_an_output_with_the_same_name_are_both_saved(tmp_path:
 
 
 @pytest.mark.asyncio
-async def test_every_call_gets_a_fresh_sandbox(tmp_path: Path) -> None:
-    opener = Opener()
-    tool = run_python(tmp_path, opener)
-
-    await call(tool, code="x = 1")
-    await call(tool, code="print(x)")
-
-    assert len(opener.opened) == 2
-    assert opener.opened[0] is not opener.opened[1]
-    assert all(sandbox.closed for sandbox in opener.opened)
-
-
-@pytest.mark.asyncio
 async def test_an_error_raised_by_the_code_is_an_error_result_with_a_short_traceback(
     tmp_path: Path,
 ) -> None:
@@ -111,20 +84,6 @@ async def test_an_error_raised_by_the_code_is_an_error_result_with_a_short_trace
     assert "frame 1" not in lines
     assert "\x1b" not in content
     assert content.endswith("Stdout:\nbefore")
-    assert sandbox.closed
-
-
-@pytest.mark.asyncio
-async def test_a_run_over_the_timeout_is_an_error_result_and_still_closed(
-    tmp_path: Path,
-) -> None:
-    sandbox = FakeSandbox(delay=5)
-    limits = replace(LIMITS, timeout_seconds=0.05)
-
-    message = await call(run_python(tmp_path, Opener(sandbox), limits), code="while True: pass")
-
-    assert message.status == "error"
-    assert "did not finish within 0.05 seconds" in str(message.content)
     assert sandbox.closed
 
 
@@ -248,90 +207,3 @@ async def test_saved_outputs_never_overwrite_or_leave_the_workspace(tmp_path: Pa
     content = str(message.content)
     assert "outputs/report.csv: The artifact already exists; choose a new path." in content
     assert "outputs/.hidden: Use a visible path relative to the workspace." in content
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("step", ["upload", "execute", "list_outputs"])
-async def test_a_failing_sandbox_is_an_error_result_and_always_closed(
-    tmp_path: Path, step: str
-) -> None:
-    (tmp_path / "in.csv").write_text("a\n")
-    sandbox = FakeSandbox(CodeExecution(), {"out.txt": b"x"}, fail_on=step)
-
-    message = await call(run_python(tmp_path, Opener(sandbox)), code="go()", input_files=["in.csv"])
-
-    assert message.status == "error"
-    assert f"failed during {step}" in str(message.content)
-    assert sandbox.closed
-
-
-@pytest.mark.asyncio
-async def test_a_download_that_times_out_still_fails_the_call(tmp_path: Path) -> None:
-    class SlowDownloads(FakeSandbox):
-        async def download(self, path: str, max_bytes: int) -> bytes:
-            raise SandboxTimedOut("The code sandbox timed out.")
-
-    sandbox = SlowDownloads(CodeExecution(), {"out.txt": b"x"})
-
-    message = await call(run_python(tmp_path, Opener(sandbox)), code="go()")
-
-    assert message.status == "error"
-    assert "timed out" in str(message.content)
-    assert sandbox.closed
-
-
-@pytest.mark.asyncio
-async def test_the_deadline_covers_creating_the_sandbox() -> None:
-    async def slow_opener() -> FakeSandbox:
-        await anyio.sleep(5)
-        return FakeSandbox()
-
-    with pytest.raises(SandboxTimedOut, match=r"within 0\.05 seconds"):
-        await run_in_sandbox(slow_opener, "go()", [], replace(LIMITS, timeout_seconds=0.05))
-
-
-@pytest.mark.asyncio
-async def test_a_cancelled_call_still_closes_its_sandbox() -> None:
-    sandbox = FakeSandbox(delay=10)
-
-    with anyio.move_on_after(0.05):
-        await run_in_sandbox(Opener(sandbox), "slow()", [], LIMITS)
-
-    assert sandbox.closed
-
-
-@pytest.mark.asyncio
-async def test_a_sandbox_that_cannot_be_closed_does_not_fail_a_finished_run(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    caplog.set_level(logging.WARNING, logger="api.services.toolbox.sandbox")
-    sandbox = FakeSandbox(fail_on="close")
-
-    message = await call(run_python(tmp_path, Opener(sandbox)), code="print('hello')")
-
-    assert message.status == "success"
-    assert message.content == "Stdout:\nhello"
-    assert "sandbox.close_failed error=SandboxError" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_the_run_is_logged_without_its_code_or_output(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    caplog.set_level(logging.INFO, logger="api.services.toolbox.sandbox")
-    sandbox = FakeSandbox(CodeExecution(stdout="secret output\n"))
-
-    await call(run_python(tmp_path, Opener(sandbox)), code="print('secret code')")
-    await call(
-        run_python(tmp_path, Opener(FakeSandbox(delay=5)), replace(LIMITS, timeout_seconds=0.05)),
-        code="print('secret code')",
-    )
-
-    messages = [
-        record.getMessage()
-        for record in caplog.records
-        if record.name == "api.services.toolbox.sandbox"
-    ]
-    assert messages[0].startswith("sandbox.run outcome=ok inputs=0 files=0 duration_ms=")
-    assert messages[1].startswith("sandbox.run outcome=timeout error=TimeoutError duration_ms=")
-    assert "secret" not in caplog.text
