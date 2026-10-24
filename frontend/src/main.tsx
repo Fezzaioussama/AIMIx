@@ -5,6 +5,8 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
+// Self-hosted, not Google Fonts: the app's Content-Security-Policy allows only its own origin.
+import '@fontsource-variable/inter';
 import './styles.css';
 
 const container = document.getElementById('root');
