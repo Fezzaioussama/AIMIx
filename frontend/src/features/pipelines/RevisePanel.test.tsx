@@ -82,6 +82,21 @@ describe('RevisePanel', () => {
     expect(box()).toHaveValue('Add an SEO agent');
   });
 
+  it('sets a proposal aside when the pipeline changes before it is applied', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(revision));
+    const { onApply, rerender } = renderPanel();
+    await ask();
+    await screen.findByText('Adds the step “SEO keywords”');
+
+    rerender({ pipeline: { ...draft, name: 'Edited by hand' } });
+
+    expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('The pipeline changed after you asked');
+    await userEvent.type(box(), '!');
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
   it('says when there is nothing to change, with nothing to apply', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       json({ ...revision, revised_pipeline: draft, changes: [] }),

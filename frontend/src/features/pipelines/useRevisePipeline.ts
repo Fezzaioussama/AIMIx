@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { ApiError } from '../../core/api/client';
 import { revisePipeline } from '../../core/api/pipelines';
-import type { Pipeline, PipelineChange } from '../../core/api/types';
+import type { Pipeline, PipelineChange, RevisedPipelineResponse } from '../../core/api/types';
+import { useCancellableRequest } from '../../core/hooks/useCancellableRequest';
+import { useLatest } from '../../core/hooks/useLatest';
 import { adoptRevision } from './revision';
 
 /** A proposed revision and the draft it was made from. */
@@ -43,6 +45,17 @@ function failureMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : 'AIMIx could not propose changes.';
 }
 
+function toProposal(basis: Pipeline, response: RevisedPipelineResponse): RevisionProposal {
+  const pipeline = adoptRevision(basis, response.revised_pipeline);
+  return { basis, pipeline, changes: response.changes };
+}
+
+/** The proposal while it still applies to `pipeline`; past that it is stale. */
+function forDraft(proposal: RevisionProposal | null, pipeline: Pipeline) {
+  const current = proposal?.basis === pipeline ? proposal : null;
+  return { proposal: current, stale: proposal !== null && current === null };
+}
+
 /**
  * Proposes a revision of `pipeline` from one instruction (POST /api/pipelines/revise).
  * Nothing is saved or applied here; the caller decides what to do with the proposal.
@@ -53,74 +66,43 @@ export function useRevisePipeline(pipeline: Pipeline): RevisePipeline {
   const [proposal, setProposal] = useState<RevisionProposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const latest = useRef(pipeline);
-  const inFlight = useRef<AbortController | null>(null);
+  const latest = useLatest(pipeline);
+  const { start, cancel, finish } = useCancellableRequest();
 
-  useEffect(() => {
-    latest.current = pipeline;
-  });
-  useEffect(
-    () => () => {
-      inFlight.current?.abort();
-      inFlight.current = null;
-    },
-    [],
-  );
-
-  const propose = useCallback(async (instruction: string, plannerModel?: string) => {
-    if (!instruction.trim()) {
-      setError('Describe the change you want first.');
-      return;
-    }
-    inFlight.current?.abort();
-    const controller = new AbortController();
-    inFlight.current = controller;
-    const basis = latest.current;
-    setBusy(true);
-    setError('');
-    setProposal(null);
-    try {
-      const response = await revisePipeline(
-        basis,
-        instruction.trim(),
-        plannerModel,
-        controller.signal,
-      );
-      if (controller.signal.aborted) return;
-      if (latest.current !== basis) {
-        setError(CHANGED_WHILE_WORKING);
+  const propose = useCallback(
+    async (instruction: string, plannerModel?: string) => {
+      if (!instruction.trim()) {
+        setError('Describe the change you want first.');
         return;
       }
-      const revised = adoptRevision(basis, response.revised_pipeline);
-      setProposal({ basis, pipeline: revised, changes: response.changes });
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'aborted') return;
-      setError(failureMessage(cause));
-    } finally {
-      if (inFlight.current === controller) {
-        inFlight.current = null;
-        setBusy(false);
+      const controller = start();
+      const basis = latest.current;
+      setBusy(true);
+      setError('');
+      setProposal(null);
+      try {
+        const response = await revisePipeline(
+          basis,
+          instruction.trim(),
+          plannerModel,
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        if (latest.current === basis) setProposal(toProposal(basis, response));
+        else setError(CHANGED_WHILE_WORKING);
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(failureMessage(cause));
+      } finally {
+        if (finish(controller)) setBusy(false);
       }
-    }
-  }, []);
-
-  const cancel = useCallback(() => {
-    inFlight.current?.abort();
-  }, []);
+    },
+    [finish, latest, start],
+  );
 
   const discard = useCallback(() => {
     setProposal(null);
     setError('');
   }, []);
 
-  const current = proposal?.basis === pipeline ? proposal : null;
-  return {
-    proposal: current,
-    stale: proposal !== null && current === null,
-    busy,
-    error,
-    propose,
-    cancel,
-    discard,
-  };
+  return { ...forDraft(proposal, pipeline), busy, error, propose, cancel, discard };
 }

@@ -1,5 +1,5 @@
 import { ChevronDown, Sparkles } from 'lucide-react';
-import { useId, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
+import { useId, useState, type ReactNode, type SyntheticEvent } from 'react';
 
 import type { Pipeline } from '../../core/api/types';
 import { Spinner } from '../../core/ui/Spinner';
@@ -7,7 +7,12 @@ import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from './buttonStyles';
 import { RevisionReview } from './RevisionReview';
 import { REVISION_EXAMPLES, REVISION_INSTRUCTION_MAX_LENGTH } from './revision';
-import { useRevisePipeline } from './useRevisePipeline';
+import {
+  panelStatus,
+  useRevisePanel,
+  type PanelTone,
+  type RevisePanelState,
+} from './useRevisePanel';
 
 export interface RevisePanelProps {
   /** The draft to change; it may be unsaved. */
@@ -74,53 +79,6 @@ export function RevisePanel({
   );
 }
 
-/** The panel's own state over `useRevisePipeline`: the typed instruction and what to do with it. */
-function useRevisePanel(
-  pipeline: Pipeline,
-  onApply: (revised: Pipeline) => void,
-  plannerModel?: string,
-) {
-  const [instruction, setInstruction] = useState('');
-  const [applied, setApplied] = useState(false);
-  const field = useRef<HTMLTextAreaElement>(null);
-  const revision = useRevisePipeline(pipeline);
-
-  function edit(value: string) {
-    setInstruction(value);
-    setApplied(false);
-    if (revision.stale) revision.discard();
-  }
-
-  return {
-    revision,
-    instruction,
-    applied,
-    field,
-    edit,
-    pick(example: string) {
-      edit(example);
-      field.current?.focus();
-    },
-    ask() {
-      setApplied(false);
-      void revision.propose(instruction, plannerModel);
-    },
-    apply() {
-      if (revision.proposal) onApply(revision.proposal.pipeline);
-      revision.discard();
-      setInstruction('');
-      setApplied(true);
-      field.current?.focus();
-    },
-    discard() {
-      revision.discard();
-      field.current?.focus();
-    },
-  };
-}
-
-type PanelState = ReturnType<typeof useRevisePanel>;
-
 interface PanelToggleProps {
   id: string;
   level: 2 | 3;
@@ -175,7 +133,7 @@ function InstructionForm({
   disabled,
 }: {
   id: string;
-  panel: PanelState;
+  panel: RevisePanelState;
   disabled: boolean;
 }) {
   const { busy, cancel } = panel.revision;
@@ -213,18 +171,32 @@ function InstructionForm({
         className={FIELD_CLASS}
       />
       <ExampleInstructions disabled={busy} onPick={panel.pick} />
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={!ready} className={PRIMARY_BUTTON}>
-          {busy && <Spinner decorative className="size-4" />}
-          {busy ? 'Working on it…' : 'Propose changes'}
-        </button>
-        {busy && (
-          <button type="button" onClick={cancel} className={SECONDARY_BUTTON}>
-            Stop
-          </button>
-        )}
-      </div>
+      <AskButtons busy={busy} ready={ready} onCancel={cancel} />
     </form>
+  );
+}
+
+function AskButtons({
+  busy,
+  ready,
+  onCancel,
+}: {
+  busy: boolean;
+  ready: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3">
+      <button type="submit" disabled={!ready} className={PRIMARY_BUTTON}>
+        {busy && <Spinner decorative className="size-4" />}
+        {busy ? 'Working on it…' : 'Propose changes'}
+      </button>
+      {busy && (
+        <button type="button" onClick={onCancel} className={SECONDARY_BUTTON}>
+          Stop
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -253,10 +225,8 @@ function ExampleInstructions({
   );
 }
 
-type Tone = 'idle' | 'busy' | 'ready' | 'stale' | 'applied';
-
 /** Busy, stale and applied notes are shown; the rest is announced to screen readers only. */
-const TONE_CLASS: Record<Tone, string> = {
+const TONE_CLASS: Record<PanelTone, string> = {
   idle: 'sr-only',
   ready: 'sr-only',
   busy: 'mt-3 text-sm text-slate-300',
@@ -264,24 +234,9 @@ const TONE_CLASS: Record<Tone, string> = {
   applied: 'mt-3 text-sm text-emerald-300',
 };
 
-function statusFor({ revision, applied }: PanelState): { tone: Tone; text: string } {
-  if (revision.busy) return { tone: 'busy', text: 'AIMIx is working on your change…' };
-  if (revision.proposal) {
-    const count = revision.proposal.changes.length;
-    const text = `Proposal ready: ${count} ${count === 1 ? 'change' : 'changes'} to review.`;
-    return { tone: 'ready', text };
-  }
-  if (revision.stale) {
-    const text = 'You edited the pipeline after asking, so that proposal was set aside. Ask again.';
-    return { tone: 'stale', text };
-  }
-  if (applied) return { tone: 'applied', text: 'Changes applied. Save the pipeline to keep them.' };
-  return { tone: 'idle', text: '' };
-}
-
 /** One polite live region, always present, so every status change is announced. */
-function StatusLine({ panel }: { panel: PanelState }) {
-  const { tone, text } = statusFor(panel);
+function StatusLine({ panel }: { panel: RevisePanelState }) {
+  const { tone, text } = panelStatus(panel);
   return (
     <p role="status" className={TONE_CLASS[tone]}>
       {tone === 'busy' ? <ShinyText className="text-slate-300/90">{text}</ShinyText> : text}

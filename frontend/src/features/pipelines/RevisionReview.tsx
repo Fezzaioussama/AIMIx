@@ -58,28 +58,39 @@ export function RevisionReview({
             AIMIx left the pipeline as it is. Try describing the change another way.
           </p>
         )}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          {hasChanges && (
-            <button
-              type="button"
-              onClick={onApply}
-              disabled={applyDisabled}
-              className={PRIMARY_BUTTON}
-            >
-              Apply changes
-            </button>
-          )}
-          <button type="button" onClick={onDiscard} className={SECONDARY_BUTTON}>
-            {hasChanges ? 'Discard' : 'Close'}
-          </button>
-          {hasChanges && (
-            <p className="text-xs text-slate-400">
-              Applying replaces your draft. Nothing is saved until you save.
-            </p>
-          )}
-        </div>
+        <ReviewActions
+          hasChanges={hasChanges}
+          applyDisabled={applyDisabled}
+          onApply={onApply}
+          onDiscard={onDiscard}
+        />
       </section>
     </AnimatedContent>
+  );
+}
+
+type ReviewActionsProps = Required<
+  Pick<RevisionReviewProps, 'applyDisabled' | 'onApply' | 'onDiscard'>
+> & { hasChanges: boolean };
+
+/** Apply and Discard; with nothing to apply, only Close. */
+function ReviewActions({ hasChanges, applyDisabled, onApply, onDiscard }: ReviewActionsProps) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3">
+      {hasChanges && (
+        <button type="button" onClick={onApply} disabled={applyDisabled} className={PRIMARY_BUTTON}>
+          Apply changes
+        </button>
+      )}
+      <button type="button" onClick={onDiscard} className={SECONDARY_BUTTON}>
+        {hasChanges ? 'Discard' : 'Close'}
+      </button>
+      {hasChanges && (
+        <p className="text-xs text-slate-400">
+          Applying replaces your draft. Nothing is saved until you save.
+        </p>
+      )}
+    </div>
   );
 }
 

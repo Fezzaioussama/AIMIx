@@ -137,11 +137,15 @@ The backend start target applies pending database migrations before launching th
    steps or insert a new stage. Give each step a role, prompt, model, and tool
    access; mark deliverables as **Output**. Write prompts using `{input}`,
    **Save**, then **Run** with an input. Run results group deliverables by stage
-   and show each called tool's name and success/error status.
+   and show each called tool's name and success/error status. To change a
+   pipeline in a sentence, open **Ask AIMIx to change this pipeline** (e.g.
+   "add an SEO agent that works alongside the marketing agent"), review the
+   proposed changes and **Apply** them; nothing is saved until you save.
 3. **Auto Pipeline** (`/auto-pipeline`) — describe a workflow in plain language;
    name the deliverables you want. The planner sees the available tools and
    proposes a role and tool list for each step. Review the generated stages and
-   tool choices, then save and open the builder.
+   tool choices, refine them in a sentence if needed, then save and open the
+   builder.
 
 ## Talking to the API directly
 

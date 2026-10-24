@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 
-import { ApiError } from '../../core/api/client';
 import { extractDocument } from '../../core/api/documents';
 import type { ExtractedDocument } from '../../core/api/types';
+import { useCancellableRequest } from '../../core/hooks/useCancellableRequest';
+import { useLatest } from '../../core/hooks/useLatest';
 import { documentSummary } from './pipelineInputs';
 
 interface AttachDocument {
@@ -27,32 +28,28 @@ export function useAttachDocument(
   const [reading, setReading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const latest = useRef(onDocument);
-  const inFlight = useRef<AbortController | null>(null);
+  const latest = useLatest(onDocument);
+  const { start, finish } = useCancellableRequest();
 
-  useEffect(() => {
-    latest.current = onDocument;
-  });
-  useEffect(() => () => inFlight.current?.abort(), []);
-
-  const attach = useCallback(async (file: File) => {
-    inFlight.current?.abort();
-    const controller = new AbortController();
-    inFlight.current = controller;
-    setReading(true);
-    setError('');
-    setNotice('');
-    try {
-      const document = await extractDocument(file, controller.signal);
-      latest.current(document);
-      setNotice(documentSummary(document));
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'aborted') return;
-      setError(cause instanceof Error ? cause.message : 'The document could not be read.');
-    } finally {
-      if (inFlight.current === controller) setReading(false);
-    }
-  }, []);
+  const attach = useCallback(
+    async (file: File) => {
+      const controller = start();
+      setReading(true);
+      setError('');
+      setNotice('');
+      try {
+        const document = await extractDocument(file, controller.signal);
+        latest.current(document);
+        setNotice(documentSummary(document));
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : 'The document could not be read.');
+      } finally {
+        if (finish(controller)) setReading(false);
+      }
+    },
+    [finish, latest, start],
+  );
 
   return { reading, error, notice, attach };
 }
