@@ -17,5 +17,8 @@ def configure_logging(level: str) -> None:
                 "console": {"class": "logging.StreamHandler", "formatter": "standard"},
             },
             "root": {"handlers": ["console"], "level": level},
+            # The E2B SDK logs the code it submits at DEBUG, and agent-written
+            # code can embed user data, so it never logs below INFO (§6).
+            "loggers": {"e2b_code_interpreter": {"level": "INFO"}},
         }
     )

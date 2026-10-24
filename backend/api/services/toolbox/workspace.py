@@ -74,18 +74,32 @@ class LocalWorkspace:
         target = self._resolve_new(path)
         if target.suffix.lower() not in ARTIFACT_SUFFIXES:
             raise ToolException("Artifacts must use .txt, .md, .json, or .csv.")
-        encoded = content.encode("utf-8")
-        if len(encoded) > self._limits.max_file_bytes:
+        return f"Saved {self._write_new(target, content.encode('utf-8'))}"
+
+    def read_bytes(self, path: str) -> bytes:
+        """Any visible file's raw content, within the file size limit."""
+        target = self._resolve(path)
+        try:
+            return self._within_size_limit(target).read_bytes()
+        except OSError as cause:
+            raise ToolException("The file could not be read.") from cause
+
+    def save_bytes(self, path: str, content: bytes) -> str:
+        """Save a new file of any type; returns its workspace-relative path."""
+        return self._write_new(self._resolve_new(path), content)
+
+    def _write_new(self, target: Path, content: bytes) -> str:
+        if len(content) > self._limits.max_file_bytes:
             raise ToolException("The artifact is larger than the configured file limit.")
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            with target.open("x", encoding="utf-8", errors="strict", newline="") as artifact:
+            with target.open("xb") as artifact:
                 artifact.write(content)
         except FileExistsError as cause:
             raise ToolException("The artifact already exists; choose a new path.") from cause
         except OSError as cause:
             raise ToolException("The artifact could not be saved.") from cause
-        return f"Saved {target.relative_to(self._root)}"
+        return str(target.relative_to(self._root))
 
     def _resolve(self, relative: str, *, directory: bool = False) -> Path:
         target = self._safe_path(relative).resolve()
@@ -147,10 +161,14 @@ class LocalWorkspace:
 
     def _bounded_text(self, path: Path) -> str:
         try:
-            if path.stat().st_size > self._limits.max_file_bytes:
-                raise ToolException("The file is larger than the configured limit.")
-            return path.read_text(encoding="utf-8")[: self._limits.max_output_chars]
+            text = self._within_size_limit(path).read_text(encoding="utf-8")
+            return text[: self._limits.max_output_chars]
         except UnicodeError as cause:
             raise ToolException("The file is not valid UTF-8 text.") from cause
         except OSError as cause:
             raise ToolException("The file could not be read.") from cause
+
+    def _within_size_limit(self, path: Path) -> Path:
+        if path.stat().st_size > self._limits.max_file_bytes:
+            raise ToolException("The file is larger than the configured limit.")
+        return path
