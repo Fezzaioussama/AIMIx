@@ -23,6 +23,10 @@ RESERVED_INPUT_NAME = "input"
 MODEL_ID_MAX_LENGTH = 200
 PROVIDER_NAME_MAX_LENGTH = 50
 API_KEY_HINT_LENGTH = 4
+#: An integration's name prefixes its tools' names (``<name>_<tool>``).
+INTEGRATION_NAME_PATTERN = r"[a-z][a-z0-9_]{1,30}"
+INTEGRATION_NAME_MAX_LENGTH = 31
+INTEGRATION_URL_MAX_LENGTH = 2048
 
 
 def _utcnow() -> datetime:
@@ -157,3 +161,25 @@ class PipelineStep(Base):
     model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH))
 
     pipeline: Mapped[Pipeline] = relationship(back_populates="steps")
+
+
+class Integration(Base):
+    """One of a user's own MCP servers, reached over streamable HTTP only.
+
+    Header values are stored encrypted as one JSON object
+    (``api.security.SecretBox``) and never leave the server; ``header_hints``
+    keeps each header's name and a short hint of its value, as
+    ``{"name", "hint"}`` objects, so the UI can tell them apart.
+    """
+
+    __tablename__ = "integrations"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_integration_name_per_user"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(INTEGRATION_NAME_MAX_LENGTH))
+    url: Mapped[str] = mapped_column(String(INTEGRATION_URL_MAX_LENGTH))
+    headers_encrypted: Mapped[str] = mapped_column(Text, default="")
+    header_hints: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)

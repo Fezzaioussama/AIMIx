@@ -81,6 +81,7 @@ def test_local_development_gets_a_throwaway_key() -> None:
         {"secret_key": ""},
         {"secret_key": "k", "debug": True},
         {"secret_key": "k", "allowed_hosts": ""},
+        {"secret_key": "k", "integrations_allow_private_network": True},
     ],
 )
 def test_production_refuses_unsafe_configuration(values: dict[str, object]) -> None:

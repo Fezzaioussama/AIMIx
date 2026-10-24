@@ -110,6 +110,13 @@ class Settings(BaseSettings):
     )
     mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
+    # --- Users' own MCP servers (Settings page → Integrations) ---------------
+    integrations_max_per_user: int = Field(10, ge=0, validation_alias="INTEGRATIONS_MAX_PER_USER")
+    # Local development only: let integrations reach loopback and private
+    # addresses (e.g. a server on 127.0.0.1). Production refuses to start with it.
+    integrations_allow_private_network: bool = Field(
+        False, validation_alias="INTEGRATIONS_ALLOW_PRIVATE_NETWORK"
+    )
     # --- Built-in agent tools (api/services/toolbox) --------------------------
     agent_builtin_tools: CommaList = Field(
         [
@@ -216,6 +223,8 @@ class Settings(BaseSettings):
                 raise ValueError("SECRET_KEY must be set in production.")
             if not self.allowed_hosts:
                 raise ValueError("ALLOWED_HOSTS must list at least one host.")
+            if self.integrations_allow_private_network:
+                raise ValueError("INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production.")
         elif not self.secret_key:
             self.secret_key = LOCAL_SECRET_KEY
         return self

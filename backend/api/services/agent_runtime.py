@@ -8,13 +8,13 @@ import httpx
 import openai
 from exceptiongroup import ExceptionGroup
 from langchain_core.tools import BaseTool, ToolException
-from langchain_mcp_adapters.sessions import Connection
 from langgraph.errors import GraphRecursionError
 from mcp import McpError
 from openrouter.errors import NoResponseError, OpenRouterError
 
 from api.exceptions import DomainError, ProviderTimedOut, ProviderUnavailable, ToolUnavailable
-from api.services.tool_catalog import discover_tools
+from api.services.mcp import MCPConnections
+from api.services.mcp_discovery import discover_tools
 
 AGENT_FAILURES = (
     TimeoutError,
@@ -40,7 +40,7 @@ class AgentLimits:
 
 @dataclass(frozen=True)
 class AgentToolset:
-    mcp_connections: dict[str, Connection]
+    mcp_connections: MCPConnections
     native_tools: list[BaseTool]
 
 
@@ -66,6 +66,7 @@ async def resolve_tools(
     if allowed is None:
         return tools
     selected = [item for item in tools if item.name in allowed]
-    if len(selected) != len(allowed):
-        raise ToolUnavailable("A selected agent tool is unavailable.")
+    # A tool of an integration that could not be reached is missing here too.
+    if missing := sorted(set(allowed) - {item.name for item in selected}):
+        raise ToolUnavailable(f"A selected agent tool is unavailable: {', '.join(missing)}.")
     return selected

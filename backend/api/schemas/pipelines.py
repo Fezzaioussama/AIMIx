@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -11,7 +10,6 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
-    field_serializer,
     field_validator,
     model_validator,
 )
@@ -25,7 +23,7 @@ from api.models import (
     STEP_ROLE_MAX_LENGTH,
     STEP_TITLE_MAX_LENGTH,
 )
-from api.schemas.common import ModelId, NonBlank
+from api.schemas.common import ModelId, NonBlank, UtcDatetime
 from api.services.pipeline_inputs import input_name_error
 
 
@@ -140,14 +138,9 @@ class PipelineOut(BaseModel):
     id: int
     name: str
     user: int = Field(validation_alias="user_id")
-    created_at: datetime
+    created_at: UtcDatetime
     inputs: list[PipelineInputField]
     steps: list[PipelineStepOut]
-
-    @field_serializer("created_at")
-    def _as_utc(self, value: datetime) -> datetime:
-        # SQLite drops the offset; every timestamp is stored in UTC.
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 Trimmed = Annotated[str, StringConstraints(strip_whitespace=True)]

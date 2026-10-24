@@ -7,19 +7,15 @@ whole pipeline run failing.
 
 Page fetches only reach public addresses. Every hop of a redirect chain is
 resolved and refused when any address is loopback, private, link-local or
-otherwise non-global, so a model cannot be steered into the server's own
-network (SSRF). httpx resolves the host again when it connects; operators who
-cannot accept that DNS-rebinding window can drop ``fetch_url`` from
-AGENT_BUILTIN_TOOLS.
+otherwise non-global (``api.services.addresses``), so a model cannot be
+steered into the server's own network (SSRF). httpx resolves the host again
+when it connects; operators who cannot accept that DNS-rebinding window can
+drop ``fetch_url`` from AGENT_BUILTIN_TOOLS.
 """
 
 from __future__ import annotations
 
-import asyncio
-import ipaddress
 import logging
-import socket
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -27,6 +23,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 from langchain_core.tools import ToolException
 
+from api.services.addresses import AddressNotAllowed, Resolver, ensure_public_host, resolve_host
 from api.services.toolbox.config import ToolboxConfig
 from api.services.toolbox.html_text import html_to_text
 
@@ -37,8 +34,6 @@ USER_AGENT = "AIMIx-agent/1.0"
 TEXT_MEDIA_TYPES = frozenset(
     {"application/json", "application/xml", "application/xhtml+xml", "application/javascript"}
 )
-
-Resolver = Callable[[str], Awaitable[list[str]]]
 
 
 @dataclass(frozen=True)
@@ -56,18 +51,6 @@ class FetchedPage:
     text: str = ""
     truncated: bool = False
     redirect: str | None = None
-
-
-async def resolve_host(host: str) -> list[str]:
-    infos = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    return [str(info[4][0]) for info in infos]
-
-
-def _is_public(address: str) -> bool:
-    ip = ipaddress.ip_address(address.split("%", 1)[0])
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return ip.is_global
 
 
 def _media_type(content_type: str) -> str:
@@ -173,11 +156,9 @@ class WebGateway:
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise ToolException("Only absolute http or https URLs can be fetched.")
         try:
-            addresses = await self._resolver(parts.hostname)
-        except OSError as cause:
-            raise ToolException(f"Could not resolve {parts.hostname}.") from cause
-        if not addresses or not all(_is_public(address) for address in addresses):
-            raise ToolException(f"{parts.hostname} is not a public address and cannot be fetched.")
+            await ensure_public_host(parts.hostname, self._resolver)
+        except AddressNotAllowed as cause:
+            raise ToolException(str(cause)) from cause
 
     async def _get(self, client: httpx.AsyncClient, url: str) -> FetchedPage:
         try:

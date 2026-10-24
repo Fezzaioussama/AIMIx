@@ -22,8 +22,8 @@ from api.services.agent_runtime import (
     resolve_tools,
 )
 from api.services.agent_tools import built_in_tools
+from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model
-from api.services.mcp import connections
 from api.services.multiagent.contracts import StepAgent
 from config.settings import get_settings
 
@@ -94,7 +94,7 @@ def get_chat_agent(
     return LangGraphChatAgent(
         get_agent_model(profile),
         AgentToolset(
-            connections(settings.mcp_servers, settings.mcp_timeout_seconds),
+            mcp_connections_for(database, user, settings),
             built_in_tools(database, user, generator_factory),
         ),
         AgentLimits(
