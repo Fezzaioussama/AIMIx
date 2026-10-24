@@ -71,7 +71,9 @@ class LangGraphStepAgent:
                 tools = await resolve_tools(
                     self._toolset, task.allowed_tools, self._limits.mcp_timeout_seconds
                 )
-                system_prompt = step_agent_system_prompt(task.role, has_tools=bool(tools))
+                system_prompt = step_agent_system_prompt(
+                    task.role, has_tools=bool(tools), expected_output=task.expected_output
+                )
                 graph = create_agent(self._model, tools, system_prompt=system_prompt)
                 state = await graph.ainvoke(
                     {"messages": [{"role": "user", "content": task.prompt}]},

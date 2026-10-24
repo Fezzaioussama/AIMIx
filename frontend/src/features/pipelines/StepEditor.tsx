@@ -1,4 +1,5 @@
-import type { AgentTool, PipelineStep } from '../../core/api/types';
+import type { AgentTool, PipelineInput, PipelineStep } from '../../core/api/types';
+import { PromptPlaceholders } from './PromptPlaceholders';
 import { StageInput } from './StageInput';
 import { StepAgentFields } from './StepAgentFields';
 import { StepRoleFields } from './StepRoleFields';
@@ -6,6 +7,8 @@ import { modelLabel } from './modelLabel';
 
 interface StepEditorProps {
   steps: PipelineStep[];
+  /** The pipeline's named inputs, offered as placeholders in each prompt. */
+  inputs: PipelineInput[];
   availableModels: string[];
   availableTools: AgentTool[];
   onChange: (index: number, patch: Partial<PipelineStep>) => void;
@@ -14,6 +17,7 @@ interface StepEditorProps {
 
 export function StepEditor({
   steps,
+  inputs,
   availableModels,
   availableTools,
   onChange,
@@ -25,6 +29,7 @@ export function StepEditor({
         <StepCard
           key={step.order}
           step={step}
+          inputs={inputs}
           availableModels={availableModels}
           availableTools={availableTools}
           canRemove={steps.length > 1}
@@ -38,6 +43,7 @@ export function StepEditor({
 
 interface StepCardProps {
   step: PipelineStep;
+  inputs: PipelineInput[];
   availableModels: string[];
   availableTools: AgentTool[];
   canRemove: boolean;
@@ -47,6 +53,7 @@ interface StepCardProps {
 
 function StepCard({
   step,
+  inputs,
   availableModels,
   availableTools,
   canRemove,
@@ -61,7 +68,12 @@ function StepCard({
       <StepCardHeader step={step} canRemove={canRemove} onChange={onChange} onRemove={onRemove} />
       <StepRoleFields step={step} onChange={onChange} />
       <StepAgentFields step={step} tools={availableTools} onChange={onChange} />
-      <StepCardFields step={step} availableModels={availableModels} onChange={onChange} />
+      <StepCardFields
+        step={step}
+        inputs={inputs}
+        availableModels={availableModels}
+        onChange={onChange}
+      />
     </div>
   );
 }
@@ -97,9 +109,10 @@ function StepCardHeader({
 
 function StepCardFields({
   step,
+  inputs,
   availableModels,
   onChange,
-}: Pick<StepCardProps, 'step' | 'availableModels' | 'onChange'>) {
+}: Pick<StepCardProps, 'step' | 'inputs' | 'availableModels' | 'onChange'>) {
   return (
     <>
       <label className="mb-1 block text-xs text-slate-400">Model</label>
@@ -114,13 +127,14 @@ function StepCardFields({
           </option>
         ))}
       </select>
-      <label className="mb-1 block text-xs text-slate-400">Prompt (use {'{input}'})</label>
+      <label className="mb-1 block text-xs text-slate-400">Prompt</label>
       <textarea
         value={step.prompt}
         placeholder="Define instructions..."
         onChange={(event) => onChange({ prompt: event.target.value })}
         className="h-20 w-full resize-y rounded-md border border-white/10 bg-slate-900 p-2 text-xs text-slate-100 outline-none focus:border-sky-400"
       />
+      <PromptPlaceholders prompt={step.prompt} inputs={inputs} />
     </>
   );
 }

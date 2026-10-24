@@ -73,10 +73,55 @@ def test_chat_requires_a_non_blank_prompt(payload: dict) -> None:
         ChatRequest.model_validate(payload)
 
 
-def test_run_requires_a_non_blank_input() -> None:
-    with pytest.raises(ValidationError):
-        RunRequest.model_validate({"input": "  "})
-    assert RunRequest.model_validate({"input": " go "}).input == "go"
+def test_run_trims_the_text_and_named_values() -> None:
+    # Which of the two a run needs depends on the pipeline, so the service checks it.
+    body = RunRequest.model_validate({"input": " go ", "inputs": {"topic": " bees "}})
+    assert (body.input, body.inputs) == ("go", {"topic": "bees"})
+    assert RunRequest.model_validate({}).model_dump() == {"input": "", "inputs": {}}
+
+
+def test_named_inputs_are_validated(default_model: str) -> None:
+    body = pipeline(model=default_model)
+    body["inputs"] = [{"name": " topic ", "label": "Topic"}]
+    field = PipelineIn.model_validate(body).inputs[0]
+    assert (field.name, field.label, field.description) == ("topic", "Topic", "")
+    assert PipelineIn.model_validate(pipeline(model=default_model)).inputs == []
+
+
+@pytest.mark.parametrize(
+    ("inputs", "problem"),
+    [
+        ([{"name": "Topic"}], "lowercase letter"),
+        ([{"name": "2nd"}], "lowercase letter"),
+        ([{"name": "my-topic"}], "lowercase letter"),
+        ([{"name": "input"}], "reserved"),
+        ([{"name": "x" * 41}], "at most 40"),
+        ([{"name": "topic"}, {"name": "topic"}], "unique name"),
+        ([{"name": f"field_{n}"} for n in range(21)], "at most 20"),
+        ([{"name": "topic", "label": "x" * 101}], "at most 100"),
+    ],
+)
+def test_invalid_named_inputs_are_rejected(
+    default_model: str, inputs: list[dict[str, str]], problem: str
+) -> None:
+    body = pipeline(model=default_model)
+    body["inputs"] = inputs
+    with pytest.raises(ValidationError, match=problem):
+        PipelineIn.model_validate(body)
+
+
+def test_a_step_can_describe_its_expected_output(default_model: str) -> None:
+    step = PipelineIn.model_validate(
+        pipeline(model=default_model, expected_output="One tweet")
+    ).steps[0]
+    assert step.expected_output == "One tweet"
+    assert PipelineIn.model_validate(pipeline(model=default_model)).steps[0].expected_output == ""
+    with pytest.raises(ValidationError, match="at most 500"):
+        PipelineIn.model_validate(pipeline(model=default_model, expected_output="x" * 501))
+
+
+def test_a_patch_may_leave_the_inputs_alone() -> None:
+    assert PipelinePatch.model_validate({"name": "New"}).inputs is None
 
 
 def test_generate_leaves_the_planner_to_the_callers_default() -> None:

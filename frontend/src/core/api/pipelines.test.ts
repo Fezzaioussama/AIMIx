@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { generatePipeline, listPipelines, savePipeline } from './pipelines';
+import { generatePipeline, listPipelines, runPipeline, savePipeline } from './pipelines';
 import type { Pipeline } from './types';
 
-const pipeline: Pipeline = { name: 'Drafts', steps: [] };
+const pipeline: Pipeline = { name: 'Drafts', inputs: [], steps: [] };
 
 describe('savePipeline', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -65,8 +65,27 @@ describe('pipeline agent fields', () => {
     const saved = await listPipelines();
     const generated = await generatePipeline('Plan something', 'v/m');
 
-    expect(saved[0].steps[0]).toMatchObject({ role: '', allowed_tools: null });
-    expect(generated.generated_pipeline.steps[0]).toMatchObject({ role: '', allowed_tools: null });
+    const defaults = { role: '', allowed_tools: null, expected_output: '' };
+    expect(saved[0].inputs).toEqual([]);
+    expect(saved[0].steps[0]).toMatchObject(defaults);
+    expect(generated.generated_pipeline.inputs).toEqual([]);
+    expect(generated.generated_pipeline.steps[0]).toMatchObject(defaults);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('runPipeline', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('posts the named inputs as the run body', async () => {
+    const empty = { pipeline_name: 'P', final_output: '', intermediate_results: [] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(empty), { headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    await runPipeline(7, { inputs: { topic: 'bees' } });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(API.runPipeline(7));
+    expect(fetchMock.mock.calls[0][1]?.body).toBe('{"inputs":{"topic":"bees"}}');
   });
 });

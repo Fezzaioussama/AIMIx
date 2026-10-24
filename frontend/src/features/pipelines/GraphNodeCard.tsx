@@ -31,7 +31,9 @@ export function GraphNodeCard({ node, selected, onClick }: GraphNodeCardProps) {
   const style = statusStyles[node.status];
   const running = node.status === 'running';
   const summary =
-    node.outputLength === null ? node.prompt || 'No prompt yet' : `${node.outputLength} chars`;
+    node.outputLength === null
+      ? node.expectedOutput.trim() || node.prompt || 'No prompt yet'
+      : `${node.outputLength} chars`;
 
   return (
     <button

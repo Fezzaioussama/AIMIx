@@ -147,16 +147,19 @@ Rules for motion:
 
 | File | Role |
 |---|---|
-| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, steps, run input, diagram + results |
-| `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel |
-| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
-| `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit → save |
-| `useAutoPipeline.ts` | Generation, editing, adding or removing output steps and saving the proposed workflow (later saves update it) |
-| `StepEditor.tsx` | Builder sidebar: each step's stage, title, agent role, tool access, model and prompt |
+| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results |
+| `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none |
+| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing steps and inputs, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
+| `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit inputs and steps → save |
+| `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps and saving the proposed workflow (later saves update it) |
+| `PipelineInputsEditor.tsx` | The named run inputs (name, label, description), shared by both screens; names are typed as snake_case and problems show before saving |
+| `pipelineInputs.ts` | Pure helpers for named inputs: the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, and `runRequest`, which sends only declared inputs |
+| `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model and prompt |
+| `PromptPlaceholders.tsx` | Under a prompt: `{input}` and the declared `{name}` placeholders, plus a warning for a placeholder nothing fills |
 | `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise) |
-| `StepRoleFields.tsx` | A step's title and its Intermediate / Output toggle, shared by both editors |
+| `StepRoleFields.tsx` | A step's title, its Intermediate / Output toggle and its expected output, shared by both editors |
 | `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
-| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; nodes show title, model, status and an Output badge; clicking a finished node opens its output. Stages slide in; during a run connectors pulse and running nodes carry a StarBorder |
+| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished node opens its output. Stages slide in; during a run connectors pulse and running nodes carry a StarBorder |
 | `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`) and the `OutputTarget` type |
 | `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds — counted up, with a one-line `sr-only` summary); deliverables are grouped by stage |
 | `StepHeading.tsx` | Title row of a step's output card (name, model, Output badge) |

@@ -8,11 +8,20 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
-from api.models import STEP_ROLE_MAX_LENGTH, STEP_TITLE_MAX_LENGTH, Pipeline
+from api.models import (
+    PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH,
+    PIPELINE_INPUT_LABEL_MAX_LENGTH,
+    PIPELINE_MAX_INPUTS,
+    STEP_EXPECTED_OUTPUT_MAX_LENGTH,
+    STEP_ROLE_MAX_LENGTH,
+    STEP_TITLE_MAX_LENGTH,
+    Pipeline,
+)
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
 from api.services.llm import LLMProfile
@@ -20,6 +29,7 @@ from api.services.multiagent.contracts import RunResult
 from api.services.multiagent.contracts import StepAgent as StepGenerator
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
+from api.services.pipeline_inputs import bind_run_inputs, input_name_error
 from api.services.prompts import pipeline_generation_prompt
 from config.settings import get_settings
 from llm import exceptions as llm_exceptions
@@ -28,10 +38,19 @@ from llm.base import LLMProvider
 JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 
 
-def run(pipeline: Pipeline, generator: StepGenerator, initial_input: str) -> RunResult:
-    """Keep the existing service API while LangGraph owns multiagent execution."""
+def run(
+    pipeline: Pipeline,
+    generator: StepGenerator,
+    initial_input: str = "",
+    values: Mapping[str, str] | None = None,
+) -> RunResult:
+    """Run a saved pipeline on free text, or on a value for each named input it
+    declares. The inputs are checked before any agent starts; LangGraph owns
+    the multiagent execution."""
+    spec = snapshot_pipeline(pipeline)
+    inputs = bind_run_inputs(spec.inputs, initial_input, values or {})
     return GraphPipelineRunner(get_settings().pipeline_max_parallel_steps).run(
-        snapshot_pipeline(pipeline), generator, initial_input
+        spec, generator, inputs
     )
 
 
@@ -64,11 +83,11 @@ def generate(
 def parse_plan(
     raw: str, available_models: list[str], available_tools: list[str] | None = None
 ) -> dict[str, Any]:
-    """Extract the JSON pipeline from a model response and sanitise its models.
+    """Extract the JSON pipeline from a model response and sanitise it.
 
     ``available_models`` lists the default first; a step naming any other
-    model gets it. Kept separate from the call so it can be tested without a
-    provider.
+    model gets it. Inputs that could not be saved are dropped. Kept separate
+    from the call so it can be tested without a provider.
     """
     match = JSON_OBJECT_PATTERN.search(raw or "")
     if match is None:
@@ -91,7 +110,34 @@ def parse_plan(
             raise UpstreamResponseInvalid("The planner returned a malformed step.")
         _sanitise_step(step, index, available_models, available_tools)
 
+    plan["inputs"] = _sanitise_inputs(plan.get("inputs"))
     return plan
+
+
+def _text(value: object, limit: int | None = None) -> str:
+    """A planner value as trimmed text cut to ``limit``; a non-string becomes ``""``."""
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _sanitise_inputs(raw: object) -> list[dict[str, str]]:
+    """Keep the planner's inputs that can be saved: objects with a valid name
+    that no earlier input took, at most ``PIPELINE_MAX_INPUTS`` of them.
+
+    A name is checked, never shortened, because the prompts refer to it whole.
+    """
+    inputs: dict[str, dict[str, str]] = {}
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        name = _text(item.get("name"))
+        if input_name_error(name) or name in inputs:
+            continue
+        inputs[name] = {
+            "name": name,
+            "label": _text(item.get("label"), PIPELINE_INPUT_LABEL_MAX_LENGTH),
+            "description": _text(item.get("description"), PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH),
+        }
+    return list(inputs.values())[:PIPELINE_MAX_INPUTS]
 
 
 def _sanitise_step(
@@ -101,7 +147,7 @@ def _sanitise_step(
     available_tools: list[str] | None,
 ) -> None:
     """Make a planner step storable: unique order, a valid stage, a known model,
-    a short title and a boolean output flag.
+    a short title, role and expected output, and a boolean output flag.
 
     ``order`` is renumbered by position because planners that group steps into
     parallel stages tend to repeat it; a missing or invalid stage falls back to
@@ -113,10 +159,9 @@ def _sanitise_step(
         step["stage"] = index
     if step.get("model") not in available_models:
         step["model"] = available_models[0] if available_models else ""
-    title = step.get("title")
-    step["title"] = title.strip()[:STEP_TITLE_MAX_LENGTH] if isinstance(title, str) else ""
-    role = step.get("role")
-    step["role"] = role.strip()[:STEP_ROLE_MAX_LENGTH] if isinstance(role, str) else ""
+    step["title"] = _text(step.get("title"), STEP_TITLE_MAX_LENGTH)
+    step["role"] = _text(step.get("role"), STEP_ROLE_MAX_LENGTH)
+    step["expected_output"] = _text(step.get("expected_output"), STEP_EXPECTED_OUTPUT_MAX_LENGTH)
     selected = step.get("allowed_tools")
     if isinstance(selected, list) and available_tools is not None:
         step["allowed_tools"] = list(

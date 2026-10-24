@@ -1,6 +1,11 @@
 import { API } from './endpoints';
 import { GENERATION_TIMEOUT_MS, request } from './client';
-import type { GeneratedPipelineResponse, Pipeline, PipelineRunResponse } from './types';
+import type {
+  GeneratedPipelineResponse,
+  Pipeline,
+  PipelineRunRequest,
+  PipelineRunResponse,
+} from './types';
 
 export function listPipelines(): Promise<Pipeline[]> {
   return request<Pipeline[]>(API.pipelines).then((pipelines) => pipelines.map(normalizePipeline));
@@ -13,11 +18,14 @@ export function savePipeline(pipeline: Pipeline): Promise<Pipeline> {
   }).then(normalizePipeline);
 }
 
-export function runPipeline(pipelineId: number, input: string): Promise<PipelineRunResponse> {
+export function runPipeline(
+  pipelineId: number,
+  body: PipelineRunRequest,
+): Promise<PipelineRunResponse> {
   // Pipelines chain several model calls, so they wait as long as a generation.
   return request<PipelineRunResponse>(API.runPipeline(pipelineId), {
     method: 'POST',
-    body: { input },
+    body,
     timeoutMs: GENERATION_TIMEOUT_MS,
   });
 }
@@ -36,14 +44,16 @@ export function generatePipeline(
   }));
 }
 
-/** Older saved pipelines and generated plans omit the new agent fields. */
+/** Older saved pipelines and generated plans omit the newer agent and I/O fields. */
 function normalizePipeline(pipeline: Pipeline): Pipeline {
   return {
     ...pipeline,
+    inputs: pipeline.inputs ?? [],
     steps: pipeline.steps.map((step) => ({
       ...step,
       role: step.role ?? '',
       allowed_tools: step.allowed_tools ?? null,
+      expected_output: step.expected_output ?? '',
     })),
   };
 }

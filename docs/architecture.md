@@ -85,13 +85,14 @@ sequenceDiagram
     participant M as configured MCP servers
     UI->>C: runPipeline(id, input) (timeout 1 h)
     C->>E: POST + Bearer token
-    E->>E: FastAPI validates {"input"} against RunRequest
+    E->>E: FastAPI validates {"input"} / {"inputs"} against RunRequest
     E->>R: get_owned(user, id)
     R-->>E: Pipeline or raise NotFound (404)
-    E->>S: ensure_runnable() then run(pipeline, agent generator, input)
+    E->>S: ensure_runnable() then run(pipeline, agent generator, input, inputs)
     S->>P: snapshot_pipeline(pipeline)
     P-->>S: immutable PipelineSpec
-    S->>G: execute PipelineSpec as a StateGraph
+    S->>S: bind_run_inputs (400 if the text/values do not match the declared inputs)
+    S->>G: execute PipelineSpec as a StateGraph with RunInputs
     loop each stage in order
         G->>G: start step nodes on shared input (bounded concurrency)
         G->>A: execute agent for each step (async)
@@ -108,9 +109,16 @@ sequenceDiagram
     C-->>UI: PipelineRunResponse
 ```
 
+A pipeline may declare named inputs. `pipeline_inputs.bind_run_inputs` checks
+the request against them before the graph starts: the first stage receives
+their values (labelled when there are several), and the values travel in the
+graph state so that `prompts.step_prompt` can fill `{name}` in a step of any
+stage, next to `{input}`, the stage's input.
+
 Each agent uses its selected model and optional role, and a system prompt from
-`prompts.step_agent_system_prompt` that, when the agent has tools, tells it to
-use them instead of guessing, cite web sources and adapt when a tool fails.
+`prompts.step_agent_system_prompt` that states the step's expected output when
+it has one and, when the agent has tools, tells it to use them instead of
+guessing, cite web sources and adapt when a tool fails.
 `allowed_tools: null` grants the signed-in user's pipeline list and inspect
 tools, the enabled built-in tools (`web_search`, `fetch_url`, `calculator`,
 `current_datetime`; see below) and all configured MCP tools; `[]` grants none;
@@ -189,8 +197,10 @@ record, LangGraph checkpoint for the pipeline, or approval flow for tool actions
    direct provider adapter.
 3. `parse_plan` extracts the first `{...}` block, parses JSON, requires `name`
    and a non-empty `steps` list, fills a missing `order`, replaces unknown model
-   ids with the default, and removes unavailable names from explicit tool
-   allowlists. Unusable output → `upstream_response_invalid` (502).
+   ids with the default, removes unavailable names from explicit tool
+   allowlists, clips each step's `expected_output`, and keeps only the planned
+   `inputs` whose names follow the same rule the save endpoint enforces.
+   Unusable output → `upstream_response_invalid` (502).
 4. The endpoint returns the plan **without saving it**. The user edits it in
    `AutoPipelinePage` and saves through the normal `POST /api/pipelines/`.
 

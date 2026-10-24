@@ -1,4 +1,5 @@
-import type { AgentTool, Pipeline, PipelineStep } from '../../core/api/types';
+import type { AgentTool, Pipeline, PipelineInput, PipelineStep } from '../../core/api/types';
+import { PromptPlaceholders } from './PromptPlaceholders';
 import { StepAgentFields } from './StepAgentFields';
 import { StageArrow } from './StageArrow';
 import { StageHeader } from './StageHeader';
@@ -37,6 +38,7 @@ export function GeneratedSteps({
               <GeneratedStep
                 key={index}
                 step={step}
+                inputs={pipeline.inputs}
                 availableModels={availableModels}
                 availableTools={availableTools}
                 onChange={(patch) => onChange(index, patch)}
@@ -54,6 +56,7 @@ export function GeneratedSteps({
 
 interface GeneratedStepProps {
   step: PipelineStep;
+  inputs: PipelineInput[];
   availableModels: string[];
   availableTools: AgentTool[];
   onChange: (patch: Partial<PipelineStep>) => void;
@@ -63,6 +66,7 @@ interface GeneratedStepProps {
 
 function GeneratedStep({
   step,
+  inputs,
   availableModels,
   availableTools,
   onChange,
@@ -85,8 +89,11 @@ function GeneratedStep({
         value={step.prompt}
         placeholder="Describe this result using {input}"
         onChange={(event) => onChange({ prompt: event.target.value })}
-        className="mb-4 h-24 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-slate-100 outline-none focus:border-sky-400"
+        className="h-24 w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-slate-100 outline-none focus:border-sky-400"
       />
+      <div className="mb-4">
+        <PromptPlaceholders prompt={step.prompt} inputs={inputs} />
+      </div>
 
       <label className="mb-1 block text-xs text-slate-400">Model:</label>
       <select

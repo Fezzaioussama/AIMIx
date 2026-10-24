@@ -12,6 +12,8 @@ class AgentTask:
     model: str
     role: str
     allowed_tools: list[str] | None
+    #: What the agent must deliver; empty leaves the format to the prompt.
+    expected_output: str = ""
 
 
 @dataclass(frozen=True)

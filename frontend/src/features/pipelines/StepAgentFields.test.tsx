@@ -17,6 +17,7 @@ function Harness() {
     stage: 1,
     title: '',
     is_output: false,
+    expected_output: '',
     prompt: 'Work',
     model: 'v/m',
     role: '',

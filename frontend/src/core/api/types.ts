@@ -17,6 +17,8 @@ export interface PipelineStep {
   title: string;
   /** A deliverable of the pipeline rather than intermediate work. */
   is_output: boolean;
+  /** What the step's agent must deliver; empty leaves it to the prompt. */
+  expected_output: string;
   prompt: string;
   model: string;
   /** Agent identity and specialization; empty means the default agent role. */
@@ -31,10 +33,27 @@ export interface AgentTool {
   source: string;
 }
 
+/** A named value every run is given; any step's prompt inserts it as `{name}`. */
+export interface PipelineInput {
+  name: string;
+  /** Shown on the run form; empty falls back to the name. */
+  label: string;
+  /** Tells the person running the pipeline what to enter. */
+  description: string;
+}
+
 export interface Pipeline {
   id?: number;
   name: string;
+  /** Named run inputs; empty means the pipeline runs on one free-text input. */
+  inputs: PipelineInput[];
   steps: PipelineStep[];
+}
+
+/** Body of a run: free text, or a value for each input the pipeline declares. */
+export interface PipelineRunRequest {
+  input?: string;
+  inputs?: Record<string, string>;
 }
 
 export interface StepResult {

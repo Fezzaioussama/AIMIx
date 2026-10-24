@@ -12,6 +12,7 @@ function step(order: number, stage: number, title: string, isOutput: boolean): P
     stage,
     title,
     is_output: isOutput,
+    expected_output: '',
     prompt: `${title} {input}`,
     model: 'v/writer',
     role: '',

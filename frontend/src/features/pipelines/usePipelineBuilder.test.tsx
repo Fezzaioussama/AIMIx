@@ -42,4 +42,46 @@ describe('usePipelineBuilder', () => {
       allowed_tools: ['mcp_search'],
     });
   });
+
+  it('runs a saved pipeline with only its declared inputs', async () => {
+    const saved = {
+      id: 7,
+      name: 'Posts',
+      inputs: [{ name: 'topic', label: 'Topic', description: '' }],
+      steps: [],
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([saved]), { headers: { 'Content-Type': 'application/json' } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ pipeline_name: 'Posts', final_output: 'x', intermediate_results: [] }),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    const { result } = renderHook(() => usePipelineBuilder('vendor/model', 7));
+    await waitFor(() => expect(result.current.pipeline.id).toBe(7));
+
+    await act(async () =>
+      result.current.actions.run({ text: 'stale', values: { topic: 'bees', old: 'x' } }),
+    );
+
+    expect(fetchMock.mock.calls[1][1]?.body).toBe('{"inputs":{"topic":"bees"}}');
+  });
+
+  it('marks the pipeline changed when its inputs are edited', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }),
+    );
+    const { result } = renderHook(() => usePipelineBuilder('vendor/model'));
+
+    act(() =>
+      result.current.actions.setInputs([{ name: 'topic', label: 'Topic', description: '' }]),
+    );
+
+    expect(result.current.pipeline.inputs.map((field) => field.name)).toEqual(['topic']);
+    expect(result.current.dirty).toBe(true);
+  });
 });

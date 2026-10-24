@@ -51,14 +51,14 @@ accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 | Workspace | Best for | What happens |
 |---|---|---|
 | **Chat** | Exploring ideas and invoking saved workflows | A streaming LangGraph agent can inspect or run only the signed-in user's pipelines and configured MCP tools. |
-| **Pipeline Builder** | Repeatable multi-stage workflows | You choose every role, model, prompt, output, and tool policy; stages run in order and agents within one stage run concurrently. |
-| **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes stages, roles, models, deliverables, and available tools without saving anything until you review it. |
+| **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. |
+| **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes the run's inputs, stages, roles, models, expected outputs, deliverables, and available tools without saving anything until you review it. |
 
 ### Pipeline execution at a glance
 
 ```mermaid
 flowchart LR
-    Input[Workflow input] --> S1[Stage 1]
+    Input["Run inputs<br/>{topic}, {audience}…"] --> S1[Stage 1]
     S1 --> A1[Agent A]
     S1 --> A2[Agent B]
     A1 --> Join[Ordered results]
@@ -124,20 +124,24 @@ and each chat or pipeline agent has `AGENT_TIMEOUT_SECONDS`.
 `api/services/pipelines.py` snapshots a saved pipeline through
 `api/services/multiagent/mapper.py`; `multiagent/graph.py` executes the immutable
 snapshot as a LangGraph `StateGraph`. On
-`POST /api/pipelines/<id>/run` with `{"input": "..."}`:
+`POST /api/pipelines/<id>/run` with `{"input": "..."}` — or, for a pipeline
+that declares named inputs, `{"inputs": {"topic": "...", ...}}`:
 
 1. The endpoint validates the body with `RunRequest`.
 2. `repositories/pipelines.get_owned` fetches the pipeline **scoped to the
    caller**, so someone else's pipeline is indistinguishable from a missing one.
+   `services/pipeline_inputs.bind_run_inputs` then checks the text or values
+   against the declared inputs, before any agent starts.
 3. The graph runs stages in ascending order. Each saved step has its own agent
    node. Nodes in one stage receive the same input and run concurrently, up to
    `PIPELINE_MAX_PARALLEL_STEPS`; a join waits for the whole stage before the
-   next one starts. Input replaces `{input}` in the prompt where present and is
-   appended otherwise.
-4. Each step runs a LangGraph agent with its selected model and role. Its
-   `allowed_tools` policy grants all configured tools (`null`), none (`[]`), or
-   named tools from `GET /api/agent-tools`. The agent may call tools before
-   producing its final text.
+   next one starts. The stage's input replaces `{input}` in the prompt where
+   present and is appended otherwise; `{name}` takes a named input's value in
+   any stage.
+4. Each step runs a LangGraph agent with its selected model, role and expected
+   output. Its `allowed_tools` policy grants all configured tools (`null`), none
+   (`[]`), or named tools from `GET /api/agent-tools`. The agent may call tools
+   before producing its final text.
 5. A stage's output becomes the next stage's input; the join orders parallel
    outputs by saved step order under a heading per step, regardless of when the
    agents finish. The response includes every step's output and a metadata-only
@@ -223,8 +227,8 @@ input, while every HTTP call, the bearer token and all payload types live in
 
 | Model | Purpose |
 |---|---|
-| `Pipeline` | Named pipeline owned by a user |
-| `PipelineStep` | Stage/order, prompt, model, role, `allowed_tools` policy, output flag |
+| `Pipeline` | Named pipeline owned by a user, with the named `inputs` every run takes |
+| `PipelineStep` | Stage/order, prompt, model, role, `allowed_tools` policy, output flag, expected output |
 
 ### API
 

@@ -8,6 +8,8 @@ export interface GraphNode {
   title: string;
   model: string;
   prompt: string;
+  /** What the step must deliver, the node's summary until it has run. */
+  expectedOutput: string;
   status: NodeStatus;
   /** Length of the step's output once it has run, for the node's summary line. */
   outputLength: number | null;
@@ -34,6 +36,7 @@ export function buildGraph(
         title: step.title,
         model: step.model,
         prompt: step.prompt,
+        expectedOutput: step.expected_output,
         status: nodeStatus(output, isRunning),
         outputLength: output === undefined ? null : output.length,
         isOutput: deliverables.has(step.order),

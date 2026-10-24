@@ -8,6 +8,7 @@ const workflow: PipelineStep[] = [1, 2, 3].map((order) => ({
   stage: order,
   title: '',
   is_output: false,
+  expected_output: '',
   prompt: 'Use {input}',
   model: 'vendor/model',
   role: '',

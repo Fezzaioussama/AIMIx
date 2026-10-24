@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from api.models import Pipeline, PipelineStep
-from api.services.multiagent.contracts import PipelineSpec, StepSpec
+from api.services.multiagent.contracts import InputField, PipelineSpec, StepSpec
 
 
 def _step_spec(step: PipelineStep) -> StepSpec:
@@ -17,7 +17,13 @@ def _step_spec(step: PipelineStep) -> StepSpec:
         step.role,
         selected,
         step.is_output,
+        # Column defaults apply on insert, so an unsaved step may still hold None.
+        step.expected_output or "",
     )
+
+
+def _input_field(item: dict[str, str]) -> InputField:
+    return InputField(item["name"], item.get("label", ""), item.get("description", ""))
 
 
 def snapshot_pipeline(pipeline: Pipeline) -> PipelineSpec:
@@ -26,4 +32,5 @@ def snapshot_pipeline(pipeline: Pipeline) -> PipelineSpec:
         pipeline_id=pipeline.id,
         name=pipeline.name,
         steps=tuple(_step_spec(step) for step in pipeline.steps),
+        inputs=tuple(_input_field(item) for item in pipeline.inputs or ()),
     )

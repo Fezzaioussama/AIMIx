@@ -1,11 +1,14 @@
 import { motion } from 'motion/react';
 
-import type { PipelineStep, StepResult } from '../../core/api/types';
+import type { PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
 import { GraphNodeCard, GraphTerminal, OutputBadge } from './GraphNodeCard';
 import { buildGraph, type GraphNode, type OutputTarget } from './pipelineGraph';
+import { inputsSummary } from './pipelineInputs';
 
 interface PipelineGraphProps {
   steps: PipelineStep[];
+  /** Named run inputs, listed on the Input terminal instead of the typed text. */
+  inputs?: PipelineInput[];
   results?: StepResult[];
   isRunning?: boolean;
   input?: string;
@@ -37,6 +40,7 @@ function stageEntrance(stage: number) {
  */
 export function PipelineGraph({
   steps,
+  inputs = [],
   results = [],
   isRunning = false,
   input = '',
@@ -60,7 +64,10 @@ export function PipelineGraph({
         {onEditStep && ' Select a step to edit its prompt.'}
       </p>
       <div className="flex min-w-max items-start pt-6" role="list" aria-label="Pipeline diagram">
-        <GraphTerminal label="Input" detail={input || 'Your text'} />
+        <GraphTerminal
+          label={inputs.length > 1 ? 'Inputs' : 'Input'}
+          detail={inputsSummary(inputs, input)}
+        />
         {stages.map((stage) => (
           <div key={stage.stage} className="flex items-start" role="listitem">
             <Connector flowing={isRunning} />

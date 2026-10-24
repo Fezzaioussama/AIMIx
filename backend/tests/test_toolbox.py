@@ -107,8 +107,12 @@ def test_pipeline_agent_uses_built_in_tools_and_survives_a_failing_one(
     saved = pipelines.create_with_steps(
         session,
         user,
-        "Budget",
-        [{"order": 1, "stage": 1, "prompt": "Total {input}", "model": default_model_id()}],
+        pipelines.PipelineChanges(
+            "Budget",
+            steps=[
+                {"order": 1, "stage": 1, "prompt": "Total {input}", "model": default_model_id()}
+            ],
+        ),
     )
     calls = [
         {"name": "calculator", "args": {"expression": "40 + 2"}, "id": "call-1"},

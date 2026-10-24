@@ -9,7 +9,7 @@ import pytest
 from api.exceptions import ProviderUnavailable
 from api.models import Pipeline, PipelineStep
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
-from api.services.multiagent.contracts import PipelineSpec
+from api.services.multiagent.contracts import InputField, PipelineSpec, RunInputs
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
 from api.services.prompts import merge_stage_outputs
@@ -49,6 +49,50 @@ def test_snapshot_copies_step_prompt_and_allowed_tools() -> None:
     assert snapshot.steps[0].prompt == "prompt-1: {input}"
 
 
+def test_snapshot_copies_named_inputs_and_expected_output() -> None:
+    step = _step(1, 1)
+    step.expected_output = "Three bullet points"
+    saved = Pipeline(
+        name="Graph test",
+        inputs=[{"name": "topic", "label": "Topic", "description": "What to cover"}],
+        steps=[step],
+    )
+
+    snapshot = snapshot_pipeline(saved)
+
+    assert snapshot.inputs == (InputField("topic", "Topic", "What to cover"),)
+    assert snapshot.steps[0].expected_output == "Three bullet points"
+
+
+def test_named_inputs_reach_later_stages_and_expected_output_reaches_the_agent() -> None:
+    tasks: list[AgentTask] = []
+
+    class Agent:
+        async def execute(self, task: AgentTask) -> AgentOutcome:
+            tasks.append(task)
+            return _outcome(f"out-{task.role}")
+
+    research = _step(1, 1)
+    research.prompt = "Research {topic}"
+    draft = _step(2, 2)
+    draft.prompt = "Write for {audience} about {topic}"
+    draft.expected_output = "One tweet"
+    inputs = RunInputs("labelled inputs", {"topic": "bees", "audience": "kids"})
+
+    result = GraphPipelineRunner(max_parallel_steps=2).run(
+        _pipeline(research, draft), Agent(), inputs
+    )
+
+    # The first stage placed a named input, so its input is not appended again;
+    # the later stage did not place {input}, so the previous output is.
+    assert [task.prompt for task in tasks] == [
+        "Research bees",
+        "Write for kids about bees\n\nInput: out-role-1",
+    ]
+    assert [task.expected_output for task in tasks] == ["", "One tweet"]
+    assert result.intermediate_results[0].input_used == "labelled inputs"
+
+
 def test_parallel_fan_out_waits_for_both_branches_and_merges_in_step_order() -> None:
     fast_done = asyncio.Event()
     slow_done = asyncio.Event()
@@ -68,7 +112,7 @@ def test_parallel_fan_out_waits_for_both_branches_and_merges_in_step_order() -> 
             return _outcome("combined")
 
     pipeline = _pipeline(_step(3, 2), _step(2, 1), _step(1, 1))
-    result = GraphPipelineRunner(max_parallel_steps=2).run(pipeline, Agent(), "seed")
+    result = GraphPipelineRunner(max_parallel_steps=2).run(pipeline, Agent(), RunInputs("seed"))
 
     assert [item.step_order for item in result.intermediate_results] == [1, 2, 3]
     assert [item.output for item in result.intermediate_results] == ["slow", "fast", "combined"]
@@ -95,7 +139,7 @@ def test_graph_limits_active_agents_to_configured_parallelism() -> None:
 
     agent = Agent()
     pipeline = _pipeline(*(_step(order, 1) for order in range(1, 5)))
-    result = GraphPipelineRunner(max_parallel_steps=2).run(pipeline, agent, "seed")
+    result = GraphPipelineRunner(max_parallel_steps=2).run(pipeline, agent, RunInputs("seed"))
 
     assert agent.peak == 2
     assert [item.step_order for item in result.intermediate_results] == [1, 2, 3, 4]
@@ -107,7 +151,7 @@ def test_long_sequential_pipeline_completes_past_default_graph_recursion_limit()
             return _outcome(task.role)
 
     pipeline = _pipeline(*(_step(order, order) for order in range(1, 16)))
-    result = GraphPipelineRunner(max_parallel_steps=1).run(pipeline, Agent(), "seed")
+    result = GraphPipelineRunner(max_parallel_steps=1).run(pipeline, Agent(), RunInputs("seed"))
 
     assert [item.step_order for item in result.intermediate_results] == list(range(1, 16))
     assert result.intermediate_results[-1].input_used == "role-14"
@@ -127,7 +171,7 @@ def test_failing_branch_prevents_later_stage() -> None:
     pipeline = _pipeline(_step(1, 1), _step(2, 1), _step(3, 2))
 
     with pytest.raises(ProviderUnavailable, match="branch failed"):
-        GraphPipelineRunner(max_parallel_steps=2).run(pipeline, Agent(), "seed")
+        GraphPipelineRunner(max_parallel_steps=2).run(pipeline, Agent(), RunInputs("seed"))
 
     assert "role-3" not in visited
 
@@ -151,7 +195,7 @@ def test_each_step_receives_its_own_role_model_and_tool_policy() -> None:
     second.allowed_tools = []
     second.is_output = True
     result = GraphPipelineRunner(max_parallel_steps=2).run(
-        _pipeline(first, second), Agent(), "seed"
+        _pipeline(first, second), Agent(), RunInputs("seed")
     )
 
     assert tasks == [

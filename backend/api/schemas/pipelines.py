@@ -10,13 +10,56 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StringConstraints,
     field_serializer,
     field_validator,
     model_validator,
 )
 
-from api.models import PIPELINE_NAME_MAX_LENGTH, STEP_ROLE_MAX_LENGTH, STEP_TITLE_MAX_LENGTH
+from api.models import (
+    PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH,
+    PIPELINE_INPUT_LABEL_MAX_LENGTH,
+    PIPELINE_MAX_INPUTS,
+    PIPELINE_NAME_MAX_LENGTH,
+    STEP_EXPECTED_OUTPUT_MAX_LENGTH,
+    STEP_ROLE_MAX_LENGTH,
+    STEP_TITLE_MAX_LENGTH,
+)
 from api.schemas.common import ModelId, NonBlank
+from api.services.pipeline_inputs import input_name_error
+
+
+def _valid_input_name(name: str) -> str:
+    if error := input_name_error(name):
+        raise ValueError(error)
+    return name
+
+
+InputName = Annotated[
+    str, StringConstraints(strip_whitespace=True), AfterValidator(_valid_input_name)
+]
+
+
+class PipelineInputField(BaseModel):
+    """A named value every run is given; step prompts insert it as ``{name}``."""
+
+    name: InputName
+    label: str = Field("", max_length=PIPELINE_INPUT_LABEL_MAX_LENGTH)
+    description: str = Field("", max_length=PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH)
+
+
+def _unique_inputs(inputs: list[PipelineInputField]) -> list[PipelineInputField]:
+    names = [field.name for field in inputs]
+    if len(set(names)) != len(names):
+        raise ValueError("Each input needs a unique name.")
+    return inputs
+
+
+Inputs = Annotated[
+    list[PipelineInputField],
+    Field(max_length=PIPELINE_MAX_INPUTS),
+    AfterValidator(_unique_inputs),
+]
 
 
 class PipelineStepIn(BaseModel):
@@ -28,6 +71,7 @@ class PipelineStepIn(BaseModel):
     role: str = Field("", max_length=STEP_ROLE_MAX_LENGTH)
     allowed_tools: list[NonBlank] | None = None
     is_output: bool = False
+    expected_output: str = Field("", max_length=STEP_EXPECTED_OUTPUT_MAX_LENGTH)
     prompt: NonBlank
     model: ModelId
 
@@ -59,16 +103,19 @@ PipelineName = Annotated[NonBlank, Field(max_length=PIPELINE_NAME_MAX_LENGTH)]
 
 
 class PipelineIn(BaseModel):
-    """Body of POST and PUT: a whole pipeline."""
+    """Body of POST and PUT: a whole pipeline. Omitting ``inputs`` declares
+    none, so the pipeline runs on one free-text input."""
 
     name: PipelineName
+    inputs: Inputs = Field(default_factory=list)
     steps: Steps
 
 
 class PipelinePatch(BaseModel):
-    """Body of PATCH: rename and/or replace the steps."""
+    """Body of PATCH: rename, redeclare the inputs and/or replace the steps."""
 
     name: PipelineName | None = None
+    inputs: Inputs | None = None
     steps: Steps | None = None
 
 
@@ -82,6 +129,7 @@ class PipelineStepOut(BaseModel):
     role: str
     allowed_tools: list[str] | None
     is_output: bool
+    expected_output: str
     prompt: str
     model: str
 
@@ -93,6 +141,7 @@ class PipelineOut(BaseModel):
     name: str
     user: int = Field(validation_alias="user_id")
     created_at: datetime
+    inputs: list[PipelineInputField]
     steps: list[PipelineStepOut]
 
     @field_serializer("created_at")
@@ -101,10 +150,19 @@ class PipelineOut(BaseModel):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-class RunRequest(BaseModel):
-    """Contract for POST /api/pipelines/<id>/run."""
+Trimmed = Annotated[str, StringConstraints(strip_whitespace=True)]
 
-    input: NonBlank
+
+class RunRequest(BaseModel):
+    """Contract for POST /api/pipelines/<id>/run.
+
+    ``input`` is the free text a pipeline without named inputs runs on;
+    ``inputs`` holds a value for each input a pipeline declares. Which one is
+    required depends on the pipeline, so the service checks them.
+    """
+
+    input: Trimmed = ""
+    inputs: dict[str, Trimmed] = Field(default_factory=dict)
 
 
 class ToolCallOut(BaseModel):

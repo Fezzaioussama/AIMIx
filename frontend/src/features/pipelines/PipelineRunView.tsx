@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 
-import type { PipelineStep, StepResult } from '../../core/api/types';
+import type { PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
@@ -18,6 +18,7 @@ const TAB_LIST = 'flex gap-1 rounded-xl border border-white/10 bg-slate-900/70 p
 
 interface PipelineRunViewProps {
   steps: PipelineStep[];
+  inputs?: PipelineInput[];
   results: StepResult[];
   isRunning: boolean;
   input: string;
@@ -31,6 +32,7 @@ interface PipelineRunViewProps {
 /** The pipeline diagram plus the latest run's outputs; diagram nodes open outputs. */
 export function PipelineRunView({
   steps,
+  inputs,
   results,
   isRunning,
   input,
@@ -64,6 +66,7 @@ export function PipelineRunView({
     <section>
       <PipelineGraph
         steps={steps}
+        inputs={inputs}
         results={results}
         isRunning={isRunning}
         input={input}

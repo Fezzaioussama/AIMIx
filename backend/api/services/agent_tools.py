@@ -10,7 +10,6 @@ from langchain.tools import tool
 from langchain_core.tools import BaseTool
 
 from api.db import Database
-from api.exceptions import ValidationFailed
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services import pipelines as pipeline_service
@@ -24,6 +23,7 @@ def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
     return {
         "id": pipeline.id,
         "name": pipeline.name,
+        "inputs": pipeline.inputs,
         "steps": [
             {
                 "order": step.order,
@@ -34,6 +34,7 @@ def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
                 "role": step.role,
                 "allowed_tools": step.allowed_tools,
                 "is_output": step.is_output,
+                "expected_output": step.expected_output,
             }
             for step in pipeline.steps
         ],
@@ -54,7 +55,8 @@ def read_only_tools(database: Database, user: User) -> list[BaseTool]:
 
     @tool
     def inspect_pipeline(pipeline_id: int) -> dict[str, Any]:
-        """Inspect one of your saved AIMIx pipelines, including its step prompts and models."""
+        """Inspect one of your saved AIMIx pipelines: its named inputs and its steps'
+        prompts, models and expected outputs."""
         with database.session() as session:
             return _pipeline_details(repository.get_owned(session, user, pipeline_id))
 
@@ -80,13 +82,16 @@ def built_in_tools(
         return native
 
     @tool
-    def run_pipeline(pipeline_id: int, input_text: str) -> dict[str, Any]:
-        """Run one of your saved AIMIx pipelines on input_text and return its step results."""
-        if not input_text.strip():
-            raise ValidationFailed("Pipeline input must not be blank.")
+    def run_pipeline(
+        pipeline_id: int, input_text: str = "", inputs: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        """Run one of your saved AIMIx pipelines and return its step results. Pass
+        input_text, or, when the pipeline declares named inputs (see
+        inspect_pipeline), a value for each of them in inputs."""
         with database.session() as session:
             pipeline = repository.get_owned(session, user, pipeline_id)
             pipeline_service.ensure_runnable(pipeline)
-        return asdict(pipeline_service.run(pipeline, generator_factory(), input_text))
+        result = pipeline_service.run(pipeline, generator_factory(), input_text, inputs)
+        return asdict(result)
 
     return [*native, run_pipeline]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -65,6 +66,48 @@ def test_agent_step_migration_preserves_old_pipeline_steps(tmp_path: Path) -> No
         ).one()
     engine.dispose()
     assert (role, allowed) == ("", None)
+
+
+def test_input_output_migration_keeps_pipelines_and_their_steps(tmp_path: Path) -> None:
+    # Rebuilding `pipelines` on SQLite would cascade-delete its steps; the
+    # columns must be added in place.
+    url = f"sqlite:///{tmp_path / 'before_inputs.sqlite3'}"
+    config = migration_config(url)
+    command.upgrade(config, "21980d98eac9")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (id, username, password_hash, created_at) "
+                "VALUES (1, 'owner', 'hash', CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO pipelines (id, name, user_id, created_at) "
+                "VALUES (1, 'Old', 1, CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                'INSERT INTO pipeline_steps (id, pipeline_id, "order", stage, title, '
+                "is_output, prompt, model, role) "
+                "VALUES (1, 1, 1, 1, 'Step', 1, 'Do {input}', 'model/id', 'Writer')"
+            )
+        )
+    engine.dispose()
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        inputs = connection.execute(text("SELECT inputs FROM pipelines WHERE id = 1")).scalar_one()
+        step = connection.execute(
+            text("SELECT role, expected_output FROM pipeline_steps WHERE id = 1")
+        ).one()
+    engine.dispose()
+    assert json.loads(inputs) == []
+    assert tuple(step) == ("Writer", "")
 
 
 def legacy_database(path: Path, *, with_stage_columns: bool = True) -> Path:

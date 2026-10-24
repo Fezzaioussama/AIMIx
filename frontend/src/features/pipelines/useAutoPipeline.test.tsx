@@ -7,12 +7,14 @@ import { useAutoPipeline } from './useAutoPipeline';
 
 const planned: Pipeline = {
   name: 'Launch plan',
+  inputs: [{ name: 'product', label: 'Product', description: 'What is launching' }],
   steps: [
     {
       order: 1,
       stage: 1,
       title: 'Facts',
       is_output: false,
+      expected_output: 'Five key facts',
       prompt: 'Find {input}',
       model: 'v/m',
       role: '',
@@ -23,6 +25,7 @@ const planned: Pipeline = {
       stage: 2,
       title: 'Email',
       is_output: true,
+      expected_output: '',
       prompt: 'Write {input}',
       model: 'v/m',
       role: '',
@@ -48,6 +51,20 @@ describe('useAutoPipeline', () => {
 
     act(() => result.current.actions.removeStep(1));
     expect(result.current.generated?.steps.map((step) => step.order)).toEqual([1, 2]);
+  });
+
+  it('keeps the planned inputs and expected outputs, and lets them be edited', async () => {
+    vi.spyOn(pipelinesApi, 'generatePipeline').mockResolvedValue({
+      generated_pipeline: planned,
+      available_models: ['v/m'],
+    });
+    const { result } = renderHook(() => useAutoPipeline());
+
+    await act(async () => result.current.actions.generate('Create a launch plan', 'v/m'));
+    expect(result.current.generated?.steps[0].expected_output).toBe('Five key facts');
+
+    act(() => result.current.actions.setInputs([]));
+    expect(result.current.generated?.inputs).toEqual([]);
   });
 
   it('retains the saved identity for later edits', async () => {

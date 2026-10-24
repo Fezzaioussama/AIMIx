@@ -9,8 +9,17 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 STEP_TITLE_MAX_LENGTH = 100
 STEP_ROLE_MAX_LENGTH = 100
+STEP_EXPECTED_OUTPUT_MAX_LENGTH = 500
 USERNAME_MAX_LENGTH = 150
 PIPELINE_NAME_MAX_LENGTH = 255
+#: A named run input is referenced as ``{name}`` in step prompts. ``input`` is
+#: reserved because ``{input}`` already means a stage's input.
+PIPELINE_INPUT_NAME_PATTERN = r"[a-z][a-z0-9_]*"
+PIPELINE_INPUT_NAME_MAX_LENGTH = 40
+PIPELINE_INPUT_LABEL_MAX_LENGTH = 100
+PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH = 300
+PIPELINE_MAX_INPUTS = 20
+RESERVED_INPUT_NAME = "input"
 MODEL_ID_MAX_LENGTH = 200
 PROVIDER_NAME_MAX_LENGTH = 50
 API_KEY_HINT_LENGTH = 4
@@ -76,7 +85,12 @@ class ProviderSetting(Base):
 
 
 class Pipeline(Base):
-    """A named set of LLM steps owned by one user."""
+    """A named set of LLM steps owned by one user.
+
+    ``inputs`` declares the named values every run is given, in display order,
+    as ``{"name", "label", "description"}`` objects. Empty means the pipeline
+    runs on one free-text input.
+    """
 
     __tablename__ = "pipelines"
 
@@ -84,6 +98,7 @@ class Pipeline(Base):
     name: Mapped[str] = mapped_column(String(PIPELINE_NAME_MAX_LENGTH))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    inputs: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
 
     user: Mapped[User] = relationship(back_populates="pipelines")
     steps: Mapped[list[PipelineStep]] = relationship(
@@ -95,7 +110,8 @@ class Pipeline(Base):
 
 class PipelineStep(Base):
     """One step of a pipeline. ``prompt`` may contain the {input} placeholder,
-    which the runner substitutes with the previous stage's output.
+    which the runner substitutes with the previous stage's output, and
+    ``{name}`` for any of the pipeline's named inputs.
 
     Steps sharing a ``stage`` run in parallel on the same input; stages run in
     ascending order, so ``stage == order`` for every step is a plain chain.
@@ -103,6 +119,8 @@ class PipelineStep(Base):
     ``is_output`` marks a step whose result is a deliverable of the pipeline
     rather than intermediate work. When no step is marked, the last stage's
     steps are the outputs. Output steps still feed any later stage.
+    ``expected_output`` tells the step's agent what to deliver; empty leaves
+    that to the prompt.
     """
 
     __tablename__ = "pipeline_steps"
@@ -116,6 +134,9 @@ class PipelineStep(Base):
     role: Mapped[str] = mapped_column(String(STEP_ROLE_MAX_LENGTH), default="")
     allowed_tools: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     is_output: Mapped[bool] = mapped_column(default=False)
+    expected_output: Mapped[str] = mapped_column(
+        String(STEP_EXPECTED_OUTPUT_MAX_LENGTH), default=""
+    )
     prompt: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH))
 

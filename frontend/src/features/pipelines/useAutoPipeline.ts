@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import * as pipelinesApi from '../../core/api/pipelines';
-import type { Pipeline, PipelineStep } from '../../core/api/types';
+import type { Pipeline, PipelineInput, PipelineStep } from '../../core/api/types';
 import { insertStep } from './stages';
 
 type Status = 'idle' | 'generating' | 'saving';
@@ -67,6 +67,11 @@ export function useAutoPipeline() {
     setGenerated((current) => (current === null ? current : { ...current, name }));
   }, []);
 
+  const setInputs = useCallback((inputs: PipelineInput[]) => {
+    setSuccessMessage('');
+    setGenerated((current) => (current === null ? current : { ...current, inputs }));
+  }, []);
+
   const addOutput = useCallback((stage: number, parallel: boolean) => {
     setSuccessMessage('');
     setGenerated((current) => {
@@ -104,6 +109,6 @@ export function useAutoPipeline() {
     status,
     errorMessage,
     successMessage,
-    actions: { generate, save, patchStep, rename, addOutput, removeStep, reset },
+    actions: { generate, save, patchStep, rename, setInputs, addOutput, removeStep, reset },
   };
 }

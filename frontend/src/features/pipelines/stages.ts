@@ -44,6 +44,7 @@ export function insertStep(steps: PipelineStep[], options: InsertStepOptions): P
       stage: parallel ? stage : stage + 1,
       title: '',
       is_output: isOutput,
+      expected_output: '',
       prompt: '',
       model,
       role: '',

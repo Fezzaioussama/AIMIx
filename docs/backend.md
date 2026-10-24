@@ -87,13 +87,17 @@ Tests replace any of these with `app.dependency_overrides`.
 |---|---|---|
 | `User` (`users`) | `username` (unique), `password_hash`, `created_at`, `llm_provider` (null = `LLM_PROVIDER`) | — |
 | `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
-| `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at` | `steps` load ordered by `(stage, order)` |
-| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
+| `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
+| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
 
 `PipelineStep.model` is a plain string column; the request schemas check it
 against the catalogue. `role` defaults to `""`; `allowed_tools` is JSON with
 `null` for all tools, `[]` for none, or exact tool names. The migration gives
-existing steps the original all-tools behavior. `db.Database` owns the engine
+existing steps the original all-tools behavior. `Pipeline.inputs` is a JSON
+list of `{"name", "label", "description"}` objects — the named run inputs —
+and `expected_output` a step's deliverable (≤ 500 characters); existing rows
+get `[]` and `""`. The naming rule and limits for inputs are constants in
+`models.py` (`PIPELINE_INPUT_*`, `RESERVED_INPUT_NAME`). `db.Database` owns the engine
 and session factory. SQLite connections are allowed across threads (endpoints
 run in a threadpool) and have foreign keys switched on; `sqlite://` uses one
 shared in-memory connection.
@@ -115,13 +119,16 @@ empty), `ModelId` (must be in some provider's catalogue) and `ProviderName`. A s
 gets `stage = order`. A pipeline needs at least one step, and step orders must
 be unique. Step `role` is optional (up to 100 characters); `allowed_tools` is
 optional and, when explicit, contains unique, non-blank names. Tool availability
-is checked when the agent runs.
+is checked when the agent runs. `PipelineInputField` validates each named
+input through `services/pipeline_inputs.input_name_error`, the rule the planner
+also applies; `RunRequest` only trims `input` and `inputs`, because which one a
+run needs depends on the pipeline.
 
 ### `repositories/`
 
 | Module | Functions |
 |---|---|
-| `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename and/or replace every step in one transaction), `delete` |
+| `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename, redeclare the inputs and/or replace every step in one transaction), `delete`. Writes take a `PipelineChanges` value whose `None` fields are kept. |
 | `users.py` | `get`, `get_by_username`, `create` |
 | `provider_settings.py` | `for_user`, `get`, `save` (active provider + per-provider upsert in one transaction), `clear_key` (idempotent) |
 | `legacy_import.py` | `import_django_database` — the one-off copy from the old Django SQLite file |
@@ -132,12 +139,13 @@ Each write commits its own transaction.
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner). |
-| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` snapshots, run-result data, and the async `StepAgent` protocol. |
+| `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
+| `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
+| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, and the async `StepAgent` protocol. |
 | `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
 | `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
 | `multiagent/step_agent.py` | User-bound LangGraph step agent: selected model, role, native/MCP tools, final text, and tool call metadata. |
-| `prompts.py` | `step_prompt`, `merge_stage_outputs`, `pipeline_generation_prompt`, `step_agent_system_prompt`. |
+| `prompts.py` | `step_prompt` (fills `{input}` and `{name}` in one pass), `merge_stage_outputs`, `merge_input_values`, `pipeline_generation_prompt`, `step_agent_system_prompt` (role, expected output, tool guidance). |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
 | `agent.py` | Builds and streams the chat-only LangGraph agent. |
 | `agent_runtime.py` | Shared chat/pipeline tool policy, limits, and third-party failure translation. |
@@ -234,8 +242,9 @@ so tests can never reach a real LLM.
 | `test_errors.py` | The error shape for 400/401/404/405/500 |
 | `test_schemas.py` | Model-id validation, stages, required steps, non-blank fields |
 | `test_security.py` | Django-compatible hashes (checked against a hash Django produced), password policy, tokens |
-| `test_database.py` | Migrations match the models; the Django import |
+| `test_database.py` | Migrations match the models and keep existing pipelines and steps; the Django import |
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
+| `test_pipeline_inputs.py` | Named run inputs and expected outputs: binding, placeholder filling, planner sanitising, and the HTTP contract |
 | `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, and failure propagation |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |

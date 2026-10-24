@@ -11,6 +11,7 @@ import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { GeneratedSteps } from './GeneratedSteps';
 import { PipelineGraph } from './PipelineGraph';
+import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { modelLabel } from './modelLabel';
 import { useAutoPipeline } from './useAutoPipeline';
@@ -50,8 +51,9 @@ export function AutoPipelinePage() {
           </div>
           <PipelineNav />
           <p className="mt-3 text-sm text-slate-400">
-            Describe your workflow and the outputs you need. Review the generated stages before
-            saving. Give each agent a role and choose which tools it can use.
+            Describe your workflow, what you will provide on each run, and the outputs you need.
+            Review the generated inputs and stages before saving. Give each agent a role, the
+            output it must deliver, and the tools it can use.
           </p>
         </header>
 
@@ -129,6 +131,7 @@ export function AutoPipelinePage() {
               <div className="mb-6">
                 <PipelineGraph
                   steps={generated.steps}
+                  inputs={generated.inputs}
                   onAddParallel={(stage) => actions.addOutput(stage, true)}
                   onAddAfter={(stage) => actions.addOutput(stage, false)}
                   parallelLabel="+ Parallel output"
@@ -139,6 +142,16 @@ export function AutoPipelinePage() {
                   result.
                 </p>
               </div>
+
+              <section aria-label="Run inputs" className="mb-6">
+                <h3 className="mb-1 text-sm font-semibold text-slate-200">Run inputs</h3>
+                <p className="mb-3 text-xs text-slate-400">
+                  What you fill in on every run. Any step can use one as {'{name}'}.
+                </p>
+                <div className="max-w-md">
+                  <PipelineInputsEditor inputs={generated.inputs} onChange={actions.setInputs} />
+                </div>
+              </section>
 
               <GeneratedSteps
                 pipeline={generated}

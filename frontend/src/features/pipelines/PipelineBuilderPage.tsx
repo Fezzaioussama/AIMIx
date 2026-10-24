@@ -6,11 +6,13 @@ import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { BrandMark } from '../../core/ui/BrandMark';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
 import { RecentPipelines } from './RecentPipelines';
 import { RunInputCard } from './RunInputCard';
 import { StepEditor } from './StepEditor';
+import { EMPTY_RUN_DRAFT, type RunDraft } from './pipelineInputs';
 import { usePipelineBuilder } from './usePipelineBuilder';
 
 export function PipelineBuilderPage() {
@@ -26,7 +28,7 @@ export function PipelineBuilderPage() {
   const { tools, error: toolsError } = useAgentTools();
   const { pipeline, saved, results, elapsedMs, status, message, dirty, actions } =
     usePipelineBuilder(defaultModel, typeof initialId === 'number' ? initialId : undefined);
-  const [input, setInput] = useState('');
+  const [draft, setDraft] = useState<RunDraft>(EMPTY_RUN_DRAFT);
 
   const isSaving = status === 'saving';
   const isRunning = status === 'running';
@@ -83,15 +85,27 @@ export function PipelineBuilderPage() {
         <RecentPipelines pipelines={saved} activeId={pipeline.id} onSelect={actions.select} />
 
         <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">
+          Run Inputs
+        </h3>
+        <p className="mb-3 text-xs text-slate-400">
+          Named values you fill in on every run. Any step, in any stage, can use one as{' '}
+          {'{name}'}.
+        </p>
+        <div className="mb-6">
+          <PipelineInputsEditor inputs={pipeline.inputs} onChange={actions.setInputs} />
+        </div>
+
+        <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">
           Workflow Steps
         </h3>
         <p className="mb-3 text-xs text-slate-400">
-          Each step is an agent. Give it a role, prompt, and access to the tools it needs. Choose
-          Output for each result you want.
+          Each step is an agent. Give it a role, prompt, the output it must deliver, and access to
+          the tools it needs. Choose Output for each result you want.
         </p>
         {toolsError && <p className="mb-3 text-xs text-amber-300">{toolsError}</p>}
         <StepEditor
           steps={pipeline.steps}
+          inputs={pipeline.inputs}
           availableModels={models}
           availableTools={tools}
           onChange={actions.patchStep}
@@ -131,22 +145,24 @@ export function PipelineBuilderPage() {
             </div>
             <PipelineRunView
               steps={pipeline.steps}
+              inputs={pipeline.inputs}
               results={results}
               isRunning={isRunning}
-              input={input}
+              input={draft.text}
               elapsedMs={elapsedMs}
               onEditStep={isRunning || isSaving ? undefined : editStep}
               onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
               onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
             >
               <RunInputCard
-                input={input}
+                inputs={pipeline.inputs}
+                draft={draft}
                 isRunning={isRunning}
                 dirty={dirty}
                 isSaved={pipeline.id !== undefined}
                 message={message || modelsError || ''}
-                onInputChange={setInput}
-                onRun={() => void actions.run(input)}
+                onDraftChange={setDraft}
+                onRun={() => void actions.run(draft)}
               />
             </PipelineRunView>
           </div>

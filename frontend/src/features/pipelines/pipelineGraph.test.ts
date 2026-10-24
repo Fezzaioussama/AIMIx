@@ -9,6 +9,7 @@ function step(order: number, stage: number, isOutput = false): PipelineStep {
     stage,
     title: '',
     is_output: isOutput,
+    expected_output: '',
     prompt: 'p',
     model: 'v/m',
     role: '',
@@ -43,6 +44,11 @@ describe('buildGraph', () => {
     expect(nodesOf(buildGraph(steps, [], true)).every((node) => node.status === 'running')).toBe(
       true,
     );
+  });
+
+  it('carries each step expected output for its summary', () => {
+    const planned = [{ ...step(1, 1), expected_output: 'One tweet' }];
+    expect(nodesOf(buildGraph(planned, [], false))[0].expectedOutput).toBe('One tweet');
   });
 
   it('marks steps with a result done and reports the output length', () => {

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,6 +13,7 @@ from sqlalchemy.orm import Session
 from api.exceptions import NotFound, ValidationFailed
 from api.models import Pipeline, User
 from api.repositories import pipelines, users
+from api.repositories.pipelines import PipelineChanges
 from api.security import hash_password
 from api.services import agent as agent_service
 from api.services import agent_tools
@@ -24,14 +27,18 @@ def chat_tools(app: FastAPI, user: User, agent: StepAgent) -> dict[str, BaseTool
     return {item.name: item for item in tools}
 
 
+def one_step(name: str, prompt: str, **fields: Any) -> PipelineChanges:
+    """A pipeline of one step on model ``m``; ``fields`` may add ``inputs`` or step keys."""
+    inputs = fields.pop("inputs", [])
+    step = {"order": 1, "stage": 1, "prompt": prompt, "model": "m", **fields}
+    return PipelineChanges(name, inputs=inputs, steps=[step])
+
+
 def test_native_tools_list_inspect_and_run_owned_pipeline(
     app: FastAPI, session: Session, user: User
 ) -> None:
     saved = pipelines.create_with_steps(
-        session,
-        user,
-        "Summarise",
-        [{"order": 1, "stage": 1, "title": "Summary", "prompt": "Summarise {input}", "model": "m"}],
+        session, user, one_step("Summarise", "Summarise {input}", title="Summary")
     )
     provider = FakeProvider(reply="summary")
     tools = chat_tools(app, user, provider)
@@ -43,20 +50,32 @@ def test_native_tools_list_inspect_and_run_owned_pipeline(
     assert listing.invoke({}) == [{"id": saved.id, "name": "Summarise", "step_count": 1}]
     details = inspect.invoke({"pipeline_id": saved.id})
     assert details["steps"][0]["prompt"] == "Summarise {input}"
+    assert (details["inputs"], details["steps"][0]["expected_output"]) == ([], "")
     assert run.invoke({"pipeline_id": saved.id, "input_text": "hello"})["final_output"] == "summary"
     assert provider.calls == [("Summarise hello", "m")]
+
+
+def test_native_tools_inspect_and_run_a_pipeline_with_named_inputs(
+    app: FastAPI, session: Session, user: User
+) -> None:
+    topic = {"name": "topic", "label": "Topic", "description": "What to write about"}
+    saved = pipelines.create_with_steps(
+        session, user, one_step("Post", "Write about {topic}", inputs=[topic])
+    )
+    provider = FakeProvider(reply="post")
+    tools = chat_tools(app, user, provider)
+
+    assert tools["inspect_pipeline"].invoke({"pipeline_id": saved.id})["inputs"] == [topic]
+    result = tools["run_pipeline"].invoke({"pipeline_id": saved.id, "inputs": {"topic": "bees"}})
+    assert result["final_output"] == "post"
+    assert provider.calls == [("Write about bees", "m")]
 
 
 def test_native_tools_cannot_read_or_run_another_users_pipeline(
     app: FastAPI, session: Session, user: User
 ) -> None:
     stranger = users.create(session, "stranger", hash_password("password-123", 1))
-    theirs = pipelines.create_with_steps(
-        session,
-        stranger,
-        "Private",
-        [{"order": 1, "stage": 1, "prompt": "private {input}", "model": "m"}],
-    )
+    theirs = pipelines.create_with_steps(session, stranger, one_step("Private", "private {input}"))
     provider = FakeProvider()
     tools = chat_tools(app, user, provider)
     listing, inspect, run = (
@@ -71,10 +90,13 @@ def test_native_tools_cannot_read_or_run_another_users_pipeline(
     assert provider.calls == []
 
 
-def test_native_run_rejects_blank_input(app: FastAPI, user: User) -> None:
-    run = chat_tools(app, user, FakeProvider())["run_pipeline"]
-    with pytest.raises(ValidationFailed):
-        run.invoke({"pipeline_id": 1, "input_text": "   "})
+def test_native_run_rejects_blank_input(app: FastAPI, session: Session, user: User) -> None:
+    saved = pipelines.create_with_steps(session, user, one_step("Echo", "{input}"))
+    provider = FakeProvider()
+    run = chat_tools(app, user, provider)["run_pipeline"]
+    with pytest.raises(ValidationFailed, match="must not be blank"):
+        run.invoke({"pipeline_id": saved.id, "input_text": "   "})
+    assert provider.calls == []
 
 
 def test_chat_tools_include_the_built_in_toolbox(app: FastAPI, user: User) -> None:
@@ -95,7 +117,7 @@ def test_authenticated_chat_can_call_a_native_tool(
     with app.state.database.session() as session:
         owner = session.get(User, user.id)
         assert owner is not None
-        pipelines.create_with_steps(session, owner, "Mine", [])
+        pipelines.create_with_steps(session, owner, PipelineChanges("Mine", steps=[]))
     model = FakeMessagesListChatModel(
         responses=[
             AIMessage(
@@ -133,10 +155,7 @@ def test_chat_can_run_a_pipeline_through_the_graph(
         owner = db_session.get(User, user.id)
         assert owner is not None
         saved = pipelines.create_with_steps(
-            db_session,
-            owner,
-            "Summary",
-            [{"order": 1, "stage": 1, "prompt": "Summarise {input}", "model": "m"}],
+            db_session, owner, one_step("Summary", "Summarise {input}")
         )
     provider = FakeProvider(reply="summary")
     use_pipeline_generator(app, provider)

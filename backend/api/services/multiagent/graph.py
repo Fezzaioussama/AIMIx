@@ -22,6 +22,7 @@ from api.services.agent_types import AgentTask
 from api.services.errors import as_domain_error
 from api.services.multiagent.contracts import (
     PipelineSpec,
+    RunInputs,
     RunResult,
     StepAgent,
     StepResult,
@@ -41,6 +42,8 @@ def _merge_results(
 
 class _GraphState(TypedDict):
     current_input: str
+    #: The run's named inputs; set once, never written by a node.
+    values: dict[str, str]
     results: Annotated[dict[int, StepResult], _merge_results]
 
 
@@ -62,14 +65,17 @@ def _output_orders(steps: list[StepSpec]) -> set[int]:
     return {step.order for step in steps if step.stage == last_stage}
 
 
-def _agent_node(step: StepSpec, agent: StepAgent) -> Runnable[_GraphState, _GraphUpdate]:
+def _agent_node(
+    step: StepSpec, agent: StepAgent, first_stage: bool
+) -> Runnable[_GraphState, _GraphUpdate]:
     async def execute(state: _GraphState) -> _GraphUpdate:
         stage_input = state["current_input"]
         task = AgentTask(
-            prompt=step_prompt(step.prompt, stage_input),
+            prompt=step_prompt(step.prompt, stage_input, state["values"], first_stage=first_stage),
             model=step.model,
             role=step.role,
             allowed_tools=list(step.allowed_tools) if step.allowed_tools is not None else None,
+            expected_output=step.expected_output,
         )
         try:
             outcome = await agent.execute(task)
@@ -104,7 +110,7 @@ def _build_graph(stages: list[list[StepSpec]], agent: StepAgent) -> StateGraph:
         agents: list[str] = []
         for step in stage:
             name = f"agent_{step.stage}_{step.order}"
-            builder.add_node(name, _agent_node(step, agent))
+            builder.add_node(name, _agent_node(step, agent, first_stage=index == 0))
             builder.add_edge(previous, name)
             agents.append(name)
         join = f"join_{index}"
@@ -122,20 +128,20 @@ class GraphPipelineRunner:
     def __init__(self, max_parallel_steps: int) -> None:
         self._max_parallel_steps = max_parallel_steps
 
-    def run(self, pipeline: PipelineSpec, agent: StepAgent, initial_input: str) -> RunResult:
+    def run(self, pipeline: PipelineSpec, agent: StepAgent, inputs: RunInputs) -> RunResult:
         """Bridge the synchronous API and native tools to the async graph."""
-        return asyncio.run(self.arun(pipeline, agent, initial_input))
+        return asyncio.run(self.arun(pipeline, agent, inputs))
 
-    async def arun(self, pipeline: PipelineSpec, agent: StepAgent, initial_input: str) -> RunResult:
+    async def arun(self, pipeline: PipelineSpec, agent: StepAgent, inputs: RunInputs) -> RunResult:
         steps = list(pipeline.steps)
         if not steps:
-            return RunResult(pipeline.name, initial_input, [])
+            return RunResult(pipeline.name, inputs.text, [])
         stages = _group_by_stage(steps)
         graph = _build_graph(stages, agent).compile()
         started = perf_counter()
         try:
             state = await graph.ainvoke(
-                {"current_input": initial_input, "results": {}},
+                {"current_input": inputs.text, "values": dict(inputs.values), "results": {}},
                 config={
                     "max_concurrency": self._max_parallel_steps,
                     "recursion_limit": 2 * len(stages) + 2,

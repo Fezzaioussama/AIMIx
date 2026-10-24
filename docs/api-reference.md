@@ -159,8 +159,10 @@ Pipeline steps cannot call the chat-only `run_pipeline` function.
 ```
 
 `200`, `Content-Type: text/plain; charset=utf-8`, agent answer streamed in
-chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`,
-and `run_pipeline(pipeline_id, input_text)` for the signed-in user. LangGraph
+chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`
+(which lists a pipeline's named inputs), and `run_pipeline(pipeline_id,
+input_text, inputs)` for the signed-in user; `inputs` holds the values of a
+pipeline's named inputs, under the same rules as a run request. LangGraph
 also loads all tools from `MCP_SERVERS` and keeps tool output out of the text
 stream. The configured provider supplies the model;
 there is no conversation history across requests.
@@ -182,9 +184,13 @@ A pipeline object:
   "name": "Summarise then translate",
   "user": 1,
   "created_at": "2026-09-27T10:00:00Z",
+  "inputs": [
+    { "name": "article", "label": "Article", "description": "The text to summarise" },
+    { "name": "language", "label": "Target language", "description": "e.g. French" }
+  ],
   "steps": [
-    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "prompt": "Summarise:\n{input}", "model": "deepseek/deepseek-v4-flash" },
-    { "id": 13, "order": 2, "stage": 2, "title": "French summary", "role": "Translator", "allowed_tools": null, "is_output": true, "prompt": "Translate to French:\n{input}", "model": "openai/gpt-oss-120b" }
+    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" },
+    { "id": 13, "order": 2, "stage": 2, "title": "Translated summary", "role": "Translator", "allowed_tools": null, "is_output": true, "expected_output": "The bullets, translated", "prompt": "Translate to {language}:\n{input}", "model": "openai/gpt-oss-120b" }
   ]
 }
 ```
@@ -221,7 +227,21 @@ receive `role: ""` and `allowed_tools: null` when the migration is applied.
 (optional, default `false`) marks a step whose result is a **pipeline output**
 rather than intermediate work; a pipeline can have several, in any stage, and
 an output step still feeds the next stage. When no step is marked, the last
-stage's steps are the outputs.
+stage's steps are the outputs. `expected_output` (optional, ≤ 500 characters,
+default `""`) says what the step's agent must deliver, in content and format;
+it is added to the agent's system prompt. Existing steps get `""` when the
+migration is applied.
+
+`inputs` (optional, default `[]`, at most 20) declares the **named values every
+run is given**, in the order the run form shows them. Each has a `name`, an
+optional `label` (≤ 100 characters, shown on the run form; the UI falls back to
+the name) and `description` (≤ 300 characters, telling the user what to
+enter). A `name` starts with a lowercase letter, uses only `a-z`, `0-9` and
+`_`, has at most 40 characters, is unique within the pipeline and is never
+`input` (`{input}` is each stage's input). Any step, **in any stage**, inserts
+a value with `{name}`, so later stages still see the original request. With
+`inputs: []` the pipeline runs on one free-text input, as pipelines saved
+before named inputs existed do.
 
 ### `GET /pipelines/`
 
@@ -238,8 +258,10 @@ else**.
 
 ### `PUT /pipelines/<id>/` and `PATCH /pipelines/<id>/`
 
-Rename and/or replace steps. When `steps` is sent, **all existing steps are
-deleted and recreated** in one transaction.
+Rename, redeclare the inputs and/or replace steps. When `steps` is sent, **all
+existing steps are deleted and recreated** in one transaction. `PUT` replaces
+the whole pipeline, so leaving out `inputs` clears them; `PATCH` keeps every
+field it does not send.
 
 ### `DELETE /pipelines/<id>/`
 
@@ -247,9 +269,23 @@ deleted and recreated** in one transaction.
 
 ### `POST /pipelines/<id>/run`
 
+A pipeline without named inputs runs on free text:
+
 ```json
 { "input": "Long article text..." }
 ```
+
+A pipeline that declares `inputs` takes a non-blank value for **each** of them,
+and nothing else:
+
+```json
+{ "inputs": { "article": "Long article text...", "language": "French" } }
+```
+
+Sending text to a pipeline with named inputs, named values to one without, a
+blank value, or a name the pipeline does not declare is a `400
+validation_error` whose `detail` names the problem; no agent runs. Both
+fields are trimmed.
 
 `200`:
 
@@ -269,12 +305,17 @@ deleted and recreated** in one transaction.
 steps, or the last stage when none is marked).
 `tool_calls` records only each called tool's name and `success`/`error` status;
 it does not include arguments, tool results, or a durable execution trace.
-Each step's prompt has `{input}` replaced by its stage's input; if the template
-has no `{input}`, the value is appended as `"\n\nInput: <value>"`.
+Each step's prompt has `{input}` replaced by its stage's input and `{name}` by
+the run's value for that named input, in one pass (a substituted value is
+never expanded again; braces that name nothing are left as written). If the
+template does not place its stage's input, the value is appended as
+`"\n\nInput: <value>"`. In the first stage, whose input is the named inputs
+themselves, using any `{name}` counts as placing it.
 
-A stage's input is the previous stage's output. When that stage ran several
-steps in parallel, their outputs are joined, each under a
-`## Output of step <order>` heading. `final_output` is the last stage's output,
+The first stage's input is the run's text, or its named values: one value as
+it is, several each under a `## <label>` heading. A later stage's input is the
+previous stage's output. When that stage ran several steps in parallel, their
+outputs are joined, each under a `## Output of step <order>` heading. `final_output` is the last stage's output,
 joined the same way if it is parallel; it is kept for compatibility, and the
 UI shows the `is_output` results instead. At most `PIPELINE_MAX_PARALLEL_STEPS`
 (default 4) steps of one stage run agents at once; if any of them fails,
@@ -300,10 +341,13 @@ have no approval flow.
 {
   "generated_pipeline": {
     "name": "Review responder",
+    "inputs": [
+      { "name": "review", "label": "Product review", "description": "The review to answer" }
+    ],
     "steps": [
-      { "order": 1, "stage": 1, "title": "Pros", "role": "Analyst", "allowed_tools": [], "is_output": false, "prompt": "List the pros in: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 2, "stage": 1, "title": "Cons", "role": "Analyst", "allowed_tools": [], "is_output": false, "prompt": "List the cons in: {input}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 3, "stage": 2, "title": "Reply", "role": "Writer", "allowed_tools": [], "is_output": true, "prompt": "Write a polite reply based on: {input}", "model": "deepseek/deepseek-v4-flash" }
+      { "order": 1, "stage": 1, "title": "Pros", "role": "Analyst", "allowed_tools": [], "is_output": false, "expected_output": "A bullet list of pros", "prompt": "List the pros in: {review}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 2, "stage": 1, "title": "Cons", "role": "Analyst", "allowed_tools": [], "is_output": false, "expected_output": "A bullet list of cons", "prompt": "List the cons in: {review}", "model": "deepseek/deepseek-v4-flash" },
+      { "order": 3, "stage": 2, "title": "Reply", "role": "Writer", "allowed_tools": [], "is_output": true, "expected_output": "A polite reply under 120 words", "prompt": "Reply to {review} using: {input}", "model": "deepseek/deepseek-v4-flash" }
     ]
   },
   "available_models": ["deepseek/deepseek-v4-flash", "..."]
@@ -312,11 +356,15 @@ have no approval flow.
 
 Nothing is saved. Before planning, AIMIx discovers the same pipeline tool
 catalogue as `GET /agent-tools` and gives its names and descriptions to the
-planner. The planner chooses roles and tool allowlists for its steps. Unknown
-tool names are removed from explicit allowlists; repeated names are deduplicated.
-If the planner omits an allowlist or does not return a list, it becomes `null`
-(all tools). Unknown model ids are replaced by the default, `order` is
-renumbered 1..N, a missing or invalid `stage` falls back to the step's position
-(sequential), a missing `title` or `role` becomes `""`, and any `is_output`
-other than `true` becomes `false`.
+planner. The planner declares the run's named `inputs` and chooses roles,
+expected outputs and tool allowlists for its steps. Unknown tool names are
+removed from explicit allowlists; repeated names are deduplicated. If the
+planner omits an allowlist or does not return a list, it becomes `null` (all
+tools). Unknown model ids are replaced by the default, `order` is renumbered
+1..N, a missing or invalid `stage` falls back to the step's position
+(sequential), a missing `title`, `role` or `expected_output` becomes `""` (and
+a too-long one is cut to its limit), and any `is_output` other than `true`
+becomes `false`. Inputs that could not be saved are dropped: entries that are
+not objects, or whose `name` is invalid, reserved or already taken. A missing
+or non-list `inputs` becomes `[]`.
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.

@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import * as pipelinesApi from '../../core/api/pipelines';
-import type { Pipeline, PipelineStep, StepResult } from '../../core/api/types';
+import type { Pipeline, PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
+import { runRequest, type RunDraft } from './pipelineInputs';
 import { insertStep, nextStage } from './stages';
 
 function emptyPipeline(defaultModel: string): Pipeline {
   return {
     name: 'New Pipeline',
+    inputs: [],
     steps: [
       {
         order: 1,
         stage: 1,
         title: '',
         is_output: false,
+        expected_output: '',
         prompt: '',
         model: defaultModel,
         role: '',
@@ -133,6 +136,14 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
     [markChanged],
   );
 
+  const setInputs = useCallback(
+    (inputs: PipelineInput[]) => {
+      markChanged();
+      setPipeline((current) => ({ ...current, inputs }));
+    },
+    [markChanged],
+  );
+
   const save = useCallback(async () => {
     setStatus('saving');
     setMessage('');
@@ -150,7 +161,7 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
   }, [pipeline, refresh]);
 
   const run = useCallback(
-    async (input: string) => {
+    async (draft: RunDraft) => {
       if (pipeline.id === undefined) {
         setMessage('Please save the pipeline before running it.');
         return;
@@ -165,7 +176,8 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
       setElapsedMs(null);
       const started = performance.now();
       try {
-        const response = await pipelinesApi.runPipeline(pipeline.id, input);
+        const body = runRequest(pipeline.inputs, draft);
+        const response = await pipelinesApi.runPipeline(pipeline.id, body);
         setResults(response.intermediate_results);
         setElapsedMs(performance.now() - started);
       } catch (cause) {
@@ -174,7 +186,7 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
         setStatus('idle');
       }
     },
-    [dirty, pipeline.id],
+    [dirty, pipeline.id, pipeline.inputs],
   );
 
   return {
@@ -194,6 +206,7 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
       addStepAfter,
       removeStep,
       rename,
+      setInputs,
       save,
       run,
     },

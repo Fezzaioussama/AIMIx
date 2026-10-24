@@ -8,6 +8,7 @@ its own transaction.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import Select, select
@@ -15,6 +16,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from api.exceptions import NotFound
 from api.models import Pipeline, PipelineStep, User
+
+
+@dataclass(frozen=True)
+class PipelineChanges:
+    """What a write sets. On an update, ``None`` keeps the stored value."""
+
+    name: str | None = None
+    inputs: list[dict[str, str]] | None = None
+    steps: list[dict[str, Any]] | None = None
 
 
 def _owned_by(user: User) -> Select[tuple[Pipeline]]:
@@ -45,30 +55,26 @@ def _new_steps(steps: Iterable[dict[str, Any]]) -> list[PipelineStep]:
     return sorted(rows, key=lambda step: (step.stage, step.order))
 
 
-def create_with_steps(
-    session: Session, user: User, name: str, steps: Iterable[dict[str, Any]]
-) -> Pipeline:
-    pipeline = Pipeline(user=user, name=name, steps=_new_steps(steps))
+def create_with_steps(session: Session, user: User, changes: PipelineChanges) -> Pipeline:
+    """A new pipeline for ``user``; whatever ``changes`` leaves out starts empty."""
+    pipeline = Pipeline(user=user, name="", inputs=[])
     session.add(pipeline)
-    session.commit()
-    return pipeline
+    return replace_steps(session, pipeline, changes)
 
 
-def replace_steps(
-    session: Session,
-    pipeline: Pipeline,
-    name: str | None,
-    steps: Iterable[dict[str, Any]] | None,
-) -> Pipeline:
-    """Rename and/or replace every step, in one transaction."""
-    if name is not None:
-        pipeline.name = name
-    if steps is not None:
-        pipeline.steps.clear()
-        # Delete the old rows before inserting, or reused `order` values would
-        # collide with the unique constraint inside the same flush.
-        session.flush()
-        pipeline.steps.extend(_new_steps(steps))
+def replace_steps(session: Session, pipeline: Pipeline, changes: PipelineChanges) -> Pipeline:
+    """Rename, redeclare the inputs and/or replace every step, in one transaction."""
+    if changes.name is not None:
+        pipeline.name = changes.name
+    if changes.inputs is not None:
+        pipeline.inputs = changes.inputs
+    if changes.steps is not None:
+        if pipeline.steps:
+            pipeline.steps.clear()
+            # Delete the old rows before inserting, or reused `order` values would
+            # collide with the unique constraint inside the same flush.
+            session.flush()
+        pipeline.steps.extend(_new_steps(changes.steps))
     session.commit()
     return pipeline
 

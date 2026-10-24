@@ -59,8 +59,9 @@ def saved_pipeline(session: Session, user: User, name: str, prompt: str) -> Pipe
     return pipelines.create_with_steps(
         session,
         user,
-        name,
-        [{"order": 1, "stage": 1, "prompt": prompt, "model": default_model_id()}],
+        pipelines.PipelineChanges(
+            name, steps=[{"order": 1, "stage": 1, "prompt": prompt, "model": default_model_id()}]
+        ),
     )
 
 
@@ -143,6 +144,7 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
     saved = saved_pipeline(session, user, "Research", "Find {input}")
     saved.steps[0].role = "Researcher"
     saved.steps[0].allowed_tools = ["inspect_pipeline"]
+    saved.steps[0].expected_output = "Three cited facts"
     session.commit()
     observed: dict[str, Any] = {}
 
@@ -161,6 +163,7 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
     assert response.status_code == 200
     assert observed["tools"] == ["inspect_pipeline"]
     assert "Researcher" in observed["system_prompt"]
+    assert "expected output in content and format: Three cited facts" in observed["system_prompt"]
     assert STEP_AGENT_TOOL_GUIDANCE in observed["system_prompt"]
 
 
@@ -168,6 +171,15 @@ def test_step_without_tools_gets_no_tool_guidance() -> None:
     prompt = step_agent_system_prompt("", has_tools=False)
     assert prompt.startswith("You are an agent in an AIMIx pipeline.")
     assert STEP_AGENT_TOOL_GUIDANCE not in prompt
+    assert "expected output" not in prompt
+
+
+def test_expected_output_comes_before_tool_guidance() -> None:
+    prompt = step_agent_system_prompt("Writer", has_tools=True, expected_output=" One tweet ")
+    identity, expected, guidance = prompt.split("\n\n")
+    assert identity.startswith("You are the Writer agent")
+    assert expected.endswith(": One tweet")
+    assert guidance == STEP_AGENT_TOOL_GUIDANCE
 
 
 def test_mcp_discovery_failure_stops_the_pipeline(
