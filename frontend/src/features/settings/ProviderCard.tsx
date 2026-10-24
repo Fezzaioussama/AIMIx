@@ -14,7 +14,8 @@ interface ProviderCardProps {
   onRemoveKey: () => void;
 }
 
-const fieldClass =
+/** The Settings page's text field look, shared by its sections. */
+export const fieldClass =
   'w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none transition-[border-color,box-shadow] focus:border-sky-400/60 focus:shadow-[0_0_0_3px_rgba(56,189,248,0.12)]';
 
 /** "Active" tag that pops in on the provider the picker selects. */

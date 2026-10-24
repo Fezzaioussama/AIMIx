@@ -17,4 +17,7 @@ export const API = {
   extractDocument: '/api/documents/extract',
   llmSettings: '/api/llm-settings',
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
+  integrations: '/api/integrations',
+  integration: (integrationId: number) => `/api/integrations/${integrationId}`,
+  testIntegration: (integrationId: number) => `/api/integrations/${integrationId}/test`,
 } as const;

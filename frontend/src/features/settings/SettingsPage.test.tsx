@@ -1,14 +1,17 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { API } from '../../core/api/endpoints';
 import { SettingsPage } from './SettingsPage';
-import { SETTINGS, json } from './testData';
+import { SETTINGS, byPath } from './testData';
 
 describe('SettingsPage', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('shows each provider with its key status, never the key itself', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(SETTINGS));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      byPath({ [API.llmSettings]: SETTINGS, [API.integrations]: [] }),
+    );
     render(<SettingsPage />);
 
     expect(await screen.findByRole('heading', { name: 'OpenRouter' })).toBeInTheDocument();
@@ -17,10 +20,16 @@ describe('SettingsPage', () => {
     expect(screen.getByLabelText('API key', { selector: '#api-key-openrouter' })).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Remove saved key' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled();
+    expect(await screen.findByRole('heading', { name: 'Integrations' })).toBeInTheDocument();
   });
 
   it('warns when the chosen provider has no key', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({ ...SETTINGS, provider: 'togetherai' }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      byPath({
+        [API.llmSettings]: { ...SETTINGS, provider: 'togetherai' },
+        [API.integrations]: [],
+      }),
+    );
     render(<SettingsPage />);
 
     expect(await screen.findByText(/Model calls will fail until you add one/)).toBeInTheDocument();

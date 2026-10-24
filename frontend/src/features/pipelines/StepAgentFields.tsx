@@ -71,31 +71,46 @@ function ToolPolicyField({ allowedTools, tools, onChange }: ToolPolicyFieldProps
   );
 }
 
+/** Tools by where they come from (AIMIx, MCP, or one of the user's integrations), in order. */
+function bySource(tools: AgentTool[]): [string, AgentTool[]][] {
+  const groups = new Map<string, AgentTool[]>();
+  for (const tool of tools) groups.set(tool.source, [...(groups.get(tool.source) ?? []), tool]);
+  return [...groups];
+}
+
 function ToolChecklist({ tools, allowedTools, onChange }: ToolPolicyFieldProps) {
   if (tools.length === 0) {
     return <p className="mt-2 text-slate-400">No tools are currently available.</p>;
   }
   return (
-    <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
-      {tools.map((tool) => (
-        <label
-          key={tool.name}
-          className="flex cursor-pointer items-start gap-2 rounded px-1 py-1 hover:bg-white/5"
-        >
-          <input
-            type="checkbox"
-            checked={allowedTools === null || allowedTools.includes(tool.name)}
-            onChange={(event) =>
-              onChange(toggleTool(allowedTools, tools, tool.name, event.target.checked))
-            }
-            className="mt-0.5 accent-sky-400"
-          />
-          <span className="min-w-0 text-slate-200">
-            <span className="font-medium">{tool.name}</span>
-            <span className="ml-1 text-slate-500">· {tool.source}</span>
-            {tool.description && <span className="block text-slate-400">{tool.description}</span>}
-          </span>
-        </label>
+    <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+      {bySource(tools).map(([source, group]) => (
+        <div key={source} role="group" aria-label={`${source} tools`} className="space-y-1">
+          <p aria-hidden="true" className="px-1 pt-1 text-[11px] font-semibold text-slate-300">
+            {source}
+          </p>
+          {group.map((tool) => (
+            <label
+              key={tool.name}
+              className="flex cursor-pointer items-start gap-2 rounded px-1 py-1 hover:bg-white/5"
+            >
+              <input
+                type="checkbox"
+                checked={allowedTools === null || allowedTools.includes(tool.name)}
+                onChange={(event) =>
+                  onChange(toggleTool(allowedTools, tools, tool.name, event.target.checked))
+                }
+                className="mt-0.5 accent-sky-400"
+              />
+              <span className="min-w-0 text-slate-200">
+                <span className="font-medium break-all">{tool.name}</span>
+                {tool.description && (
+                  <span className="block text-slate-400">{tool.description}</span>
+                )}
+              </span>
+            </label>
+          ))}
+        </div>
       ))}
     </div>
   );

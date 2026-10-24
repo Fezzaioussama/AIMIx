@@ -1,4 +1,3 @@
-import { motion } from 'motion/react';
 import type { FormEvent } from 'react';
 
 import type { ProviderSettings } from '../../core/api/types';
@@ -7,10 +6,11 @@ import { GlowButton } from '../../core/ui/GlowButton';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { BlurText } from '../../core/ui/reactbits/BlurText';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { IntegrationsSection } from './IntegrationsSection';
+import { NoticeLine } from './NoticeLine';
 import { ProviderCard } from './ProviderCard';
 import { providerLabel } from './providerLabel';
 import { useLLMSettings } from './useLLMSettings';
-import type { Notice } from './useLLMSettings';
 
 interface ProviderPickerProps {
   providers: ProviderSettings[];
@@ -50,21 +50,6 @@ function ProviderPicker({ providers, value, onChange }: ProviderPickerProps) {
         ))}
       </div>
     </fieldset>
-  );
-}
-
-function NoticeLine({ notice }: { notice: Notice }) {
-  const isError = notice.kind === 'error';
-  return (
-    <motion.p
-      key={notice.text}
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      role={isError ? 'alert' : 'status'}
-      className={`text-sm ${isError ? 'text-red-400' : 'text-emerald-400'}`}
-    >
-      {notice.text}
-    </motion.p>
   );
 }
 
@@ -132,6 +117,7 @@ export function SettingsPage() {
           </form>
         )}
         {!settings && notice && <NoticeLine notice={notice} />}
+        <IntegrationsSection />
       </div>
     </div>
   );

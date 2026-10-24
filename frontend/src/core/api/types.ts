@@ -126,3 +126,52 @@ export interface LLMSettingsUpdate {
   provider: string;
   providers: ProviderSettingsUpdate[];
 }
+
+/** A saved header of an integration. Its value is never sent back. */
+export interface IntegrationHeader {
+  name: string;
+  /** Last characters of the value; empty when the value is too short to hint at. */
+  hint: string;
+}
+
+/** One of the account's own MCP servers (Settings → Integrations). */
+export interface Integration {
+  id: number;
+  /** Prefixes its tools' names: `<name>_<tool>`. */
+  name: string;
+  url: string;
+  enabled: boolean;
+  headers: IntegrationHeader[];
+  created_at: string;
+}
+
+export interface IntegrationHeaderInput {
+  name: string;
+  /** Omit (or null) on an update to keep the value saved under this name. */
+  value?: string | null;
+}
+
+export interface IntegrationInput {
+  name: string;
+  url: string;
+  enabled?: boolean;
+  headers: IntegrationHeaderInput[];
+}
+
+/** Omitted fields keep their value; `headers`, when sent, is the complete list. */
+export interface IntegrationPatch {
+  name?: string;
+  url?: string;
+  enabled?: boolean;
+  headers?: IntegrationHeaderInput[];
+}
+
+/** A tool a connection test found, named as agents and `allowed_tools` use it. */
+export interface IntegrationTool {
+  name: string;
+  description: string;
+}
+
+export interface IntegrationTestResult {
+  tools: IntegrationTool[];
+}
