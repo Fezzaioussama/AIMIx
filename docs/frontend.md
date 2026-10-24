@@ -21,6 +21,7 @@ frontend/src/
     auth/           # LoginPage, RegisterPage, AuthCard, AuthLayout
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
+    files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat, saveBlob
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     settings/       # SettingsPage: LLM providers and Integrations (users' MCP servers)
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
@@ -37,13 +38,16 @@ frontend/src/
 | `/pipeline` | `PipelineBuilderPage` | guarded |
 | `/auto-pipeline` | `AutoPipelinePage` | guarded |
 | `/templates` | `TemplatesPage` | guarded |
+| `/files` | `FilesPage` | guarded |
 | `/settings` | `SettingsPage` | guarded |
 | `*` | redirect to `/login` | — |
 
 Guarded routes render inside `AppShell`: a static `AmbientBackdrop`, the fixed
 top nav (its highlight slides between items; "Pipelines" covers all three pipeline
 routes) and the `RequireAuth` outlet, which `PageTransition` eases in on every
-route change.
+route change. The nav holds Chat, Pipelines, Files and Settings. Below the `sm`
+breakpoint its items are tighter and "Log out" is an icon (still named "Log out"),
+so the bar fits a 390px phone; add an item only after checking that width.
 `RequireAuth` checks `hasSession()` from storage directly, so a page reload
 resolves the session before the first render without a redirect flash.
 
@@ -53,7 +57,8 @@ resolves the session before the first render without a redirect flash.
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
 | `types.ts` | Payload interfaces: auth, pipelines, agent tools, and run results with tool call metadata. |
-| `client.ts` | `request<T>()` for JSON and `streamText()` for streaming; `ApiError`. |
+| `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request` and `requestBlob` share one send-with-refresh path. |
+| `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
 | `chat.ts` | `streamChatReply` |
 | `models.ts` | `fetchModels` |
@@ -233,6 +238,20 @@ builder through the same `{ pipelineId }` router state Auto Pipeline uses
 | `templateIcons.ts` | Card icon by slug; a template the server adds later gets a generic icon |
 | `StartFromTemplateLink.tsx` | The link into the gallery, used on Auto Pipeline |
 
+### `features/files`
+
+The user's workspace: what their agents save and what they upload for agents
+to read (`/api/files`).
+
+| File | Role |
+|---|---|
+| `FilesPage.tsx` | Header with the storage used (text and a bar), the upload panel, an `aria-live` status line, then the list or the empty state ("Files your agents save appear here. Agents with file tools can also read the files you upload.") |
+| `UploadPanel.tsx` | Drop zone plus a "Choose files" `GlowButton` that opens a hidden multi-file input (`accept` from the server's `allowed_extensions`), the accepted types in plain words and the size cap, and each refused file with its reason; a taken name offers "Replace". A window-level guard keeps a file dropped beside the zone from replacing the page |
+| `FileRow.tsx` | One file: type icon (lucide), name, folder, size, date, download and delete buttons with a spinner while busy; delete asks first (focus starts on Cancel, Escape cancels) and errors show under the row |
+| `useFiles.ts` | State + transport: loads the listing, uploads one file per request (so each refusal is reported against its file), replace/dismiss, download (then `saveBlob`) and delete (a 404 counts as deleted). One `AbortController` per mount cancels everything on unmount |
+| `fileFormat.ts` | Pure helpers: `formatBytes` (decimal units like the server's limits), `formatDate`, `fileName`, `folderOf`, `fileIcon`, `describeTypes`, and `withFile` / `withoutFile`, which keep `used_bytes` equal to the sum of the sizes |
+| `saveBlob.ts` | Hands a downloaded `Blob` to the browser as a file save through an object URL |
+
 ### `features/settings`
 
 - `useLLMSettings()` loads `GET /api/llm-settings`, holds the form (active
@@ -313,8 +332,11 @@ canvas, because the headline sits on top of it.
 `core/api/client.test.ts` (auth header, error contract, 401 handling, network
 error), `core/markdown/renderMarkdown.test.ts` (sanitisation),
 `core/ui/GlowButton.test.tsx`, `core/ui/reactbits/reactbits.test.tsx`
-(fallbacks and accessible text of the adapted effects) and
-`features/chat/ChatPage.test.tsx`, and for the landing page
+(fallbacks and accessible text of the adapted effects),
+`features/chat/ChatPage.test.tsx`, `core/api/files.test.ts` and
+`features/files/FilesPage.test.tsx` / `fileFormat.test.ts` (listing, upload by
+input and by drop, replace, refusals, download, delete with confirmation,
+cancellation), and for the landing page
 `features/landing/LandingPage.test.tsx` (CTAs by sign-in state, tab keyboard
 behaviour, FAQ disclosure, WebGL-less fallback), `useStepCarousel.test.ts` and
 `scene/sceneLayout.test.ts` (the layout is deterministic and well-formed), and

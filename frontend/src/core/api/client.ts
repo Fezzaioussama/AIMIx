@@ -16,10 +16,11 @@ export const REQUEST_TIMEOUT_MS = 30_000;
 export const GENERATION_TIMEOUT_MS = 60 * 60 * 1000;
 
 /**
- * Uploading and reading a document: longer than a normal call, far shorter than a
- * generation. Kept above the server's worst case for text recognition of a long scan,
- * DOCUMENT_OCR_MAX_PAGES x DOCUMENT_OCR_TIMEOUT_SECONDS (7.5 minutes by default), so
- * the browser does not give up on a result the server is still producing.
+ * Moving a file (an upload, a document to read, a download): longer than a normal
+ * call, far shorter than a generation. Kept above the server's worst case for text
+ * recognition of a long scan, DOCUMENT_OCR_MAX_PAGES x DOCUMENT_OCR_TIMEOUT_SECONDS
+ * (7.5 minutes by default), so the browser does not give up on a result the server
+ * is still producing.
  */
 export const UPLOAD_TIMEOUT_MS = 600_000;
 
@@ -134,7 +135,8 @@ export function refreshAccessToken(): Promise<AuthTokens> {
 
 const AUTH_PATHS = new Set<string>([API.login, API.register, API.refresh, API.logout]);
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/** Sends the call, refreshing the session once on a 401; a non-2xx answer becomes an ApiError. */
+async function sendChecked(path: string, options: RequestOptions): Promise<Response> {
   let response = await send(path, options);
   if (response.status === 401 && !AUTH_PATHS.has(path)) {
     await refreshAccessToken();
@@ -145,8 +147,17 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (response.status === 401) clearTokens();
     throw await toApiError(response);
   }
+  return response;
+}
 
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await sendChecked(path, options);
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+}
+
+/** A file download: the body as a Blob, sent with the session header like any call. */
+export async function requestBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  return (await sendChecked(path, options)).blob();
 }
 
 /** Opens a streaming POST and yields decoded text chunks as they arrive. */

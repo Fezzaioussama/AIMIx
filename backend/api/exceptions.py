@@ -97,3 +97,27 @@ class DocumentUnreadable(DomainError):
 
 class OcrTimedOut(DocumentUnreadable):
     """OCR gave up on one page. A multi-page reader skips that page; alone, it is a 422."""
+
+
+class FileAlreadyExists(DomainError):
+    """A write would replace a file that the caller did not ask to replace."""
+
+    code = "file_exists"
+    status_code = 409
+
+
+class FileTooLarge(DomainError):
+    code = "file_too_large"
+    status_code = 413
+
+
+class StorageQuotaExceeded(DomainError):
+    """The write would take the user's files past WORKSPACE_MAX_TOTAL_BYTES."""
+
+    code = "storage_quota_exceeded"
+    status_code = 413
+
+
+class UnsupportedFileType(DomainError):
+    code = "unsupported_file_type"
+    status_code = 415

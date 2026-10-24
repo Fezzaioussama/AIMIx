@@ -72,3 +72,32 @@ flow; a tool interceptor that turns a failed call into an error result; store
 the last test's time and tool count; rate-limit tests like auth requests; pin
 connections to the checked address in a custom httpx transport.
 
+`POST /files` has the same request-size guard and the same chunked-upload caveat,
+and an agent reading a PDF or Word file from its workspace runs the same readers
+in the agent's thread.
+
+### 6. Files: no pagination, and a narrow quota race on replacement
+
+`GET /api/files` returns every file a user has; only `WORKSPACE_MAX_TOTAL_BYTES`
+bounds the list. The quota is checked before a write and, for a new file, again
+once its bytes are on disk, so concurrent new files never stay over the limit.
+A replacement (`replace=true`) is checked only before it lands, so two
+simultaneous replacements by one user can overshoot by the growth of one file.
+A replacement is staged as a hidden `.upload-*.part` file; one left by a crash
+is invisible to the user and to the quota, and nothing removes it.
+
+**Fix:** add `limit`/`offset` to the listing; take a per-user lock (database row
+or `flock`) around a replacement; sweep stale `.part` files on startup.
+
+### 7. PDF artifacts: italics, CJK and right-to-left text
+
+The image's `fonts-dejavu-core` has no italic face, so italics in a PDF print
+upright (Word files keep them). DejaVu Sans covers Latin, Greek, Cyrillic and
+more, but not Chinese, Japanese or Korean, which print as boxes; Arabic and
+Hebrew print unshaped and left to right. A deployment without the font falls
+back to Helvetica: Western European text only.
+
+**Fix:** point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a family that covers the
+scripts you need (for example Noto), add an italic font setting, and enable
+ReportLab's optional shaping extras for right-to-left text.
+

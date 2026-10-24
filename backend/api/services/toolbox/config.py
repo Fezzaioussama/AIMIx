@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from api.services.documents.contracts import ExtractionLimits
+from api.services.documents.extraction import extraction_limits
 from config.settings import Settings
 
 
@@ -33,6 +35,11 @@ class ToolboxConfig:
     sandbox_max_output_chars: int
     sandbox_max_files: int
     sandbox_max_stream_chars: int
+    workspace_max_total_bytes: int
+    #: What reading a PDF or Word file from the workspace may cost.
+    document_limits: ExtractionLimits
+    pdf_font_path: Path
+    pdf_bold_font_path: Path
     # Kept out of repr, so a logged config never shows it.
     search_api_key: str = field(default="", repr=False)
     sandbox_api_key: str = field(default="", repr=False)
@@ -57,6 +64,10 @@ def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> Too
         sandbox_max_output_chars=settings.sandbox_max_output_chars,
         sandbox_max_files=settings.sandbox_max_files,
         sandbox_max_stream_chars=settings.sandbox_max_stream_chars,
+        workspace_max_total_bytes=settings.workspace_max_total_bytes,
+        document_limits=extraction_limits(settings),
+        pdf_font_path=settings.pdf_font_path,
+        pdf_bold_font_path=settings.pdf_bold_font_path,
         search_api_key=settings.tavily_api_key,
         sandbox_api_key=settings.e2b_api_key,
     )

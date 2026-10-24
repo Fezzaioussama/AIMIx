@@ -109,7 +109,7 @@ async def test_the_report_is_cut_at_the_output_limit_and_the_error_stays_visible
         ("../outside.txt", "relative to the workspace"),
         (".env", "relative to the workspace"),
         ("/etc/passwd", "relative to the workspace"),
-        ("linked.csv", "relative to the workspace"),  # a visible link to a hidden file
+        ("linked.csv", "Links are not followed"),  # a visible link to a hidden file
         ("missing.csv", "does not exist"),
         ("big.csv", "larger than the configured limit"),
     ],
@@ -205,5 +205,5 @@ async def test_saved_outputs_never_overwrite_or_leave_the_workspace(tmp_path: Pa
     assert (tmp_path / FOLDER / "outputs" / "report.csv").read_bytes() == b"first"
     assert not (tmp_path / FOLDER / "outputs" / ".hidden").exists()
     content = str(message.content)
-    assert "outputs/report.csv: The artifact already exists; choose a new path." in content
+    assert f"outputs/report.csv: '{FOLDER}/outputs/report.csv' already exists" in content
     assert "outputs/.hidden: Use a visible path relative to the workspace." in content

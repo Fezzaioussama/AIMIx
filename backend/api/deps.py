@@ -21,6 +21,9 @@ from api.services.addresses import Resolver, resolve_host
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.documents.contracts import ExtractionLimits, OcrEngine
+from api.services.documents.extraction import extraction_limits
+from api.services.files.service import UploadPolicy
+from api.services.files.storage import WorkspaceStorage, user_workspace_dir
 from api.services.integrations.rules import IntegrationRules, rules_from
 from api.services.integrations.service import IntegrationAccess
 from api.services.llm import LLMProfile, get_provider
@@ -62,16 +65,7 @@ def auth_rate_limit(request: Request, session: DbSession, settings: AppSettings)
 
 def document_limits(settings: AppSettings) -> ExtractionLimits:
     """What one document extraction may cost, from settings."""
-    return ExtractionLimits(
-        max_bytes=settings.document_max_bytes,
-        max_chars=settings.document_max_chars,
-        max_pages=settings.document_max_pages,
-        max_unpacked_bytes=settings.document_max_unpacked_bytes,
-        max_image_pixels=settings.document_max_image_pixels,
-        max_spreadsheet_rows=settings.document_max_spreadsheet_rows,
-        max_ocr_pages=settings.document_ocr_max_pages,
-        ocr_dpi=settings.document_ocr_dpi,
-    )
+    return extraction_limits(settings)
 
 
 DocumentLimits = Annotated[ExtractionLimits, Depends(document_limits)]
@@ -125,6 +119,27 @@ def current_user(
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
+
+
+def user_files(user: CurrentUser, settings: AppSettings) -> WorkspaceStorage:
+    """The signed-in user's private directory, the one their agents use too."""
+    directory = user_workspace_dir(settings.workspace_dir, user.id)
+    return WorkspaceStorage(directory, settings.workspace_max_total_bytes)
+
+
+UserFiles = Annotated[WorkspaceStorage, Depends(user_files)]
+
+
+def upload_policy(settings: AppSettings) -> UploadPolicy:
+    """What the Files page accepts. DOCUMENT_MAX_BYTES caps every uploaded file,
+    so the request size guard (``max_request_bytes``) bounds this upload too."""
+    return UploadPolicy(
+        max_file_bytes=settings.document_max_bytes,
+        allowed_extensions=frozenset(settings.workspace_upload_extensions),
+    )
+
+
+FileUploads = Annotated[UploadPolicy, Depends(upload_policy)]
 
 
 def secret_box(settings: AppSettings) -> SecretBox:

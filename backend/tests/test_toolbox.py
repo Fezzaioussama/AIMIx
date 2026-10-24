@@ -4,19 +4,26 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
+from docx import Document
 from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import ToolException
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from api.models import User
 from api.repositories import pipelines
+from api.services.artifacts.contracts import RenderOptions
 from api.services.catalog import default_model_id
+from api.services.documents.contracts import ExtractionLimits
+from api.services.documents.extraction import TRUNCATION_NOTE
+from api.services.files.storage import WorkspaceStorage
 from api.services.llm import LLMProfile
 from api.services.multiagent import step_agent
 from api.services.toolbox.calculator import evaluate
@@ -26,9 +33,28 @@ from api.services.toolbox.registry import toolbox_tools
 from api.services.toolbox.tools import calculator_tool, current_datetime_tool
 from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
 from tests.conftest import TEST_SETTINGS, tool_call
+from tests.test_documents import make_docx, make_pdf
 
 CONFIG = toolbox_config(TEST_SETTINGS)
-WORKSPACE_LIMITS = WorkspaceLimits(1_000, 500, 20, 10, 5)
+DOCUMENT_LIMITS = ExtractionLimits(
+    max_bytes=100_000,
+    max_chars=10_000,
+    max_pages=5,
+    max_unpacked_bytes=1_000_000,
+    max_image_pixels=1_000_000,
+    max_spreadsheet_rows=100,
+    max_ocr_pages=3,
+    ocr_dpi=72,
+)
+WORKSPACE_LIMITS = WorkspaceLimits(1_000, 500, 20, 10, 5, DOCUMENT_LIMITS)
+#: A missing font, so PDFs use the built-in one wherever the tests run.
+RENDER = RenderOptions(Path("/no/such/font.ttf"), Path("/no/such/font-bold.ttf"))
+
+
+def local_workspace(
+    root: Path, limits: WorkspaceLimits = WORKSPACE_LIMITS, quota: int = 100_000
+) -> LocalWorkspace:
+    return LocalWorkspace(WorkspaceStorage(root, quota), limits, RENDER)
 
 
 @pytest.mark.parametrize(
@@ -133,7 +159,7 @@ def test_workspace_readers_disable_outbound_tools_without_explicit_opt_in(
 def test_workspace_lists_reads_searches_and_parses_csv(tmp_path: Path) -> None:
     (tmp_path / "notes.md").write_text("Quarterly revenue grew 12%.")
     (tmp_path / "sales.csv").write_text("name,total\nAlpha,42\nBeta,7\n")
-    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+    workspace = local_workspace(tmp_path)
 
     assert workspace.list_files() == "notes.md\nsales.csv"
     assert workspace.read_file("notes.md") == "Quarterly revenue grew 12%."
@@ -144,17 +170,18 @@ def test_workspace_lists_reads_searches_and_parses_csv(tmp_path: Path) -> None:
 
 
 def test_workspace_saves_new_artifacts_without_overwriting(tmp_path: Path) -> None:
-    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+    workspace = local_workspace(tmp_path)
 
     assert workspace.save_artifact("reports/summary.md", "Done") == "Saved reports/summary.md"
     assert (tmp_path / "reports" / "summary.md").read_text() == "Done"
     with pytest.raises(ToolException, match="already exists"):
         workspace.save_artifact("reports/summary.md", "Replace")
+    assert (tmp_path / "reports" / "summary.md").read_text() == "Done"
 
 
 @pytest.mark.parametrize("path", ["../secret.txt", ".env", "/tmp/secret.txt"])
 def test_workspace_rejects_paths_outside_the_sandbox(tmp_path: Path, path: str) -> None:
-    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+    workspace = local_workspace(tmp_path)
 
     with pytest.raises(ToolException, match=r"relative to the workspace|outside the workspace"):
         workspace.read_file(path)
@@ -164,12 +191,75 @@ def test_workspace_does_not_follow_symlinks(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
     outside.write_text("secret")
     (tmp_path / "linked.txt").symlink_to(outside)
-    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+    (tmp_path / "inside.txt").write_text("inside")
+    (tmp_path / "alias.txt").symlink_to(tmp_path / "inside.txt")
+    workspace = local_workspace(tmp_path)
 
-    assert workspace.list_files() == "No files found."
+    assert workspace.list_files() == "inside.txt"
     assert workspace.search_files("secret") == "No matches found."
     with pytest.raises(ToolException, match="outside the workspace"):
         workspace.read_file("linked.txt")
+    with pytest.raises(ToolException, match="Links are not followed"):
+        workspace.read_file("alias.txt")
+
+
+@pytest.mark.parametrize(("path", "opens"), [("brief.docx", Document), ("brief.pdf", PdfReader)])
+def test_save_artifact_lays_markdown_out_as_a_document(
+    tmp_path: Path, path: str, opens: type[Any]
+) -> None:
+    limits = replace(WORKSPACE_LIMITS, max_file_bytes=200_000)
+    workspace = local_workspace(tmp_path, limits, quota=1_000_000)
+
+    assert workspace.save_artifact(path, "# Brief\n\nRevenue grew **12%**.") == f"Saved {path}"
+    opens(BytesIO((tmp_path / path).read_bytes()))  # a real file of that format
+    assert "Revenue grew 12%." in workspace.read_file(path)
+
+
+def test_save_artifact_writes_html_as_given_and_names_what_it_cannot(tmp_path: Path) -> None:
+    workspace = local_workspace(tmp_path)
+
+    workspace.save_artifact("page.html", "<h1>Hi</h1>")
+    with pytest.raises(ToolException, match=r"'\.exe' files cannot be saved.*\.docx.*\.pdf"):
+        workspace.save_artifact("tool.exe", "MZ")
+
+    assert [path.name for path in tmp_path.iterdir()] == ["page.html"]
+    assert (tmp_path / "page.html").read_text() == "<h1>Hi</h1>"
+
+
+def test_save_artifact_keeps_the_file_size_limit_and_the_quota(tmp_path: Path) -> None:
+    (tmp_path / "upload.txt").write_text("x" * 90)
+    workspace = local_workspace(tmp_path, quota=100)
+
+    with pytest.raises(ToolException, match=r"larger than the 0\.001 MB file limit"):
+        workspace.save_artifact("big.md", "x" * 1_001)
+    # The rendered document counts too, not only the Markdown.
+    with pytest.raises(ToolException, match="file limit"):
+        workspace.save_artifact("small.pdf", "Hello")
+    with pytest.raises(ToolException, match="storage limit"):
+        workspace.save_artifact("notes.md", "y" * 20)
+    assert workspace.save_artifact("notes.md", "y" * 10) == "Saved notes.md"
+
+
+def test_workspace_reads_pdf_and_word_files_as_text(tmp_path: Path) -> None:
+    (tmp_path / "report.pdf").write_bytes(make_pdf(["Revenue grew by ten percent"]))
+    (tmp_path / "report.docx").write_bytes(make_docx())
+    (tmp_path / "broken.pdf").write_bytes(b"%PDF-1.4 not really")
+    workspace = local_workspace(tmp_path)
+
+    assert "Revenue grew by ten percent" in workspace.read_file("report.pdf")
+    assert workspace.read_file("report.docx").startswith("Quarterly report")
+    with pytest.raises(ToolException, match="could not be read"):
+        workspace.read_file("broken.pdf")
+
+
+def test_a_long_document_is_cut_at_the_output_limit(tmp_path: Path) -> None:
+    (tmp_path / "long.pdf").write_bytes(make_pdf(["word " * 60, "more " * 60]))
+    workspace = local_workspace(tmp_path, replace(WORKSPACE_LIMITS, max_output_chars=100))
+
+    text = workspace.read_file("long.pdf")
+
+    assert text.endswith(TRUNCATION_NOTE.strip())
+    assert len(text) <= 100 + len(TRUNCATION_NOTE)
 
 
 def test_pipeline_agent_uses_built_in_tools_and_survives_a_failing_one(

@@ -13,6 +13,7 @@ from api.db import Database
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services import pipelines as pipeline_service
+from api.services.files.storage import user_workspace_dir
 from api.services.multiagent.contracts import StepAgent
 from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.registry import toolbox_tools
@@ -66,7 +67,7 @@ def read_only_tools(database: Database, user: User) -> list[BaseTool]:
 def native_tools(database: Database, user: User, settings: Settings) -> list[BaseTool]:
     """Every in-process tool an agent may use: pipeline inspection plus the
     built-in toolbox (web search, page fetch, calculator, clock)."""
-    workspace = settings.workspace_dir / f"user-{user.id}"
+    workspace = user_workspace_dir(settings.workspace_dir, user.id)
     return [
         *read_only_tools(database, user),
         *toolbox_tools(toolbox_config(settings, workspace)),

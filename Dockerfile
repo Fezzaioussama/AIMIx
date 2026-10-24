@@ -15,12 +15,13 @@ RUN npm run build
 # Python 3.10, as in .python-version.
 FROM python:3.10-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
-
-# Tesseract reads scanned PDFs and images (OCR). English and French match the
-# DOCUMENT_OCR_LANGUAGES default; add a tesseract-ocr-<lang> package for more.
+# DejaVu Sans is embedded in the PDFs agents save, so non-Latin text prints
+# (PDF_FONT_PATH). Tesseract reads scanned PDFs and images (OCR); English and
+# French match the DOCUMENT_OCR_LANGUAGES default, add a tesseract-ocr-<lang>
+# package for more. One layer, so the apt lists never stay in the image.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra \
+        fonts-dejavu-core tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra \
     && rm -rf /var/lib/apt/lists/*
 # One thread per tesseract run: more made no page faster, and under a one-CPU
 # quota they made each page about 3.5 times slower.
@@ -42,10 +43,12 @@ COPY backend/ backend/
 COPY --from=frontend /app/frontend/dist frontend/dist
 
 # Production by default: the settings refuse to start without SECRET_KEY and
-# ALLOWED_HOSTS. SQLite lives in /data, where the platform mounts a volume.
+# ALLOWED_HOSTS. SQLite and the users' files live in /data, where the platform
+# mounts a volume.
 ENV APP_ENV=production \
     FRONTEND_DIST_DIR=/app/frontend/dist \
-    DATABASE_URL=sqlite:////data/aimix.sqlite3
+    DATABASE_URL=sqlite:////data/aimix.sqlite3 \
+    AGENT_WORKSPACE_DIR=/data/workspace
 
 RUN useradd --create-home --uid 10001 aimix && mkdir /data && chown aimix /data
 USER aimix

@@ -11,6 +11,8 @@ from collections.abc import Callable
 
 from langchain_core.tools import BaseTool
 
+from api.services.artifacts.contracts import RenderOptions
+from api.services.files.storage import WorkspaceStorage
 from api.services.toolbox.code_runner import CodeRunner
 from api.services.toolbox.config import ToolboxConfig
 from api.services.toolbox.e2b_sandbox import E2BSandboxOpener
@@ -48,9 +50,9 @@ def _web_search(config: ToolboxConfig) -> BaseTool | None:
 
 
 def _workspace(config: ToolboxConfig) -> LocalWorkspace | None:
+    storage = WorkspaceStorage(config.workspace_dir, config.workspace_max_total_bytes)
     try:
-        config.workspace_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        config.workspace_dir.chmod(0o700)
+        storage.prepare()
     except OSError:
         return None
     limits = WorkspaceLimits(
@@ -59,8 +61,10 @@ def _workspace(config: ToolboxConfig) -> LocalWorkspace | None:
         config.workspace_search_max_files,
         config.workspace_search_max_results,
         config.workspace_csv_max_rows,
+        config.document_limits,
     )
-    return LocalWorkspace(config.workspace_dir, limits)
+    render = RenderOptions(config.pdf_font_path, config.pdf_bold_font_path)
+    return LocalWorkspace(storage, limits, render)
 
 
 def _workspace_tool(

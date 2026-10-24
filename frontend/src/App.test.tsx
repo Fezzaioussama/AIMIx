@@ -17,7 +17,10 @@ function renderAt(path: string) {
 }
 
 describe('App routing', () => {
-  afterEach(() => clearTokens());
+  afterEach(() => {
+    clearTokens();
+    vi.restoreAllMocks();
+  });
 
   it('serves the public landing page at the root, without a session', async () => {
     renderAt('/');
@@ -41,7 +44,21 @@ describe('App routing', () => {
     renderAt('/chat');
     expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Pipelines' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Files' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+  });
+
+  it('serves the Files screen behind the nav item of the same name', async () => {
+    saveTokens({ access: 'token' });
+    const empty = { files: [], used_bytes: 0, quota_bytes: 1, max_file_bytes: 1 };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ...empty, allowed_extensions: ['.pdf'] }), { status: 200 }),
+    );
+    renderAt('/files');
+
+    expect(screen.getByRole('link', { name: 'Files' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Files' })).toBeInTheDocument();
+    expect(await screen.findByText('No files yet')).toBeInTheDocument();
   });
 
   it('keeps Pipelines current on the auto-pipeline screen', () => {

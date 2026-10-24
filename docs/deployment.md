@@ -24,8 +24,9 @@ Railway deploys `main` only once both jobs pass (see *Wait for CI* below).
 | Build | `docker build -t aimix .` |
 | Runs as | non-root user `aimix` (uid 10001) |
 | Start | `alembic upgrade head`, then Uvicorn on `$PORT` (default 8000) with proxy headers |
-| Defaults | `APP_ENV=production`, `FRONTEND_DIST_DIR=/app/frontend/dist`, `DATABASE_URL=sqlite:////data/aimix.sqlite3`, `OMP_THREAD_LIMIT=1` |
+| Defaults | `APP_ENV=production`, `FRONTEND_DIST_DIR=/app/frontend/dist`, `DATABASE_URL=sqlite:////data/aimix.sqlite3`, `AGENT_WORKSPACE_DIR=/data/workspace`, `OMP_THREAD_LIMIT=1` |
 | OCR | Tesseract 5 from Debian (`tesseract-ocr`, with `tesseract-ocr-eng` and `tesseract-ocr-fra`), for scanned PDFs and images. About 105 MB of the image |
+| System packages | `fonts-dejavu-core` (installed with `--no-install-recommends`), the TrueType font PDF artifacts embed (`PDF_FONT_PATH`, `PDF_BOLD_FONT_PATH`) |
 | Never contains | `backend/.env`, any `*.sqlite3`, tests, `node_modules` (`.dockerignore`) |
 
 ### OCR in the image
@@ -74,7 +75,11 @@ application files change.
 1. **Project and service.** In Railway, *New Project → Deploy from GitHub repo →
    `AIMIx`* (or `railway init` then `railway up` from the CLI).
 2. **Volume.** Add a volume to the service mounted at **`/data`** — the SQLite
-   database lives there. Without it every deploy starts from an empty database.
+   database and every user's files (`/data/workspace/user-<id>`: uploads and
+   agent artifacts) live there. Without it every deploy starts from an empty
+   database and loses the files. Size it for your users: each may keep up to
+   `WORKSPACE_MAX_TOTAL_BYTES` (100 MB by default), so 50 active users can fill
+   5 GB.
 3. **Variables** (service → *Variables*):
 
    | Variable | Value | Why |
@@ -84,6 +89,8 @@ application files change.
    | `CORS_ALLOWED_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Same origin, so only for completeness. |
    | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`python -m api.cli create-user NAME` in the service shell). Existing accounts are unaffected. |
    | `RAILWAY_RUN_UID` | `0` | Railway mounts volumes as root; the non-root image user could not write the database otherwise. |
+   | `WORKSPACE_MAX_TOTAL_BYTES` | optional (default `100000000`) | The storage limit of one user's files. Uploads (each capped at `DOCUMENT_MAX_BYTES`, 10 MB) and agent artifacts both count. |
+   | `WORKSPACE_UPLOAD_EXTENSIONS` | optional | The file types the Files page accepts (default `.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.yaml,.yml,.html`). Downloads are always attachments, so allowing more types does not let them run in the app. |
 
 4. **Domain.** *Settings → Networking → Generate Domain*.
 5. **Wait for CI.** *Settings → Source*: connect the GitHub repo on branch
@@ -177,3 +184,6 @@ account.
 | Container exits: `INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production` | A local-development setting reached production | Remove the variable |
 | An integration test says "… is not a public address" | The MCP server's host resolves to a private or internal address | Integrations only reach public `https` servers; publish the server on a public address |
 | Images refused with "images need OCR, which is not available"; log shows `documents.ocr status=unavailable` | Tesseract or a language in `DOCUMENT_OCR_LANGUAGES` is not installed, or `DOCUMENT_OCR_ENABLED=false` | Build with the repository `Dockerfile`; install the `tesseract-ocr-<code>` package for each language, or remove the code |
+| Files vanish after a deploy | No volume at `/data` (files live in `/data/workspace`) | Mount the volume at `/data` |
+| Uploads answer `storage_quota_exceeded` | That user's files reached `WORKSPACE_MAX_TOTAL_BYTES` | They delete files on the Files page, or raise the limit |
+| PDFs show boxes instead of letters; log has `artifacts.pdf_font_unavailable` | No TrueType font at `PDF_FONT_PATH` (image built without `fonts-dejavu-core`, or a custom path) | Build with the repository `Dockerfile`, or point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a font that covers your users' scripts |

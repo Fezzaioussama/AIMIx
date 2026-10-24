@@ -239,11 +239,11 @@ Every integration route answers `404` for another account's integration.
   { "name": "fetch_url", "description": "Read a public web page...", "source": "AIMIx" },
   { "name": "calculator", "description": "Evaluate an arithmetic expression reliably...", "source": "AIMIx" },
   { "name": "current_datetime", "description": "Return the current date and time in UTC...", "source": "AIMIx" },
-  { "name": "list_workspace_files", "description": "List visible local workspace files...", "source": "AIMIx" },
-  { "name": "read_workspace_file", "description": "Read a bounded local text file...", "source": "AIMIx" },
+  { "name": "list_workspace_files", "description": "List the files in the user's workspace...", "source": "AIMIx" },
+  { "name": "read_workspace_file", "description": "Read a file from the user's workspace...", "source": "AIMIx" },
   { "name": "search_workspace_files", "description": "Search local text files...", "source": "AIMIx" },
   { "name": "read_csv", "description": "Read a local CSV as structured rows...", "source": "AIMIx" },
-  { "name": "save_artifact", "description": "Save a new local deliverable...", "source": "AIMIx" },
+  { "name": "save_artifact", "description": "Save a new file in the user's workspace...", "source": "AIMIx" },
   { "name": "run_python", "description": "Run Python in a fresh sandbox without internet...", "source": "AIMIx" }
 ]
 ```
@@ -263,12 +263,21 @@ has or that is not 1–64 letters, digits, `_` or `-`.
 Pipeline steps cannot call the chat-only `run_pipeline` function.
 
 The five workspace tools are confined to a private
-`AGENT_WORKSPACE_DIR/user-<id>` directory. They reject absolute, parent and hidden paths; reads,
-searches and CSV rows are bounded by the `WORKSPACE_*` settings. `save_artifact`
-accepts only `.txt`, `.md`, `.json` and `.csv` and never overwrites an existing
-file. When any workspace-reading tool is enabled, outbound `web_search` and
-`fetch_url` are suppressed unless `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`
-explicitly accepts the data-exfiltration risk.
+`AGENT_WORKSPACE_DIR/user-<id>` directory — the same one the [Files](#files)
+endpoints show the user. They reject absolute, parent and hidden paths and never
+follow a link; reads, searches and CSV rows are bounded by the `WORKSPACE_*`
+settings. `read_workspace_file` returns text, Markdown, JSON, YAML, HTML and CSV
+files as written, and PDF and Word (and the other run-document formats) as their
+extracted text, cut at `WORKSPACE_MAX_OUTPUT_CHARS`. `save_artifact` writes `.txt`,
+`.md`, `.json`, `.csv` and `.html` as given; for `.docx` and `.pdf` the agent
+passes Markdown (headings, paragraphs, bullet and numbered lists, bold, italic,
+links, tables, code, quotes) and it is laid out as a document. It never
+overwrites an existing file, refuses an artifact (or its Markdown) over
+`WORKSPACE_MAX_FILE_BYTES`, and refuses one that would take the user's files past
+`WORKSPACE_MAX_TOTAL_BYTES`. When any workspace-reading tool is enabled, outbound
+`web_search` and `fetch_url` are suppressed unless
+`AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true` explicitly accepts the
+data-exfiltration risk.
 
 `run_python` takes `code` and optional `input_files` (workspace paths, under the
 same rules, copied to `/home/user/inputs/`). Each call runs in a fresh E2B
@@ -375,6 +384,79 @@ The call is synchronous. OCR takes about three seconds per dense A4 page on one
 CPU, so a long scan can hold the request for a minute or two (at worst
 `DOCUMENT_OCR_MAX_PAGES` x `DOCUMENT_OCR_TIMEOUT_SECONDS`); the frontend waits
 up to ten minutes (`UPLOAD_TIMEOUT_MS`), longer than that worst case by default.
+
+---
+
+## Files
+
+Each account has one private folder, `AGENT_WORKSPACE_DIR/user-<id>`, shared with
+its agents: files the user uploads here are what the workspace tools read, and
+what `save_artifact` writes appears here. Paths are relative to that folder and
+`/`-separated. Every path is refused (`400 validation_error`) when it is
+absolute, contains `..`, names something hidden (any part starting with `.`) or
+passes through a link. Another user's file is indistinguishable from a missing
+one (`404`). Names and contents are never logged.
+
+### `GET /files`
+
+`200`, the files newest first and the limits that apply:
+
+```json
+{
+  "files": [
+    { "path": "reports/q3.pdf", "size": 48213, "modified_at": "2026-10-24T09:30:00Z", "type": "pdf" },
+    { "path": "notes.txt", "size": 5, "modified_at": "2026-10-23T18:02:11Z", "type": "txt" }
+  ],
+  "used_bytes": 48218,
+  "quota_bytes": 100000000,
+  "max_file_bytes": 10000000,
+  "allowed_extensions": [".csv", ".docx", ".html", ".json", ".md", ".pdf", ".pptx", ".txt", ".xlsx", ".yaml", ".yml"]
+}
+```
+
+`type` is the lower-case extension without its dot (empty when there is none).
+`used_bytes` is the sum of the sizes listed, which is what the quota counts;
+hidden files are neither listed nor counted. The list is not paginated.
+
+### `POST /files`
+
+`multipart/form-data` with one or more `files` parts and an optional
+`replace` field (`true` to overwrite a file of the same name). `201` → an array
+of the stored files, in the shape of `GET /files`'s entries.
+
+Each name is made safe first: only the last part of the browser's name is kept;
+control and reserved characters (`/ \ : * ? " < > |`) become `_`; whitespace is
+collapsed; leading dots are dropped; the extension is lower-cased and the name is
+cut to 255 bytes. `C:\Users\me\Q3 report?.PDF` is stored as `Q3 report_.pdf`.
+Names, extensions and sizes are checked for every file before any is written;
+a name conflict or the quota is checked as each file is saved, so a refusal
+there keeps the files saved before it. The app uploads one file per request.
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | No `files` part, a name with nothing left after cleaning, or two files with the same name |
+| 409 | `file_exists` | A file has that name and `replace` was not `true` |
+| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request whose declared `Content-Length` is over that plus 1 MB is refused before it is read, as `request_too_large` |
+| 413 | `storage_quota_exceeded` | The user's files would take more than `WORKSPACE_MAX_TOTAL_BYTES` (100 MB) |
+| 415 | `unsupported_file_type` | The extension is not in `WORKSPACE_UPLOAD_EXTENSIONS`; `detail` lists the accepted ones |
+
+### `GET /files/<path>`
+
+The file, always as a download: `Content-Disposition: attachment` with the file's
+name (RFC 5987 `filename*` for a non-ASCII one), a media type fixed per extension
+(`application/octet-stream` for unknown ones), `X-Content-Type-Options: nosniff`,
+`Content-Security-Policy: default-src 'none'; sandbox` and `Cache-Control:
+no-store`. HTML or SVG a user or an agent stored therefore never renders as a page
+of the app's origin. The request needs the bearer header like any other — the
+app fetches the file and saves the body; a token never goes in the URL.
+`404 not_found` when there is no such file.
+
+### `DELETE /files/<path>`
+
+`204`. Folders the deletion leaves empty are removed too. `404 not_found` when
+there is no such file.
+
+---
 
 ## Pipelines
 

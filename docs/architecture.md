@@ -145,12 +145,24 @@ when its tool is not configured, so `web_search` appears only when
 `TAVILY_API_KEY` is set. `tools.py` adapts the helpers into LangChain tools with
 `handle_tool_error`; `web.py` is the httpx gateway (Tavily search, page fetch);
 `calculator.py` evaluates arithmetic over a whitelisted AST, never `eval`;
-`html_text.py` reduces HTML to readable text; `workspace.py` confines file listing,
-search, text/CSV reads and new artifacts to a per-user directory below
-`AGENT_WORKSPACE_DIR`, without hidden
-paths, symlink traversal or overwrites. `agent_tools.native_tools` joins
+`html_text.py` reduces HTML to readable text; `workspace.py` lists, searches and
+reads (text and CSV as written, PDF and Word through the run-document readers)
+and saves new artifacts in the user's folder, `AGENT_WORKSPACE_DIR/user-<id>`
+(`files/storage.user_workspace_dir`). Where a path may lead is not decided there
+but in `api/services/files/storage.WorkspaceStorage`, the one confinement core
+the Files page uses too: relative, visible paths only, nothing outside the
+folder, no link followed, no overwrite unless the caller asks, and at most
+`WORKSPACE_MAX_TOTAL_BYTES` per user. It raises domain errors; the toolbox hands
+them to the model as tool errors, the HTTP layer returns them as they are.
+`save_artifact` writes text formats as given and lays out Markdown as `.docx`
+or `.pdf` through `api/services/artifacts` (one Markdown parse, then a renderer
+per extension from the `RENDERERS` registry). `agent_tools.native_tools` joins
 them with the pipeline tools, so pipeline agents, the chat agent, the planner
 and `GET /agent-tools` all see the same set.
+
+What agents save, users see: `GET /api/files` lists the same folder, uploads
+land where agents read, and downloads are always attachments with a sandbox CSP,
+so stored HTML never runs as a page of the app's origin.
 
 `fetch_url` only reaches public addresses: every redirect hop is resolved and
 refused if any address is loopback, private, link-local or otherwise
@@ -377,6 +389,8 @@ server — never a 200 with an error inside.
 | Adapter | `llm/base.OpenAICompatibleProvider`, `api/services/multiagent/mapper.py`, `step_agent.py` | Wrap provider SDKs, snapshot ORM records, and bind agents to a graph port |
 | Strategy map | `api/services/errors.PROVIDER_ERROR_MAP`, `api/services/mcp_discovery.REASONS` | Provider error → domain error, MCP failure → plain reason, each in one place |
 | Decorator (retry) | `llm/retry.Retrier`, `llm/agent_models.RetryingChatModel` | One bounded retry policy around every model call, direct or LangChain |
+| Strategy + Registry | `api/services/artifacts/registry.RENDERERS`, `docx_writer` / `pdf_writer` (`singledispatch` per block) | New artifact format = one renderer and one entry; new Markdown block = one writer each |
+| Gateway | `api/services/files/storage.WorkspaceStorage` | One set of path, overwrite and quota rules for the agents' tools and the Files page |
 | Repository | `api/repositories/pipelines.py`, `users.py` | Ownership-scoped queries and atomic writes |
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
