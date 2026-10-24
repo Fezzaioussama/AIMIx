@@ -33,6 +33,8 @@ describe('LiveRun', () => {
     expect(screen.getByText('Research notes')).toBeInTheDocument();
     expect(screen.getByText('Working on it…')).toBeInTheDocument();
     expect(screen.getByText('Waiting for the steps before it.')).toBeInTheDocument();
+    // Totals wait for the end; the status bar tracks progress meanwhile.
+    expect(screen.queryByText(/outputs · /)).not.toBeInTheDocument();
   });
 
   it('explains a failure, keeps finished work, and offers Resume', async () => {
@@ -77,6 +79,7 @@ describe('LiveRun', () => {
     expect(screen.getByText('Draft text')).toBeInTheDocument();
     expect(screen.queryByText('Research notes')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Stop|Resume/ })).not.toBeInTheDocument();
+    expect(screen.getByText('2 outputs · 3 steps · 2 stages · 9.0 s')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('tab', { name: 'All steps (3)' }));
     expect(screen.getAllByText('Tools used (1)')).toHaveLength(3);

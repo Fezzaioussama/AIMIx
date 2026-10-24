@@ -109,14 +109,17 @@ export function PipelineRunView({
         <div className="mt-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className={TAB_LIST} role="tablist">
-              <TabButton active={tab === 'outputs'} onClick={() => setTab('outputs')}>
+              <TabButton value="outputs" active={tab === 'outputs'} onClick={setTab}>
                 Outputs ({outputs.length})
               </TabButton>
-              <TabButton active={tab === 'steps'} onClick={() => setTab('steps')}>
+              <TabButton value="steps" active={tab === 'steps'} onClick={setTab}>
                 All steps ({liveSteps?.length ?? results.length})
               </TabButton>
             </div>
-            <RunStats results={results} outputCount={outputs.length} elapsedMs={elapsedMs} />
+            {/* Totals count up once the run has ended; the status bar tracks progress. */}
+            {!isRunning && (
+              <RunStats results={results} outputCount={outputs.length} elapsedMs={elapsedMs} />
+            )}
           </div>
 
           {tab === 'outputs' ? (
@@ -179,19 +182,20 @@ function OutputsPanel({
 }
 
 interface TabButtonProps {
+  value: Tab;
   active: boolean;
-  onClick: () => void;
+  onClick: (value: Tab) => void;
   children: ReactNode;
 }
 
 /** A results tab; the active one carries the gliding `run-tabs` pill. */
-function TabButton({ active, onClick, children }: TabButtonProps) {
+function TabButton({ value, active, onClick, children }: TabButtonProps) {
   return (
     <button
       type="button"
       role="tab"
       aria-selected={active}
-      onClick={onClick}
+      onClick={() => onClick(value)}
       className={`relative isolate rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
         active ? 'text-white' : 'text-slate-300 hover:text-white'
       }`}
@@ -199,6 +203,9 @@ function TabButton({ active, onClick, children }: TabButtonProps) {
       {active && (
         <ActivePill
           layoutId="run-tabs"
+          // Per tab: the pill glides when the tab changes, but not after the
+          // tab list when a live run's status bar above it changes height.
+          layoutDependency={value}
           className="bg-gradient-to-r from-sky-500 to-indigo-500 shadow-[0_6px_20px_-8px_rgba(99,102,241,0.9)]"
         />
       )}

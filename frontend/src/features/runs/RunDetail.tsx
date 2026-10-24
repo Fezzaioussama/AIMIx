@@ -73,7 +73,8 @@ export function RunDetail({ live, onDelete, deleting }: RunDetailProps) {
 
 /** What the run was given: its free text, or each named input's value. */
 function RunInputs({ run }: { run: Run }) {
-  const entries = run.definition.inputs.length
+  const named = run.definition.inputs.length > 0;
+  const entries = named
     ? run.definition.inputs.map((field) => [inputLabel(field), run.inputs[field.name] ?? ''])
     : [['Input', run.input]];
   const size = entries.reduce((sum, [, value]) => sum + value.length, 0);
@@ -83,12 +84,17 @@ function RunInputs({ run }: { run: Run }) {
       className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3"
     >
       <summary className="cursor-pointer text-sm font-medium text-slate-200 select-none">
-        {entries.length > 1 ? `Inputs (${entries.length})` : 'Input'}
+        {named ? `Inputs (${entries.length})` : 'Input'}
       </summary>
       <dl className="mt-3 space-y-3">
         {entries.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-xs font-semibold tracking-wide text-slate-400 uppercase">
+            {/* One free-text input is already named by the summary. */}
+            <dt
+              className={
+                named ? 'text-xs font-semibold tracking-wide text-slate-400 uppercase' : 'sr-only'
+              }
+            >
               {label}
             </dt>
             <dd className="mt-1 max-h-60 overflow-auto text-sm whitespace-pre-wrap text-slate-200">
