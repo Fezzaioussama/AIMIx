@@ -13,8 +13,9 @@ frontend/src/
   core/             # cross-feature, the only layer that talks to the backend
     api/            # client.ts, endpoints.ts, types.ts, one module per resource
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
-    hooks/          # useModels.ts, useAgentTools.ts
+    hooks/          # useModels.ts, useAgentTools.ts, useNow.ts
     markdown/       # renderMarkdown.ts
+    time.ts         # elapsedMs, formatDuration, formatDateTime
     ui/             # shared presentational components and motion (no data access)
       reactbits/    # effects adapted from React Bits, with its LICENSE.md
   features/
@@ -22,6 +23,7 @@ frontend/src/
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
+    runs/           # RunsPage, LiveRun, useRun and the run history
 ```
 
 ## Routing (`App.tsx`)
@@ -34,13 +36,15 @@ frontend/src/
 | `/chat` | `ChatPage` | guarded |
 | `/pipeline` | `PipelineBuilderPage` | guarded |
 | `/auto-pipeline` | `AutoPipelinePage` | guarded |
+| `/runs`, `/runs/:runId` | `RunsPage` (one route, `/runs/:runId?`) | guarded |
 | `/settings` | `SettingsPage` | guarded |
 | `*` | redirect to `/login` | — |
 
 Guarded routes render inside `AppShell`: a static `AmbientBackdrop`, the fixed
-top nav (its highlight slides between items; "Pipelines" covers both pipeline
-routes) and the `RequireAuth` outlet, which `PageTransition` eases in on every
-route change.
+top nav (its highlight slides between items; "Pipelines" covers the pipeline
+screens and the run history, including the routes below them such as
+`/runs/7`) and the `RequireAuth` outlet, which `PageTransition` eases in when
+the first path segment changes (so `/runs` → `/runs/7` keeps the page mounted).
 `RequireAuth` checks `hasSession()` from storage directly, so a page reload
 resolves the session before the first render without a redirect flash.
 
@@ -49,13 +53,14 @@ resolves the session before the first render without a redirect flash.
 | File | Contents |
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
-| `types.ts` | Payload interfaces: auth, pipelines, agent tools, and run results with tool call metadata. |
+| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, and runs (`Run`, `RunStep` — a `StepResult` plus status, error and times — `RunSummary`, `RunPage`, `RunStatus`, `RunStepStatus`). |
 | `client.ts` | `request<T>()` for JSON and `streamText()` for streaming; `ApiError`. |
 | `auth.ts` | `login`, `register` |
 | `chat.ts` | `streamChatReply` |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
-| `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
+| `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`) and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
+| `runs.ts` | `startRun`, `listRuns` (page, optional pipeline), `getRun`, `cancelRun`, `resumeRun`, `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
 
 ### What `client.ts` does for every call
 
@@ -92,6 +97,13 @@ Loads `GET /api/agent-tools` for the builder's tool picker. The catalogue
 contains exact names, descriptions, and `AIMIx` or `MCP` sources; pipeline
 steps store names rather than copying tool definitions.
 
+## `core/hooks/useNow.ts` and `core/time.ts`
+
+`useNow(ticking)` returns the current time, refreshed every second
+(`CLOCK_TICK_MS`) while `ticking`, for live elapsed times. `time.ts` holds the
+pure helpers screens share: `elapsedMs(startedAt, finishedAt, now)`,
+`formatDuration(ms)` ("4.2 s", "3 min 05 s") and `formatDateTime(iso)`.
+
 ## `core/markdown/renderMarkdown.ts`
 
 `marked` → HTML → `DOMPurify.sanitize`. Model output is untrusted, so any
@@ -109,7 +121,7 @@ Components here render and animate; they never fetch or touch storage.
 | `GlowLink.tsx` | `GlowButton`'s look on a router `Link`, for navigation that should stay a real link |
 | `TiltCard.tsx` | Leans its children toward the pointer in 3D; flat on touch and under reduced motion |
 | `webgl.ts` | `hasWebGL()`: probes for a context and releases it, so effects can pick a fallback |
-| `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers |
+| `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers. In a group that moves while it stays on screen (the run tabs under a live status bar), give each item's pill its own `layoutDependency` (its key): it then glides only when the selection changes |
 | `PageTransition.tsx` | Enter-only fade/slide keyed by the route |
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
 | `BusyNotice.tsx`, `Spinner.tsx` | Loading line with shimmer text; the spinner (`decorative` hides it inside a labelled control) |
@@ -165,10 +177,10 @@ Rules for motion:
 
 | File | Role |
 |---|---|
-| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results |
+| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results. It follows the open pipeline's newest run (`features/runs/useLatestRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`LiveRunHeader`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
 | `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, HTML, CSV or text file, the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
 | `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none |
-| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing steps and inputs, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
+| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit inputs and steps → save |
 | `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps and saving the proposed workflow (later saves update it) |
 | `PipelineInputsEditor.tsx` | The named run inputs (name, label, description), shared by both screens; names are typed as snake_case and problems show before saving |
@@ -178,17 +190,35 @@ Rules for motion:
 | `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise) |
 | `StepRoleFields.tsx` | A step's title, its Intermediate / Output toggle and its expected output, shared by both editors |
 | `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
-| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished node opens its output. Stages slide in; during a run connectors pulse and running nodes carry a StarBorder |
-| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`) and the `OutputTarget` type |
-| `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds — counted up, with a one-line `sr-only` summary); deliverables are grouped by stage |
+| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished (or failed) node opens its output (or error). Stages slide in; during a run connectors pulse and running nodes carry a StarBorder. `NODE_STATUS_STYLES` holds each status's colours and word: Not run, Waiting, Running, Done, Failed, Stopped |
+| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`, which takes a followed run's steps for live statuses; `liveNodeStatus`) and the `OutputTarget` type |
+| `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds — counted up once the run has ended, with a one-line `sr-only` summary); deliverables are grouped by stage. Given a followed run's `liveSteps` (and its `runKey`), nodes show each step's status, outputs appear as soon as they are saved, and "All steps" lists every step — a run in progress opens on it, a finished one on its outputs |
+| `StepProgressCard.tsx` | In "All steps", a step without an output: its status, live elapsed time and, for a failed step, the error |
 | `StepHeading.tsx` | Title row of a step's output card (name, model, Output badge) |
 | `RunResults.tsx`, `ToolCallTrace.tsx` | Every step's output grouped by stage, with called tool names and success/error statuses |
 | `OutputCard.tsx` | One output: rendered/raw toggle, copy, the input it saw, folding for long text |
 | `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
 | `stages.ts` | `groupByStage`, `nextStage`, `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
-| `PipelineNav.tsx` | Switch between Builder and Auto |
+| `PipelineNav.tsx` | Switch between Pipeline, Auto Pipeline and Runs |
 | `modelLabel.ts` | Human-friendly label for a model id |
+
+### `features/runs`
+
+Runs execute on the server; the screens follow them by polling. `features/runs`
+builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
+`OutputCard`, `RunResults`), and the builder embeds its header and hooks.
+
+| File | Role |
+|---|---|
+| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume, adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued or running and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
+| `useLatestRun.ts` | The builder's follower: loads the pipeline's newest run when it opens (`GET /runs?pipeline_id=…&limit=1`) and `follow(run)` switches to a run started here |
+| `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
+| `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, any `children` (e.g. its inputs), then the results. Pair it with `useRun` |
+| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, Stop / Resume and extra `actions`, an `aria-live` line, and why the run stopped (the failed step and its error, "You stopped this run", "The server restarted…") |
+| `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Done, Failed, Stopped, Interrupted) and colours |
+| `runStatus.ts` | `isActive`, `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
+| `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 
 ### `features/settings`
 
@@ -258,7 +288,12 @@ error), `core/markdown/renderMarkdown.test.ts` (sanitisation),
 `features/chat/ChatPage.test.tsx`, and for the landing page
 `features/landing/LandingPage.test.tsx` (CTAs by sign-in state, tab keyboard
 behaviour, FAQ disclosure, WebGL-less fallback), `useStepCarousel.test.ts` and
-`scene/sceneLayout.test.ts` (the layout is deterministic and well-formed).
+`scene/sceneLayout.test.ts` (the layout is deterministic and well-formed). For
+runs: `core/api/runs.test.ts`, `features/runs/useRun.test.tsx` (polling with
+fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx`,
+`LiveRun.test.tsx` (live statuses, Stop/Resume, failure explanation) and
+`RunsPage.test.tsx` (list, deep link, delete with confirmation);
+`features/runs/testData.ts` builds the runs they share.
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.

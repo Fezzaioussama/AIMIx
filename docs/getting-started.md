@@ -57,7 +57,8 @@ The chat agent always has three Python functions:
 
 These functions use the authenticated user's identity. The agent cannot inspect
 or run another user's pipeline. Running a pipeline starts an agent for each step
-and may take as long as a normal pipeline run. Chat history is not persisted.
+and may take as long as a normal pipeline run; the run appears under **Runs**
+like any other. Chat history is not persisted.
 
 ### Give chat and pipeline steps MCP tools
 
@@ -136,12 +137,19 @@ The backend start target applies pending database migrations before launching th
 2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage. Give each step a role, prompt, model, and tool
    access; mark deliverables as **Output**. Write prompts using `{input}`,
-   **Save**, then **Run** with an input. Run results group deliverables by stage
-   and show each called tool's name and success/error status.
+   **Save**, then **Run** with an input. The run executes in the background:
+   the diagram shows each step waiting, running, done or failed, outputs appear
+   as soon as each step finishes, and **Stop** / **Resume** act on it. Run
+   results group deliverables by stage and show each called tool's name and
+   success/error status. You can leave the page; reopening the pipeline shows
+   its latest run.
 3. **Auto Pipeline** (`/auto-pipeline`) — describe a workflow in plain language;
    name the deliverables you want. The planner sees the available tools and
    proposes a role and tool list for each step. Review the generated stages and
    tool choices, then save and open the builder.
+4. **Runs** (`/runs`, the **Runs** tab next to the pipeline screens) — every
+   run, newest first, with its status, start and duration. Open one to follow
+   it live, resume it where it stopped (finished steps are kept), or delete it.
 
 ## Talking to the API directly
 

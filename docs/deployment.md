@@ -76,6 +76,17 @@ own key on the Settings page, encrypted with `SECRET_KEY`.
   `postgresql+psycopg://` `DATABASE_URL`, and is not covered by the test suite.
 - **Brief downtime on deploy.** Railway stops the old container before starting
   the new one when a volume is attached.
+- **A redeploy interrupts the runs in progress.** Pipeline runs execute in the
+  API process. On shutdown each active run is marked *interrupted* (within
+  `RUN_SHUTDOWN_GRACE_SECONDS`, default 5, well inside the platform's stop
+  timeout); after a crash or a hard kill, the next start marks them instead.
+  The steps they finished are kept, and **Resume** on the Runs screen (or
+  `POST /api/runs/<id>/resume`) continues each one where it stopped. Runs still
+  waiting for a slot are interrupted the same way.
+- **One Uvicorn worker.** Runs are queued per process (at most
+  `RUN_MAX_CONCURRENT` at once). The image starts a single worker; do not add
+  `--workers`, or a starting worker would mark the runs of the others as
+  interrupted.
 
 ## Troubleshooting
 
@@ -86,3 +97,4 @@ own key on the Settings page, encrypted with `SECRET_KEY`.
 | `sqlite3.OperationalError: unable to open database file` | No volume at `/data`, or `RAILWAY_RUN_UID` unset | Mount the volume at `/data`; set `RAILWAY_RUN_UID=0` |
 | Everyone signed out and saved keys "can no longer be read" | `SECRET_KEY` changed | Keep it stable; users re-enter keys in Settings |
 | Container exits: `FRONTEND_DIST_DIR=… has no index.html` | Image built without the frontend stage | Build with the repository `Dockerfile` |
+| Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) | Resume them from the Runs screen; finished steps are kept |

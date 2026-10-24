@@ -104,6 +104,12 @@ disagree. If the field is exposed, update the schema in `api/schemas/`,
   expect `504` and `{"error": "provider_timeout", ...}`.
 - Services are plain functions: test them without HTTP where possible
   (`test_pipeline_service.py` is the model).
+- Runs execute inline in API tests: the `app` fixture overrides the
+  `run_executor` dependency with `InlineRunExecutor`, so a request that starts
+  a run returns it finished. To test the background behaviour (stopping mid
+  step, queueing, shutdown), use `BackgroundRunExecutor` over a file database
+  as `test_runs_service.py` does; an in-memory SQLite database shares one
+  connection, which threads must not use at once.
 - Frontend: mock `globalThis.fetch` with `vi.spyOn` as in
   `core/api/client.test.ts`.
 

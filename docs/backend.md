@@ -46,6 +46,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | workspace/network policy | `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS` | `false`: workspace readers and outbound web tools cannot be offered together; explicit opt-in required |
 | workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
+| `run_max_concurrent` / `run_shutdown_grace_seconds` | `RUN_MAX_CONCURRENT` / `RUN_SHUTDOWN_GRACE_SECONDS` | Background runs executing at once in the process; the rest wait queued (4) / how long active runs get on shutdown to record that they were interrupted (5 seconds) |
 | document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
@@ -61,8 +62,12 @@ logging once, from the app factory.
 
 ### `main.py` and `routes.py`
 
-`create_app()` builds the app: it creates the `Database`, installs the error
-handlers and middleware, and mounts `routes.api_router()` under `/api`.
+`create_app()` builds the app: it creates the `Database` and the background
+run executor (`app.state.run_executor`, a `BackgroundRunExecutor` whose thread
+starts with the first run), installs the error handlers and middleware, and
+mounts `routes.api_router()` under `/api`. Its `lifespan` marks runs a previous
+process left active as interrupted on startup
+(`services/runs.interrupt_abandoned_runs`) and shuts the executor down on exit.
 `routes.py` is the routing table. Routers in `PUBLIC_ROUTERS` (register, login,
 refresh/logout, health) are open; auth operations are rate-limited and registration
 can be disabled. When `FRONTEND_DIST_DIR` is set, `frontend.py` then
@@ -81,7 +86,8 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `Secrets` | A `SecretBox` keyed from the settings, for saved API keys |
 | `Profile` | The user's `LLMProfile`: provider, default model and saved key (Settings page, else `.env`) |
 | `Providers` | A factory for the user's `LLMProvider`, used by planning |
-| `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context |
+| `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context (user, session, agents, run service) |
+| `Executor` / `Runs` | The run executor (`app.state.run_executor`; tests swap in an inline one by overriding `run_executor`) / a `RunService` over it |
 | `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
 
@@ -95,6 +101,15 @@ Tests replace any of these with `app.dependency_overrides`.
 | `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
 | `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
+| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at` | `status` is a `RunStatus`; `""` error fields mean none; `steps` load ordered by `(stage, step_order)` |
+| `RunStep` (`run_steps`) | `run_id` (FK, cascade), `step_order`, `stage`, `title`, `model`, `status`, `is_output`, `input_used`, `output`, `tool_calls` (`[{"name","status"}]`), `error_code`, `error_detail`, `started_at`, `finished_at` | **unique `(run_id, step_order)`**; `status` is a `StepStatus` |
+
+The run statuses live in one place, `models.py`: `RunStatus` (`queued`,
+`running`, `succeeded`, `failed`, `cancelled`, `interrupted`), `StepStatus`
+(`pending`, `running`, `succeeded`, `failed`, `cancelled`), and the sets
+`ACTIVE_RUN_STATUSES` (queued, running) and `RESUMABLE_RUN_STATUSES` (failed,
+cancelled, interrupted). They are stored as their lowercase value in a
+`VARCHAR(16)` and read back as the enum.
 
 `PipelineStep.model` is a plain string column; the request schemas check it
 against the catalogue. `role` defaults to `""`; `allowed_tools` is JSON with
@@ -118,10 +133,12 @@ shared in-memory connection.
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
 | `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
 | `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |
-| `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
+| `pipelines.py` | list/create, get/put/patch/delete, `run` (waits for a recorded run; kept for compatibility), `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
+| `runs.py` | `POST /pipelines/{id}/runs` (202), `GET /runs` (paged), `GET /runs/{id}`, `POST /runs/{id}/cancel`, `POST /runs/{id}/resume`, `DELETE /runs/{id}` | `runs.py`: `RunListQuery`, `RunOut`, `RunSummaryOut`, `RunStepOut`, `RunDefinitionOut`, `RunPageOut` (+ `RunRequest` for the body) |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
-empty), `ModelId` (must be in some provider's catalogue) and `ProviderName`. A step without `stage`
+empty), `ModelId` (must be in some provider's catalogue), `ProviderName` and
+`UtcDateTime` (a stored timestamp sent with its UTC offset). A step without `stage`
 gets `stage = order`. A pipeline needs at least one step, and step orders must
 be unique. Step `role` is optional (up to 100 characters); `allowed_tools` is
 optional and, when explicit, contains unique, non-blank names. Tool availability
@@ -135,6 +152,7 @@ run needs depends on the pipeline.
 | Module | Functions |
 |---|---|
 | `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename, redeclare the inputs and/or replace every step in one transaction), `delete`. Writes take a `PipelineChanges` value whose `None` fields are kept. |
+| `runs.py` | `create` (run + its step rows), `get_owned` (or `NotFound`), `load`, `page_for_user` (newest first, summary columns only, total), and the compare-and-set writes `set_status`, `set_step`, `end` (final status + settling running steps), `reopen` (resume), plus `delete` and `interrupt_active` (startup recovery; a database without the runs table has none) |
 | `users.py` | `get`, `get_by_username`, `create` |
 | `provider_settings.py` | `for_user`, `get`, `save` (active provider + per-provider upsert in one transaction), `clear_key` (idempotent) |
 | `legacy_import.py` | `import_django_database` — the one-off copy from the old Django SQLite file |
@@ -145,19 +163,22 @@ Each write commits its own transaction.
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
+| `pipelines.py` | `prepare_run` (no steps → 400, snapshot through `multiagent/mapper.py`, bind the run's inputs — before anything is saved), `run` (in-process and unrecorded, for tests and one-off tools), and `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
+| `runs.py` | `RunService`: `start` (save the run queued, hand it to the executor), `run_to_end` / `run_saved_to_end` (start and wait: the compatibility endpoint and the chat tool), `resume`, `cancel`, `delete` (409 `Conflict` while active), and the job `_execute` (one attempt on the executor's loop, recording `succeeded`, `failed` or `interrupted`). `launcher()` binds it to one user for the chat agent; `interrupt_abandoned_runs()` runs at startup. Logs `run.cancelled`, `run.resumed`, `run.interrupted_on_startup` — never inputs or outputs. |
+| `run_executor.py` | `RunExecutor` port (`submit(key, job) -> Future`, `cancel(key)`, `shutdown()`) and `BackgroundRunExecutor`: one asyncio loop on a daemon thread, started by the first job, at most `RUN_MAX_CONCURRENT` jobs at once. |
+| `run_recorder.py` | `RunRecorder`, the `StepObserver` that writes each step event in its own short transaction (`STEP_CHANGES` registry: event kind → expected statuses + columns), and the run's `begin` / `end` with the endings `succeeded`, `failed`, `interrupted`, `cancelled`. Logs `run.started` and `run.finished` with status and duration. |
 | `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
 | `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
-| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, and the async `StepAgent` protocol. |
-| `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
-| `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
+| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, the async `StepAgent` protocol, and the observer port: `StepEventKind` (started, succeeded, failed, cancelled), `StepEvent`, `StepObserver`, `SILENT_OBSERVER` and `RunControl` (observer + results already completed). |
+| `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution; `spec_to_json` / `spec_from_json` store a run's snapshot. |
+| `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. Each node reports its step to the run's observer, and returns a completed step's saved result without running its agent (resume). `output_orders` decides which steps are outputs. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
 | `multiagent/step_agent.py` | User-bound LangGraph step agent: selected model, role, native/MCP tools, final text, and tool call metadata. |
 | `prompts.py` | `step_prompt` (fills `{input}` and `{name}` in one pass), `merge_stage_outputs`, `merge_input_values`, `pipeline_generation_prompt`, `step_agent_system_prompt` (role, expected output, tool guidance). |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
 | `agent.py` | Builds and streams the chat-only LangGraph agent. |
 | `agent_runtime.py` | Shared chat/pipeline tool policy, limits, and third-party failure translation. |
 | `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
-| `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. `native_tools` adds the built-in toolbox. |
+| `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository; `run_pipeline` goes through the run service (`PipelineLauncher`), so chat runs are recorded. `native_tools` adds the built-in toolbox. |
 | `toolbox/` | Built-in agent tools: `registry.py` (name → builder, filtered by `AGENT_BUILTIN_TOOLS`), `tools.py` (LangChain adapters), `web.py` (Tavily search and SSRF-guarded fetch), `workspace.py` (sandboxed local text, CSV and artifacts), `calculator.py`, `html_text.py`, and `config.py`. See [architecture.md](architecture.md#built-in-tools). |
 | `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
 | `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
@@ -182,7 +203,8 @@ JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 
 `DomainError(detail)` carries a class-level `code`, `status_code` and optional
 `headers`. The subclasses are `ValidationFailed` (400), `NotAuthenticated` (401,
-`WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
+`WWW-Authenticate: Bearer`), `NotFound` (404), `Conflict` (409, e.g. deleting a
+run in progress), `ProviderNotConfigured` (503),
 `ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504),
 `UpstreamResponseInvalid` (502), and for documents `DocumentTooLarge` (413),
 `UnsupportedDocument` (415) and `DocumentUnreadable` (422).
@@ -243,6 +265,7 @@ so tests can never reach a real LLM.
 | `FakeProvider`, `FailingProvider(error)` | Canned replies / a chosen `LLMError` |
 | `fake_provider`, `use_provider(app, provider)` | Override the planner's provider dependency |
 | `use_pipeline_generator(app, generator)` | Override the pipeline step agent dependency |
+| `InlineRunExecutor`, `use_inline_runs(app)` | Runs execute to their end inside the request; the `app` fixture installs it, so API tests see finished runs. `test_runs_service.py` uses the real background executor over a file database |
 | `FakeAgent`, `use_agent(app, agent)` | Override the chat agent dependency |
 | `default_model` | The active default model id |
 
@@ -255,7 +278,9 @@ so tests can never reach a real LLM.
 | `test_database.py` | Migrations match the models and keep existing pipelines and steps; the Django import |
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
 | `test_pipeline_inputs.py` | Named run inputs and expected outputs: binding, placeholder filling, planner sanitising, and the HTTP contract |
-| `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, and failure propagation |
+| `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, failure propagation, step events, reuse of completed steps, snapshot round trip |
+| `test_runs_service.py` | Background runs end to end: recording, failure (and the cancelled parallel sibling), crashes, stop while running or queued, the concurrency limit, resume after failure (with the run's own snapshot), restart recovery, shutdown, delete |
+| `test_runs_api.py` | The runs HTTP surface: 202 start and polling, validation before saving, resume, idempotent stop, 409 delete, paging and filtering, ownership, the recorded compatibility endpoint, a run outliving its pipeline |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
