@@ -42,11 +42,14 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Per chat or pipeline step agent limit (3600 seconds) / graph step limit (25) |
 | `agent_tool_description_max_chars` | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | Maximum tool description length in the catalogue and planner prompt (300) |
 | `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds) / configured server JSON |
-| `workspace_dir` | `AGENT_WORKSPACE_DIR` | Sandboxed agent file root (`backend/workspace`) |
+| `workspace_dir` | `AGENT_WORKSPACE_DIR` | Root of the per-user folders (`user-<id>`) that agents and the Files page share (`backend/workspace`; the image uses `/data/workspace`) |
 | workspace/network policy | `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS` | `false`: workspace readers and outbound web tools cannot be offered together; explicit opt-in required |
-| workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
+| workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows; `WORKSPACE_MAX_FILE_BYTES` (2 MB) is also the largest artifact an agent saves |
+| `workspace_max_total_bytes` | `WORKSPACE_MAX_TOTAL_BYTES` | Everything one user keeps, uploads and agent artifacts together (100 MB) |
+| `workspace_upload_extensions` | `WORKSPACE_UPLOAD_EXTENSIONS` | Comma-separated types the Files page accepts, normalised to lower case with a dot (`.pdf,.docx,.txt,.md,.csv,.json,.yaml,.yml,.html`) |
+| `pdf_font_path` / `pdf_bold_font_path` | `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` | TrueType faces embedded in PDF artifacts (DejaVu Sans under `/usr/share/fonts/truetype/dejavu/`); a missing file falls back to Helvetica (Western European text only) |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
-| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
+| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `DOCUMENT_MAX_BYTES` caps every upload, a run document or a file for the Files page, so `max_request_bytes` (`DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead) is the one request-size bound. The same limits apply when an agent reads a PDF or Word file from its workspace |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
@@ -84,6 +87,8 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context |
 | `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
+| `UserFiles` | The signed-in user's `WorkspaceStorage` (their `user-<id>` folder, with `WORKSPACE_MAX_TOTAL_BYTES`) |
+| `FileUploads` | The `UploadPolicy`: `DOCUMENT_MAX_BYTES` per file and `WORKSPACE_UPLOAD_EXTENSIONS` |
 
 Tests replace any of these with `app.dependency_overrides`.
 
@@ -118,6 +123,7 @@ shared in-memory connection.
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
 | `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
 | `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |
+| `files.py` | `GET`/`POST /files`, `GET`/`DELETE /files/{path}` (download is a `FileResponse`, always an attachment) | `files.py`: `FileOut`, `FileListOut` |
 | `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
@@ -146,7 +152,7 @@ Each write commits its own transaction.
 | Module | Responsibility |
 |---|---|
 | `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
-| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
+| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates; `extraction_limits(settings)`, the limits for the endpoint and for agents reading workspace files alike; `megabytes()` for limit messages), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
 | `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
 | `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, and the async `StepAgent` protocol. |
 | `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
@@ -158,7 +164,9 @@ Each write commits its own transaction.
 | `agent_runtime.py` | Shared chat/pipeline tool policy, limits, and third-party failure translation. |
 | `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
 | `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. `native_tools` adds the built-in toolbox. |
-| `toolbox/` | Built-in agent tools: `registry.py` (name → builder, filtered by `AGENT_BUILTIN_TOOLS`), `tools.py` (LangChain adapters), `web.py` (Tavily search and SSRF-guarded fetch), `workspace.py` (sandboxed local text, CSV and artifacts), `calculator.py`, `html_text.py`, and `config.py`. See [architecture.md](architecture.md#built-in-tools). |
+| `toolbox/` | Built-in agent tools: `registry.py` (name → builder, filtered by `AGENT_BUILTIN_TOOLS`), `tools.py` (LangChain adapters), `web.py` (Tavily search and SSRF-guarded fetch), `workspace.py` (`LocalWorkspace`: bounded text, search, CSV rows, PDF/Word read through the document readers, and artifacts; every `DomainError` from the storage becomes a `ToolException` the model sees), `calculator.py`, `html_text.py`, and `config.py`. See [architecture.md](architecture.md#built-in-tools). |
+| `files/` | The user's files, shared by the agents and the Files page. `storage.py`: `user_workspace_dir(root, user_id)` (the one "folder of user X" helper) and `WorkspaceStorage` — the single confinement core (relative, visible paths only, nothing outside the root, no links followed, no overwrite unless asked, the `WORKSPACE_MAX_TOTAL_BYTES` quota checked before a write and again after a new file is written, `prepare()` for a `0700` folder). `service.py`: `list_files`, `download`, `upload` (`UploadPolicy`, `Upload`) and `delete` for the endpoints, returning `FileListing` / `FileEntry` / `FileDownload`. `names.py`: `safe_filename`, `media_type` (a fixed map per extension), `file_type`. |
+| `artifacts/` | Agent deliverables as real files. `registry.py`: `RENDERERS` (extension → renderer, Strategy + Registry) and `render_artifact(extension, content, options)`, which re-raises any failure inside python-docx or ReportLab as `ValidationFailed`. `markdown.py`: `parse_markdown` (markdown-it-py, HTML kept as text) into one block model both writers walk. `docx_writer.py` (Word styles, real numbered lists and hyperlinks) and `pdf_writer.py` (ReportLab Platypus, TrueType from `PDF_FONT_PATH`, Helvetica fallback), each with one `singledispatch` writer per block type. `contracts.py`: `RenderOptions`, `Renderer`. |
 | `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
 | `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
@@ -184,8 +192,10 @@ JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 `headers`. The subclasses are `ValidationFailed` (400), `NotAuthenticated` (401,
 `WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
 `ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504),
-`UpstreamResponseInvalid` (502), and for documents `DocumentTooLarge` (413),
-`UnsupportedDocument` (415) and `DocumentUnreadable` (422).
+`UpstreamResponseInvalid` (502), for documents `DocumentTooLarge` (413),
+`UnsupportedDocument` (415) and `DocumentUnreadable` (422), and for files
+`FileAlreadyExists` (409 `file_exists`), `FileTooLarge` (413), `StorageQuotaExceeded`
+(413 `storage_quota_exceeded`) and `UnsupportedFileType` (415).
 
 `errors.install_error_handlers` renders:
 - `DomainError` as its own code and status.
@@ -260,5 +270,8 @@ so tests can never reach a real LLM.
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
-| `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, and a run that survives a failing tool |
+| `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, workspace reads (PDF and Word too), artifacts in every format with their limits and the quota, and a run that survives a failing tool |
+| `test_file_storage.py` | `WorkspaceStorage`: traversal, hidden, absolute, NUL and over-long paths, links, overwrite refusal and replace, the quota (also when a write ends over it), deletes; safe upload names and media types |
+| `test_files.py` | The Files API: listing, upload (safe names, several files, overwrite refusal, extension and size refusals, quota), download headers (attachment, nosniff, sandbox CSP, non-ASCII names), path tricks, links, ownership, and one folder shared with the agents |
+| `test_artifacts.py` | The Markdown model, the Word writer (styles, numbering restarts, links), the PDF writer (non-Latin text with DejaVu, the Helvetica fallback, links, pages), and the registry |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |
