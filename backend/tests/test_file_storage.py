@@ -48,7 +48,8 @@ def test_a_new_file_never_replaces_one_unless_asked(storage: WorkspaceStorage) -
 
 def test_a_folder_is_never_replaced(storage: WorkspaceStorage) -> None:
     storage.save("reports/q3.md", b"report")
-    with pytest.raises(FileAlreadyExists, match="folder"):
+    # Not a name conflict that "replace" could settle.
+    with pytest.raises(ValidationFailed, match="is a folder"):
         storage.save("reports", b"x", replace=True)
 
 
@@ -63,6 +64,7 @@ def test_a_folder_is_never_replaced(storage: WorkspaceStorage) -> None:
         "bad\x00name.txt",
         "lone\udc80surrogate.txt",
         "x" * (NAME_MAX_BYTES + 1),
+        "/".join(["x" * 200] * 30),
     ],
 )
 def test_paths_that_leave_the_workspace_or_hide_are_refused(

@@ -20,6 +20,8 @@ from api.services.documents.extraction import megabytes
 
 #: Longest file or folder name most filesystems store, in UTF-8 bytes.
 NAME_MAX_BYTES = 255
+#: Longest path accepted below the root, well inside the system's own limit.
+PATH_MAX_BYTES = 1024
 
 
 def user_workspace_dir(root: Path, user_id: int) -> Path:
@@ -76,7 +78,7 @@ class WorkspaceStorage:
         folder, or a file without ``replace``."""
         target = self._confined(relative)
         if target.is_dir():
-            raise FileAlreadyExists(f"'{relative}' is a folder.")
+            raise ValidationFailed(f"'{relative}' is a folder; choose a file name.")
         if not replace and target.exists():
             raise _taken(relative)
         return target
@@ -159,13 +161,18 @@ def _taken(relative: str) -> FileAlreadyExists:
 
 
 def _storable(relative: str) -> bool:
-    """Text a filesystem can store: no NUL byte, no unpaired surrogate, and no
-    name longer than NAME_MAX_BYTES."""
+    """Text a filesystem can store: no NUL byte, no unpaired surrogate, no name
+    longer than NAME_MAX_BYTES and no path longer than PATH_MAX_BYTES."""
     try:
-        parts = [part.encode("utf-8") for part in PurePath(relative).parts]
+        encoded = relative.encode("utf-8")
     except UnicodeEncodeError:
         return False
-    return "\x00" not in relative and all(len(part) <= NAME_MAX_BYTES for part in parts)
+    names = PurePath(relative).parts
+    return (
+        b"\x00" not in encoded
+        and len(encoded) <= PATH_MAX_BYTES
+        and all(len(name.encode("utf-8")) <= NAME_MAX_BYTES for name in names)
+    )
 
 
 def _regular_stat(path: Path) -> os.stat_result | None:
