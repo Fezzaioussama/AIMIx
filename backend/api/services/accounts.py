@@ -6,8 +6,8 @@ storage from the users repository, so each piece has one reason to change (§5 S
 
 from __future__ import annotations
 
-import logging
 import hashlib
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session

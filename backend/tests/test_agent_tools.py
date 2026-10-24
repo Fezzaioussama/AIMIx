@@ -116,7 +116,9 @@ def test_workspace_tools_are_scoped_to_the_authenticated_user(
             "agent_builtin_tools": ["read_workspace_file", "save_artifact"],
         }
     )
-    mine = {tool.name: tool for tool in agent_tools.native_tools(app.state.database, user, settings)}
+    mine = {
+        tool.name: tool for tool in agent_tools.native_tools(app.state.database, user, settings)
+    }
     theirs = {
         tool.name: tool for tool in agent_tools.native_tools(app.state.database, stranger, settings)
     }

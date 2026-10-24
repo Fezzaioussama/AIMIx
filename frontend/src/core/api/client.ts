@@ -127,7 +127,7 @@ export function refreshAccessToken(): Promise<AuthTokens> {
   return refreshRequest;
 }
 
-const AUTH_PATHS = new Set([API.login, API.register, API.refresh, API.logout]);
+const AUTH_PATHS = new Set<string>([API.login, API.register, API.refresh, API.logout]);
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   let response = await send(path, options);

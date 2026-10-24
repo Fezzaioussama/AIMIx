@@ -95,9 +95,7 @@ class Settings(BaseSettings):
         1_000_000, ge=1, validation_alias="PASSWORD_HASH_ITERATIONS"
     )
     allow_public_registration: bool = Field(False, validation_alias="ALLOW_PUBLIC_REGISTRATION")
-    auth_rate_limit_requests: int = Field(
-        20, ge=1, validation_alias="AUTH_RATE_LIMIT_REQUESTS"
-    )
+    auth_rate_limit_requests: int = Field(20, ge=1, validation_alias="AUTH_RATE_LIMIT_REQUESTS")
     auth_rate_limit_window_seconds: int = Field(
         60, ge=1, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
     )

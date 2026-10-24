@@ -27,9 +27,7 @@ def consume(session: Session, attempt: RateLimitAttempt, now: datetime) -> int |
     )
     bucket = session.scalar(query)
     if bucket is None:
-        bucket = RateLimitBucket(
-            identity_hash=attempt.identity_hash, action=attempt.action, hits=1
-        )
+        bucket = RateLimitBucket(identity_hash=attempt.identity_hash, action=attempt.action, hits=1)
         session.add(bucket)
     else:
         current = now if bucket.window_started_at.tzinfo else now.replace(tzinfo=None)

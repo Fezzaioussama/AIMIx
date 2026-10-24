@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from api.models import User
@@ -37,6 +40,7 @@ def replace_refresh_token(
         .where(User.id == user_id, User.refresh_token_hash == current_hash)
         .values(refresh_token_hash=replacement_hash)
     )
-    replaced = session.execute(statement).rowcount == 1
+    result = cast("CursorResult[Any]", session.execute(statement))
+    replaced = result.rowcount == 1
     session.commit()
     return replaced
