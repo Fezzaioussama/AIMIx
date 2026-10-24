@@ -41,7 +41,9 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
 | `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Per chat or pipeline step agent limit (3600 seconds) / graph step limit (25) |
 | `agent_tool_description_max_chars` | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | Maximum tool description length in the catalogue and planner prompt (300) |
-| `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds) / configured server JSON |
+| `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds; also bounds an integration's connection test and the address checks) / configured server JSON |
+| `integrations_max_per_user` | `INTEGRATIONS_MAX_PER_USER` | How many MCP servers each user may connect on the Settings page (10) |
+| `integrations_allow_private_network` | `INTEGRATIONS_ALLOW_PRIVATE_NETWORK` | `false`. With `APP_ENV=local` only, lets integrations reach loopback and private addresses (a dev server on `127.0.0.1`); production refuses to start with it on, `test` ignores it |
 | `workspace_dir` | `AGENT_WORKSPACE_DIR` | Sandboxed agent file root (`backend/workspace`) |
 | workspace/network policy | `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS` | `false`: workspace readers and outbound web tools cannot be offered together; explicit opt-in required |
 | workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
@@ -84,6 +86,7 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context |
 | `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
+| `Integrations` | An `IntegrationAccess` (session, user, `SecretBox`, `IntegrationRules`) for the Integrations endpoints; `host_resolver` supplies the DNS lookup its address checks use, so tests swap in a fake |
 
 Tests replace any of these with `app.dependency_overrides`.
 
@@ -95,6 +98,7 @@ Tests replace any of these with `app.dependency_overrides`.
 | `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
 | `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
+| `Integration` (`integrations`) | `user_id` (FK, cascade), `name`, `url`, `headers_encrypted` (one sealed JSON object), `header_hints` (JSON `{"name", "hint"}` list), `enabled`, `created_at` | **unique `(user_id, name)`**; `name` matches `INTEGRATION_NAME_PATTERN`; `""` means no headers |
 
 `PipelineStep.model` is a plain string column; the request schemas check it
 against the catalogue. `role` defaults to `""`; `allowed_tools` is JSON with
@@ -118,10 +122,12 @@ shared in-memory connection.
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
 | `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
 | `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |
+| `integrations.py` | `GET`/`POST /integrations`, `PATCH`/`DELETE /integrations/{id}`, `POST /integrations/{id}/test` | `integrations.py`: `IntegrationIn`, `IntegrationPatch`, `HeaderIn`, `IntegrationOut`, `HeaderOut`, `IntegrationTestOut`, `IntegrationToolOut` |
 | `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
-empty), `ModelId` (must be in some provider's catalogue) and `ProviderName`. A step without `stage`
+empty), `ModelId` (must be in some provider's catalogue), `ProviderName` and
+`UtcDatetime` (a stored timestamp sent with its UTC offset, which SQLite drops). A step without `stage`
 gets `stage = order`. A pipeline needs at least one step, and step orders must
 be unique. Step `role` is optional (up to 100 characters); `allowed_tools` is
 optional and, when explicit, contains unique, non-blank names. Tool availability
@@ -137,6 +143,7 @@ run needs depends on the pipeline.
 | `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename, redeclare the inputs and/or replace every step in one transaction), `delete`. Writes take a `PipelineChanges` value whose `None` fields are kept. |
 | `users.py` | `get`, `get_by_username`, `create` |
 | `provider_settings.py` | `for_user`, `get`, `save` (active provider + per-provider upsert in one transaction), `clear_key` (idempotent) |
+| `integrations.py` | `for_user` (oldest first), `enabled_for`, `get_owned` (or `NotFound`), `name_taken`, `count`, `create`, `update` (an `IntegrationChanges` value whose `None` fields are kept), `delete` |
 | `legacy_import.py` | `import_django_database` — the one-off copy from the old Django SQLite file |
 
 Each write commits its own transaction.
@@ -159,8 +166,11 @@ Each write commits its own transaction.
 | `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
 | `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. `native_tools` adds the built-in toolbox. |
 | `toolbox/` | Built-in agent tools: `registry.py` (name → builder, filtered by `AGENT_BUILTIN_TOOLS`), `tools.py` (LangChain adapters), `web.py` (Tavily search and SSRF-guarded fetch), `workspace.py` (sandboxed local text, CSV and artifacts), `calculator.py`, `html_text.py`, and `config.py`. See [architecture.md](architecture.md#built-in-tools). |
-| `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
-| `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
+| `addresses.py` | The SSRF guard shared by `fetch_url` and integrations: `resolve_host`, `is_public` and `ensure_public_host`, which raises `AddressNotAllowed` unless every address a host resolves to is global. |
+| `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections (optionally with an HTTP client factory), and defines `MCPConnections(operator, user)`. |
+| `mcp_discovery.py` | `discover_tools`: operator servers must answer (else `tool_unavailable`); each integration loads through `load_server_tools` and is skipped with a warning when it fails. `REASONS` turns MCP failures into plain words. See [architecture.md](architecture.md#mcp-servers-and-tool-discovery). |
+| `integrations/` | Settings → Integrations. `service.py` (list, create, update, delete, `test_connection`), `rules.py` (`IntegrationRules`, `AddressPolicy`: https only, http and private addresses for local development only, `ensure_reachable`), `headers.py` (seal, reveal, hint and merge header values), `connections.py` (`mcp_connections_for`, the one builder of a user's MCP connections, and `GuardedClientFactory`, which re-checks the address before every request). |
+| `tool_catalog.py` | Discovers native read tools, configured MCP tools and the user's integration tools for `GET /agent-tools` and the planner; `describe` cuts a description to `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. |
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
 | `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
@@ -175,8 +185,9 @@ Pure functions with no web framework. `hash_password` / `verify_password` use
 Django's `pbkdf2_sha256$<iterations>$<salt>$<hash>` format, so accounts imported
 from the old backend keep their passwords. `TokenSigner` issues and reads HS256
 JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
-`SecretBox` encrypts saved API keys with Fernet, keyed by HKDF over
-`SECRET_KEY`; a key sealed under another `SECRET_KEY` raises `UnreadableSecret`.
+`SecretBox` encrypts saved API keys and integration header values with Fernet,
+keyed by HKDF over `SECRET_KEY`; a secret sealed under another `SECRET_KEY`
+raises `UnreadableSecret`.
 
 ### `exceptions.py`, `errors.py` and `middleware.py`
 
@@ -245,6 +256,7 @@ so tests can never reach a real LLM.
 | `use_pipeline_generator(app, generator)` | Override the pipeline step agent dependency |
 | `FakeAgent`, `use_agent(app, agent)` | Override the chat agent dependency |
 | `default_model` | The active default model id |
+| `mcp_fakes.py`: `resolver(table)`, `FakeServers(behaviour)` | Offline DNS (override `host_resolver`) and MCP servers (patch `mcp_discovery.MultiServerMCPClient`) for the integration tests |
 
 | Test module | Covers |
 |---|---|
@@ -261,4 +273,7 @@ so tests can never reach a real LLM.
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
 | `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, and a run that survives a failing tool |
-| `test_settings_and_config.py` | Settings parsing, legacy names, production guards |
+| `test_integrations.py` | Integrations over HTTP: CRUD, ownership, header values encrypted at rest and never returned, keeping and replacing headers, validation, the per-user limit, and SSRF refusal (private, loopback, link-local, metadata and shared addresses; http outside local) |
+| `test_integration_tools.py` | `mcp_connections_for` (operator servers + enabled integrations, skipped ones), the per-request address guard, discovery that skips a failing integration, tool-name clashes, and the catalogue's source labels |
+| `test_integration_runs.py` | Runs that do or do not need a failing integration, a step getting the integration tools it selected, and `POST /integrations/{id}/test` (tools found, every failure reason, a re-checked address, unreadable headers) |
+| `test_settings_and_config.py` | Settings parsing, legacy names, production guards, request URLs kept out of the logs |

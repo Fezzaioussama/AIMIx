@@ -32,7 +32,8 @@ prompt, model, and tool policy. Stages run in order; steps in one stage run in
 parallel, and their text outputs feed the next stage through `{input}`. AIMIx
 can also **generate** a pipeline from a description using the discovered tool
 catalogue. A streaming **chat** agent can call native pipeline functions and
-configured MCP tools. The FastAPI backend owns auth, persistence, and calls to
+configured MCP tools, including the MCP servers each user connects on the
+Settings page (**integrations**). The FastAPI backend owns auth, persistence, and calls to
 OpenRouter or TogetherAI; the React frontend provides the builder.
 
 ## Keeping these docs current

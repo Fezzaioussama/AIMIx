@@ -136,6 +136,95 @@ server's key, if any. Idempotent. `200` returns the same shape as `GET`.
 
 ---
 
+## Integrations
+
+Your own MCP servers (a CRM, a database, company tools, an automation hub…).
+Their tools join the operator's `MCP_SERVERS` for **your** chat and pipeline
+agents only, named `<integration name>_<tool name>`. Servers are reached over
+streamable HTTP only, never stdio. Header values are stored encrypted (Fernet,
+keyed from `SECRET_KEY`) and are **never returned** — only each header's name
+and `hint`, the last four characters of a value at least twelve characters
+long (empty for a shorter one).
+
+An integration object:
+
+```json
+{ "id": 1, "name": "crm", "url": "https://mcp.crm.example/mcp", "enabled": true,
+  "headers": [{ "name": "Authorization", "hint": "1234" }],
+  "created_at": "2026-10-24T10:00:00Z" }
+```
+
+**Address rules** (checked when you save, before a test, and again before
+every request agents send): the URL must start with `https` (plain `http` only
+when `APP_ENV=local`), may not contain a user name or password, and its host
+must resolve only to public addresses — never loopback, private, link-local
+(such as the cloud metadata address `169.254.169.254`), shared or reserved
+ones. Local development can reach a server on `127.0.0.1` with
+`APP_ENV=local` and `INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true`. A refused
+address is a `400 validation_error` naming the host.
+
+### `GET /integrations`
+
+Your integrations, oldest first.
+
+### `POST /integrations`
+
+```json
+{ "name": "crm", "url": "https://mcp.crm.example/mcp", "enabled": true,
+  "headers": [{ "name": "Authorization", "value": "Bearer sk-..." }] }
+```
+
+`201` → the integration. `name` is 2–31 characters: a lowercase letter, then
+lowercase letters, digits or `_`; it is unique among your integrations and may
+not be the name of one of the operator's `MCP_SERVERS`. `enabled` defaults to
+`true`. `headers` (at most 10) need a value each; names are HTTP header names,
+unique ignoring case, and `Host`, `Content-Length`, `Transfer-Encoding`,
+`Connection`, `Keep-Alive`, `Upgrade`, `TE`, `Trailer`, `Mcp-Session-Id` and
+`Mcp-Protocol-Version` are set automatically. Values may not contain control
+characters. You can have up to `INTEGRATIONS_MAX_PER_USER` (10) integrations.
+Any rule broken is a `400 validation_error`.
+
+### `PATCH /integrations/<id>`
+
+```json
+{ "name": "sales", "enabled": false,
+  "headers": [{ "name": "Authorization" }, { "name": "X-Team", "value": "ops" }] }
+```
+
+Every field is optional; one left out keeps its value, so `{"enabled": false}`
+switches the integration off (agents stop using it) and is safe to send twice.
+`headers`, when sent, is the complete list: a header left out is removed, and a
+header sent **without** a `value` keeps the value saved under that name (`400`
+if there is none). Saved values only go to the server they were entered for:
+changing the URL's scheme, host or port needs every header value again, else
+`400`. `200` → the integration. Renaming changes its tools' names, so steps that
+selected them by name need updating.
+
+### `DELETE /integrations/<id>`
+
+`204`. A second call is `404`, as for pipelines.
+
+### `POST /integrations/<id>/test`
+
+Connects within `MCP_TIMEOUT_SECONDS` and lists the server's tools, named as
+agents and `allowed_tools` see them (works for a switched-off integration too):
+
+```json
+{ "tools": [{ "name": "crm_find_contact", "description": "Find the main contact person at a company." }] }
+```
+
+Descriptions are cut to `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. Failures:
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | The address is no longer allowed (for example its host now resolves to a private address), the name is now used by an operator server, or the header values can no longer be read because `SECRET_KEY` changed (enter them again) |
+| 404 | `not_found` | Not yours, or no such integration |
+| 502 | `tool_unavailable` | `detail` says why in plain words: `Could not connect to crm: it refused the sign-in (HTTP 401), so check the headers.`, `… nothing was found at that URL (HTTP 404).`, `… it did not answer within the time limit.`, `… the connection to it failed.`, `… it answered with an MCP error.` |
+
+Every integration route answers `404` for another account's integration.
+
+---
+
 ## Agent tools
 
 ### `GET /agent-tools`
@@ -160,9 +249,15 @@ server's key, if any. Idempotent. `200` returns the same shape as `GET`.
 
 The built-in tools are the ones enabled by `AGENT_BUILTIN_TOOLS`; `web_search`
 is listed only when `TAVILY_API_KEY` is set. Configured MCP tools also appear with `source: "MCP"` and names prefixed by
-their server name. Use the exact `name` values in a step's `allowed_tools`.
+their server name. Tools of your enabled [integrations](#integrations) appear
+with the integration's name as `source` (e.g. `"crm"`) and as their name prefix.
+Use the exact `name` values in a step's `allowed_tools`.
 Descriptions may be shortened by `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. If a
 configured MCP server is unavailable, discovery returns `502 tool_unavailable`.
+An integration that cannot be reached, or whose address is no longer allowed,
+is left out instead (the server logs `integration.discovery_skipped`), so the
+list still loads; so is an integration tool whose name another tool already
+has or that is not 1–64 letters, digits, `_` or `-`.
 Pipeline steps cannot call the chat-only `run_pipeline` function.
 
 The five workspace tools are confined to a private
@@ -188,8 +283,9 @@ chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`
 (which lists a pipeline's named inputs), and `run_pipeline(pipeline_id,
 input_text, inputs)` for the signed-in user; `inputs` holds the values of a
 pipeline's named inputs, under the same rules as a run request. LangGraph
-also loads all tools from `MCP_SERVERS` and keeps tool output out of the text
-stream. The configured provider supplies the model;
+also loads all tools from `MCP_SERVERS` and from your enabled integrations, and
+keeps tool output out of the text stream. An integration that cannot be
+reached is skipped. The configured provider supplies the model;
 there is no conversation history across requests.
 
 A provider or MCP failure **before** the first text chunk returns a normal
@@ -283,9 +379,11 @@ On a run, each step is a LangGraph agent using its selected `model`. Its optiona
 | `["list_pipelines", "..."]` | Only the exact named tools returned by `GET /agent-tools` |
 
 Names in an explicit list must be non-blank and unique. If a selected tool is
-no longer available when the step runs, the run stops with `502 tool_unavailable`.
+no longer available when the step runs, the run stops with `502
+tool_unavailable` naming it — for example a tool of an integration that cannot
+be reached. A step that does not select such a tool runs without it.
 The native pipeline tools are scoped to the signed-in user; MCP servers come
-from `MCP_SERVERS`. When a built-in tool fails during a step (for example
+from `MCP_SERVERS` and from the user's enabled integrations. When a built-in tool fails during a step (for example
 `fetch_url` on a private address or a page that times out), the agent receives
 the error and the run continues; the call appears in `tool_calls` with
 `status: "error"`. A step cannot start another pipeline run. Existing steps

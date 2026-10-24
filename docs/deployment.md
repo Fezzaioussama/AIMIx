@@ -69,6 +69,43 @@ If you set `ALLOW_PUBLIC_REGISTRATION=true`, registration is open. A server-wide
 `OPEN_ROUTER_KEY` or `TOGAI_API_KEY` would let **anyone who registers** spend it. Leave them unset: each user saves their
 own key on the Settings page, encrypted with `SECRET_KEY`.
 
+### Users' integrations (their own MCP servers)
+
+On the Settings page each user can connect MCP servers of their own; the
+server then opens connections to addresses users choose. The guard, in
+`api/services/addresses.py` and `api/services/integrations/`:
+
+- **Streamable HTTP over `https` only**, never stdio (which would run a command
+  in the container). Plain `http` is accepted only with `APP_ENV=local`.
+- **Public addresses only.** The host must resolve to global addresses alone —
+  never loopback, private, link-local (the cloud metadata address
+  `169.254.169.254` included), shared or reserved — when the integration is
+  saved, before a connection test, and before every request agents send. The
+  MCP client follows redirects only within the same origin, and checks that
+  request too. httpx resolves the name once more when it connects, so a DNS
+  server that changes its answer within those milliseconds (DNS rebinding) can
+  still slip through; this is the same residual risk as the `fetch_url` tool.
+- **Leave `INTEGRATIONS_ALLOW_PRIVATE_NETWORK` unset.** It exists for local
+  development only; the container refuses to start with it on in production.
+- **Header values** (API keys, tokens) are encrypted with `SECRET_KEY` and never
+  sent back to the browser. Changing `SECRET_KEY` makes them unreadable: the
+  integration is skipped until its owner enters them again. The URL itself is
+  stored as entered, so users should put tokens in headers, not in the URL.
+- **Bounded:** `INTEGRATIONS_MAX_PER_USER` (10) per account, and every
+  connection, test and tool call by `MCP_TIMEOUT_SECONDS`. Setting the limit to
+  `0` stops new integrations being added; existing ones keep working until
+  their owners delete or switch them off.
+- **Isolation:** an integration serves only its owner's agents. Its tool
+  results enter that user's agent context like any tool output, so a server a
+  user connects can steer that user's agents — with that user's tools and data
+  only.
+- **Logs** never contain integration URLs or header values: the app logs ids,
+  names and failure kinds, and keeps the `httpx` and `mcp` loggers at `WARNING`
+  because they would log each request's URL.
+
+If the platform restricts outbound traffic, allow `https` to the services your
+users connect.
+
 ### Limits of this setup
 
 - **One replica.** SQLite on a volume supports a single instance; do not scale
@@ -86,3 +123,5 @@ own key on the Settings page, encrypted with `SECRET_KEY`.
 | `sqlite3.OperationalError: unable to open database file` | No volume at `/data`, or `RAILWAY_RUN_UID` unset | Mount the volume at `/data`; set `RAILWAY_RUN_UID=0` |
 | Everyone signed out and saved keys "can no longer be read" | `SECRET_KEY` changed | Keep it stable; users re-enter keys in Settings |
 | Container exits: `FRONTEND_DIST_DIR=… has no index.html` | Image built without the frontend stage | Build with the repository `Dockerfile` |
+| Container exits: `INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production` | A local-development setting reached production | Remove the variable |
+| An integration test says "… is not a public address" | The MCP server's host resolves to a private or internal address | Integrations only reach public `https` servers; publish the server on a public address |
