@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     # --- LLM provider layer: handed to llm/ by api.services.llm (§5 D) -------
     llm_provider: str = Field("openrouter", validation_alias="LLM_PROVIDER")
     llm_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="LLM_TIMEOUT_SECONDS")
+    # Retries of a transient provider failure (llm/retry.py); 0 turns them off.
+    llm_max_retries: int = Field(2, ge=0, le=10, validation_alias="LLM_MAX_RETRIES")
+    llm_retry_base_delay_seconds: float = Field(
+        1.0, ge=0, validation_alias="LLM_RETRY_BASE_DELAY_SECONDS"
+    )
+    llm_retry_max_delay_seconds: float = Field(
+        20.0, ge=0, validation_alias="LLM_RETRY_MAX_DELAY_SECONDS"
+    )
     agent_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="AGENT_TIMEOUT_SECONDS")
     agent_recursion_limit: int = Field(25, ge=2, validation_alias="AGENT_RECURSION_LIMIT")
     agent_tool_description_max_chars: int = Field(

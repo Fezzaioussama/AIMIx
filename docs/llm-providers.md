@@ -8,7 +8,8 @@ outside this app.
 ```
 llm/
   base.py          # ProviderConfig, LLMProvider Protocol, OpenAICompatibleProvider
-  agent_models.py  # LangChain model factory registry for LangGraph chat
+  agent_models.py  # LangChain model factory registry for LangGraph chat, with retries
+  retry.py         # RetryPolicy, Retrier: bounded retries for transient failures
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
   registry.py      # FACTORIES, ALIASES, canonical_name, create_provider
   catalog.py       # ModelInfo, ModelCatalog, OpenRouterModels, TogetherAIModels, CATALOGS
@@ -33,6 +34,8 @@ Every implementation must:
   (and `ProviderNotConfigured` when it cannot be built);
 - never return `""` to mean failure — an empty string means the model really
   produced nothing;
+- retry only through the policy in `llm/retry.py`, with the SDK's own retries
+  switched off (see [Retry policy](#retry-policy));
 - never log the prompt (it can contain user data).
 
 ## `OpenAICompatibleProvider`
@@ -42,20 +45,76 @@ Both OpenRouter and TogetherAI expose an OpenAI-shaped
 class implements the transport for both:
 
 - `_resolve_model` — explicit model, else `config.default_model`, else error.
-- `_create` — the one place that catches a broad `Exception` from the SDK. It
-  logs `llm.request_failed` (provider, model, error class — no prompt) and
-  re-raises as `ProviderTimeout` if the class name contains "timeout", otherwise
-  `ProviderRequestError`, always `from cause`.
+- `_create` — the SDK call; `generate` and `stream` run it under the retry
+  policy (below).
+- `_normalised_failures` — the one place that catches a broad `Exception` from
+  the SDK, once the retries are spent. It logs `llm.request_failed` (provider,
+  model, error class — no prompt) and re-raises as `ProviderTimeout` if the
+  class name contains "timeout", otherwise `ProviderRequestError`, always
+  `from cause`. A failure in the middle of a stream is normalised the same way.
 - `generate` — returns `choices[0].message.content`.
 - `stream` — yields non-empty `choices[0].delta.content` pieces.
 
 The call sends a single user message; there is no system prompt, history,
 temperature, or max-tokens setting today.
 
-**Retries:** none. Both SDK clients are built with `max_retries=0` (the SDKs
-retry twice by default, which would multiply a long timeout), so a failure
-surfaces to the user immediately. Add bounded retries with backoff only for idempotent calls
-(AGENTS.md §6).
+## Retry policy
+
+A provider that is briefly overloaded should not fail a whole multi-agent
+pipeline run, so model calls are retried — a few times, only when a retry can
+help, and never in a way that sends the same text twice. `llm/retry.py` holds
+the policy once; both call paths use it: the direct provider above (pipeline
+planning, the CLI) and the LangChain models in `agent_models.py` (chat and
+pipeline steps).
+
+- **What is retried:** a connection that failed or dropped before the provider
+  answered, and the statuses 408, 429, 500, 502, 503 and 504.
+- **What is not:** every other status — a 400, 401, 403, 404 or 422 will fail
+  the same way again — and a request that ran into `LLM_TIMEOUT_SECONDS`. That
+  timeout is an hour by default, so retrying it could multiply the wait instead
+  of shortening it. MCP and built-in tool calls are never retried: they may not
+  be idempotent, and a tool that saves a file or calls an API must not run
+  twice.
+- **How often:** at most `LLM_MAX_RETRIES` retries (default 2, so three
+  attempts at most; 0 turns retries off).
+- **How long between attempts:** the provider's `Retry-After`, in seconds or as
+  an HTTP date, when it sent one. Otherwise a random wait between 0 and
+  `LLM_RETRY_BASE_DELAY_SECONDS × 2ⁿ` before retry *n* (counting from 0) —
+  exponential backoff with full jitter, so many failed runs do not retry in
+  step. Either way never longer than `LLM_RETRY_MAX_DELAY_SECONDS`. With the
+  defaults (1 s and 20 s) a call waits at most 40 s in total; an agent step
+  stays bounded by `AGENT_TIMEOUT_SECONDS` as a whole.
+- **Streams:** retried only until the first piece of output arrives. Text the
+  user may already see is never produced a second time; a failure after that
+  point ends the stream with the usual error.
+- **Afterwards:** the last failure surfaces exactly as it would without
+  retries — `ProviderTimeout` or `ProviderRequestError` from the direct
+  provider, the SDK's own exception from an agent model, which
+  `api/services/agent_runtime.as_agent_error` maps as before.
+- **Logs:** each retry is one WARNING,
+  `llm.retry provider=openrouter model=<id> attempt=1/3 reason=http_429 delay_s=0.73`.
+  The reason is `http_<status>` or the connection error's class name. The
+  prompt and the API key are never logged.
+
+**The SDKs' own retries are off**, because none of them can express this
+policy (checked against the installed sources):
+
+- `openai` (direct providers and `ChatTogether`): would also retry timeouts,
+  409 and every 5xx, obey a nonstandard `x-should-retry` header, use a fixed
+  0.5–8 s backoff with partial jitter, and give up instead of waiting when
+  `Retry-After` exceeds two minutes. Built with `max_retries=0`.
+- `openrouter` SDK (under `ChatOpenRouter`): bounds retries by elapsed time
+  rather than count, retries timeouts together with connection errors, and uses
+  `Retry-After` uncapped. And with `max_retries=0`, `ChatOpenRouter` merely
+  omits its retry config — the SDK then falls back to its default: 5xx,
+  connection errors and timeouts retried for up to an hour.
+  `RetryingChatOpenRouter._build_client` sets `retry_config=None`, which
+  switches it off.
+
+`agent_models.RetryingChatModel` is mixed in ahead of each LangChain
+integration and wraps `_generate`, `_agenerate`, `_stream` and `_astream` — the
+four methods every LangChain call ends in. The models keep the default
+`streaming=False`, so `_generate` never streams inside a retry.
 
 ## How a provider gets built
 
@@ -64,7 +123,8 @@ user's Settings  ──┐
   (else .env)     ├► api/services/llm_settings.resolve_profile() → LLMProfile
 settings.LLM_PROVIDER ┘    (provider, default model, saved key)
                       ──► api/services/llm.provider_config(profile)  → ProviderConfig
-                          (saved key, else the .env key; timeout and base URL from .env)
+                          (saved key, else the .env key; timeout, base URL and
+                           retry policy from .env)
                       ──► registry.create_provider(name, config)
                       ──► FACTORIES[name](config)  → providers/<name>.build()
                       ──► OpenAICompatibleProvider(name, client, config)
@@ -77,7 +137,7 @@ default model the user saved on the Settings page, else `LLM_PROVIDER` and its
 steps use `get_agent_model()` and the `agent_models.py` registry to construct a
 LangChain model for the configured provider; steps pass their selected model id.
 LangGraph then orchestrates MCP tool calls. Both model adapters set explicit
-request timeouts and disable SDK retries.
+request timeouts, switch their SDK's retries off and follow the retry policy.
 
 ## The model catalogue
 
@@ -129,6 +189,7 @@ Example: a hypothetical `groq` provider with an OpenAI-compatible API.
            base_url=config.base_url or DEFAULT_BASE_URL,
            api_key=config.api_key,
            timeout=config.timeout_seconds,
+           max_retries=0,  # the retry policy in llm/retry.py retries instead
        )
        return OpenAICompatibleProvider(NAME, client, config)
    ```
@@ -144,7 +205,10 @@ Example: a hypothetical `groq` provider with an OpenAI-compatible API.
    `GROQ_DEFAULT_MODEL`, and add `groq` to the supported values comment.
 6. Tests in `tests/test_llm_providers.py`: build fails without a key; errors
    normalise to `ProviderTimeout` / `ProviderRequestError`.
-7. Add a LangChain chat model builder in `llm/agent_models.py` so chat can use the provider.
+7. Add a LangChain chat model builder in `llm/agent_models.py` so chat can use
+   the provider: a `RetryingChatModel` subclass of the integration, built with
+   `retrier=_retrier(NAME, config)` and its SDK's own retries switched off
+   (check the SDK's source: an off switch is not always what it seems).
 8. `make check`.
 
 If the new SDK is **not** OpenAI-shaped, write a separate adapter class that

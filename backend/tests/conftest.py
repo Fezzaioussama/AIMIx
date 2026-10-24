@@ -37,6 +37,10 @@ TEST_SETTINGS = Settings(
     log_level="WARNING",
     llm_provider="openrouter",
     llm_timeout_seconds=1.0,
+    # Retries stay on, but never wait for real.
+    llm_max_retries=2,
+    llm_retry_base_delay_seconds=0.0,
+    llm_retry_max_delay_seconds=0.0,
     agent_timeout_seconds=1.0,
     agent_recursion_limit=9,
     mcp_timeout_seconds=1.0,

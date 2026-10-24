@@ -89,8 +89,10 @@ for credentials. Keep secrets in the ignored `backend/.env`. Configure only
 servers and filesystem paths that all authenticated AIMIx users may access; MCP server
 credentials are shared by the backend. MCP discovery and calls have an explicit
 `MCP_TIMEOUT_SECONDS` limit (30 seconds by default), and the full agent has
-`AGENT_TIMEOUT_SECONDS` (one hour) and `AGENT_RECURSION_LIMIT` (25). There are
-no automatic retries. The selected model must support tool calling.
+`AGENT_TIMEOUT_SECONDS` (one hour) and `AGENT_RECURSION_LIMIT` (25). MCP and
+tool calls are never retried automatically; only model calls are, under
+`LLM_MAX_RETRIES` (see [the retry policy](llm-providers.md#retry-policy)). The
+selected model must support tool calling.
 
 After starting the backend, `GET /api/agent-tools` lists each pipeline tool's
 name, description, and source (`AIMIx` or `MCP`). The builder uses this list to
@@ -179,7 +181,7 @@ image, CI and Railway.
 |---|---|---|
 | `provider_not_configured` (503) | No key for your provider, either on the Settings page or in `backend/.env` (or it is still a placeholder) | Add one on the Settings page, or set it in `backend/.env` and restart the backend |
 | `provider_not_configured` "can no longer be read" | `SECRET_KEY` changed after you saved a key | Enter the key again on the Settings page |
-| `provider_unavailable` (502) | Provider rejected the call (bad key, unknown model, quota) | Run `make run-llm`, then `cd backend && uv run python -m api.cli llm-probe "hi"` to see the provider's message |
+| `provider_unavailable` (502) | Provider rejected the call (bad key, unknown model, quota), or stayed overloaded through every retry (`llm.retry` warnings in the backend log) | Run `make run-llm`, then `cd backend && uv run python -m api.cli llm-probe "hi"` to see the provider's message |
 | `provider_timeout` (504) | Model slower than `LLM_TIMEOUT_SECONDS` | Raise it in `.env`, or pick a faster model |
 | Redirected to `/login` unexpectedly | Access token expired (default 60 min); the client does not refresh it yet | Sign in again — see [known-issues.md](known-issues.md) |
 | `no such table: users` / `pipelines` | Migrations not applied | `make migrate` |

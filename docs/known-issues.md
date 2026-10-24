@@ -18,13 +18,6 @@ server keeps going.
 **Fix options:** stream step results as they complete (like chat), or run the
 pipeline as a background job and let the client poll a run resource.
 
-### 2. No retry policy for provider calls
-
-AGENTS.md §6 asks for an explicit retry policy. There are currently no retries,
-which is safe but undocumented in code. Decide on a policy, then either document
-"no retries" in `llm/base.py` or add bounded retries with backoff for transient
-errors (timeouts, 429, 5xx).
-
 ### 3. The pipeline list is not paginated
 
 `GET /api/pipelines/` returns all of the user's pipelines. This is fine for now;
