@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import logging.config
 
 QUIET_LIBRARIES = ("httpx", "mcp")
+
+
+def _at_least_info(level: str) -> str:
+    numeric = logging.getLevelName(level)
+    return level if isinstance(numeric, int) and numeric >= logging.INFO else "INFO"
 
 
 def configure_logging(level: str) -> None:
@@ -19,9 +25,14 @@ def configure_logging(level: str) -> None:
                 "console": {"class": "logging.StreamHandler", "formatter": "standard"},
             },
             "root": {"handlers": ["console"], "level": level},
-            # Both log every request's URL and MCP session id at INFO. Users choose
-            # those URLs (page fetches, their own MCP servers) and some carry a
-            # token, so only their warnings are kept (AGENTS.md §6).
-            "loggers": {name: {"level": "WARNING"} for name in QUIET_LIBRARIES},
+            # httpx and mcp log every request's URL and MCP session id at INFO. Users
+            # choose those URLs (page fetches, their own MCP servers) and some carry a
+            # token, so only their warnings are kept. The E2B SDK logs the code it
+            # submits at DEBUG, and agent-written code can embed user data, so it
+            # never logs below INFO (AGENTS.md §6).
+            "loggers": {
+                **{name: {"level": "WARNING"} for name in QUIET_LIBRARIES},
+                "e2b_code_interpreter": {"level": _at_least_info(level)},
+            },
         }
     )

@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from langchain_core.tools import BaseTool, StructuredTool
 
 from api.services.toolbox.calculator import evaluate
+from api.services.toolbox.code_runner import OUTPUT_FOLDER, CodeRunner
+from api.services.toolbox.sandbox import INPUT_DIR, OUTPUT_DIR
 from api.services.toolbox.web import WebGateway
 from api.services.toolbox.workspace import LocalWorkspace
 
@@ -26,6 +28,7 @@ READ_WORKSPACE_FILE = "read_workspace_file"
 SEARCH_WORKSPACE_FILES = "search_workspace_files"
 READ_CSV = "read_csv"
 SAVE_ARTIFACT = "save_artifact"
+RUN_PYTHON = "run_python"
 
 TRUNCATED_NOTE = "\n\n[Truncated: the page continues beyond this point.]"
 
@@ -144,4 +147,15 @@ def save_artifact_tool(workspace: LocalWorkspace) -> BaseTool:
         "Save a new text, Markdown, JSON, or CSV deliverable inside the local workspace. "
         "Existing files are never overwritten.",
         func=workspace.save_artifact,
+    )
+
+
+def run_python_tool(runner: CodeRunner) -> BaseTool:
+    return make_tool(
+        RUN_PYTHON,
+        "Run Python in a fresh sandbox without internet; returns stdout, stderr, the final "
+        f"result and any error. input_files are copied from the workspace to {INPUT_DIR}/"
+        f"<path>; files written to {OUTPUT_DIR}/ and displayed PNG charts are saved to the "
+        f"workspace under {OUTPUT_FOLDER}/<UTC time>/.",
+        coroutine=runner.run,
     )

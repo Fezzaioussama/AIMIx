@@ -56,6 +56,8 @@ TEST_SETTINGS = Settings(
     # No search key: web_search stays out of the catalogue unless a test adds one.
     tavily_api_key="",
     tavily_search_url="https://search.test/search",
+    # No E2B key either: run_python is never offered, so no test can reach E2B.
+    e2b_api_key="",
     pipeline_max_parallel_steps=4,
     openrouter_api_key="",
     togetherai_api_key="",

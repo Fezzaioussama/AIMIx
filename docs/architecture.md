@@ -158,10 +158,49 @@ non-global, which keeps a prompt-injected agent out of the server's network and
 cloud metadata endpoint. httpx resolves the host again when it connects, so a
 DNS-rebinding window remains; drop `fetch_url` from `AGENT_BUILTIN_TOOLS` where
 that is unacceptable. Outbound web tools are automatically removed when
-workspace readers are enabled unless the operator explicitly sets
+workspace readers are offered unless the operator explicitly sets
 `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`. Downloads stop at `WEB_FETCH_MAX_BYTES`, the text handed
 to the model at `WEB_FETCH_MAX_CHARS`, and each request at
 `WEB_TIMEOUT_SECONDS`, with no retries.
+
+`run_python` lets an agent run code for data analysis and charts, offered only
+when `E2B_API_KEY` is set. Code never runs in the web process: `sandbox.py`
+defines the `CodeSandbox` port (Adapter) and one call's lifecycle, and
+`e2b_sandbox.py`, the only importer of the e2b-code-interpreter SDK, creates a
+fresh E2B cloud sandbox per call with no internet access, authenticated URLs,
+a lifetime of `SANDBOX_TIMEOUT_SECONDS` and kill-on-timeout. One deadline of
+that same timeout covers the whole call (creating the sandbox, uploading the
+inputs, running the code, collecting its files); it starts before the sandbox
+exists, so the call, not the sandbox's death, decides when it timed out. The
+sandbox is closed in a shielded `finally`, so an error, a timeout or a
+cancelled agent still destroys it. `code_runner.py` reads the `input_files`
+through `workspace.py` (same confinement and size limit, and a symlink to a
+hidden file stays hidden) into `/home/user/inputs/`, saves what the code
+writes to `/home/user/outputs/` and the PNG charts it displays into a new
+`sandbox/<UTC time>/` workspace folder (`outputs/` and `charts/` inside it; at
+most `SANDBOX_MAX_FILES` files within `WORKSPACE_MAX_FILE_BYTES`, never
+overwriting), and returns the error with a short traceback, the saved files,
+the files not saved and why, the final result, stdout and stderr, cut at
+`SANDBOX_MAX_OUTPUT_CHARS`. Outputs are downloaded as streams and dropped once
+they outgrow the file limit; one that cannot be fetched is reported without
+failing the call. A run that streams back more than
+`SANDBOX_MAX_STREAM_CHARS` is stopped, because the SDK holds all of it in
+memory; the SDK reads each message whole, so one single huge message is not
+bounded by it. An exception in the code, a timeout and an E2B failure are
+error results the agent can react to. The SDK is async, so
+sandbox calls do not block the event loop; workspace disk work runs in a
+worker thread. `sandbox.run` is logged with its outcome and duration, never
+the code or its output.
+
+`run_python` counts as a workspace reader, since its `input_files` read the
+workspace, so when it is offered it also removes the outbound web tools unless
+`AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true` (without an E2B key it is not
+offered and removes nothing). It is not outbound itself: E2B
+creates the sandbox with `allow_internet_access=False`, which denies all of its
+outbound traffic, so the code can only hand data back to the agent. The code
+(which can embed anything in the agent's context) and the input files the
+agent names do leave the server for E2B, the operator's chosen provider, the
+way prompts go to the LLM provider.
 
 ### MCP servers and tool discovery
 

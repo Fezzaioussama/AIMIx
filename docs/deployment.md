@@ -106,6 +106,30 @@ server then opens connections to addresses users choose. The guard, in
 If the platform restricts outbound traffic, allow `https` to the services your
 users connect.
 
+### Optional: let agents run code (`E2B_API_KEY`)
+
+`run_python` lets agents run Python for data analysis and charts. It is
+optional: without `E2B_API_KEY` the tool is simply not offered and everything
+else works. Railway gives the container no Docker socket, and AIMIx never runs
+agent code in its own process anyway: each call starts a fresh
+[E2B](https://e2b.dev) cloud sandbox with no internet access, which is
+destroyed when the call ends and lives at most `SANDBOX_TIMEOUT_SECONDS`
+(60 by default).
+
+What E2B receives: the code the agent writes, which can embed anything in the
+agent's context (the run's inputs, earlier tool results), and the workspace
+files it names in `input_files` (at most `SANDBOX_MAX_FILES`, each within
+`WORKSPACE_MAX_FILE_BYTES`). What comes back: the output, the files the code
+writes to `/home/user/outputs/` and the charts it displays, saved to the
+user's workspace under `sandbox/<UTC time>/`. AIMIx sends nothing else: no
+database content and no credential but the E2B key itself.
+
+The key is server-wide, like a server-wide LLM key: every user who can run
+agents spends it, and with `ALLOW_PUBLIC_REGISTRATION=true` that is anyone who
+registers. Each call is bounded by `SANDBOX_TIMEOUT_SECONDS` of sandbox time;
+set the key only if you accept that cost, and watch the usage in your E2B
+account.
+
 ### Limits of this setup
 
 - **One replica.** SQLite on a volume supports a single instance; do not scale

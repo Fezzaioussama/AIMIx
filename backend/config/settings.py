@@ -137,6 +137,7 @@ class Settings(BaseSettings):
             "search_workspace_files",
             "read_csv",
             "save_artifact",
+            "run_python",
         ],
         validation_alias="AGENT_BUILTIN_TOOLS",
     )
@@ -167,6 +168,19 @@ class Settings(BaseSettings):
         50, ge=1, validation_alias="WORKSPACE_SEARCH_MAX_RESULTS"
     )
     workspace_csv_max_rows: int = Field(200, ge=1, validation_alias="WORKSPACE_CSV_MAX_ROWS")
+    # --- Code sandbox behind run_python (api/services/toolbox/sandbox.py) -----
+    # Empty: run_python is not offered. Each call sends its code and input files to E2B.
+    e2b_api_key: str = Field("", validation_alias="E2B_API_KEY")
+    # Bounds one call (creating its sandbox, moving files, running the code) and
+    # the sandbox's lifetime.
+    sandbox_timeout_seconds: float = Field(60.0, gt=0, validation_alias="SANDBOX_TIMEOUT_SECONDS")
+    sandbox_max_output_chars: int = Field(10_000, ge=1, validation_alias="SANDBOX_MAX_OUTPUT_CHARS")
+    # Input files uploaded, and output files or charts saved, per call.
+    sandbox_max_files: int = Field(10, ge=1, validation_alias="SANDBOX_MAX_FILES")
+    # Output one call may stream back before it is stopped; bounds server memory.
+    sandbox_max_stream_chars: int = Field(
+        5_000_000, ge=1, validation_alias="SANDBOX_MAX_STREAM_CHARS"
+    )
     # --- Documents attached to a pipeline run (api/services/documents) --------
     # An upload is read into memory, so each of these bounds a different cost.
     document_max_bytes: int = Field(10_000_000, ge=1, validation_alias="DOCUMENT_MAX_BYTES")
@@ -204,7 +218,12 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "openrouter_api_key", "togetherai_api_key", "tavily_api_key", "secret_key", mode="after"
+        "openrouter_api_key",
+        "togetherai_api_key",
+        "tavily_api_key",
+        "e2b_api_key",
+        "secret_key",
+        mode="after",
     )
     @classmethod
     def _drop_placeholders(cls, value: str) -> str:

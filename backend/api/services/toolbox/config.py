@@ -13,6 +13,7 @@ class ToolboxConfig:
     """Limits and credentials the built-in tools need (§7 Value Object).
 
     An empty ``search_api_key`` means web search is not configured.
+    An empty ``sandbox_api_key`` means run_python is not configured.
     """
 
     enabled: tuple[str, ...]
@@ -28,8 +29,13 @@ class ToolboxConfig:
     workspace_search_max_results: int
     workspace_csv_max_rows: int
     allow_workspace_network_access: bool
+    sandbox_timeout_seconds: float
+    sandbox_max_output_chars: int
+    sandbox_max_files: int
+    sandbox_max_stream_chars: int
     # Kept out of repr, so a logged config never shows it.
     search_api_key: str = field(default="", repr=False)
+    sandbox_api_key: str = field(default="", repr=False)
 
 
 def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> ToolboxConfig:
@@ -47,5 +53,10 @@ def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> Too
         workspace_search_max_results=settings.workspace_search_max_results,
         workspace_csv_max_rows=settings.workspace_csv_max_rows,
         allow_workspace_network_access=settings.agent_allow_workspace_network_access,
+        sandbox_timeout_seconds=settings.sandbox_timeout_seconds,
+        sandbox_max_output_chars=settings.sandbox_max_output_chars,
+        sandbox_max_files=settings.sandbox_max_files,
+        sandbox_max_stream_chars=settings.sandbox_max_stream_chars,
         search_api_key=settings.tavily_api_key,
+        sandbox_api_key=settings.e2b_api_key,
     )

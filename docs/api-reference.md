@@ -243,12 +243,14 @@ Every integration route answers `404` for another account's integration.
   { "name": "read_workspace_file", "description": "Read a bounded local text file...", "source": "AIMIx" },
   { "name": "search_workspace_files", "description": "Search local text files...", "source": "AIMIx" },
   { "name": "read_csv", "description": "Read a local CSV as structured rows...", "source": "AIMIx" },
-  { "name": "save_artifact", "description": "Save a new local deliverable...", "source": "AIMIx" }
+  { "name": "save_artifact", "description": "Save a new local deliverable...", "source": "AIMIx" },
+  { "name": "run_python", "description": "Run Python in a fresh sandbox without internet...", "source": "AIMIx" }
 ]
 ```
 
 The built-in tools are the ones enabled by `AGENT_BUILTIN_TOOLS`; `web_search`
-is listed only when `TAVILY_API_KEY` is set. Configured MCP tools also appear with `source: "MCP"` and names prefixed by
+is listed only when `TAVILY_API_KEY` is set, and `run_python` only when
+`E2B_API_KEY` is set. Configured MCP tools also appear with `source: "MCP"` and names prefixed by
 their server name. Tools of your enabled [integrations](#integrations) appear
 with the integration's name as `source` (e.g. `"crm"`) and as their name prefix.
 Use the exact `name` values in a step's `allowed_tools`.
@@ -267,6 +269,14 @@ accepts only `.txt`, `.md`, `.json` and `.csv` and never overwrites an existing
 file. When any workspace-reading tool is enabled, outbound `web_search` and
 `fetch_url` are suppressed unless `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`
 explicitly accepts the data-exfiltration risk.
+
+`run_python` takes `code` and optional `input_files` (workspace paths, under the
+same rules, copied to `/home/user/inputs/`). Each call runs in a fresh E2B
+sandbox without internet access. Files the code writes to `/home/user/outputs/`
+and the PNG charts it displays are saved to `sandbox/<UTC time>/outputs/` and
+`sandbox/<UTC time>/charts/` in the workspace, never overwriting. It counts as
+a workspace reader for the rule above, but only when it is offered. A failure in the code, a timeout or an unavailable sandbox is an `error`
+tool call that the agent can react to.
 
 ---
 
