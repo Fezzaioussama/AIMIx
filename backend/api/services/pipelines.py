@@ -1,4 +1,5 @@
-"""Pipeline orchestration: run a saved pipeline, and plan a new one with an LLM.
+"""Pipeline orchestration: check and run a saved pipeline, and plan a new one
+with an LLM. The API records every run through ``services/runs``.
 
 Takes and returns plain Python values — no web-framework request or response
 objects (AGENTS.md §2).
@@ -25,7 +26,7 @@ from api.models import (
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
 from api.services.llm import LLMProfile
-from api.services.multiagent.contracts import RunResult
+from api.services.multiagent.contracts import PipelineSpec, RunInputs, RunResult
 from api.services.multiagent.contracts import StepAgent as StepGenerator
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
@@ -38,19 +39,35 @@ from llm.base import LLMProvider
 JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 
 
+@dataclass(frozen=True)
+class PreparedRun:
+    """A run checked and ready to execute: the pipeline's snapshot and its inputs."""
+
+    spec: PipelineSpec
+    inputs: RunInputs
+
+
+def prepare_run(
+    pipeline: Pipeline, initial_input: str = "", values: Mapping[str, str] | None = None
+) -> PreparedRun:
+    """Snapshot a saved pipeline and check a run's free text, or its value for
+    each named input the pipeline declares, before any agent starts (§6)."""
+    ensure_runnable(pipeline)
+    spec = snapshot_pipeline(pipeline)
+    return PreparedRun(spec, bind_run_inputs(spec.inputs, initial_input, values or {}))
+
+
 def run(
     pipeline: Pipeline,
     generator: StepGenerator,
     initial_input: str = "",
     values: Mapping[str, str] | None = None,
 ) -> RunResult:
-    """Run a saved pipeline on free text, or on a value for each named input it
-    declares. The inputs are checked before any agent starts; LangGraph owns
-    the multiagent execution."""
-    spec = snapshot_pipeline(pipeline)
-    inputs = bind_run_inputs(spec.inputs, initial_input, values or {})
+    """Run a saved pipeline in-process and unrecorded (tests, one-off tools);
+    LangGraph owns the multiagent execution."""
+    prepared = prepare_run(pipeline, initial_input, values)
     return GraphPipelineRunner(get_settings().pipeline_max_parallel_steps).run(
-        spec, generator, inputs
+        prepared.spec, generator, prepared.inputs
     )
 
 

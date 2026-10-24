@@ -18,6 +18,7 @@ from api.endpoints import (
     llm_settings,
     models,
     pipelines,
+    runs,
 )
 
 API_PREFIX = "/api"
@@ -31,6 +32,7 @@ PROTECTED_ROUTERS = (
     documents.router,
     agent_tools.router,
     llm_settings.router,
+    runs.router,
 )
 
 

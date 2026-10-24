@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import Enum
+from typing import Any
 
 from sqlalchemy import JSON, ForeignKey, MetaData, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 STEP_TITLE_MAX_LENGTH = 100
@@ -23,6 +26,8 @@ RESERVED_INPUT_NAME = "input"
 MODEL_ID_MAX_LENGTH = 200
 PROVIDER_NAME_MAX_LENGTH = 50
 API_KEY_HINT_LENGTH = 4
+STATUS_MAX_LENGTH = 16
+ERROR_CODE_MAX_LENGTH = 64
 
 
 def _utcnow() -> datetime:
@@ -157,3 +162,107 @@ class PipelineStep(Base):
     model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH))
 
     pipeline: Mapped[Pipeline] = relationship(back_populates="steps")
+
+
+class RunStatus(str, Enum):
+    """Where a run is. ``queued`` and ``running`` are active; the rest are final."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    #: The server stopped (a restart or redeploy) while the run was active.
+    INTERRUPTED = "interrupted"
+
+
+#: A run in one of these has work left to do: it cannot be deleted or resumed.
+ACTIVE_RUN_STATUSES = frozenset({RunStatus.QUEUED, RunStatus.RUNNING})
+#: A run that stopped before the end can continue from the first unfinished stage.
+RESUMABLE_RUN_STATUSES = frozenset({RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.INTERRUPTED})
+
+
+class StepStatus(str, Enum):
+    """Where one step of a run is."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+def _status_type(statuses: type[Enum]) -> SQLEnum:
+    """Stored as the lowercase value in a plain string column, read back as the enum."""
+    return SQLEnum(
+        statuses,
+        native_enum=False,
+        length=STATUS_MAX_LENGTH,
+        values_callable=lambda members: [member.value for member in members],
+        validate_strings=True,
+    )
+
+
+class Run(Base):
+    """One execution of a pipeline: history, live progress and resumable state.
+
+    ``definition`` is the pipeline as it was when the run was started (the JSON
+    form of ``services/multiagent/contracts.PipelineSpec``), so editing the
+    pipeline later never changes a run, and deleting it only clears
+    ``pipeline_id``. ``input_text`` / ``input_values`` are what the run was
+    started with. Empty error fields mean there was no error.
+    """
+
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    pipeline_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pipelines.id", ondelete="SET NULL"), index=True
+    )
+    pipeline_name: Mapped[str] = mapped_column(String(PIPELINE_NAME_MAX_LENGTH))
+    definition: Mapped[dict[str, Any]] = mapped_column(JSON)
+    input_text: Mapped[str] = mapped_column(Text, default="")
+    input_values: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    status: Mapped[RunStatus] = mapped_column(_status_type(RunStatus), default=RunStatus.QUEUED)
+    final_output: Mapped[str] = mapped_column(Text, default="")
+    error_code: Mapped[str] = mapped_column(String(ERROR_CODE_MAX_LENGTH), default="")
+    error_detail: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+
+    steps: Mapped[list[RunStep]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="(RunStep.stage, RunStep.step_order)",
+    )
+
+
+class RunStep(Base):
+    """One step of a run: the input it used, what it produced and how it went.
+
+    ``tool_calls`` lists ``{"name", "status"}`` per tool call — never the
+    arguments or results.
+    """
+
+    __tablename__ = "run_steps"
+    __table_args__ = (UniqueConstraint("run_id", "step_order", name="uq_run_step_order"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
+    step_order: Mapped[int]
+    stage: Mapped[int]
+    title: Mapped[str] = mapped_column(String(STEP_TITLE_MAX_LENGTH), default="")
+    model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH))
+    status: Mapped[StepStatus] = mapped_column(_status_type(StepStatus), default=StepStatus.PENDING)
+    is_output: Mapped[bool] = mapped_column(default=False)
+    input_used: Mapped[str] = mapped_column(Text, default="")
+    output: Mapped[str] = mapped_column(Text, default="")
+    tool_calls: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    error_code: Mapped[str] = mapped_column(String(ERROR_CODE_MAX_LENGTH), default="")
+    error_detail: Mapped[str] = mapped_column(Text, default="")
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+
+    run: Mapped[Run] = relationship(back_populates="steps")

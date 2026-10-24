@@ -24,6 +24,8 @@ from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, enforce
+from api.services.run_executor import RunExecutor
+from api.services.runs import RunService, launcher
 from api.services.tool_catalog import PipelineToolCatalog
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
@@ -156,17 +158,34 @@ def pipeline_tool_catalog(request: Request, user: CurrentUser) -> PipelineToolCa
 ToolCatalog = Annotated[PipelineToolCatalog, Depends(pipeline_tool_catalog)]
 
 
+def run_executor(request: Request) -> RunExecutor:
+    """Where runs execute: the app's background executor (tests swap it)."""
+    executor: RunExecutor = request.app.state.run_executor
+    return executor
+
+
+Executor = Annotated[RunExecutor, Depends(run_executor)]
+
+
+def run_service(request: Request, executor: Executor, settings: AppSettings) -> RunService:
+    return RunService(request.app.state.database, executor, settings.pipeline_max_parallel_steps)
+
+
+Runs = Annotated[RunService, Depends(run_service)]
+
+
 @dataclass(frozen=True)
 class PipelineRunContext:
     user: User
     session: Session
     agents: PipelineAgentFactory
+    runs: RunService
 
 
 def pipeline_run_context(
-    user: CurrentUser, session: DbSession, agents: PipelineAgents
+    user: CurrentUser, session: DbSession, agents: PipelineAgents, service: Runs
 ) -> PipelineRunContext:
-    return PipelineRunContext(user, session, agents)
+    return PipelineRunContext(user, session, agents, service)
 
 
 PipelineRun = Annotated[PipelineRunContext, Depends(pipeline_run_context)]
@@ -176,10 +195,12 @@ AgentFactory = Callable[[], ChatAgent]
 
 
 def agent_factory(
-    request: Request, user: CurrentUser, profile: Profile, pipeline_agents: PipelineAgents
+    request: Request, user: CurrentUser, profile: Profile, context: PipelineRun
 ) -> AgentFactory:
-    """Defer agent construction until after the chat request is validated."""
-    return partial(get_chat_agent, request.app.state.database, user, profile, pipeline_agents)
+    """Defer agent construction until after the chat request is validated. Its
+    run_pipeline tool records runs like the Runs screen does."""
+    launch = launcher(context.runs, user, context.agents)
+    return partial(get_chat_agent, request.app.state.database, user, profile, launch)
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]

@@ -12,11 +12,15 @@ from langchain_core.tools import BaseTool
 from api.db import Database
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
-from api.services import pipelines as pipeline_service
-from api.services.multiagent.contracts import StepAgent
+from api.services.multiagent.contracts import RunResult
+from api.services.runs import RunStart
 from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.registry import toolbox_tools
 from config.settings import Settings, get_settings
+
+#: Runs one of the signed-in user's saved pipelines to its end, recorded in
+#: their run history (``services/runs.launcher``).
+PipelineLauncher = Callable[[int, RunStart], RunResult]
 
 
 def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
@@ -73,17 +77,9 @@ def native_tools(database: Database, user: User, settings: Settings) -> list[Bas
     ]
 
 
-def built_in_tools(
-    database: Database,
-    user: User,
-    generator_factory: Callable[[], StepAgent],
-    *,
-    include_run: bool = True,
-) -> list[BaseTool]:
+def built_in_tools(database: Database, user: User, launch: PipelineLauncher) -> list[BaseTool]:
     """Bind pipeline functions to the authenticated user for one agent run."""
     native = native_tools(database, user, get_settings())
-    if not include_run:
-        return native
 
     @tool
     def run_pipeline(
@@ -92,10 +88,6 @@ def built_in_tools(
         """Run one of your saved AIMIx pipelines and return its step results. Pass
         input_text, or, when the pipeline declares named inputs (see
         inspect_pipeline), a value for each of them in inputs."""
-        with database.session() as session:
-            pipeline = repository.get_owned(session, user, pipeline_id)
-            pipeline_service.ensure_runnable(pipeline)
-        result = pipeline_service.run(pipeline, generator_factory(), input_text, inputs)
-        return asdict(result)
+        return asdict(launch(pipeline_id, RunStart(input_text, inputs or {})))
 
     return [*native, run_pipeline]

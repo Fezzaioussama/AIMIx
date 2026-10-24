@@ -1,8 +1,9 @@
-"""Field types shared by several request contracts (§3)."""
+"""Field types shared by several contracts (§3)."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Annotated
 
 from pydantic import AfterValidator, StringConstraints
@@ -11,6 +12,15 @@ from api.services.catalog import known_model_ids, provider_names
 
 #: Trimmed text that must not be empty.
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+def _assume_utc(value: datetime) -> datetime:
+    # SQLite drops the offset; every timestamp is stored in UTC.
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+#: A stored timestamp, sent with its UTC offset.
+UtcDateTime = Annotated[datetime, AfterValidator(_assume_utc)]
 
 
 def ensure_member(kind: str, value: str, allowed: list[str]) -> str:

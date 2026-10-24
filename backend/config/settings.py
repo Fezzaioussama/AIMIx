@@ -167,6 +167,13 @@ class Settings(BaseSettings):
     pipeline_max_parallel_steps: int = Field(
         4, ge=1, validation_alias="PIPELINE_MAX_PARALLEL_STEPS"
     )
+    # --- Background runs (api/services/runs.py) -------------------------------
+    # Runs executing at once in this process; the others wait, queued.
+    run_max_concurrent: int = Field(4, ge=1, validation_alias="RUN_MAX_CONCURRENT")
+    # On shutdown, how long active runs get to record that they were interrupted.
+    run_shutdown_grace_seconds: float = Field(
+        5.0, gt=0, validation_alias="RUN_SHUTDOWN_GRACE_SECONDS"
+    )
     openrouter_api_key: str = Field(
         "", validation_alias=_env("OPEN_ROUTER_KEY", "OPENROUTER_API_KEY")
     )

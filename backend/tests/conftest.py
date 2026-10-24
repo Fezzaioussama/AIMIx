@@ -3,15 +3,23 @@ suite is deterministic and offline (AGENTS.md §6)."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
-from typing import Any
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from concurrent.futures import Future
+from typing import Any, TypeVar
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from api.deps import agent_factory, pipeline_agent_factory, provider_factory, token_signer
+from api.deps import (
+    agent_factory,
+    pipeline_agent_factory,
+    provider_factory,
+    run_executor,
+    token_signer,
+)
 from api.main import create_app
 from api.models import Base, User
 from api.repositories import users
@@ -113,6 +121,40 @@ class FakeAgent:
             yield chunk
 
 
+T = TypeVar("T")
+
+
+class InlineRunExecutor:
+    """Runs each job to its end inside ``submit``, so a test sees the finished
+    run as soon as the request returns. Nothing is ever left to cancel."""
+
+    def __init__(self) -> None:
+        self.keys: list[int] = []
+
+    def submit(self, key: int, job: Callable[[], Awaitable[T]]) -> Future[T]:
+        self.keys.append(key)
+        future: Future[T] = Future()
+
+        async def main() -> T:
+            return await job()
+
+        future.set_result(asyncio.run(main()))
+        return future
+
+    def cancel(self, key: int) -> None:
+        return None
+
+    def shutdown(self) -> None:
+        return None
+
+
+def use_inline_runs(app: FastAPI) -> InlineRunExecutor:
+    """Execute runs inside the request, deterministically."""
+    executor = InlineRunExecutor()
+    app.dependency_overrides[run_executor] = lambda: executor
+    return executor
+
+
 def tool_call(name: str, args: dict[str, Any], call_id: str = "call-1") -> dict[str, Any]:
     """A tool invocation shaped as the agent sends it, so errors become messages."""
     return {"type": "tool_call", "id": call_id, "name": name, "args": args}
@@ -133,11 +175,15 @@ def use_pipeline_generator(app: FastAPI, generator: StepGenerator) -> None:
 
 @pytest.fixture
 def app() -> Iterator[FastAPI]:
-    """A fresh app over a fresh in-memory database for every test."""
+    """A fresh app over a fresh in-memory database for every test. Runs
+    execute inline (see ``InlineRunExecutor``); test_runs_service.py covers
+    the background executor."""
     application = create_app()
     engine = application.state.database.engine
     Base.metadata.create_all(engine)
+    use_inline_runs(application)
     yield application
+    application.state.run_executor.shutdown()
     engine.dispose()
 
 
