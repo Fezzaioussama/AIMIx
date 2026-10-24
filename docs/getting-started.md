@@ -58,7 +58,8 @@ The chat agent always has three Python functions:
 
 These functions use the authenticated user's identity. The agent cannot inspect
 or run another user's pipeline. Running a pipeline starts an agent for each step
-and may take as long as a normal pipeline run. Chat history is not persisted.
+and may take as long as a normal pipeline run; the run appears under **Runs**
+like any other. Chat history is not persisted.
 
 ### Give chat and pipeline steps MCP tools
 
@@ -147,8 +148,12 @@ The backend start target applies pending database migrations before launching th
 2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage. Give each step a role, prompt, model, and tool
    access; mark deliverables as **Output**. Write prompts using `{input}`,
-   **Save**, then **Run** with an input. Run results group deliverables by stage
-   and show each called tool's name and success/error status. To change a
+   **Save**, then **Run** with an input. The run executes in the background:
+   the diagram shows each step waiting, running, done or failed, outputs appear
+   as soon as each step finishes, and **Stop** / **Resume** act on it. Run
+   results group deliverables by stage and show each called tool's name and
+   success/error status. You can leave the page; reopening the pipeline shows
+   its latest run. To change a
    pipeline in a sentence, open **Ask AIMIx to change this pipeline** (e.g.
    "add an SEO agent that works alongside the marketing agent"), review the
    proposed changes and **Apply** them; nothing is saved until you save.
@@ -162,6 +167,10 @@ The backend start target applies pending database migrations before launching th
    insights, SEO brief, content calendar, launch plan). It opens in the builder
    as your own pipeline, on your default model and with only the tools you
    have; fill in its inputs and run it.
+5. tool choices, then save and open the builder.
+4. **Runs** (`/runs`, the **Runs** tab next to the pipeline screens) — every
+   run, newest first, with its status, start and duration. Open one to follow
+   it live, resume it where it stopped (finished steps are kept), or delete it.
 
 ## Talking to the API directly
 

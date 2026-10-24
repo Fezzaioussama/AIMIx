@@ -15,6 +15,11 @@ export const API = {
   generatePipeline: '/api/pipelines/generate',
   revisePipeline: '/api/pipelines/revise',
   runPipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/run`,
+  pipelineRuns: (pipelineId: number) => `/api/pipelines/${pipelineId}/runs`,
+  runs: '/api/runs',
+  run: (runId: number) => `/api/runs/${runId}`,
+  cancelRun: (runId: number) => `/api/runs/${runId}/cancel`,
+  resumeRun: (runId: number) => `/api/runs/${runId}/resume`,
   extractDocument: '/api/documents/extract',
   files: '/api/files',
   /** One file of the user's workspace, by its '/'-separated path. */

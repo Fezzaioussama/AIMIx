@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import * as pipelinesApi from '../../core/api/pipelines';
-import type { Pipeline, PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
+import { startRun } from '../../core/api/runs';
+import type { Pipeline, PipelineInput, PipelineStep, Run } from '../../core/api/types';
 import { runRequest, type RunDraft } from './pipelineInputs';
 import { insertStep, nextStage } from './stages';
 
@@ -25,21 +26,19 @@ function emptyPipeline(defaultModel: string): Pipeline {
   };
 }
 
-/** State and transport for the builder screen, kept out of the component (§2). */
+/**
+ * State and transport for the builder screen, kept out of the component (§2).
+ * `run` starts a background run; the page follows it (features/runs/useLatestRun).
+ */
 export function usePipelineBuilder(defaultModel: string, initialId?: number) {
   const [pipeline, setPipeline] = useState<Pipeline>(() => emptyPipeline(defaultModel));
   const [saved, setSaved] = useState<Pipeline[]>([]);
-  const [results, setResults] = useState<StepResult[]>([]);
-  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  /** `running`: a run is being started (the run itself is followed elsewhere). */
   const [status, setStatus] = useState<'idle' | 'saving' | 'running'>('idle');
   const [message, setMessage] = useState('');
   const [dirty, setDirty] = useState(false);
 
-  const markChanged = useCallback(() => {
-    setDirty(true);
-    setResults([]);
-    setElapsedMs(null);
-  }, []);
+  const markChanged = useCallback(() => setDirty(true), []);
 
   // Adopt the backend default once the model catalogue has loaded.
   useEffect(() => {
@@ -53,8 +52,6 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
 
   const select = useCallback((chosen: Pipeline) => {
     setPipeline(structuredClone(chosen));
-    setResults([]);
-    setElapsedMs(null);
     setMessage('');
     setDirty(false);
   }, []);
@@ -79,8 +76,6 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
 
   const reset = useCallback(() => {
     setPipeline(emptyPipeline(defaultModel));
-    setResults([]);
-    setElapsedMs(null);
     setMessage('');
     setDirty(false);
   }, [defaultModel]);
@@ -169,28 +164,24 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
     }
   }, [pipeline, refresh]);
 
+  /** Start a background run of the saved pipeline; the run, or null when it did not start. */
   const run = useCallback(
-    async (draft: RunDraft) => {
+    async (draft: RunDraft): Promise<Run | null> => {
       if (pipeline.id === undefined) {
         setMessage('Please save the pipeline before running it.');
-        return;
+        return null;
       }
       if (dirty) {
         setMessage('Save your changes before running the pipeline.');
-        return;
+        return null;
       }
       setStatus('running');
       setMessage('');
-      setResults([]);
-      setElapsedMs(null);
-      const started = performance.now();
       try {
-        const body = runRequest(pipeline.inputs, draft);
-        const response = await pipelinesApi.runPipeline(pipeline.id, body);
-        setResults(response.intermediate_results);
-        setElapsedMs(performance.now() - started);
+        return await startRun(pipeline.id, runRequest(pipeline.inputs, draft));
       } catch (cause) {
-        setMessage(cause instanceof Error ? cause.message : 'Execution failed.');
+        setMessage(cause instanceof Error ? cause.message : 'The run could not start.');
+        return null;
       } finally {
         setStatus('idle');
       }
@@ -201,8 +192,6 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
   return {
     pipeline,
     saved,
-    results,
-    elapsedMs,
     status,
     dirty,
     message,

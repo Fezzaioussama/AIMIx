@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from time import monotonic
 
 import anyio
@@ -21,10 +21,9 @@ from api.services.agent_runtime import (
     as_agent_error,
     resolve_tools,
 )
-from api.services.agent_tools import built_in_tools
+from api.services.agent_tools import PipelineLauncher, built_in_tools
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model
-from api.services.multiagent.contracts import StepAgent
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -88,14 +87,14 @@ def get_chat_agent(
     database: Database,
     user: User,
     profile: LLMProfile,
-    generator_factory: Callable[[], StepAgent],
+    launch: PipelineLauncher,
 ) -> LangGraphChatAgent:
     settings = get_settings()
     return LangGraphChatAgent(
         get_agent_model(profile),
         AgentToolset(
             mcp_connections_for(database, user, settings),
-            built_in_tools(database, user, generator_factory),
+            built_in_tools(database, user, launch),
         ),
         AgentLimits(
             settings.agent_timeout_seconds,

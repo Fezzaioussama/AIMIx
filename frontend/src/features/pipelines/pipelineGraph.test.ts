@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PipelineStep, StepResult } from '../../core/api/types';
-import { buildGraph } from './pipelineGraph';
+import type { PipelineStep, RunStep, StepResult } from '../../core/api/types';
+import { buildGraph, liveNodeStatus } from './pipelineGraph';
 
 function step(order: number, stage: number, isOutput = false): PipelineStep {
   return {
@@ -68,5 +68,51 @@ describe('buildGraph', () => {
       false,
       true,
     ]);
+  });
+
+  it('shows each step of a followed run in its own status', () => {
+    const live: RunStep[] = [
+      {
+        ...result(1, 1, false),
+        status: 'succeeded',
+        error: null,
+        started_at: null,
+        finished_at: null,
+      },
+      {
+        ...result(2, 1, false),
+        status: 'failed',
+        error: null,
+        started_at: null,
+        finished_at: null,
+      },
+      {
+        ...result(3, 2, true),
+        status: 'pending',
+        error: null,
+        started_at: null,
+        finished_at: null,
+      },
+    ];
+    const statuses = (active: boolean) =>
+      nodesOf(buildGraph(steps, [live[0]], active, live)).map((node) => node.status);
+
+    expect(statuses(true)).toEqual(['done', 'failed', 'waiting']);
+    // Once the run has ended, a step it never reached did not run.
+    expect(statuses(false)).toEqual(['done', 'failed', 'pending']);
+    expect(nodesOf(buildGraph(steps, [live[0]], true, live)).map((node) => node.isOutput)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+  });
+});
+
+describe('liveNodeStatus', () => {
+  it('maps a run step to how the diagram shows it', () => {
+    const base = { ...result(1, 1, false), error: null, started_at: null, finished_at: null };
+    expect(liveNodeStatus({ ...base, status: 'running' }, true)).toBe('running');
+    expect(liveNodeStatus({ ...base, status: 'cancelled' }, false)).toBe('stopped');
+    expect(liveNodeStatus({ ...base, status: 'pending' }, true)).toBe('waiting');
   });
 });

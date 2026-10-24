@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { API } from '../../core/api/endpoints';
 import { usePipelineBuilder } from './usePipelineBuilder';
 
 describe('usePipelineBuilder', () => {
@@ -43,7 +44,7 @@ describe('usePipelineBuilder', () => {
     });
   });
 
-  it('runs a saved pipeline with only its declared inputs', async () => {
+  it('starts a background run of a saved pipeline with only its declared inputs', async () => {
     const saved = {
       id: 7,
       name: 'Posts',
@@ -56,19 +57,45 @@ describe('usePipelineBuilder', () => {
         new Response(JSON.stringify([saved]), { headers: { 'Content-Type': 'application/json' } }),
       )
       .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ pipeline_name: 'Posts', final_output: 'x', intermediate_results: [] }),
-          { headers: { 'Content-Type': 'application/json' } },
-        ),
+        new Response(JSON.stringify({ id: 12, status: 'queued' }), {
+          status: 202,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       );
     const { result } = renderHook(() => usePipelineBuilder('vendor/model', 7));
     await waitFor(() => expect(result.current.pipeline.id).toBe(7));
 
-    await act(async () =>
-      result.current.actions.run({ text: 'stale', values: { topic: 'bees', old: 'x' } }),
-    );
+    let started: unknown;
+    await act(async () => {
+      started = await result.current.actions.run({
+        text: 'stale',
+        values: { topic: 'bees', old: 'x' },
+      });
+    });
 
+    expect(fetchMock.mock.calls[1][0]).toBe(API.pipelineRuns(7));
     expect(fetchMock.mock.calls[1][1]?.body).toBe('{"inputs":{"topic":"bees"}}');
+    expect(started).toMatchObject({ id: 12, status: 'queued' });
+    expect(result.current.status).toBe('idle');
+  });
+
+  it('does not start a run of a pipeline with unsaved changes', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }),
+      );
+    const { result } = renderHook(() => usePipelineBuilder('vendor/model'));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    let started: unknown;
+    await act(async () => {
+      started = await result.current.actions.run({ text: 'go', values: {} });
+    });
+
+    expect(started).toBeNull();
+    expect(result.current.message).toBe('Please save the pipeline before running it.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('marks the pipeline changed when its inputs are edited', () => {

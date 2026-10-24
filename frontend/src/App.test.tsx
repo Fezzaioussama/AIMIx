@@ -84,4 +84,12 @@ describe('App routing', () => {
     expect(screen.getByRole('link', { name: 'Templates' })).toHaveAttribute('aria-current', 'page');
     gallery.mockRestore();
   });
+
+  it('serves a run deep link under Pipelines, with the Runs tab current', () => {
+    saveTokens({ access: 'token' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+    renderAt('/runs/7');
+    expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
+  });
 });

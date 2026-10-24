@@ -7,17 +7,46 @@ import { stepLabel } from './stages';
 const nodeBase =
   'relative flex h-[88px] flex-col justify-between rounded-xl border bg-slate-900 p-3 text-left transition-[transform,background-color,box-shadow] duration-300 enabled:hover:-translate-y-0.5';
 
-const statusStyles: Record<NodeStatus, { border: string; dot: string; label: string }> = {
-  pending: { border: 'border-white/10', dot: 'bg-slate-500', label: 'Not run' },
+/** Each step status's look and words, shared by the diagram and the step progress cards. */
+export const NODE_STATUS_STYLES: Record<
+  NodeStatus,
+  { border: string; dot: string; label: string; text: string }
+> = {
+  pending: {
+    border: 'border-white/10',
+    dot: 'bg-slate-500',
+    label: 'Not run',
+    text: 'text-slate-400',
+  },
+  waiting: {
+    border: 'border-white/10',
+    dot: 'bg-slate-400',
+    label: 'Waiting',
+    text: 'text-slate-300',
+  },
   running: {
     border: 'border-sky-400/30 shadow-[0_0_30px_-10px_rgba(56,189,248,0.7)]',
     dot: 'bg-sky-400',
     label: 'Running',
+    text: 'text-sky-300',
   },
   done: {
     border: 'border-emerald-400/40 shadow-[0_0_24px_-12px_rgba(52,211,153,0.7)]',
     dot: 'bg-emerald-400',
     label: 'Done',
+    text: 'text-emerald-300',
+  },
+  failed: {
+    border: 'border-red-400/50 shadow-[0_0_24px_-12px_rgba(248,113,113,0.7)]',
+    dot: 'bg-red-400',
+    label: 'Failed',
+    text: 'text-red-300',
+  },
+  stopped: {
+    border: 'border-amber-400/40',
+    dot: 'bg-amber-400',
+    label: 'Stopped',
+    text: 'text-amber-300',
   },
 };
 
@@ -28,7 +57,7 @@ interface GraphNodeCardProps {
 }
 
 export function GraphNodeCard({ node, selected, onClick }: GraphNodeCardProps) {
-  const style = statusStyles[node.status];
+  const style = NODE_STATUS_STYLES[node.status];
   const running = node.status === 'running';
   const summary =
     node.outputLength === null
@@ -65,7 +94,7 @@ export function GraphNodeCard({ node, selected, onClick }: GraphNodeCardProps) {
         <span className="truncate">{modelLabel(node.model)}</span>
         {node.isOutput && <OutputBadge />}
       </span>
-      <span className="truncate text-[11px] text-slate-500">{summary}</span>
+      <span className="truncate text-[11px] text-slate-400">{summary}</span>
     </button>
   );
 }

@@ -171,6 +171,17 @@ account.
   `postgresql+psycopg://` `DATABASE_URL`, and is not covered by the test suite.
 - **Brief downtime on deploy.** Railway stops the old container before starting
   the new one when a volume is attached.
+- **A redeploy interrupts the runs in progress.** Pipeline runs execute in the
+  API process. On shutdown each active run is marked *interrupted* (within
+  `RUN_SHUTDOWN_GRACE_SECONDS`, default 5, well inside the platform's stop
+  timeout); after a crash or a hard kill, the next start marks them instead.
+  The steps they finished are kept, and **Resume** on the Runs screen (or
+  `POST /api/runs/<id>/resume`) continues each one where it stopped. Runs still
+  waiting for a slot are interrupted the same way.
+- **One Uvicorn worker.** Runs are queued per process (at most
+  `RUN_MAX_CONCURRENT` at once). The image starts a single worker; do not add
+  `--workers`, or a starting worker would mark the runs of the others as
+  interrupted.
 
 ## Troubleshooting
 
@@ -187,3 +198,4 @@ account.
 | Files vanish after a deploy | No volume at `/data` (files live in `/data/workspace`) | Mount the volume at `/data` |
 | Uploads answer `storage_quota_exceeded` | That user's files reached `WORKSPACE_MAX_TOTAL_BYTES` | They delete files on the Files page, or raise the limit |
 | PDFs show boxes instead of letters; log has `artifacts.pdf_font_unavailable` | No TrueType font at `PDF_FONT_PATH` (image built without `fonts-dejavu-core`, or a custom path) | Build with the repository `Dockerfile`, or point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a font that covers your users' scripts |
+| Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) | Resume them from the Runs screen; finished steps are kept |

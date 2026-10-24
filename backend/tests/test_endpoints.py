@@ -58,7 +58,7 @@ def make_pipeline(session: Session, owner: User, name: str, steps: int = 1) -> P
 def feature_routes(app: FastAPI) -> list[tuple[str, str]]:
     """Every (method, path) the API serves outside the public allowlist."""
     return [
-        (method.upper(), path.replace("{pipeline_id}", "1"))
+        (method.upper(), path.replace("{pipeline_id}", "1").replace("{run_id}", "1"))
         for path, operations in app.openapi()["paths"].items()
         if path not in PUBLIC_PATHS
         for method in operations

@@ -5,12 +5,14 @@ import { useLocation } from 'react-router-dom';
 /**
  * Eases each screen in when the route changes. Enter-only on purpose: an exit
  * animation would briefly render the outgoing page with the new route's outlet.
+ * Keyed by the first path segment, so moving within a screen (/runs → /runs/7)
+ * keeps it mounted.
  */
 export function PageTransition({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   return (
     <motion.div
-      key={pathname}
+      key={pathname.split('/')[1] ?? ''}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}

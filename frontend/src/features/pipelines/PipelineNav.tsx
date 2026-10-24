@@ -6,6 +6,7 @@ const LINKS = [
   { to: '/pipeline', label: 'Pipeline' },
   { to: '/auto-pipeline', label: 'Auto Pipeline' },
   { to: '/templates', label: 'Templates' },
+  { to: '/runs', label: 'Runs' },
 ] as const;
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -14,7 +15,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'text-sky-200' : 'text-slate-400 hover:text-slate-50',
   ].join(' ');
 
-/** Sub-navigation shared by the pipeline screens (AGENTS.md §3). */
+/** Sub-navigation shared by the pipeline screens, the template gallery and the run history (AGENTS.md §3). */
 export function PipelineNav() {
   return (
     <nav className="inline-flex gap-1 rounded-lg border border-white/10 bg-slate-950/50 p-1">

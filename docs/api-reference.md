@@ -301,7 +301,8 @@ tool call that the agent can react to.
 chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`
 (which lists a pipeline's named inputs), and `run_pipeline(pipeline_id,
 input_text, inputs)` for the signed-in user; `inputs` holds the values of a
-pipeline's named inputs, under the same rules as a run request. LangGraph
+pipeline's named inputs, under the same rules as a run request. A run started
+from chat is recorded in the run history like any other. LangGraph
 also loads all tools from `MCP_SERVERS` and from your enabled integrations, and
 keeps tool output out of the text stream. An integration that cannot be
 reached is skipped. The configured provider supplies the model;
@@ -320,7 +321,7 @@ the stream.
 
 Reads an uploaded file and returns its text, so a document can be a pipeline
 run's input. `multipart/form-data` with one `file` field. Nothing is stored: the
-client puts the returned `text` in a run input (see `POST /pipelines/<id>/run`).
+client puts the returned `text` in a run input (see `POST /pipelines/<id>/runs`).
 
 Supported by extension (case-insensitive):
 
@@ -555,6 +556,10 @@ field it does not send.
 
 ### `POST /pipelines/<id>/run`
 
+Kept for API compatibility: it starts a run exactly like
+[`POST /pipelines/<id>/runs`](#post-pipelinesidruns) — recorded in your run
+history — and waits for its end. New clients start a run and poll it instead.
+
 A pipeline without named inputs runs on free text:
 
 ```json
@@ -610,12 +615,103 @@ UI shows the `is_output` results instead. At most `PIPELINE_MAX_PARALLEL_STEPS`
 (default 4) steps of one stage run agents at once; if any of them fails,
 the run fails.
 Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
-`502/503/504` agent or tool failures (the run stops; no partial result is returned).
+`502/503/504` agent or tool failures (the run stops and the response carries
+no partial result; the recorded run keeps the steps that succeeded and can be
+resumed), `409 conflict` if the run is stopped from the run history while
+this request waits.
 
-The call is synchronous: it takes as long as its stages combined, and a parallel
-stage takes as long as its slowest step. The frontend waits up to one hour
-(`GENERATION_TIMEOUT_MS`). Runs are not persisted or resumable and tool actions
-have no approval flow.
+The call takes as long as its stages combined, and a parallel stage takes as
+long as its slowest step. Tool actions have no approval flow.
+
+## Runs
+
+A run is one execution of a pipeline. It executes in the background: start it,
+then poll it. Every run is recorded until you delete it, together with the
+pipeline as it was when the run started (`definition`), so editing or deleting
+the pipeline later changes nothing about the run.
+
+A run is `queued` (waiting for a free slot: at most `RUN_MAX_CONCURRENT` runs
+execute at once), `running`, then `succeeded`, `failed`, `cancelled` (you
+stopped it) or `interrupted` (the server stopped or restarted during the run).
+Each step is `pending`, `running`, `succeeded`, `failed` or `cancelled`.
+
+### `POST /pipelines/<id>/runs`
+
+Same body as `POST /pipelines/<id>/run`. `202` → the run, `queued`, every step
+`pending`. The inputs are checked first: a mismatch is a `400
+validation_error` and nothing is saved; `404` for a pipeline that is not yours.
+A failure of the model or a tool (or a missing API key) does not fail this
+request: the run ends `failed` with that error.
+
+The run object:
+
+```json
+{
+  "id": 12,
+  "pipeline_id": 7,
+  "pipeline_name": "Summarise then translate",
+  "status": "running",
+  "error": null,
+  "created_at": "2026-10-24T10:00:00Z",
+  "started_at": "2026-10-24T10:00:01Z",
+  "finished_at": null,
+  "input": "",
+  "inputs": { "article": "Long article text...", "language": "French" },
+  "final_output": "",
+  "definition": {
+    "name": "Summarise then translate",
+    "inputs": [{ "name": "article", "label": "Article", "description": "" }, { "name": "language", "label": "Target language", "description": "" }],
+    "steps": [{ "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" }, "..."]
+  },
+  "steps": [
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z" },
+    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null }
+  ]
+}
+```
+
+`input` / `inputs` are what the run was started with. A step's `output` and
+`tool_calls` appear as soon as it succeeds; `final_output` once the run
+succeeds. `error` (on the run, and on the step that failed) is `null` or
+`{"code", "detail"}` with the same codes as error responses, e.g.
+`provider_timeout`. `pipeline_id` becomes `null` if the pipeline is deleted.
+Timestamps are UTC; `duration = finished_at - started_at` of the latest attempt.
+
+### `GET /runs`
+
+Your runs, newest first, one page at a time: `?limit=20&offset=0`, optionally
+`&pipeline_id=7` for one pipeline's runs. `limit` is 1–100 (default 20) and
+`offset` ≥ 0; anything else is a `400`. `200`:
+
+```json
+{ "items": [{ "id": 12, "pipeline_id": 7, "pipeline_name": "Summarise then translate", "status": "succeeded", "error": null, "created_at": "...", "started_at": "...", "finished_at": "..." }], "total": 42 }
+```
+
+Summaries carry no inputs, outputs, definition or steps.
+
+### `GET /runs/<id>`
+
+The whole run. Poll it while it is `queued` or `running` (the app polls every
+1.5 seconds). `404` if it is missing or not yours.
+
+### `POST /runs/<id>/cancel`
+
+Stops a queued or running run at once: it becomes `cancelled`, a running
+step `cancelled` (its model call is cut off), pending steps stay `pending`.
+A finished run comes back unchanged, so calling it twice is safe. `200` → the run.
+
+### `POST /runs/<id>/resume`
+
+Continues a `failed`, `cancelled` or `interrupted` run from its first stage
+that did not fully succeed, with your current model settings: the steps that
+succeeded keep their outputs and do not run again, the others go back to
+`pending`, and the run executes its own `definition`. Any other run comes back
+unchanged. `200` → the run, `queued` again.
+
+### `DELETE /runs/<id>`
+
+`204`. Only a finished run can be deleted: a queued or running one is a `409
+conflict` — stop it first.
 
 ### `POST /pipelines/generate`
 

@@ -12,7 +12,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from api.models import INTEGRATION_NAME_PATTERN, INTEGRATION_URL_MAX_LENGTH
-from api.schemas.common import UtcDatetime
+from api.schemas.common import UtcDateTime
 
 INTEGRATION_MAX_HEADERS = 10
 HEADER_NAME_MAX_LENGTH = 100
@@ -140,7 +140,7 @@ class IntegrationOut(BaseModel):
     url: str
     enabled: bool
     headers: list[HeaderOut]
-    created_at: UtcDatetime
+    created_at: UtcDateTime
 
 
 class IntegrationToolOut(BaseModel):

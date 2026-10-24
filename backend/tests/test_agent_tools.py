@@ -12,7 +12,7 @@ from langchain_core.tools import BaseTool
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotFound, ValidationFailed
-from api.models import Pipeline, User
+from api.models import Pipeline, Run, RunStatus, User
 from api.repositories import pipelines, users
 from api.repositories.pipelines import PipelineChanges
 from api.security import hash_password
@@ -20,11 +20,14 @@ from api.services import agent as agent_service
 from api.services import agent_tools
 from api.services.agent_tools import built_in_tools
 from api.services.multiagent.contracts import StepAgent
-from tests.conftest import FakeProvider, use_pipeline_generator
+from api.services.runs import RunService, launcher
+from tests.conftest import FakeProvider, InlineRunExecutor, use_pipeline_generator
 
 
 def chat_tools(app: FastAPI, user: User, agent: StepAgent) -> dict[str, BaseTool]:
-    tools = built_in_tools(app.state.database, user, lambda: agent)
+    database = app.state.database
+    service = RunService(database, InlineRunExecutor(), max_parallel_steps=2)
+    tools = built_in_tools(database, user, launcher(service, user, lambda: agent))
     return {item.name: item for item in tools}
 
 
@@ -54,6 +57,10 @@ def test_native_tools_list_inspect_and_run_owned_pipeline(
     assert (details["inputs"], details["steps"][0]["expected_output"]) == ([], "")
     assert run.invoke({"pipeline_id": saved.id, "input_text": "hello"})["final_output"] == "summary"
     assert provider.calls == [("Summarise hello", "m")]
+    # The chat's run is in the user's history like any other.
+    recorded = session.query(Run).one()
+    assert (recorded.pipeline_id, recorded.status) == (saved.id, RunStatus.SUCCEEDED)
+    assert recorded.final_output == "summary"
 
 
 def test_native_tools_inspect_and_run_a_pipeline_with_named_inputs(
@@ -98,6 +105,7 @@ def test_native_run_rejects_blank_input(app: FastAPI, session: Session, user: Us
     with pytest.raises(ValidationFailed, match="must not be blank"):
         run.invoke({"pipeline_id": saved.id, "input_text": "   "})
     assert provider.calls == []
+    assert session.query(Run).count() == 0
 
 
 def test_chat_tools_include_the_built_in_toolbox(app: FastAPI, user: User) -> None:

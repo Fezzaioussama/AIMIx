@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Protocol
 
+from api.exceptions import DomainError
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
 
 
@@ -77,3 +79,62 @@ class StepAgent(Protocol):
     """Agent port; replace the LangGraph/MCP adapter without changing the graph."""
 
     async def execute(self, task: AgentTask) -> AgentOutcome: ...
+
+
+class StepEventKind(str, Enum):
+    """A moment in one step's life, in the order the graph reports them."""
+
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass(frozen=True)
+class StepEvent:
+    """What the graph tells a ``StepObserver`` about one step.
+
+    Extend by adding an optional field (or a field on ``StepResult``, which an
+    agent can fill through ``AgentOutcome``): the graph's control flow does not
+    change, and observers ignore what they do not read.
+    """
+
+    kind: StepEventKind
+    step: StepSpec
+    #: The stage input the step was given.
+    input_used: str
+    #: Set when ``kind`` is SUCCEEDED.
+    result: StepResult | None = None
+    #: Set when ``kind`` is FAILED.
+    error: DomainError | None = None
+
+
+class StepObserver(Protocol):
+    """Observer port: told of each step's progress while a run executes.
+
+    The graph awaits every call before the step goes on, so an observer sees a
+    step's events in order and may hold it back. An exception raised here fails
+    the run.
+    """
+
+    async def on_step_event(self, event: StepEvent) -> None: ...
+
+
+class _SilentObserver:
+    """Null Object: the observer of a run that nobody follows."""
+
+    async def on_step_event(self, event: StepEvent) -> None:
+        return None
+
+
+SILENT_OBSERVER: StepObserver = _SilentObserver()
+
+
+@dataclass(frozen=True)
+class RunControl:
+    """How a run reports progress, and what an earlier attempt already finished."""
+
+    observer: StepObserver = SILENT_OBSERVER
+    #: Results of steps that already succeeded, by step order (a resumed run).
+    #: They are reused as they are; their agents do not run again.
+    completed: Mapping[int, StepResult] = field(default_factory=dict)

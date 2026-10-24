@@ -51,6 +51,14 @@ class NotFound(DomainError):
     status_code = 404
 
 
+class Conflict(DomainError):
+    """The request clashes with the resource's current state, e.g. deleting a
+    run that is still running."""
+
+    code = "conflict"
+    status_code = 409
+
+
 class ProviderNotConfigured(DomainError):
     code = "provider_not_configured"
     status_code = 503

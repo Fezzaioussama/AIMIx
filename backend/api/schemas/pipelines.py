@@ -23,7 +23,7 @@ from api.models import (
     STEP_ROLE_MAX_LENGTH,
     STEP_TITLE_MAX_LENGTH,
 )
-from api.schemas.common import ModelId, NonBlank, UtcDatetime
+from api.schemas.common import ModelId, NonBlank, UtcDateTime
 from api.services.pipeline_changes import ChangeKind, ChangeTarget
 from api.services.pipeline_inputs import input_name_error
 
@@ -118,10 +118,11 @@ class PipelinePatch(BaseModel):
     steps: Steps | None = None
 
 
-class PipelineStepOut(BaseModel):
+class StepDefinitionOut(BaseModel):
+    """A step as saved: in a pipeline, or in the snapshot a run executes."""
+
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
     order: int
     stage: int
     title: str
@@ -133,13 +134,17 @@ class PipelineStepOut(BaseModel):
     model: str
 
 
+class PipelineStepOut(StepDefinitionOut):
+    id: int
+
+
 class PipelineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
     user: int = Field(validation_alias="user_id")
-    created_at: UtcDatetime
+    created_at: UtcDateTime
     inputs: list[PipelineInputField]
     steps: list[PipelineStepOut]
 

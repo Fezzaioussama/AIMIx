@@ -23,6 +23,7 @@ from api.schemas.pipelines import (
 )
 from api.services import pipeline_revision as revision_service
 from api.services import pipelines as pipeline_service
+from api.services.runs import RunStart
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
 
@@ -103,7 +104,9 @@ def delete_pipeline(pipeline_id: int, user: CurrentUser, session: DbSession) -> 
 
 @router.post("/{pipeline_id}/run")
 def run_pipeline(pipeline_id: int, body: RunRequest, context: PipelineRun) -> RunResponse:
+    """Kept for API compatibility: a recorded run, waited for to its end.
+    New clients start one with ``POST /pipelines/{id}/runs`` and poll it."""
     pipeline = repository.get_owned(context.session, context.user, pipeline_id)
-    pipeline_service.ensure_runnable(pipeline)
-    result = pipeline_service.run(pipeline, context.agents(), body.input, body.inputs)
+    start = RunStart(body.input, body.inputs)
+    result = context.runs.run_to_end(context.user, pipeline, start, context.agents())
     return RunResponse.model_validate(asdict(result))

@@ -6,6 +6,8 @@ import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { BrandMark } from '../../core/ui/BrandMark';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { FollowedRunBar } from '../runs/FollowedRunBar';
+import { useFollowedRun } from '../runs/useFollowedRun';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
@@ -27,22 +29,32 @@ export function PipelineBuilderPage() {
       : undefined;
   const { models, defaultModel, error: modelsError } = useModels();
   const { tools, error: toolsError } = useAgentTools();
-  const { pipeline, saved, results, elapsedMs, status, message, dirty, actions } =
-    usePipelineBuilder(defaultModel, typeof initialId === 'number' ? initialId : undefined);
+  const { pipeline, saved, status, message, dirty, actions } = usePipelineBuilder(
+    defaultModel,
+    typeof initialId === 'number' ? initialId : undefined,
+  );
   const [draft, setDraft] = useState<RunDraft>(EMPTY_RUN_DRAFT);
+  // The pipeline's newest run, followed live; reopening the pipeline shows it again.
+  const followed = useFollowedRun(pipeline, dirty);
 
   const isSaving = status === 'saving';
-  const isRunning = status === 'running';
+  const isStarting = status === 'running';
+  const isRunning = isStarting || followed.active;
   const stageCount = new Set(pipeline.steps.map((step) => step.stage)).size;
 
   function editStep(order: number) {
     document.getElementById(`step-editor-${order}`)?.scrollIntoView?.({ behavior: 'smooth' });
   }
 
+  async function startRun() {
+    const started = await actions.run(draft);
+    if (started) followed.follow(started);
+  }
+
   return (
     <div className="flex min-h-[calc(100vh-60px)] flex-col text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
       <aside
-        inert={isRunning || isSaving}
+        inert={isStarting || isSaving}
         className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-950/60 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0"
       >
         <div className="mb-4 flex items-baseline gap-2">
@@ -89,8 +101,7 @@ export function PipelineBuilderPage() {
           Run Inputs
         </h3>
         <p className="mb-3 text-xs text-slate-400">
-          Named values you fill in on every run. Any step, in any stage, can use one as{' '}
-          {'{name}'}.
+          Named values you fill in on every run. Any step, in any stage, can use one as {'{name}'}.
         </p>
         <div className="mb-6">
           <PipelineInputsEditor inputs={pipeline.inputs} onChange={actions.setInputs} />
@@ -153,10 +164,11 @@ export function PipelineBuilderPage() {
             <PipelineRunView
               steps={pipeline.steps}
               inputs={pipeline.inputs}
-              results={results}
-              isRunning={isRunning}
+              liveSteps={followed.shown?.steps}
+              runKey={followed.shown?.id ?? null}
+              isRunning={followed.shown ? followed.shownActive : isStarting}
               input={draft.text}
-              elapsedMs={elapsedMs}
+              elapsedMs={followed.shownElapsedMs}
               onEditStep={isRunning || isSaving ? undefined : editStep}
               onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
               onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
@@ -169,8 +181,9 @@ export function PipelineBuilderPage() {
                 isSaved={pipeline.id !== undefined}
                 message={message || modelsError || ''}
                 onDraftChange={setDraft}
-                onRun={() => void actions.run(draft)}
+                onRun={() => void startRun()}
               />
+              <FollowedRunBar followed={followed} />
             </PipelineRunView>
           </div>
         </div>

@@ -20,6 +20,7 @@ from api.endpoints import (
     llm_settings,
     models,
     pipelines,
+    runs,
     templates,
 )
 
@@ -37,6 +38,7 @@ PROTECTED_ROUTERS = (
     templates.router,
     integrations.router,
     files.router,
+    runs.router,
 )
 
 

@@ -51,7 +51,7 @@ accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 | Workspace | Best for | What happens |
 |---|---|---|
 | **Chat** | Exploring ideas and invoking saved workflows | A streaming LangGraph agent can inspect or run only the signed-in user's pipelines and configured MCP tools. |
-| **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes (typed, or read from an attached PDF, Word, HTML, CSV or text file) and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. |
+| **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes (typed, or read from an attached PDF, Word, HTML, CSV or text file) and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. Runs execute in the background: watch each step finish live, stop a run, resume a failed or stopped one where it left off, and find every run again in the run history. |
 | **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes the run's inputs, stages, roles, models, expected outputs, deliverables, and available tools without saving anything until you review it. |
 
 New users can also start from **Templates**: eight ready-made missions (market
@@ -72,9 +72,7 @@ flowchart LR
     S2 --> Output[Deliverables + tool trace]
 ```
 
-> **Current boundary:** pipeline runs wait on one HTTP request. Run history,
-> resumable checkpoints, and approval prompts for tool actions are not yet
-> implemented.
+> **Current boundary:** tool actions run without an approval prompt.
 
 ## Stack
 
@@ -128,8 +126,9 @@ and each chat or pipeline agent has `AGENT_TIMEOUT_SECONDS`.
 
 `api/services/pipelines.py` snapshots a saved pipeline through
 `api/services/multiagent/mapper.py`; `multiagent/graph.py` executes the immutable
-snapshot as a LangGraph `StateGraph`. On
-`POST /api/pipelines/<id>/run` with `{"input": "..."}` — or, for a pipeline
+snapshot as a LangGraph `StateGraph`; `api/services/runs.py` runs it in the
+background and records it. On
+`POST /api/pipelines/<id>/runs` with `{"input": "..."}` — or, for a pipeline
 that declares named inputs, `{"inputs": {"topic": "...", ...}}`:
 
 1. The endpoint validates the body with `RunRequest`.
@@ -149,11 +148,17 @@ that declares named inputs, `{"inputs": {"topic": "...", ...}}`:
    before producing its final text.
 5. A stage's output becomes the next stage's input; the join orders parallel
    outputs by saved step order under a heading per step, regardless of when the
-   agents finish. The response includes every step's output and a metadata-only
-   list of tool calls (name and success/error status).
+   agents finish. Each step records its output and a metadata-only list of tool
+   calls (name and success/error status).
 
-The HTTP request still waits for the full run. Runs have no persisted
-run history, resumable checkpoint, or approval flow for tool actions.
+The request returns `202` with the run as soon as it is saved (`queued`); the
+run executes on a background event loop, at most `RUN_MAX_CONCURRENT` at once,
+and writes each step as it starts and finishes, so `GET /api/runs/<id>` shows
+progress live. A run can be stopped, resumed from its first unfinished stage
+with its own snapshot (finished steps are kept), and deleted once it has ended;
+a restart marks runs in progress *interrupted*, ready to resume. The older
+`POST /api/pipelines/<id>/run` still answers with the whole result: it starts
+the same recorded run and waits for it.
 
 ### Chat streaming
 
@@ -182,15 +187,16 @@ backend/
   api/
     main.py              # create_app(): the application factory
     routes.py            # route table, no logic; protected by default
-    endpoints/           # thin routers: auth · chat · models · pipelines
+    endpoints/           # thin routers: auth · chat · models · pipelines · runs
     schemas/             # pydantic request + response contracts
     deps.py              # dependencies: db session, current user, provider
-    services/            # business logic: pipelines, chat, accounts, prompts, llm
+    services/            # business logic: pipelines, runs, chat, accounts, prompts, llm
+      runs.py             # background runs: start, stop, resume, recover after a restart
       agent_runtime.py    # shared chat/pipeline tool policy and error mapping
       multiagent/         # contracts, ORM mapper, stage graph, step agent
       toolbox/            # built-in web, calculation, clock and local workspace tools
     repositories/        # data access; ownership filtering lives here
-    models.py            # SQLAlchemy: User, Pipeline, PipelineStep
+    models.py            # SQLAlchemy: User, Pipeline, PipelineStep, Run, RunStep
     security.py          # password hashing + JWT signing
     exceptions.py        # domain errors (code + HTTP status)
     errors.py            # ★ the one place that shapes an error response
@@ -216,7 +222,7 @@ frontend/src/
     ui/                  # shared presentation + motion; reactbits/ = effects
                          #   adapted from React Bits (Aurora, SpotlightCard, …)
   features/
-    auth/ chat/ pipelines/
+    auth/ chat/ pipelines/ runs/
 ```
 
 The split to respect: `endpoints/` stays thin — validate, call a service, shape
@@ -234,6 +240,8 @@ input, while every HTTP call, the bearer token and all payload types live in
 |---|---|
 | `Pipeline` | Named pipeline owned by a user, with the named `inputs` every run takes |
 | `PipelineStep` | Stage/order, prompt, model, role, `allowed_tools` policy, output flag, expected output |
+| `Run` | One execution of a pipeline: its snapshot, inputs, status, final output or error, times |
+| `RunStep` | One step of a run: status, input used, output, tool trace, error, times |
 
 ### API
 
@@ -246,7 +254,8 @@ All routes under `/api`.
 | Models | `GET /models` — the model ids the pipeline services accept |
 | Agent tools | `GET /agent-tools` — available pipeline tools and their sources |
 | Templates | `GET /templates`, `POST /templates/<slug>/use` — the mission gallery, and a template turned into your own pipeline |
-| Pipelines | `GET\|POST /pipelines/`, `GET\|PUT\|PATCH\|DELETE /pipelines/<id>/`, `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
+| Pipelines | `GET\|POST /pipelines/`, `GET\|PUT\|PATCH\|DELETE /pipelines/<id>/`, `POST /pipelines/<id>/runs` (background), `POST /pipelines/<id>/run` (waits), `POST /pipelines/generate` |
+| Runs | `GET /runs`, `GET\|DELETE /runs/<id>`, `POST /runs/<id>/cancel`, `POST /runs/<id>/resume` |
 
 Everything except `POST /register`, `POST /login` and `POST /token/refresh`
 requires `Authorization: Bearer <access>`; routes are protected by default in
@@ -270,6 +279,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `not_authenticated` | 401 | Missing or expired access token |
 | `permission_denied` | 403 | Authenticated but not allowed |
 | `not_found` | 404 | No such record, or it belongs to someone else |
+| `conflict` | 409 | The request clashes with the record's state, e.g. deleting a run in progress |
 | `provider_not_configured` | 503 | No API key for the selected provider |
 | `provider_unavailable` | 502 | The provider rejected the request |
 | `provider_timeout` | 504 | A provider or agent request timed out |
@@ -291,6 +301,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `TOGAI_API_KEY` | For TogetherAI, unless saved in Settings | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
+| `RUN_MAX_CONCURRENT` | No | Pipeline runs executing at once; the rest wait queued (default 4) |
 | `MCP_SERVERS` | No | JSON object of MCP servers available to chat and pipeline agents (default `{}`) |
 | `MCP_TIMEOUT_SECONDS` | No | Bounds MCP discovery and tool calls (default 30) |
 | `AGENT_WORKSPACE_DIR` | No | Sandboxed local files available to agents (default `backend/workspace`) |

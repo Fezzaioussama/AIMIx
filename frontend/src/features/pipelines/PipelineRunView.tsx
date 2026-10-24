@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 
-import type { PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
+import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
@@ -15,11 +15,18 @@ import { groupByStage } from './stages';
 type Tab = 'outputs' | 'steps';
 
 const TAB_LIST = 'flex gap-1 rounded-xl border border-white/10 bg-slate-900/70 p-1';
+const NO_RESULTS: StepResult[] = [];
 
 interface PipelineRunViewProps {
   steps: PipelineStep[];
   inputs?: PipelineInput[];
-  results: StepResult[];
+  /** The latest finished results; ignored while `liveSteps` are shown. */
+  results?: StepResult[];
+  /** A followed run's steps with their progress: nodes show each step's status,
+   * and an output appears as soon as it is saved. */
+  liveSteps?: RunStep[];
+  /** Which run `liveSteps` belong to; the view starts over when another replaces it. */
+  runKey?: number | null;
   isRunning: boolean;
   input: string;
   elapsedMs: number | null;
@@ -33,7 +40,9 @@ interface PipelineRunViewProps {
 export function PipelineRunView({
   steps,
   inputs,
-  results,
+  results: finished = NO_RESULTS,
+  liveSteps,
+  runKey = null,
   isRunning,
   input,
   elapsedMs,
@@ -42,16 +51,76 @@ export function PipelineRunView({
   onAddAfter,
   children,
 }: PipelineRunViewProps) {
-  const [tab, setTab] = useState<Tab>('outputs');
-  const [focus, setFocus] = useState<OutputTarget | null>(null);
-  const [shownResults, setShownResults] = useState(results);
-  const outputs = results.filter((result) => result.is_output);
+  const view = useRunView({ finished, liveSteps, runKey, isRunning });
+  const hasResults = liveSteps ? liveSteps.length > 0 : view.results.length > 0 && !isRunning;
 
-  // A new run starts on its outputs (React's "adjust state on prop change").
-  if (shownResults !== results) {
-    setShownResults(results);
-    setTab('outputs');
+  return (
+    <section>
+      <PipelineGraph
+        steps={steps}
+        inputs={inputs}
+        results={view.results}
+        liveSteps={liveSteps}
+        isRunning={isRunning}
+        input={input}
+        selected={view.focus}
+        onSelect={view.select}
+        onEditStep={onEditStep}
+        onAddParallel={onAddParallel}
+        onAddAfter={onAddAfter}
+      />
+
+      {children}
+
+      {isRunning && !liveSteps && (
+        <BusyNotice className="mt-8">
+          Running the pipeline — parallel steps run at the same time…
+        </BusyNotice>
+      )}
+
+      {hasResults && (
+        <ResultsArea
+          view={view}
+          allSteps={liveSteps ?? view.results}
+          isRunning={isRunning}
+          elapsedMs={elapsedMs}
+        />
+      )}
+    </section>
+  );
+}
+
+interface ShownRun {
+  finished: StepResult[];
+  liveSteps?: RunStep[];
+  runKey: number | null;
+  isRunning: boolean;
+}
+
+/**
+ * What the results show — finished results, or a followed run's steps — with
+ * the open tab and the step the diagram points at. React's "adjust state on
+ * prop change": a new run opens on its progress while it runs and on its
+ * outputs once done, and a followed run that finishes turns to its outputs.
+ */
+function useRunView({ finished, liveSteps, runKey, isRunning }: ShownRun) {
+  const results = liveSteps ? liveSteps.filter((step) => step.status === 'succeeded') : finished;
+  const outputs = results.filter((result) => result.is_output);
+  const firstTab: Tab = liveSteps && isRunning ? 'steps' : 'outputs';
+  const shownRun = liveSteps ? runKey : finished;
+  const [tab, setTab] = useState<Tab>(firstTab);
+  const [focus, setFocus] = useState<OutputTarget | null>(null);
+  const [seenRun, setSeenRun] = useState(shownRun);
+  const [wasRunning, setWasRunning] = useState(isRunning);
+
+  if (seenRun !== shownRun) {
+    setSeenRun(shownRun);
+    setWasRunning(isRunning);
+    setTab(firstTab);
     setFocus(null);
+  } else if (wasRunning !== isRunning) {
+    setWasRunning(isRunning);
+    if (!isRunning && outputs.length > 0) setTab('outputs');
   }
 
   function select(target: OutputTarget) {
@@ -60,53 +129,47 @@ export function PipelineRunView({
     setFocus(target);
   }
 
-  const focusedStep = typeof focus === 'number' ? focus : null;
+  return { results, outputs, tab, setTab, focus, select };
+}
 
+interface ResultsAreaProps {
+  view: ReturnType<typeof useRunView>;
+  /** Every step the "All steps" tab lists: finished results, or a run's steps. */
+  allSteps: (StepResult | RunStep)[];
+  isRunning: boolean;
+  elapsedMs: number | null;
+}
+
+/** The "Outputs" / "All steps" tabs, the run's totals and the open tab's cards. */
+function ResultsArea({ view, allSteps, isRunning, elapsedMs }: ResultsAreaProps) {
+  const focusedStep = typeof view.focus === 'number' ? view.focus : null;
   return (
-    <section>
-      <PipelineGraph
-        steps={steps}
-        inputs={inputs}
-        results={results}
-        isRunning={isRunning}
-        input={input}
-        selected={focus}
-        onSelect={select}
-        onEditStep={onEditStep}
-        onAddParallel={onAddParallel}
-        onAddAfter={onAddAfter}
-      />
-
-      {children}
-
-      {isRunning && (
-        <BusyNotice className="mt-8">
-          Running the pipeline — parallel steps run at the same time…
-        </BusyNotice>
-      )}
-
-      {results.length > 0 && !isRunning && (
-        <div className="mt-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className={TAB_LIST} role="tablist">
-              <TabButton active={tab === 'outputs'} onClick={() => setTab('outputs')}>
-                Outputs ({outputs.length})
-              </TabButton>
-              <TabButton active={tab === 'steps'} onClick={() => setTab('steps')}>
-                All steps ({results.length})
-              </TabButton>
-            </div>
-            <RunStats results={results} outputCount={outputs.length} elapsedMs={elapsedMs} />
-          </div>
-
-          {tab === 'outputs' ? (
-            <OutputsPanel outputs={outputs} focusedStep={focusedStep} />
-          ) : (
-            <RunResults results={results} focusedStep={focusedStep} />
-          )}
+    <div className="mt-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className={TAB_LIST} role="tablist">
+          <TabButton value="outputs" active={view.tab === 'outputs'} onClick={view.setTab}>
+            Outputs ({view.outputs.length})
+          </TabButton>
+          <TabButton value="steps" active={view.tab === 'steps'} onClick={view.setTab}>
+            All steps ({allSteps.length})
+          </TabButton>
         </div>
+        {/* Totals count up once the run has ended; the status bar tracks progress. */}
+        {!isRunning && (
+          <RunStats
+            results={view.results}
+            outputCount={view.outputs.length}
+            elapsedMs={elapsedMs}
+          />
+        )}
+      </div>
+
+      {view.tab === 'outputs' ? (
+        <OutputsPanel outputs={view.outputs} focusedStep={focusedStep} />
+      ) : (
+        <RunResults results={allSteps} focusedStep={focusedStep} runActive={isRunning} />
       )}
-    </section>
+    </div>
   );
 }
 
@@ -118,12 +181,22 @@ function OutputsPanel({
   focusedStep: number | null;
 }) {
   const stages = groupByStage(outputs, (result) => result.stage);
+  if (stages.length === 0) {
+    return (
+      <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-400">
+        No outputs yet. Each one appears here as soon as it is ready.
+      </p>
+    );
+  }
   return (
     <div className="space-y-6">
       {stages.map((group) => (
         <section key={group.stage} aria-label={`Stage ${group.stage} outputs`}>
           <h3 className="mb-3 text-sm font-semibold text-slate-300">
-            Stage {group.stage} <span className="text-slate-500">· {group.items.length} {group.items.length === 1 ? 'output' : 'outputs'}</span>
+            Stage {group.stage}{' '}
+            <span className="text-slate-400">
+              · {group.items.length} {group.items.length === 1 ? 'output' : 'outputs'}
+            </span>
           </h3>
           <div className={group.items.length > 1 ? 'grid gap-4 xl:grid-cols-2' : ''}>
             {group.items.map((result, index) => (
@@ -145,19 +218,20 @@ function OutputsPanel({
 }
 
 interface TabButtonProps {
+  value: Tab;
   active: boolean;
-  onClick: () => void;
+  onClick: (value: Tab) => void;
   children: ReactNode;
 }
 
 /** A results tab; the active one carries the gliding `run-tabs` pill. */
-function TabButton({ active, onClick, children }: TabButtonProps) {
+function TabButton({ value, active, onClick, children }: TabButtonProps) {
   return (
     <button
       type="button"
       role="tab"
       aria-selected={active}
-      onClick={onClick}
+      onClick={() => onClick(value)}
       className={`relative isolate rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
         active ? 'text-white' : 'text-slate-300 hover:text-white'
       }`}
@@ -165,6 +239,9 @@ function TabButton({ active, onClick, children }: TabButtonProps) {
       {active && (
         <ActivePill
           layoutId="run-tabs"
+          // Per tab: the pill glides when the tab changes, but not after the
+          // tab list when a live run's status bar above it changes height.
+          layoutDependency={value}
           className="bg-gradient-to-r from-sky-500 to-indigo-500 shadow-[0_6px_20px_-8px_rgba(99,102,241,0.9)]"
         />
       )}

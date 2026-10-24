@@ -9,9 +9,17 @@ import pytest
 from api.exceptions import ProviderUnavailable
 from api.models import Pipeline, PipelineStep
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
-from api.services.multiagent.contracts import InputField, PipelineSpec, RunInputs
+from api.services.multiagent.contracts import (
+    InputField,
+    PipelineSpec,
+    RunControl,
+    RunInputs,
+    StepEvent,
+    StepEventKind,
+    StepResult,
+)
 from api.services.multiagent.graph import GraphPipelineRunner
-from api.services.multiagent.mapper import snapshot_pipeline
+from api.services.multiagent.mapper import snapshot_pipeline, spec_from_json, spec_to_json
 from api.services.prompts import merge_stage_outputs
 
 
@@ -208,3 +216,104 @@ def test_each_step_receives_its_own_role_model_and_tool_policy() -> None:
         item.tool_calls == [ToolCallTrace("lookup", "success")]
         for item in result.intermediate_results
     )
+
+
+class RecordingObserver:
+    def __init__(self) -> None:
+        self.events: list[StepEvent] = []
+
+    async def on_step_event(self, event: StepEvent) -> None:
+        self.events.append(event)
+
+    def seen(self) -> list[tuple[StepEventKind, int]]:
+        return [(event.kind, event.step.order) for event in self.events]
+
+
+class EchoRoleAgent:
+    def __init__(self) -> None:
+        self.roles: list[str] = []
+
+    async def execute(self, task: AgentTask) -> AgentOutcome:
+        self.roles.append(task.role)
+        return _outcome(f"out-{task.role}")
+
+
+def test_the_observer_hears_each_step_start_and_finish_in_order() -> None:
+    observer = RecordingObserver()
+
+    asyncio.run(
+        GraphPipelineRunner(max_parallel_steps=2).arun(
+            _pipeline(_step(1, 1), _step(2, 2)),
+            EchoRoleAgent(),
+            RunInputs("seed"),
+            RunControl(observer=observer),
+        )
+    )
+
+    started, succeeded = StepEventKind.STARTED, StepEventKind.SUCCEEDED
+    assert observer.seen() == [(started, 1), (succeeded, 1), (started, 2), (succeeded, 2)]
+    assert observer.events[0].input_used == "seed"
+    finished = observer.events[3].result
+    assert finished is not None and finished.output == "out-role-2"
+
+
+def test_the_observer_hears_a_failure_and_the_cancelled_parallel_step() -> None:
+    observer = RecordingObserver()
+
+    class Agent:
+        async def execute(self, task: AgentTask) -> AgentOutcome:
+            if task.role == "role-1":
+                await asyncio.sleep(0.05)
+                raise ProviderUnavailable("branch failed")
+            await asyncio.sleep(5)
+            return _outcome(task.role)
+
+    with pytest.raises(ProviderUnavailable):
+        asyncio.run(
+            GraphPipelineRunner(max_parallel_steps=2).arun(
+                _pipeline(_step(1, 1), _step(2, 1)),
+                Agent(),
+                RunInputs("seed"),
+                RunControl(observer=observer),
+            )
+        )
+
+    finished = {event.step.order: event for event in observer.events[2:]}
+    assert finished[1].kind == StepEventKind.FAILED
+    assert finished[1].error is not None and finished[1].error.code == "provider_unavailable"
+    assert finished[2].kind == StepEventKind.CANCELLED
+
+
+def test_completed_steps_are_reused_without_running_their_agent() -> None:
+    observer = RecordingObserver()
+    agent = EchoRoleAgent()
+    saved = StepResult(1, 1, "Step 1", "model-1", "seed", "saved output")
+
+    result = asyncio.run(
+        GraphPipelineRunner(max_parallel_steps=2).arun(
+            _pipeline(_step(1, 1), _step(2, 2)),
+            agent,
+            RunInputs("seed"),
+            RunControl(observer=observer, completed={1: saved}),
+        )
+    )
+
+    assert agent.roles == ["role-2"]
+    assert observer.seen() == [(StepEventKind.STARTED, 2), (StepEventKind.SUCCEEDED, 2)]
+    assert observer.events[0].input_used == "saved output"
+    assert [item.output for item in result.intermediate_results] == ["saved output", "out-role-2"]
+
+
+def test_a_stored_snapshot_rebuilds_the_same_pipeline() -> None:
+    step = _step(1, 1)
+    step.expected_output = "A list"
+    spec = snapshot_pipeline(
+        Pipeline(
+            id=4,
+            name="Stored",
+            inputs=[{"name": "topic", "label": "Topic", "description": ""}],
+            steps=[step, _step(2, 2)],
+        )
+    )
+
+    assert spec_from_json(4, spec_to_json(spec)) == spec

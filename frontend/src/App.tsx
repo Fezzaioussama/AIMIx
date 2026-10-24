@@ -13,6 +13,7 @@ import { ChatPage } from './features/chat/ChatPage';
 import { FilesPage } from './features/files/FilesPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
+import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TemplatesPage } from './features/templates/TemplatesPage';
 
@@ -21,13 +22,22 @@ const LandingPage = lazy(() =>
   import('./features/landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
 
-// `paths` lists every route a section owns, so Pipelines stays lit on /auto-pipeline.
+// `paths` lists every route a section owns (and the routes below them), so
+// Pipelines stays lit on /auto-pipeline and /runs/7.
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat', paths: ['/chat'] },
-  { to: '/pipeline', label: 'Pipelines', paths: ['/pipeline', '/auto-pipeline', '/templates'] },
+  {
+    to: '/pipeline',
+    label: 'Pipelines',
+    paths: ['/pipeline', '/auto-pipeline', '/templates', '/runs'],
+  },
   { to: '/files', label: 'Files', paths: ['/files'] },
   { to: '/settings', label: 'Settings', paths: ['/settings'] },
 ] as const;
+
+function ownsPath(paths: readonly string[], pathname: string): boolean {
+  return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
 
 // Tighter on a phone, so four items and the logo fit a 390px bar.
 const navLinkClass = (isActive: boolean) =>
@@ -45,7 +55,7 @@ function AppNav() {
       <img src="/logo.png" alt="AIMIx" className="h-8 w-auto sm:h-10" />
       <div className="flex gap-1 sm:gap-2">
         {NAV_ITEMS.map((item) => {
-          const isActive = (item.paths as readonly string[]).includes(pathname);
+          const isActive = ownsPath(item.paths, pathname);
           return (
             <Link
               key={item.to}
@@ -118,6 +128,7 @@ export function App() {
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/runs/:runId?" element={<RunsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
