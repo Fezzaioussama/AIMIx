@@ -142,6 +142,11 @@ The backend start target applies pending database migrations before launching th
    name the deliverables you want. The planner sees the available tools and
    proposes a role and tool list for each step. Review the generated stages and
    tool choices, then save and open the builder.
+4. **Templates** (`/templates`) — pick one of eight ready-made missions (market
+   research, competitor analysis, document digest, meeting actions, data
+   insights, SEO brief, content calendar, launch plan). It opens in the builder
+   as your own pipeline, on your default model and with only the tools you
+   have; fill in its inputs and run it.
 
 ## Talking to the API directly
 

@@ -54,6 +54,11 @@ accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 | **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes (typed, or read from an attached PDF, Word, HTML, CSV or text file) and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. |
 | **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes the run's inputs, stages, roles, models, expected outputs, deliverables, and available tools without saving anything until you review it. |
 
+New users can also start from **Templates**: eight ready-made missions (market
+research, competitor analysis, document digest, meeting actions, data insights,
+SEO brief, content calendar, launch plan) that open in the Pipeline Builder as
+their own pipeline, with parallel research, a writer, and a final reviewer.
+
 ### Pipeline execution at a glance
 
 ```mermaid
@@ -240,6 +245,7 @@ All routes under `/api`.
 | Chat | `POST /chat` (streaming) |
 | Models | `GET /models` — the model ids the pipeline services accept |
 | Agent tools | `GET /agent-tools` — available pipeline tools and their sources |
+| Templates | `GET /templates`, `POST /templates/<slug>/use` — the mission gallery, and a template turned into your own pipeline |
 | Pipelines | `GET\|POST /pipelines/`, `GET\|PUT\|PATCH\|DELETE /pipelines/<id>/`, `POST /pipelines/<id>/run`, `POST /pipelines/generate` |
 
 Everything except `POST /register`, `POST /login` and `POST /token/refresh`
