@@ -75,4 +75,38 @@ describe('api client', () => {
     await expect(request(API.pipelines)).rejects.toBeInstanceOf(ApiError);
     expect(getAccessToken()).toBeNull();
   });
+
+  it('sends a FormData as multipart, leaving the Content-Type to the browser', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+    const form = new FormData();
+    form.append('file', new File(['hi'], 'a.txt'));
+
+    await request(API.extractDocument, { method: 'POST', body: form });
+
+    const init = fetchMock.mock.calls[0][1];
+    expect(init?.body).toBe(form);
+    expect((init?.headers as Headers).has('Content-Type')).toBe(false);
+  });
+
+  it('still sends JSON as JSON', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
+
+    await request(API.chat, { method: 'POST', body: { message: 'hi' } });
+
+    const init = fetchMock.mock.calls[0][1];
+    expect(init?.body).toBe('{"message":"hi"}');
+    expect((init?.headers as Headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('reports a caller-cancelled request as cancelled, not as a network failure', async () => {
+    const controller = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      controller.abort();
+      throw new DOMException('Aborted', 'AbortError');
+    });
+
+    await expect(request(API.models, { signal: controller.signal })).rejects.toMatchObject({
+      code: 'aborted',
+    });
+  });
 });

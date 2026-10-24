@@ -1,4 +1,4 @@
-import type { PipelineInput, PipelineRunRequest } from '../../core/api/types';
+import type { ExtractedDocument, PipelineInput, PipelineRunRequest } from '../../core/api/types';
 
 /**
  * Named run inputs. The naming rule mirrors `input_name_error` in
@@ -72,4 +72,21 @@ export function runRequest(inputs: PipelineInput[], draft: RunDraft): PipelineRu
   return {
     inputs: Object.fromEntries(inputs.map((field) => [field.name, draft.values[field.name] ?? ''])),
   };
+}
+
+/**
+ * `current` with a document's text added under a line naming its source, so the model
+ * knows where it came from. Anything already typed is kept, with a blank line between.
+ */
+export function appendDocument(current: string, document: ExtractedDocument): string {
+  const block = `[Document: ${document.filename}]\n${document.text}`;
+  return current.trim() ? `${current.trimEnd()}\n\n${block}` : block;
+}
+
+/** One line telling the person what was added, and warning when it was cut short. */
+export function documentSummary(document: ExtractedDocument): string {
+  const pages =
+    document.pages === null ? '' : ` · ${document.pages} page${document.pages === 1 ? '' : 's'}`;
+  const added = `${document.filename} added${pages} · ${document.characters.toLocaleString('en-US')} characters`;
+  return document.truncated ? `${added} · only the first part fit` : added;
 }

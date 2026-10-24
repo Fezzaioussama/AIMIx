@@ -152,4 +152,9 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
     answer:
       'Nine toolbox functions cover web research, calculation, time, local files, CSV data and saved artifacts, plus anything you connect over MCP. You choose the tools per agent.',
   },
+  {
+    question: 'Can a pipeline read my documents?',
+    answer:
+      'Yes. Attach a PDF, Word, HTML, CSV or text file to any run input and AIMIx reads it into that input, where you can still edit it. Scanned PDFs and images need OCR, which is not supported yet.',
+  },
 ];

@@ -30,6 +30,9 @@ SECRET_PLACEHOLDERS = frozenset(
     }
 )
 
+#: Headroom over a document's size for the multipart framing around it.
+MULTIPART_OVERHEAD_BYTES = 1_048_576
+
 #: Only acceptable when APP_ENV=local; production refuses to start without a key.
 LOCAL_SECRET_KEY = "insecure-local-development-key-change-me"
 
@@ -136,6 +139,16 @@ class Settings(BaseSettings):
         50, ge=1, validation_alias="WORKSPACE_SEARCH_MAX_RESULTS"
     )
     workspace_csv_max_rows: int = Field(200, ge=1, validation_alias="WORKSPACE_CSV_MAX_ROWS")
+    # --- Documents attached to a pipeline run (api/services/documents) --------
+    # An upload is read into memory, so each of these bounds a different cost.
+    document_max_bytes: int = Field(10_000_000, ge=1, validation_alias="DOCUMENT_MAX_BYTES")
+    # Text kept from one document; the rest is dropped and the run is told so.
+    document_max_chars: int = Field(120_000, ge=1, validation_alias="DOCUMENT_MAX_CHARS")
+    document_max_pages: int = Field(300, ge=1, validation_alias="DOCUMENT_MAX_PAGES")
+    # A .docx is a zip: refuse one that would unpack to more than this.
+    document_max_unpacked_bytes: int = Field(
+        50_000_000, ge=1, validation_alias="DOCUMENT_MAX_UNPACKED_BYTES"
+    )
     # Upper bound on provider calls one pipeline run makes at once for a stage
     # whose steps run in parallel.
     pipeline_max_parallel_steps: int = Field(
@@ -193,6 +206,11 @@ class Settings(BaseSettings):
         elif not self.secret_key:
             self.secret_key = LOCAL_SECRET_KEY
         return self
+
+    @property
+    def max_request_bytes(self) -> int:
+        """Largest request body accepted: one document plus multipart overhead."""
+        return self.document_max_bytes + MULTIPART_OVERHEAD_BYTES
 
     # Provider-keyed views, so provider lookups stay one dict access (§5 O).
     @property

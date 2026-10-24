@@ -19,6 +19,7 @@ from api.security import SecretBox, TokenSigner
 from api.services import accounts, llm_settings
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
+from api.services.documents.contracts import ExtractionLimits
 from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
@@ -37,6 +38,19 @@ def app_settings() -> Settings:
 
 DbSession = Annotated[Session, Depends(db_session)]
 AppSettings = Annotated[Settings, Depends(app_settings)]
+
+
+def document_limits(settings: AppSettings) -> ExtractionLimits:
+    """What one document extraction may cost, from settings."""
+    return ExtractionLimits(
+        max_bytes=settings.document_max_bytes,
+        max_chars=settings.document_max_chars,
+        max_pages=settings.document_max_pages,
+        max_unpacked_bytes=settings.document_max_unpacked_bytes,
+    )
+
+
+DocumentLimits = Annotated[ExtractionLimits, Depends(document_limits)]
 
 
 def token_signer(settings: AppSettings) -> TokenSigner:

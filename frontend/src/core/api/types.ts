@@ -56,6 +56,19 @@ export interface PipelineRunRequest {
   inputs?: Record<string, string>;
 }
 
+/** A document read into text, ready to become a run input (POST /api/documents/extract). */
+export interface ExtractedDocument {
+  filename: string;
+  /** Lower-case extension without the dot, e.g. "pdf". */
+  format: string;
+  text: string;
+  characters: number;
+  /** Page count for paged formats (PDF), else null. */
+  pages: number | null;
+  /** True when part of the document was left out (size or page limit). */
+  truncated: boolean;
+}
+
 export interface StepResult {
   step_order: number;
   stage: number;

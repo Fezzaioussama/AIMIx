@@ -13,6 +13,9 @@ export const REQUEST_TIMEOUT_MS = 30_000;
  */
 export const GENERATION_TIMEOUT_MS = 60 * 60 * 1000;
 
+/** Uploading and reading a document: longer than a normal call, far shorter than a generation. */
+export const UPLOAD_TIMEOUT_MS = 120_000;
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -71,23 +74,32 @@ function handleUnauthorized(status: number): void {
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  /** A FormData is sent as multipart (a file upload); anything else as JSON. */
   body?: unknown;
   timeoutMs?: number;
+  /** Lets the caller cancel, e.g. when its component unmounts. */
+  signal?: AbortSignal;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS } = options;
-  const headers = authHeaders(body === undefined ? undefined : { 'Content-Type': 'application/json' });
+  const { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS, signal } = options;
+  // A FormData must not get a Content-Type: the browser adds one with the multipart boundary.
+  const isForm = body instanceof FormData;
+  const headers = authHeaders(
+    body === undefined || isForm ? undefined : { 'Content-Type': 'application/json' },
+  );
+  const timeout = AbortSignal.timeout(timeoutMs);
 
   let response: Response;
   try {
     response = await fetch(path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+      body: body === undefined || isForm ? (body as FormData | undefined) : JSON.stringify(body),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (cause) {
+    if (signal?.aborted) throw new ApiError('The request was cancelled.', 0, 'aborted');
     const timedOut = cause instanceof DOMException && cause.name === 'TimeoutError';
     throw new ApiError(
       timedOut ? 'The request timed out.' : 'Could not reach the server.',

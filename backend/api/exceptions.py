@@ -62,3 +62,20 @@ class UpstreamResponseInvalid(DomainError):
 
     code = "upstream_response_invalid"
     status_code = 502
+
+
+class DocumentTooLarge(DomainError):
+    code = "document_too_large"
+    status_code = 413
+
+
+class UnsupportedDocument(DomainError):
+    code = "unsupported_document"
+    status_code = 415
+
+
+class DocumentUnreadable(DomainError):
+    """A supported file type whose content cannot be turned into text."""
+
+    code = "document_unreadable"
+    status_code = 422

@@ -50,3 +50,17 @@ cannot be inspected or resumed. Tool actions execute without an approval step.
 
 **Fix:** persist run and step state, expose run status, and introduce an
 explicit approval gate for actions that require review.
+
+### 6. Document inputs: no OCR, and uploads are read in the request thread
+
+`POST /documents/extract` reads text only. A scanned PDF or an image has no
+text layer, so it is refused with a message saying it needs OCR; image and
+spreadsheet formats (`.png`, `.xlsx`, `.pptx`) are not supported at all.
+Parsing runs in the request's worker thread with size, page and character
+limits but no wall-clock timeout, and the request-size guard can only see a
+declared `Content-Length`: a chunked upload is still capped, but only after the
+framework has spooled it.
+
+**Fix:** add an OCR reader (and image or spreadsheet readers) to the `READERS`
+registry, run extraction in a worker with a timeout, and cap request bodies at
+the reverse proxy as well.

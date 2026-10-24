@@ -44,6 +44,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `workspace_dir` | `AGENT_WORKSPACE_DIR` | Sandboxed agent file root (`backend/workspace`) |
 | workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
+| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
@@ -142,6 +143,7 @@ Each write commits its own transaction.
 | Module | Responsibility |
 |---|---|
 | `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
+| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
 | `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
 | `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, and the async `StepAgent` protocol. |
 | `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
@@ -178,8 +180,9 @@ JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 `DomainError(detail)` carries a class-level `code`, `status_code` and optional
 `headers`. The subclasses are `ValidationFailed` (400), `NotAuthenticated` (401,
 `WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
-`ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504) and
-`UpstreamResponseInvalid` (502).
+`ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504),
+`UpstreamResponseInvalid` (502), and for documents `DocumentTooLarge` (413),
+`UnsupportedDocument` (415) and `DocumentUnreadable` (422).
 
 `errors.install_error_handlers` renders:
 - `DomainError` as its own code and status.
@@ -187,7 +190,9 @@ JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 - Framework HTTP errors (404, 405, …) by status via `STATUS_CODES`.
 - Anything unexpected as 500 `server_error`.
 
-`middleware.py` adds the `Host` allowlist, CORS, and security headers
+`middleware.py` adds `RequestSizeLimitMiddleware` (answers 413 `request_too_large`
+to a body whose declared `Content-Length` exceeds `max_request_bytes`, before any
+of it is read), the `Host` allowlist, CORS, and security headers
 (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
 `Cross-Origin-Opener-Policy`, plus HSTS in production).
 

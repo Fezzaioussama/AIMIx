@@ -51,7 +51,7 @@ accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 | Workspace | Best for | What happens |
 |---|---|---|
 | **Chat** | Exploring ideas and invoking saved workflows | A streaming LangGraph agent can inspect or run only the signed-in user's pipelines and configured MCP tools. |
-| **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. |
+| **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes (typed, or read from an attached PDF, Word, HTML, CSV or text file) and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. |
 | **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes the run's inputs, stages, roles, models, expected outputs, deliverables, and available tools without saving anything until you review it. |
 
 ### Pipeline execution at a glance

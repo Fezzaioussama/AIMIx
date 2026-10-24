@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PipelineInput } from '../../core/api/types';
+import type { ExtractedDocument, PipelineInput } from '../../core/api/types';
 import {
   addInput,
+  appendDocument,
+  documentSummary,
   inputNameProblem,
   inputsSummary,
   isRunReady,
@@ -81,5 +83,50 @@ describe('run drafts', () => {
     expect(runRequest([topic], { text: 'stale', values: { topic: 'bees', old: 'x' } })).toEqual({
       inputs: { topic: 'bees' },
     });
+  });
+});
+
+const report: ExtractedDocument = {
+  filename: 'report.pdf',
+  format: 'pdf',
+  text: 'Revenue grew.',
+  characters: 13,
+  pages: 2,
+  truncated: false,
+};
+
+describe('appendDocument', () => {
+  it('starts an empty input with the document, labelled with its source', () => {
+    expect(appendDocument('', report)).toBe('[Document: report.pdf]\nRevenue grew.');
+    expect(appendDocument('  \n ', report)).toBe('[Document: report.pdf]\nRevenue grew.');
+  });
+
+  it('keeps what was already typed and separates the document from it', () => {
+    expect(appendDocument('Summarise this:  \n', report)).toBe(
+      'Summarise this:\n\n[Document: report.pdf]\nRevenue grew.',
+    );
+  });
+
+  it('can add a second document after the first', () => {
+    const once = appendDocument('', report);
+    const twice = appendDocument(once, { ...report, filename: 'notes.txt', text: 'More.' });
+    expect(twice).toBe('[Document: report.pdf]\nRevenue grew.\n\n[Document: notes.txt]\nMore.');
+  });
+});
+
+describe('documentSummary', () => {
+  it('says what was added, with pages and a thousands separator', () => {
+    expect(documentSummary({ ...report, characters: 24310 })).toBe(
+      'report.pdf added · 2 pages · 24,310 characters',
+    );
+  });
+
+  it('omits pages for unpaged formats and uses the singular for one page', () => {
+    expect(documentSummary({ ...report, pages: null })).toBe('report.pdf added · 13 characters');
+    expect(documentSummary({ ...report, pages: 1 })).toContain('1 page ·');
+  });
+
+  it('warns when the document was cut short', () => {
+    expect(documentSummary({ ...report, truncated: true })).toMatch(/only the first part fit$/);
   });
 });

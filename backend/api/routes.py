@@ -9,7 +9,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from api.deps import current_user
-from api.endpoints import agent_tools, auth, chat, health, llm_settings, models, pipelines
+from api.endpoints import (
+    agent_tools,
+    auth,
+    chat,
+    documents,
+    health,
+    llm_settings,
+    models,
+    pipelines,
+)
 
 API_PREFIX = "/api"
 
@@ -19,6 +28,7 @@ PROTECTED_ROUTERS = (
     chat.router,
     models.router,
     pipelines.router,
+    documents.router,
     agent_tools.router,
     llm_settings.router,
 )

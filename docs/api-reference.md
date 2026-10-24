@@ -185,6 +185,49 @@ the stream.
 
 ---
 
+## Documents
+
+### `POST /documents/extract`
+
+Reads an uploaded file and returns its text, so a document can be a pipeline
+run's input. `multipart/form-data` with one `file` field. Nothing is stored: the
+client puts the returned `text` in a run input (see `POST /pipelines/<id>/run`).
+
+Supported by extension (case-insensitive): `.pdf`, `.docx`, `.html`, `.htm`, and
+plain text: `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`,
+`.xml`, `.log`, `.rst`. A PDF is read page by page; a Word file keeps its tables
+in place (`a | b` per row); HTML keeps visible text only; text is decoded as
+UTF-8 (BOM, UTF-16 and Windows-1252 are handled).
+
+`200`:
+
+```json
+{
+  "filename": "report.pdf",
+  "format": "pdf",
+  "text": "Quarterly report: revenue grew by ten percent\n\nSecond page: ...",
+  "characters": 75,
+  "pages": 2,
+  "truncated": false
+}
+```
+
+`pages` is `null` for formats without pages. `truncated` is `true` when part of
+the document was left out (more than `DOCUMENT_MAX_PAGES` pages, or more than
+`DOCUMENT_MAX_CHARS` characters of text); the returned `text` then ends with
+`[Document truncated: the rest was not included.]` so the model knows too.
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | No `file` field |
+| 401 | `not_authenticated` | No or invalid token |
+| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request whose declared `Content-Length` is over that plus 1 MB is refused earlier, before it is read, as `request_too_large` |
+| 415 | `unsupported_document` | The extension is not supported; `detail` lists the supported ones |
+| 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES`, or no text at all (a scanned PDF or image needs OCR, which is not supported) |
+
+Limits are per request and come from settings (see `backend/.env.example`).
+The file's name and content are never logged.
+
 ## Pipelines
 
 A pipeline object:
@@ -292,6 +335,9 @@ and nothing else:
 ```json
 { "inputs": { "article": "Long article text...", "language": "French" } }
 ```
+
+A value may be the text of a document: have `POST /documents/extract` read the
+file and send what it returns as the value. The run API itself only ever sees text.
 
 Sending text to a pipeline with named inputs, named values to one without, a
 blank value, or a name the pipeline does not declare is a `400

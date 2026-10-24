@@ -13,6 +13,7 @@ export const API = {
   pipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/`,
   generatePipeline: '/api/pipelines/generate',
   runPipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/run`,
+  extractDocument: '/api/documents/extract',
   llmSettings: '/api/llm-settings',
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
 } as const;

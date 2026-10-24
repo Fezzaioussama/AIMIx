@@ -68,7 +68,7 @@ export const PLATFORM_FEATURES: readonly Feature[] = [
   {
     title: 'Named run inputs',
     detail:
-      'Declare inputs like {topic} once, then reuse the same pipeline with different values on every run.',
+      'Declare inputs like {topic} once, then reuse the same pipeline on every run, with each value typed or read from a PDF, Word or text file.',
     icon: Workflow,
   },
   {
