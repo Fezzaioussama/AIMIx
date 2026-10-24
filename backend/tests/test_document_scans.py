@@ -12,7 +12,7 @@ from io import BytesIO
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, TiffImagePlugin
 from pypdf import PdfReader, PdfWriter
 
 from api.deps import document_ocr
@@ -208,6 +208,19 @@ def test_tiff_pages_past_the_ocr_limit_are_named() -> None:
     limits = replace(ROOMY, max_ocr_pages=2)
     result = extract_document("fax.tiff", frames("TIFF", 4), limits, FakeOcr())
     assert result.text.endswith("[Not read: pages 3-4 (OCR reads at most 2 pages per document).]")
+
+
+def test_tiff_pages_past_the_page_limit_are_cut_without_counting_them_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def count_all(_image: object) -> int:
+        raise AssertionError("n_frames walks every page, in quadratic time")
+
+    monkeypatch.setattr(TiffImagePlugin.TiffImageFile, "n_frames", property(count_all))
+    ocr = FakeOcr()
+    result = extract_document("fax.tiff", frames("TIFF", 5), LIMITS, ocr)
+    assert len(ocr.images) == result.pages == LIMITS.max_pages
+    assert result.text.endswith(TRUNCATION_NOTE.strip())
 
 
 def test_an_animated_gif_is_read_once_not_frame_by_frame() -> None:

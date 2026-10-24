@@ -32,19 +32,33 @@ def read_image(data: bytes, context: ReadContext) -> ReadResult:
     max_pixels = context.limits.max_image_pixels
     image = _open(data, max_pixels)
     paged = image.format in _PAGED
-    frames: int = getattr(image, "n_frames", 1) if paged else 1
-    count = min(frames, context.limits.max_pages)
+    count, more = _count_pages(image, context.limits.max_pages) if paged else (1, False)
     scans = PageOcr(context)
     texts = [
         scans.read(index + 1, partial(_page, image, index, max_pixels)) for index in range(count)
     ]
     return ReadResult(
         "\n\n".join(texts),
-        pages=frames if paged else None,
-        cut_short=count < frames,
+        pages=count if paged else None,
+        cut_short=more,
         omissions=scans.omissions(),
         ocr_pages=scans.pages_read,
     )
+
+
+def _count_pages(image: Image.Image, limit: int) -> tuple[int, bool]:
+    """The pages to read (at most ``limit``), and whether more follow.
+
+    Counted by seeking, never with ``n_frames``: to count, Pillow walks every page of
+    a TIFF in time that grows with the square of their number, and a 10 MB file
+    can hold tens of thousands of tiny pages.
+    """
+    for index in range(1, limit + 1):
+        try:
+            image.seek(index)
+        except EOFError:
+            return index, False
+    return limit, True
 
 
 def _open(data: bytes, max_pixels: int) -> Image.Image:

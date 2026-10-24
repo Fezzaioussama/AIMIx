@@ -244,10 +244,11 @@ skipped, and the text names it at the end, for example
 ```
 
 `pages` is the page count of a PDF, the slide count of a deck or the page
-count of a TIFF, and `null` for other formats. `truncated` is `true` when part
-of the document was left out: more than `DOCUMENT_MAX_PAGES` (300) pages,
-slides or TIFF pages, more than `DOCUMENT_MAX_SPREADSHEET_ROWS` (5,000) rows in a
-workbook (all sheets together, blank rows included), more than
+count of a TIFF (counted only up to `DOCUMENT_MAX_PAGES`: counting every page of
+a TIFF can take quadratic time), and `null` for other formats. `truncated` is
+`true` when part of the document was left out: more than `DOCUMENT_MAX_PAGES`
+(300) pages, slides or TIFF pages, more than `DOCUMENT_MAX_SPREADSHEET_ROWS`
+(5,000) rows in a workbook (all sheets together, blank rows included), more than
 `DOCUMENT_MAX_CHARS` characters of text, or pages OCR skipped. A cut text ends
 with `[Document truncated: the rest was not included.]`, and skipped pages are
 named as above, so the model knows too.
