@@ -56,6 +56,7 @@ resolves the session before the first render without a redirect flash.
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
+| `documents.ts` | `extractDocument` (5 min, `UPLOAD_TIMEOUT_MS`, room for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
 
 ### What `client.ts` does for every call
 
@@ -166,7 +167,7 @@ Rules for motion:
 | File | Role |
 |---|---|
 | `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results |
-| `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, HTML, CSV or text file, the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
+| `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, Excel, PowerPoint, image, HTML, CSV or text file (the picker's `accept` and the helper text both come from `DOCUMENT_FORMATS`), the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
 | `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing steps and inputs, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit inputs and steps → save |

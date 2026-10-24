@@ -46,7 +46,8 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | workspace/network policy | `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS` | `false`: workspace readers and outbound web tools cannot be offered together; explicit opt-in required |
 | workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
-| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
+| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES`, `DOCUMENT_MAX_SPREADSHEET_ROWS`, `DOCUMENT_MAX_IMAGE_PIXELS` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages, slides or TIFF pages read (300), what a `.docx`, `.xlsx` or `.pptx` may unpack to (50 MB), workbook rows read across all sheets (5,000) and an image's pixels, checked before decoding (40 million). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
+| document OCR | `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_LANGUAGES`, `DOCUMENT_OCR_MAX_PAGES`, `DOCUMENT_OCR_TIMEOUT_SECONDS`, `DOCUMENT_OCR_DPI` | Tesseract OCR for images and PDF pages without a text layer: on (`true`), languages `eng+fra` (Tesseract codes joined by `+`, validated), at most 30 pages per document, 15 seconds per page, PDF pages rendered at 300 dpi |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
@@ -61,8 +62,10 @@ logging once, from the app factory.
 
 ### `main.py` and `routes.py`
 
-`create_app()` builds the app: it creates the `Database`, installs the error
-handlers and middleware, and mounts `routes.api_router()` under `/api`.
+`create_app()` builds the app: it creates the `Database` and the OCR engine
+(`app.state.ocr`, checked once because checking starts a `tesseract` process),
+installs the error handlers and middleware, and mounts `routes.api_router()`
+under `/api`.
 `routes.py` is the routing table. Routers in `PUBLIC_ROUTERS` (register, login,
 refresh/logout, health) are open; auth operations are rate-limited and registration
 can be disabled. When `FRONTEND_DIST_DIR` is set, `frontend.py` then
@@ -84,6 +87,7 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context |
 | `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
+| `DocumentLimits` / `DocumentOcr` | The `ExtractionLimits` from settings / the OCR engine `create_app()` built once (`app.state.ocr`), or `None` when OCR is off or Tesseract or a language is missing |
 
 Tests replace any of these with `app.dependency_overrides`.
 
@@ -146,7 +150,7 @@ Each write commits its own transaction.
 | Module | Responsibility |
 |---|---|
 | `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
-| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
+| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates, and appends each omission a reader reports, such as skipped pages), `readers.py` (the `READERS` registry; plain text, and HTML via `toolbox/html_text.py`; every third-party parser is registered through `guarded`, which re-raises anything it throws as `DocumentUnreadable`), `pdf.py` (pypdf text layer; pages without one are rendered with PDFium through pypdfium2, under one process-wide lock because PDFium is not thread-safe), `images.py` (Pillow with only the PNG, JPEG, WebP, TIFF, BMP and GIF decoders, a pixel cap checked from each frame's header, transparency onto white, EXIF rotation), `office.py` (Word via python-docx, Excel via openpyxl in read-only mode, PowerPoint via python-pptx with a `singledispatch` registry per shape kind; all three behind the unpacked-size zip guard), `scans.py` (`PageOcr`: the per-document OCR page cap, a page that times out skipped, and the `[Not read: ...]` sentences), `ocr.py` (`TesseractOcr`, the adapter over pytesseract, and `ocr_engine`, which `create_app()` calls once and which returns `None`, logging why, when OCR is off or the binary or a language is missing), and `contracts.py` (`ExtractionLimits`, `ReadContext`, `ReadResult`, `ExtractedDocument`, and the `OcrEngine` port). Stateless: nothing is stored. A new format is one reader and one registry entry. |
 | `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
 | `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, and the async `StepAgent` protocol. |
 | `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
@@ -185,7 +189,8 @@ JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
 `WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
 `ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504),
 `UpstreamResponseInvalid` (502), and for documents `DocumentTooLarge` (413),
-`UnsupportedDocument` (415) and `DocumentUnreadable` (422).
+`UnsupportedDocument` (415) and `DocumentUnreadable` (422), whose subclass
+`OcrTimedOut` lets a multi-page reader skip the one page OCR gave up on.
 
 `errors.install_error_handlers` renders:
 - `DomainError` as its own code and status.
@@ -262,3 +267,7 @@ so tests can never reach a real LLM.
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
 | `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, and a run that survives a failing tool |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |
+| `test_documents.py` | Document extraction: text, HTML, PDF and Word, limits, refusals, the HTTP contract and the request-size guard |
+| `test_document_scans.py` | Scanned and mixed PDFs and every image type through a fake `OcrEngine`: OCR page cap, timeouts, pixel cap and decompression bombs, decoders allowed, OCR off |
+| `test_document_office.py` | `.xlsx` and `.pptx` text, row and slide limits, the shared zip-bomb guard |
+| `test_document_ocr.py` | The Tesseract adapter and the startup check (pytesseract and the binary faked), OCR settings; one test runs the real binary and is skipped where it is not installed (CI) |

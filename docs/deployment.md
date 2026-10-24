@@ -24,8 +24,35 @@ Railway deploys `main` only once both jobs pass (see *Wait for CI* below).
 | Build | `docker build -t aimix .` |
 | Runs as | non-root user `aimix` (uid 10001) |
 | Start | `alembic upgrade head`, then Uvicorn on `$PORT` (default 8000) with proxy headers |
-| Defaults | `APP_ENV=production`, `FRONTEND_DIST_DIR=/app/frontend/dist`, `DATABASE_URL=sqlite:////data/aimix.sqlite3` |
+| Defaults | `APP_ENV=production`, `FRONTEND_DIST_DIR=/app/frontend/dist`, `DATABASE_URL=sqlite:////data/aimix.sqlite3`, `OMP_THREAD_LIMIT=1` |
+| OCR | Tesseract 5 from Debian (`tesseract-ocr`, with `tesseract-ocr-eng` and `tesseract-ocr-fra`), for scanned PDFs and images. About 105 MB of the image |
 | Never contains | `backend/.env`, any `*.sqlite3`, tests, `node_modules` (`.dockerignore`) |
+
+### OCR in the image
+
+Uploaded images and PDF pages without a text layer are read by Tesseract (see
+[api-reference.md](api-reference.md#documents)). The image installs English and
+French, the default `DOCUMENT_OCR_LANGUAGES=eng+fra`. Another language needs its
+`tesseract-ocr-<code>` package added to the `apt-get install` line in the
+`Dockerfile`, and its code in `DOCUMENT_OCR_LANGUAGES`. At startup the app logs
+one line saying whether OCR is ready (`documents.ocr status=ready`), turned off,
+or unavailable and why (`binary_missing`, `languages_missing:<codes>`); while it
+is unavailable, images are refused and scanned PDF pages are skipped, with a
+message that says so.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DOCUMENT_OCR_ENABLED` | `true` | `false` turns OCR off |
+| `DOCUMENT_OCR_LANGUAGES` | `eng+fra` | Tesseract codes joined by `+` |
+| `DOCUMENT_OCR_MAX_PAGES` | `30` | Pages one document may send to OCR |
+| `DOCUMENT_OCR_TIMEOUT_SECONDS` | `15` | Per page; a slower page is skipped |
+| `DOCUMENT_OCR_DPI` | `300` | Resolution a PDF page is rendered at for OCR |
+| `DOCUMENT_MAX_IMAGE_PIXELS` | `40000000` | Larger images are refused before decoding |
+
+Each OCR'd page runs one `tesseract` process on one thread (`OMP_THREAD_LIMIT=1`:
+more threads made no page faster, and under a one-CPU quota made each about 3.5
+times slower). Expect about three seconds per dense A4 page per CPU, so a 30-page
+scan holds its request for one to two minutes.
 
 Try it locally — production settings refuse to start without these two:
 
@@ -86,3 +113,4 @@ own key on the Settings page, encrypted with `SECRET_KEY`.
 | `sqlite3.OperationalError: unable to open database file` | No volume at `/data`, or `RAILWAY_RUN_UID` unset | Mount the volume at `/data`; set `RAILWAY_RUN_UID=0` |
 | Everyone signed out and saved keys "can no longer be read" | `SECRET_KEY` changed | Keep it stable; users re-enter keys in Settings |
 | Container exits: `FRONTEND_DIST_DIR=… has no index.html` | Image built without the frontend stage | Build with the repository `Dockerfile` |
+| Images refused with "images need OCR, which is not available"; log shows `documents.ocr status=unavailable` | Tesseract or a language in `DOCUMENT_OCR_LANGUAGES` is not installed, or `DOCUMENT_OCR_ENABLED=false` | Build with the repository `Dockerfile`; install the `tesseract-ocr-<code>` package for each language, or remove the code |

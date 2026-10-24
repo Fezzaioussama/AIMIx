@@ -40,17 +40,23 @@ cannot be inspected or resumed. Tool actions execute without an approval step.
 **Fix:** persist run and step state, expose run status, and introduce an
 explicit approval gate for actions that require review.
 
-### 5. Document inputs: no OCR, and uploads are read in the request thread
+### 5. Document inputs are read in the request thread
 
-`POST /documents/extract` reads text only. A scanned PDF or an image has no
-text layer, so it is refused with a message saying it needs OCR; image and
-spreadsheet formats (`.png`, `.xlsx`, `.pptx`) are not supported at all.
-Parsing runs in the request's worker thread with size, page and character
-limits but no wall-clock timeout, and the request-size guard can only see a
-declared `Content-Length`: a chunked upload is still capped, but only after the
-framework has spooled it.
+`POST /documents/extract` parses, renders and OCRs in the request's worker
+thread. Each step is bounded (size, page, row, pixel and character limits, and
+`DOCUMENT_OCR_TIMEOUT_SECONDS` per OCR'd page), but the request as a whole has
+no wall-clock timeout: a long scan holds a worker for minutes, at worst
+`DOCUMENT_OCR_MAX_PAGES` x `DOCUMENT_OCR_TIMEOUT_SECONDS` in OCR alone, and
+PDFium rendering is serialised across the process (it is not thread-safe). The
+request-size guard can only see a declared `Content-Length`: a chunked upload is
+still capped, but only after the framework has spooled it.
 
-**Fix:** add an OCR reader (and image or spreadsheet readers) to the `READERS`
-registry, run extraction in a worker with a timeout, and cap request bodies at
-the reverse proxy as well.
+Not read at all: legacy binary Office files (`.doc`, `.xls`, `.ppt`), `.xlsm`,
+SmartArt and chart text in slides, handwriting beyond what Tesseract manages,
+and scanned pages whose text layer holds only a little text (a page number, say),
+which are not sent to OCR.
+
+**Fix:** run extraction as a background job (or in a worker process) with a
+wall-clock timeout and let the client poll, and cap request bodies at the
+reverse proxy as well.
 
