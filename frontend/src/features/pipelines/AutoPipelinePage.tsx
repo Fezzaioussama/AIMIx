@@ -13,6 +13,7 @@ import { GeneratedSteps } from './GeneratedSteps';
 import { PipelineGraph } from './PipelineGraph';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
+import { RevisePanel } from './RevisePanel';
 import { modelLabel } from './modelLabel';
 import { useAutoPipeline } from './useAutoPipeline';
 
@@ -142,6 +143,16 @@ export function AutoPipelinePage() {
                   result.
                 </p>
               </div>
+
+              <RevisePanel
+                pipeline={generated}
+                onApply={actions.replace}
+                plannerModel={plannerModel}
+                disabled={isSaving}
+                defaultOpen
+                headingLevel={3}
+                className="mb-6"
+              />
 
               <section aria-label="Run inputs" className="mb-6">
                 <h3 className="mb-1 text-sm font-semibold text-slate-200">Run inputs</h3>

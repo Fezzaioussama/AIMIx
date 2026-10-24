@@ -144,6 +144,15 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
     [markChanged],
   );
 
+  /** Swap in a whole new draft, e.g. an accepted revision; it stays unsaved until saved. */
+  const replace = useCallback(
+    (next: Pipeline) => {
+      markChanged();
+      setPipeline(next);
+    },
+    [markChanged],
+  );
+
   const save = useCallback(async () => {
     setStatus('saving');
     setMessage('');
@@ -207,6 +216,7 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
       removeStep,
       rename,
       setInputs,
+      replace,
       save,
       run,
     },

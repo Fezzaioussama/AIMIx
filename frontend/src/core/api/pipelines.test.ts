@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { generatePipeline, listPipelines, runPipeline, savePipeline } from './pipelines';
+import {
+  generatePipeline,
+  listPipelines,
+  revisePipeline,
+  runPipeline,
+  savePipeline,
+} from './pipelines';
 import type { Pipeline } from './types';
 
 const pipeline: Pipeline = { name: 'Drafts', inputs: [], steps: [] };
@@ -71,6 +77,35 @@ describe('pipeline agent fields', () => {
     expect(generated.generated_pipeline.inputs).toEqual([]);
     expect(generated.generated_pipeline.steps[0]).toMatchObject(defaults);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('revisePipeline', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('posts the draft and the instruction, and fills in what the planner left out', async () => {
+    const sparse = {
+      name: 'Revised',
+      steps: [{ order: 1, stage: 1, title: '', is_output: false, model: 'v/m' }],
+    };
+    const body = { revised_pipeline: sparse, changes: [], available_models: [] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const response = await revisePipeline(pipeline, 'Add a step');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(API.revisePipeline);
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      '{"pipeline":{"name":"Drafts","inputs":[],"steps":[]},"instruction":"Add a step"}',
+    );
+    expect(response.revised_pipeline.inputs).toEqual([]);
+    expect(response.revised_pipeline.steps[0]).toMatchObject({
+      prompt: '',
+      role: '',
+      allowed_tools: null,
+      expected_output: '',
+    });
   });
 });
 
