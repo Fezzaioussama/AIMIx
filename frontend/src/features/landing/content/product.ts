@@ -1,6 +1,8 @@
 import { KeyRound, Layers, MessageSquare, Plug, Sparkles, Workflow } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+import { DOCUMENT_KINDS } from '../../../core/api/documents';
+
 /** Landing content that explains the product: hero steps, numbers, features, process. */
 
 export type HeroStepId = 'describe' | 'orchestrate' | 'act' | 'review';
@@ -67,8 +69,7 @@ export const PLATFORM_FEATURES: readonly Feature[] = [
   },
   {
     title: 'Named run inputs',
-    detail:
-      'Declare inputs like {topic} once, then reuse the same pipeline on every run, with each value typed or read from a PDF, Word or text file.',
+    detail: `Declare inputs like {topic} once, then reuse the same pipeline on every run, with each value typed or read from a ${DOCUMENT_KINDS} file.`,
     icon: Workflow,
   },
   {

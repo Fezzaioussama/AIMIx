@@ -126,7 +126,7 @@ describe('documentSummary', () => {
     expect(documentSummary({ ...report, pages: 1 })).toContain('1 page ·');
   });
 
-  it('warns when the document was cut short', () => {
-    expect(documentSummary({ ...report, truncated: true })).toMatch(/only the first part fit$/);
+  it('warns when part of the document was left out', () => {
+    expect(documentSummary({ ...report, truncated: true })).toMatch(/part of it was left out$/);
   });
 });
