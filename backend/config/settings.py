@@ -152,6 +152,25 @@ class Settings(BaseSettings):
         50, ge=1, validation_alias="WORKSPACE_SEARCH_MAX_RESULTS"
     )
     workspace_csv_max_rows: int = Field(200, ge=1, validation_alias="WORKSPACE_CSV_MAX_ROWS")
+    # --- The user's files (api/services/files): Files page and agent artifacts --
+    # Everything one user keeps, uploads and agent artifacts together.
+    workspace_max_total_bytes: int = Field(
+        100_000_000, ge=1, validation_alias="WORKSPACE_MAX_TOTAL_BYTES"
+    )
+    # What the Files page accepts; each upload is capped at DOCUMENT_MAX_BYTES.
+    workspace_upload_extensions: CommaList = Field(
+        [".pdf", ".docx", ".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".html"],
+        validation_alias="WORKSPACE_UPLOAD_EXTENSIONS",
+    )
+    # TrueType fonts for PDF artifacts, so non-Latin text prints. Without them
+    # PDFs use a built-in font that covers Western European text only.
+    pdf_font_path: Path = Field(
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"), validation_alias="PDF_FONT_PATH"
+    )
+    pdf_bold_font_path: Path = Field(
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        validation_alias="PDF_BOLD_FONT_PATH",
+    )
     # --- Documents attached to a pipeline run (api/services/documents) --------
     # An upload is read into memory, so each of these bounds a different cost.
     document_max_bytes: int = Field(10_000_000, ge=1, validation_alias="DOCUMENT_MAX_BYTES")
@@ -181,12 +200,24 @@ class Settings(BaseSettings):
         validation_alias="TOGETHERAI_DEFAULT_MODEL",
     )
 
-    @field_validator("allowed_hosts", "cors_allowed_origins", "agent_builtin_tools", mode="before")
+    @field_validator(
+        "allowed_hosts",
+        "cors_allowed_origins",
+        "agent_builtin_tools",
+        "workspace_upload_extensions",
+        mode="before",
+    )
     @classmethod
     def _split_commas(cls, value: object) -> object:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("workspace_upload_extensions", mode="after")
+    @classmethod
+    def _dotted_lowercase(cls, value: list[str]) -> list[str]:
+        """``PDF`` and ``.pdf`` both mean ``.pdf``."""
+        return [f".{item.lower().lstrip('.')}" for item in value]
 
     @field_validator(
         "openrouter_api_key", "togetherai_api_key", "tavily_api_key", "secret_key", mode="after"
@@ -222,7 +253,10 @@ class Settings(BaseSettings):
 
     @property
     def max_request_bytes(self) -> int:
-        """Largest request body accepted: one document plus multipart overhead."""
+        """Largest request body accepted: one upload plus multipart overhead.
+
+        DOCUMENT_MAX_BYTES caps every uploaded file, a run document or a file for
+        the Files page alike, so this one number bounds both endpoints."""
         return self.document_max_bytes + MULTIPART_OVERHEAD_BYTES
 
     # Provider-keyed views, so provider lookups stay one dict access (§5 O).

@@ -15,6 +15,7 @@ from pathlib import PurePath
 from api.exceptions import DocumentTooLarge, DocumentUnreadable, UnsupportedDocument
 from api.services.documents.contracts import ExtractedDocument, ExtractionLimits
 from api.services.documents.readers import READERS
+from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,19 @@ def supported_extensions() -> list[str]:
     return sorted(READERS)
 
 
-def _megabytes(size: int) -> str:
+def extraction_limits(settings: Settings) -> ExtractionLimits:
+    """What one extraction may cost, from settings: for an uploaded run document
+    and for a file an agent reads from the workspace alike."""
+    return ExtractionLimits(
+        max_bytes=settings.document_max_bytes,
+        max_chars=settings.document_max_chars,
+        max_pages=settings.document_max_pages,
+        max_unpacked_bytes=settings.document_max_unpacked_bytes,
+    )
+
+
+def megabytes(size: int) -> str:
+    """A byte count as people read a limit, e.g. ``10 MB``."""
     return f"{size / 1_000_000:g} MB"
 
 
@@ -52,7 +65,7 @@ def extract_document(filename: str, data: bytes, limits: ExtractionLimits) -> Ex
     if not data:
         raise DocumentUnreadable("The file is empty.")
     if len(data) > limits.max_bytes:
-        raise DocumentTooLarge(f"The file is larger than the {_megabytes(limits.max_bytes)} limit.")
+        raise DocumentTooLarge(f"The file is larger than the {megabytes(limits.max_bytes)} limit.")
 
     started = time.monotonic()
     result = reader(data, limits)

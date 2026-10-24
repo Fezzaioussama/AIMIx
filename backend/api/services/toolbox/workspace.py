@@ -1,16 +1,33 @@
-"""Bounded local workspace access for built-in agent tools."""
+"""Bounded workspace access for built-in agent tools (§7 Adapter).
+
+Where a path may lead, overwrites and the storage quota are ``WorkspaceStorage``'s
+rules, the same ones the Files page follows. This gateway adds what a model needs
+on top: bounded text, search, CSV rows, PDF and Word files read as text, and
+artifacts saved in real document formats. A refusal reaches the model as a
+ToolException it can react to, never as an aborted run.
+"""
 
 from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from langchain_core.tools import ToolException
 
+from api.exceptions import DomainError, FileTooLarge
+from api.services.artifacts.contracts import RenderOptions
+from api.services.artifacts.registry import render_artifact
+from api.services.documents.contracts import ExtractionLimits
+from api.services.documents.extraction import extract_document, megabytes
+from api.services.files.storage import WorkspaceStorage
+
+#: Read and searched as they are; any other file is read through the document
+#: readers (PDF, Word, ...), which refuse what they cannot read.
 TEXT_SUFFIXES = frozenset({".csv", ".html", ".json", ".md", ".txt", ".yaml", ".yml"})
-ARTIFACT_SUFFIXES = frozenset({".csv", ".json", ".md", ".txt"})
 
 
 @dataclass(frozen=True)
@@ -20,32 +37,43 @@ class WorkspaceLimits:
     search_max_files: int
     search_max_results: int
     csv_max_rows: int
+    #: What reading one PDF or Word file may cost: the run-document limits.
+    documents: ExtractionLimits
+
+
+@contextmanager
+def _tool_errors() -> Iterator[None]:
+    """Hand a domain refusal (a bad path, a full quota, ...) to the model."""
+    try:
+        yield
+    except DomainError as cause:
+        raise ToolException(cause.detail) from cause
 
 
 class LocalWorkspace:
-    """Gateway that confines every file operation to one configured directory."""
+    """Gateway that confines every file operation to one user's directory."""
 
-    def __init__(self, root: Path, limits: WorkspaceLimits) -> None:
-        self._root = root.resolve()
+    def __init__(
+        self, storage: WorkspaceStorage, limits: WorkspaceLimits, render: RenderOptions
+    ) -> None:
+        self._storage = storage
         self._limits = limits
+        self._render = render
 
     def list_files(self, directory: str = ".") -> str:
         base = self._resolve(directory, directory=True)
         files: list[str] = []
-        for path in base.rglob("*"):
-            if path.is_file() and not path.is_symlink() and self._visible(path):
-                files.append(str(path.relative_to(self._root)))
+        for path, _ in self._storage.files(base):
+            files.append(self._storage.relative_path(path))
             if len(files) >= self._limits.search_max_results:
                 break
         return "\n".join(sorted(files)) or "No files found."
 
     def read_file(self, path: str) -> str:
         target = self._resolve(path)
-        if target.suffix.lower() not in TEXT_SUFFIXES:
-            raise ToolException(
-                "Only text, JSON, YAML, HTML, Markdown, and CSV files are readable."
-            )
-        return self._bounded_text(target)
+        if target.suffix.lower() in TEXT_SUFFIXES:
+            return self._bounded_text(target)
+        return self._document_text(target)
 
     def search_files(self, query: str, directory: str = ".") -> str:
         needle = query.strip().casefold()
@@ -71,63 +99,30 @@ class LocalWorkspace:
         return json.dumps(rows, ensure_ascii=False)[: self._limits.max_output_chars]
 
     def save_artifact(self, path: str, content: str) -> str:
-        target = self._resolve_new(path)
-        if target.suffix.lower() not in ARTIFACT_SUFFIXES:
-            raise ToolException("Artifacts must use .txt, .md, .json, or .csv.")
-        encoded = content.encode("utf-8")
-        if len(encoded) > self._limits.max_file_bytes:
-            raise ToolException("The artifact is larger than the configured file limit.")
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with target.open("x", encoding="utf-8", errors="strict", newline="") as artifact:
-                artifact.write(content)
-        except FileExistsError as cause:
-            raise ToolException("The artifact already exists; choose a new path.") from cause
-        except OSError as cause:
-            raise ToolException("The artifact could not be saved.") from cause
-        return f"Saved {target.relative_to(self._root)}"
+        with _tool_errors():
+            target = self._storage.writable(path)
+            self._check_artifact_size(len(content.encode("utf-8", errors="replace")))
+            data = render_artifact(target.suffix.lower(), content, self._render)
+            self._check_artifact_size(len(data))
+            try:
+                saved = self._storage.save(path, data)
+            except OSError as cause:
+                raise ToolException("The artifact could not be saved.") from cause
+        return f"Saved {self._storage.relative_path(saved)}"
 
     def _resolve(self, relative: str, *, directory: bool = False) -> Path:
-        target = self._safe_path(relative).resolve()
-        missing = not target.exists()
-        wrong_type = (directory and not target.is_dir()) or (not directory and not target.is_file())
-        if missing or wrong_type:
-            raise ToolException("The requested workspace path does not exist.")
-        return target
+        with _tool_errors():
+            return self._storage.existing(relative, directory=directory)
 
-    def _resolve_new(self, relative: str) -> Path:
-        target = self._safe_path(relative)
-        parent = target.parent.resolve()
-        self._within_root(parent)
-        if target.exists():
-            raise ToolException("The artifact already exists; choose a new path.")
-        return target
-
-    def _safe_path(self, relative: str) -> Path:
-        candidate = Path(relative)
-        if candidate.is_absolute() or any(part.startswith(".") for part in candidate.parts):
-            raise ToolException("Use a visible path relative to the workspace.")
-        target = self._root / candidate
-        self._within_root(target.resolve(strict=False))
-        return target
-
-    def _within_root(self, target: Path) -> None:
-        if not target.is_relative_to(self._root):
-            raise ToolException("The requested path is outside the workspace.")
-
-    def _visible(self, path: Path) -> bool:
-        return not any(part.startswith(".") for part in path.relative_to(self._root).parts)
+    def _check_artifact_size(self, size: int) -> None:
+        if size > self._limits.max_file_bytes:
+            limit = megabytes(self._limits.max_file_bytes)
+            raise FileTooLarge(f"The artifact is larger than the {limit} file limit.")
 
     def _searchable_files(self, base: Path) -> list[Path]:
         files: list[Path] = []
-        for path in base.rglob("*"):
-            eligible = (
-                path.is_file()
-                and not path.is_symlink()
-                and self._visible(path)
-                and path.suffix.lower() in TEXT_SUFFIXES
-            )
-            if eligible:
+        for path, _ in self._storage.files(base):
+            if path.suffix.lower() in TEXT_SUFFIXES:
                 files.append(path)
             if len(files) >= self._limits.search_max_files:
                 break
@@ -138,7 +133,7 @@ class LocalWorkspace:
             text = self._bounded_text(path)
         except ToolException:
             return []
-        relative = path.relative_to(self._root)
+        relative = self._storage.relative_path(path)
         return [
             f"{relative}:{number}: {line.strip()}"
             for number, line in enumerate(text.splitlines(), start=1)
@@ -154,3 +149,15 @@ class LocalWorkspace:
             raise ToolException("The file is not valid UTF-8 text.") from cause
         except OSError as cause:
             raise ToolException("The file could not be read.") from cause
+
+    def _document_text(self, path: Path) -> str:
+        """A PDF, Word or other document as text, cut at the output limit."""
+        limits = replace(self._limits.documents, max_chars=self._limits.max_output_chars)
+        try:
+            with path.open("rb") as handle:
+                # One byte past the cap is enough for the reader to refuse the file.
+                data = handle.read(limits.max_bytes + 1)
+        except OSError as cause:
+            raise ToolException("The file could not be read.") from cause
+        with _tool_errors():
+            return extract_document(path.name, data, limits).text

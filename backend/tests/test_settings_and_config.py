@@ -61,6 +61,11 @@ def test_builtin_agent_tools_are_a_comma_list() -> None:
     assert settings(AGENT_BUILTIN_TOOLS="").agent_builtin_tools == []
 
 
+def test_upload_extensions_are_lower_case_with_a_dot() -> None:
+    chosen = settings(WORKSPACE_UPLOAD_EXTENSIONS="PDF, .Docx ,md")
+    assert chosen.workspace_upload_extensions == [".pdf", ".docx", ".md"]
+
+
 def test_relative_agent_workspace_is_resolved_from_backend() -> None:
     assert settings(AGENT_WORKSPACE_DIR="agent-files").workspace_dir == BACKEND_DIR / "agent-files"
 

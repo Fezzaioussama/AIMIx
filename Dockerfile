@@ -15,6 +15,10 @@ RUN npm run build
 # Python 3.10, as in .python-version.
 FROM python:3.10-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
+# DejaVu Sans, embedded in the PDFs agents save so non-Latin text prints (PDF_FONT_PATH).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
@@ -32,10 +36,12 @@ COPY backend/ backend/
 COPY --from=frontend /app/frontend/dist frontend/dist
 
 # Production by default: the settings refuse to start without SECRET_KEY and
-# ALLOWED_HOSTS. SQLite lives in /data, where the platform mounts a volume.
+# ALLOWED_HOSTS. SQLite and the users' files live in /data, where the platform
+# mounts a volume.
 ENV APP_ENV=production \
     FRONTEND_DIST_DIR=/app/frontend/dist \
-    DATABASE_URL=sqlite:////data/aimix.sqlite3
+    DATABASE_URL=sqlite:////data/aimix.sqlite3 \
+    AGENT_WORKSPACE_DIR=/data/workspace
 
 RUN useradd --create-home --uid 10001 aimix && mkdir /data && chown aimix /data
 USER aimix

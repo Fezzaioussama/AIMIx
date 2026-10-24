@@ -14,6 +14,7 @@ from api.endpoints import (
     auth,
     chat,
     documents,
+    files,
     health,
     llm_settings,
     models,
@@ -31,6 +32,7 @@ PROTECTED_ROUTERS = (
     documents.router,
     agent_tools.router,
     llm_settings.router,
+    files.router,
 )
 
 

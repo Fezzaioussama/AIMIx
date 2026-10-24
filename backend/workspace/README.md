@@ -1,5 +1,7 @@
 # Agent workspace
 
-Files placed here can be listed, searched, and read by configured AIMIx agents.
-Agents can also save new `.txt`, `.md`, `.json`, and `.csv` artifacts here, but
-cannot overwrite existing files or access hidden paths.
+Each account has a private folder here, `user-<id>`: the files its agents can
+list, search and read, and the files its owner sees, uploads and downloads on
+the Files page. Agents can also save new `.txt`, `.md`, `.json`, `.csv`, `.html`,
+`.docx` and `.pdf` artifacts, but cannot overwrite existing files or reach
+hidden paths. The folder is bounded by `WORKSPACE_MAX_TOTAL_BYTES`.

@@ -108,7 +108,8 @@ def current_datetime_tool(clock: Callable[[], datetime] = _utc_now) -> BaseTool:
 def list_workspace_files_tool(workspace: LocalWorkspace) -> BaseTool:
     return make_tool(
         LIST_WORKSPACE_FILES,
-        "List visible files in the configured local workspace or one of its subdirectories.",
+        "List the files in the user's workspace or one of its folders: files the user "
+        "uploaded and artifacts saved earlier.",
         func=workspace.list_files,
     )
 
@@ -116,8 +117,8 @@ def list_workspace_files_tool(workspace: LocalWorkspace) -> BaseTool:
 def read_workspace_file_tool(workspace: LocalWorkspace) -> BaseTool:
     return make_tool(
         READ_WORKSPACE_FILE,
-        "Read a bounded UTF-8 text, Markdown, JSON, YAML, HTML, or CSV file from the local "
-        "workspace.",
+        "Read a file from the user's workspace: text, Markdown, JSON, YAML, HTML and CSV "
+        "as written, PDF and Word files as their text. The output is bounded.",
         func=workspace.read_file,
     )
 
@@ -141,7 +142,9 @@ def read_csv_tool(workspace: LocalWorkspace) -> BaseTool:
 def save_artifact_tool(workspace: LocalWorkspace) -> BaseTool:
     return make_tool(
         SAVE_ARTIFACT,
-        "Save a new text, Markdown, JSON, or CSV deliverable inside the local workspace. "
-        "Existing files are never overwritten.",
+        "Save a new file in the user's workspace; they can download it from their Files "
+        "page. The extension sets the format: .txt, .md, .json, .csv or .html are saved as "
+        "written. For .docx or .pdf, write Markdown (headings, lists, bold, italic, tables): "
+        "it becomes a formatted document. Never overwrites.",
         func=workspace.save_artifact,
     )
