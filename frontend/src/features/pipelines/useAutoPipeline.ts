@@ -72,6 +72,12 @@ export function useAutoPipeline() {
     setGenerated((current) => (current === null ? current : { ...current, inputs }));
   }, []);
 
+  /** Swap in a whole new plan, e.g. an accepted revision; it is saved only by `save`. */
+  const replace = useCallback((next: Pipeline) => {
+    setSuccessMessage('');
+    setGenerated(next);
+  }, []);
+
   const addOutput = useCallback((stage: number, parallel: boolean) => {
     setSuccessMessage('');
     setGenerated((current) => {
@@ -109,6 +115,16 @@ export function useAutoPipeline() {
     status,
     errorMessage,
     successMessage,
-    actions: { generate, save, patchStep, rename, setInputs, addOutput, removeStep, reset },
+    actions: {
+      generate,
+      save,
+      patchStep,
+      rename,
+      setInputs,
+      replace,
+      addOutput,
+      removeStep,
+      reset,
+    },
   };
 }

@@ -13,7 +13,7 @@ frontend/src/
   core/             # cross-feature, the only layer that talks to the backend
     api/            # client.ts, endpoints.ts, types.ts, one module per resource
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
-    hooks/          # useModels.ts, useAgentTools.ts
+    hooks/          # useModels.ts, useAgentTools.ts, useCancellableRequest.ts, useLatest.ts
     markdown/       # renderMarkdown.ts
     ui/             # shared presentational components and motion (no data access)
       reactbits/    # effects adapted from React Bits, with its LICENSE.md
@@ -58,7 +58,7 @@ resolves the session before the first render without a redirect flash.
 | `chat.ts` | `streamChatReply` |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
-| `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
+| `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline`, `generatePipeline` and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal) |
 | `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
@@ -98,6 +98,17 @@ Loads `GET /api/agent-tools` for the builder's tool picker. The catalogue
 contains exact names, descriptions, and sources (`AIMIx`, `MCP`, or the name of
 one of the user's integrations); pipeline steps store names rather than copying
 tool definitions.
+
+## `core/hooks/useCancellableRequest.ts` and `useLatest.ts`
+
+`useCancellableRequest()` → `{ start, cancel, finish }` keeps at most one request
+in flight: `start()` aborts the previous one and returns a fresh
+`AbortController` whose signal goes to the `core/api` call, `cancel()` aborts the
+current one, and leaving the screen aborts it too. `finish(controller)` is true
+only for the request still current, so a superseded or unmounted one never
+updates state. `useLatest(value)` is a ref that always holds the latest value,
+for async work that must read it when it finishes. `useAttachDocument` and
+`useRevisePipeline` use both.
 
 ## `core/markdown/renderMarkdown.ts`
 
@@ -175,9 +186,15 @@ Rules for motion:
 | `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results |
 | `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, HTML, CSV or text file, the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
 | `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none |
-| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing steps and inputs, adding parallel or following stages, saving and running. A changed pipeline must be saved before running. |
-| `AutoPipelinePage.tsx` | Describe → generate → preview diagram → edit inputs and steps → save |
-| `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps and saving the proposed workflow (later saves update it) |
+| `usePipelineBuilder.ts` | State + transport: pipeline, saved list, run results, dirty state, and actions for editing steps and inputs, adding parallel or following stages, replacing the whole draft (`replace`, for an accepted revision), saving and running. A changed pipeline must be saved before running. |
+| `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
+| `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps, `replace` (an accepted revision) and saving the proposed workflow (later saves update it) |
+| `RevisePanel.tsx` | "Ask AIMIx to change this pipeline": a foldable panel (open by default on the auto page) with the change box, clickable example instructions, a busy line with Stop, and the review. Ctrl/⌘ + Enter asks. Apply hands the revision to `onApply` (the page replaces its draft and leaves it unsaved); it never saves. Props: `pipeline`, `onApply`, optional `plannerModel`, `disabled`, `defaultOpen`, `headingLevel`. Mounted under the builder's title and under the auto page's diagram |
+| `RevisionReview.tsx` | A proposal: the change list in plain words (added / changed / removed marks), a `PipelineGraph` preview, Apply and Discard; "Nothing to change" when the planner changed nothing |
+| `useRevisePipeline.ts` | `useRevisePipeline(pipeline)` → `{ proposal, stale, busy, error, propose, cancel, discard }` over `POST /api/pipelines/revise`. The proposal keeps the draft's id (so a save updates it) and only applies to the draft it was made from: an edit sets it aside (`stale`), and an answer for a draft edited meanwhile is dropped. Aborts on unmount and on `cancel` |
+| `useRevisePanel.ts` | The panel's own state over `useRevisePipeline` (typed instruction, applied flag, `edit` / `pick` / `ask` / `apply` / `discard`) and `panelStatus`, the text of its live status line |
+| `revision.ts` | `describeChange` (a change as a sentence), `adoptRevision`, the example instructions and the instruction length limit (mirrors the backend's) |
+| `buttonStyles.ts` | Primary and secondary in-card button looks for actions beside a page's GlowButton |
 | `PipelineInputsEditor.tsx` | The named run inputs (name, label, description), shared by both screens; names are typed as snake_case and problems show before saving |
 | `pipelineInputs.ts` | Pure helpers for named inputs and attached documents (`appendDocument`, `documentSummary`): the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, and `runRequest`, which sends only declared inputs |
 | `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model and prompt |
@@ -302,6 +319,11 @@ behaviour, FAQ disclosure, WebGL-less fallback), `useStepCarousel.test.ts` and
 `scene/sceneLayout.test.ts` (the layout is deterministic and well-formed), and
 for the gallery `features/templates/` (filters, the hook, and the page: busy
 state, errors, retry and opening the builder). The
+revise flow is covered by `features/pipelines/RevisePanel.test.tsx` (review,
+apply, discard, nothing to change, errors, Stop, Ctrl+Enter, busy page),
+`useRevisePipeline.test.tsx` (stale drafts, cancellation on unmount) and
+`revision.test.ts`; fixtures live in `revisionTestData.ts`. The shared request
+hooks have `core/hooks/useCancellableRequest.test.tsx` and `useLatest.test.tsx`. The
 Settings page has `SettingsPage.test.tsx`, `useLLMSettings.test.tsx`, and for
 integrations `IntegrationsSection.test.tsx` (list, add, validation, test
 connection, delete confirmation, switch, edit with hints), `useIntegrations.test.tsx`

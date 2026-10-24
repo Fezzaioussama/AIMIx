@@ -5,6 +5,7 @@ import type {
   Pipeline,
   PipelineRunRequest,
   PipelineRunResponse,
+  RevisedPipelineResponse,
 } from './types';
 
 export function listPipelines(): Promise<Pipeline[]> {
@@ -44,13 +45,38 @@ export function generatePipeline(
   }));
 }
 
-/** Older saved pipelines and generated plans omit the newer agent and I/O fields. */
+/**
+ * Asks the planner to change a draft as `instruction` says. The draft may be unsaved;
+ * nothing is saved. No `plannerModel` means the account's default model.
+ */
+export function revisePipeline(
+  pipeline: Pipeline,
+  instruction: string,
+  plannerModel?: string,
+  signal?: AbortSignal,
+): Promise<RevisedPipelineResponse> {
+  return request<RevisedPipelineResponse>(API.revisePipeline, {
+    method: 'POST',
+    body: { pipeline, instruction, planner_model: plannerModel || undefined },
+    timeoutMs: GENERATION_TIMEOUT_MS,
+    signal,
+  }).then((response) => ({
+    ...response,
+    revised_pipeline: normalizePipeline(response.revised_pipeline),
+  }));
+}
+
+/**
+ * Older saved pipelines and generated plans omit the newer agent and I/O fields, and a
+ * planner may leave a step without a prompt.
+ */
 function normalizePipeline(pipeline: Pipeline): Pipeline {
   return {
     ...pipeline,
     inputs: pipeline.inputs ?? [],
     steps: pipeline.steps.map((step) => ({
       ...step,
+      prompt: step.prompt ?? '',
       role: step.role ?? '',
       allowed_tools: step.allowed_tools ?? null,
       expected_output: step.expected_output ?? '',

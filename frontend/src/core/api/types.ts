@@ -91,6 +91,25 @@ export interface GeneratedPipelineResponse {
   available_models: string[];
 }
 
+/** One difference between a draft and its proposed revision (POST /api/pipelines/revise). */
+export interface PipelineChange {
+  target: 'pipeline' | 'input' | 'step';
+  kind: 'added' | 'removed' | 'changed';
+  /** The pipeline's new name, the input's name, or the step's title ("Step N" without one). */
+  label: string;
+  /** A step's order: in the revision when added or changed, in the draft when removed. */
+  order: number | null;
+  /** For a change, the API field names that differ, e.g. "prompt" or "allowed_tools". */
+  fields: string[];
+}
+
+export interface RevisedPipelineResponse {
+  /** The whole revised pipeline; nothing is saved until the user saves it. */
+  revised_pipeline: Pipeline;
+  changes: PipelineChange[];
+  available_models: string[];
+}
+
 export interface ModelsResponse {
   models: string[];
   default: string;

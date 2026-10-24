@@ -305,6 +305,54 @@ record, LangGraph checkpoint for the pipeline, or approval flow for tool actions
 name, description, and source for the builder: `AIMIx`, `MCP`, or the name of
 the user's integration it comes from.
 
+### 4. Revise a pipeline — `POST /api/pipelines/revise`
+
+```mermaid
+sequenceDiagram
+    participant UI as RevisePanel + useRevisePipeline
+    participant C as core/api/client.ts
+    participant E as endpoints/pipelines.revise_pipeline
+    participant T as services/tool_catalog
+    participant S as services/pipeline_revision.revise
+    participant B as services/prompts
+    participant P as services/pipelines.ask_planner
+    participant D as services/pipeline_changes
+    UI->>C: revisePipeline(draft, instruction) (timeout 1 h, aborted on unmount or Stop)
+    C->>E: POST + Bearer token
+    E->>E: ReviseRequest validates the draft and the instruction
+    E->>T: available_sync()
+    E->>S: revise(provider, profile, RevisionRequest, tools)
+    S->>B: pipeline_revision_prompt(draft, instruction, models, tools)
+    S->>P: ask_planner(provider, profile, PlannerCall)
+    P-->>S: plan sanitised by parse_plan, as for generate
+    S->>D: diff_pipelines(draft, plan)
+    D-->>S: list of PipelineChange
+    S-->>E: Revision(pipeline, changes)
+    E-->>C: 200 ReviseResponse
+    C-->>UI: change list + preview, then Apply or Discard
+```
+
+1. The draft is the builder's or the auto page's current pipeline, saved or not.
+   `PipelineDraftIn` checks it like a save, except that its name and step
+   prompts may be blank, and `instruction` is non-blank and bounded.
+2. `prompts.pipeline_revision_prompt` is built from the same
+   `PIPELINE_PLANNER_GUIDE` as the generation prompt (tools, inputs, step
+   fields, stages, reply format) plus the revision rules: change only what was
+   asked, copy every other step exactly, keep `{input}` and `{name}` valid, add
+   or remove inputs only when needed. The draft (as JSON) and the instruction
+   are user data, so each sits in its own tagged block; the tags are stripped
+   from the content, so it cannot close its block and pass for instructions.
+3. `pipelines.ask_planner` is the one call-and-parse path, shared with
+   `generate`: provider failures map through `PROVIDER_ERROR_MAP`, and the
+   answer goes through `parse_plan` (unusable output → 502).
+4. `pipeline_changes.diff_pipelines` is a pure function: it pairs steps (same
+   content, then title, then prompt, then position), compares fields and
+   inputs, and reports a stage change only when a step really runs at another
+   point. The endpoint returns the revision, the changes and the models.
+5. **Nothing is saved.** Apply in the UI replaces the draft and marks it
+   unsaved; the user saves through `POST`/`PUT /api/pipelines/`. A proposal
+   belongs to the draft it was made from, so editing the draft sets it aside.
+
 ## Error flow
 
 ```

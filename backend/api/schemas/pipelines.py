@@ -24,6 +24,7 @@ from api.models import (
     STEP_TITLE_MAX_LENGTH,
 )
 from api.schemas.common import ModelId, NonBlank, UtcDatetime
+from api.services.pipeline_changes import ChangeKind, ChangeTarget
 from api.services.pipeline_inputs import input_name_error
 
 
@@ -190,6 +191,52 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     generated_pipeline: dict[str, Any]
+    available_models: list[str]
+
+
+#: The longest change request a revision accepts: a few sentences.
+REVISION_INSTRUCTION_MAX_LENGTH = 2000
+
+
+class DraftStepIn(PipelineStepIn):
+    """A step of a draft under revision: unlike a saved step, its prompt may
+    still be blank (the planner writes it)."""
+
+    prompt: Trimmed = ""
+
+
+class PipelineDraftIn(BaseModel):
+    """The pipeline a revision starts from: ``PipelineIn``'s fields, but it may be
+    unsaved and unfinished, so its name and step prompts may be blank. Everything
+    else is checked as on save."""
+
+    name: Annotated[Trimmed, Field(max_length=PIPELINE_NAME_MAX_LENGTH)] = ""
+    inputs: Inputs = Field(default_factory=list)
+    steps: Annotated[list[DraftStepIn], AfterValidator(_valid_steps)]
+
+
+class ReviseRequest(BaseModel):
+    """Contract for POST /api/pipelines/revise. Nothing is saved."""
+
+    pipeline: PipelineDraftIn
+    instruction: Annotated[NonBlank, Field(max_length=REVISION_INSTRUCTION_MAX_LENGTH)]
+    #: Omitted means the caller's default model.
+    planner_model: ModelId | None = None
+
+
+class PipelineChangeOut(BaseModel):
+    """One difference between the draft and its revision, for people to review."""
+
+    target: ChangeTarget
+    kind: ChangeKind
+    label: str
+    order: int | None
+    fields: list[str]
+
+
+class ReviseResponse(BaseModel):
+    revised_pipeline: dict[str, Any]
+    changes: list[PipelineChangeOut]
     available_models: list[str]
 
 

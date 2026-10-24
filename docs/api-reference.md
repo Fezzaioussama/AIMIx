@@ -548,6 +548,66 @@ not objects, or whose `name` is invalid, reserved or already taken. A missing
 or non-list `inputs` becomes `[]`.
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.
 
+### `POST /pipelines/revise`
+
+Changes a pipeline from one sentence. The body holds the current draft, saved or
+not, and what to change:
+
+```json
+{ "pipeline": { "name": "Launch kit", "inputs": [ ... ], "steps": [ ... ] },
+  "instruction": "Add an SEO agent that works alongside the marketing agent",
+  "planner_model": "openai/gpt-oss-120b" }
+```
+
+`pipeline` has the fields of a pipeline you save (`name`, `inputs`, `steps`; ids
+are ignored) and is checked the same way, except that its name and step prompts
+may be blank: an unfinished draft can be revised, and the planner writes the
+missing prompts. `instruction` is required, non-blank and at most 2,000
+characters (`REVISION_INSTRUCTION_MAX_LENGTH`). `planner_model` is optional
+(defaults to your default model). `200`:
+
+```json
+{
+  "revised_pipeline": { "name": "Launch kit", "inputs": [ ... ], "steps": [ ... ] },
+  "changes": [
+    { "target": "step", "kind": "added", "label": "SEO keywords", "order": 3, "fields": [] },
+    { "target": "step", "kind": "changed", "label": "Research", "order": 1, "fields": ["prompt", "allowed_tools"] }
+  ],
+  "available_models": ["deepseek/deepseek-v4-flash", "..."]
+}
+```
+
+Nothing is saved: review the revision, then save it with `POST /pipelines/` or
+`PUT /pipelines/<id>/`. `revised_pipeline` is the whole pipeline, unchanged
+steps included. The planner gets the same tool catalogue and models as for
+`POST /pipelines/generate`, and its answer is cleaned up the same way (see
+above); when it gives no name, the draft's name is kept.
+
+`changes` lists every difference: a rename first, then inputs, then steps, each
+in the revision's order with removals last.
+
+| Field | Meaning |
+|---|---|
+| `target` | `pipeline` (a rename), `input` or `step` |
+| `kind` | `added`, `removed` or `changed` |
+| `label` | The new name, the input's name, or the step's title (`Step N` without one) |
+| `order` | A step's order in the revision (in the draft for a removed step); `null` otherwise |
+| `fields` | For `changed`, what differs, in this order: `title`, `role`, `prompt`, `expected_output`, `model`, `allowed_tools`, `stage`, `is_output` for a step; `label`, `description` for an input; `name` for the pipeline |
+
+Steps are paired before they are compared: an unchanged step first, then the
+same title (ignoring case and spacing), then the same prompt, then the same
+position. Inputs are paired by name, so a renamed input reads as one removed and
+one added. Text is compared without surrounding whitespace, tool lists in any
+order. `stage` is listed only when a step now runs at another point: renumbered
+stages, a stage added or removed with its own steps, or a step only shifted by
+another step's move do not count.
+
+Errors: `400 validation_error`, before the planner is asked, for a blank or too
+long instruction or a draft that could not be saved for another reason (no
+steps, a repeated `order`, an unknown model, an invalid input name);
+`502 upstream_response_invalid` when the planner's answer holds no usable
+pipeline; `502/503/504` for provider failures, as for generate.
+
 ---
 
 ## Templates

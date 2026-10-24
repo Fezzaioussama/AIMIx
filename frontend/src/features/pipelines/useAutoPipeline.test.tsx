@@ -80,4 +80,19 @@ describe('useAutoPipeline', () => {
 
     expect(result.current.generated?.id).toBe(7);
   });
+
+  it('takes a refined plan in place of the generated one, without saving it', async () => {
+    vi.spyOn(pipelinesApi, 'generatePipeline').mockResolvedValue({
+      generated_pipeline: planned,
+      available_models: ['v/m'],
+    });
+    const save = vi.spyOn(pipelinesApi, 'savePipeline');
+    const { result } = renderHook(() => useAutoPipeline());
+    await act(async () => result.current.actions.generate('Create a launch plan', 'v/m'));
+
+    act(() => result.current.actions.replace({ ...planned, name: 'Refined plan' }));
+
+    expect(result.current.generated?.name).toBe('Refined plan');
+    expect(save).not.toHaveBeenCalled();
+  });
 });

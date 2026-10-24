@@ -62,6 +62,15 @@ class PlanRequest:
     planner_model: str | None = None
 
 
+@dataclass(frozen=True)
+class PlannerCall:
+    """One planner request: its rendered prompt, and the model to ask; no
+    ``model`` means the profile's default model."""
+
+    prompt: str
+    model: str | None = None
+
+
 def generate(
     provider: LLMProvider,
     profile: LLMProfile,
@@ -69,15 +78,25 @@ def generate(
     tools: list[ToolDescriptor] | None = None,
 ) -> dict[str, Any]:
     """Ask the planner model for a pipeline definition and validate the result."""
-    models = profile.models
-    prompt = pipeline_generation_prompt(request.description, models, tools)
+    prompt = pipeline_generation_prompt(request.description, profile.models, tools)
+    return ask_planner(provider, profile, PlannerCall(prompt, request.planner_model), tools)
 
+
+def ask_planner(
+    provider: LLMProvider,
+    profile: LLMProfile,
+    call: PlannerCall,
+    tools: list[ToolDescriptor] | None = None,
+) -> dict[str, Any]:
+    """Send one planner prompt and return its plan, sanitised by ``parse_plan``.
+    Generation and revision share it, so both fail and clean up alike (§3)."""
     try:
-        raw = provider.generate(prompt, request.planner_model or profile.default_model)
+        raw = provider.generate(call.prompt, call.model or profile.default_model)
     except llm_exceptions.LLMError as cause:
         raise as_domain_error(cause) from cause
 
-    return parse_plan(raw, models, [tool.name for tool in tools] if tools is not None else None)
+    names = [tool.name for tool in tools] if tools is not None else None
+    return parse_plan(raw, profile.models, names)
 
 
 def parse_plan(

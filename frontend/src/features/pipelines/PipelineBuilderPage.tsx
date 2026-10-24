@@ -10,6 +10,7 @@ import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
 import { RecentPipelines } from './RecentPipelines';
+import { RevisePanel } from './RevisePanel';
 import { RunInputCard } from './RunInputCard';
 import { StepEditor } from './StepEditor';
 import { EMPTY_RUN_DRAFT, type RunDraft } from './pipelineInputs';
@@ -143,6 +144,12 @@ export function PipelineBuilderPage() {
                 {pipeline.steps.length === 1 ? 'step' : 'steps'}
               </p>
             </div>
+            <RevisePanel
+              pipeline={pipeline}
+              onApply={actions.replace}
+              disabled={isRunning || isSaving}
+              className="mb-6"
+            />
             <PipelineRunView
               steps={pipeline.steps}
               inputs={pipeline.inputs}

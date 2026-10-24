@@ -84,4 +84,21 @@ describe('usePipelineBuilder', () => {
     expect(result.current.pipeline.inputs.map((field) => field.name)).toEqual(['topic']);
     expect(result.current.dirty).toBe(true);
   });
+
+  it('takes an accepted revision as the new, unsaved draft', () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }),
+      );
+    const { result } = renderHook(() => usePipelineBuilder('vendor/model'));
+    const revised = { ...result.current.pipeline, id: 7, name: 'Revised' };
+
+    act(() => result.current.actions.replace(revised));
+
+    expect(result.current.pipeline).toEqual(revised);
+    expect(result.current.dirty).toBe(true);
+    // Only the saved-list request: replacing never saves.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

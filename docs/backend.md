@@ -127,7 +127,7 @@ shared in-memory connection.
 | `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
 | `agent_tools.py` | `GET /agent-tools` | `agent_tools.py`: `ToolDescriptorOut` (`name`, `description`, `source`) |
 | `integrations.py` | `GET`/`POST /integrations`, `PATCH`/`DELETE /integrations/{id}`, `POST /integrations/{id}/test` | `integrations.py`: `IntegrationIn`, `IntegrationPatch`, `HeaderIn`, `IntegrationOut`, `HeaderOut`, `IntegrationTestOut`, `IntegrationToolOut` |
-| `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse` |
+| `pipelines.py` | list/create, get/put/patch/delete, `run`, `generate`, `revise` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse`, `ReviseRequest` (`PipelineDraftIn`, `DraftStepIn`), `ReviseResponse`, `PipelineChangeOut` |
 | `templates.py` | `GET /templates`, `POST /templates/{slug}/use` | `templates.py`: `TemplateOut`, `TemplateUseIn` (optional body); a used template answers with `PipelineOut` |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
@@ -139,7 +139,10 @@ optional and, when explicit, contains unique, non-blank names. Tool availability
 is checked when the agent runs. `PipelineInputField` validates each named
 input through `services/pipeline_inputs.input_name_error`, the rule the planner
 also applies; `RunRequest` only trims `input` and `inputs`, because which one a
-run needs depends on the pipeline.
+run needs depends on the pipeline. `PipelineDraftIn`, the draft a revision
+starts from, is checked like `PipelineIn` except that its name and step prompts
+may be blank; the revise `instruction` is limited by
+`REVISION_INSTRUCTION_MAX_LENGTH`.
 
 ### `repositories/`
 
@@ -157,7 +160,9 @@ Each write commits its own transaction.
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). |
+| `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). `ask_planner` is the one call-and-parse path that generation and revision share. |
+| `pipeline_revision.py` | `revise`: applies one instruction to a draft through the planner (`prompts.pipeline_revision_prompt` → `ask_planner`), keeps the draft's name when the planner gives none, and returns a `Revision` (the whole sanitised pipeline and its changes). Saves nothing. |
+| `pipeline_changes.py` | `diff_pipelines`: the pure change list a revision is reviewed with. Steps pair by content, title, prompt, then position (`STEP_MATCHERS`); a stage change is reported only when a step really runs at another point. |
 | `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
 | `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
 | `templates/` | Mission templates (Registry): `contracts.py` (frozen `MissionTemplate` and `TemplateStep`, inputs as the shared `InputField`; templates never name a model), `review.py` (`Review`, the builder of the reviewer step every template ends with), one module per theme (`research.py`, `documents.py`, `data.py`, `marketing.py`, `launch.py`), `registry.py` (`CATALOGUE` in gallery order, `get_template` or `NotFound`) and `use.py` (`use_template`: builds the steps through `pipelines.sanitise_step`, the planner's sanitiser, so each step gets the owner's default model and only the tools they have, then saves through the repository). A new template is one entry in a theme module. |
@@ -165,7 +170,7 @@ Each write commits its own transaction.
 | `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution. |
 | `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
 | `multiagent/step_agent.py` | User-bound LangGraph step agent: selected model, role, native/MCP tools, final text, and tool call metadata. |
-| `prompts.py` | `step_prompt` (fills `{input}` and `{name}` in one pass), `merge_stage_outputs`, `merge_input_values`, `pipeline_generation_prompt`, `step_agent_system_prompt` (role, expected output, tool guidance). |
+| `prompts.py` | `step_prompt` (fills `{input}` and `{name}` in one pass), `merge_stage_outputs`, `merge_input_values`, `pipeline_generation_prompt` and `pipeline_revision_prompt` (both built on `PIPELINE_PLANNER_GUIDE`; the revision fences the draft and the instruction as data), `step_agent_system_prompt` (role, expected output, tool guidance). |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
 | `agent.py` | Builds and streams the chat-only LangGraph agent. |
 | `agent_runtime.py` | Shared chat/pipeline tool policy, limits, and third-party failure translation. |
@@ -276,6 +281,8 @@ so tests can never reach a real LLM.
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
 | `test_pipeline_inputs.py` | Named run inputs and expected outputs: binding, placeholder filling, planner sanitising, and the HTTP contract |
 | `test_templates.py` | Every template passes the saved-pipeline validation and its field limits, uses exactly its declared placeholders, fans out then ends with a lone reviewer, and grants only known built-in tools; the gallery and use endpoints (default model, tool filtering, naming, ownership, unknown slug, a run on the named inputs) |
+| `test_pipeline_revision.py` | The revision prompt (shared guide, fenced user data), `revise`, and `POST /pipelines/revise`: happy path, nothing saved, unfinished drafts, validation, 502/503 |
+| `test_pipeline_changes.py` | `diff_pipelines`: step pairing, changed fields, stage moves versus renumbering, inputs, renames, malformed planner data |
 | `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, and failure propagation |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_llm_retry.py` | The retry policy: retried and failing statuses, connection errors, timeouts, backoff, `Retry-After`, logging, streams |

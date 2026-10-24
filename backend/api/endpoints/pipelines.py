@@ -12,12 +12,16 @@ from api.repositories import pipelines as repository
 from api.schemas.pipelines import (
     GenerateRequest,
     GenerateResponse,
+    PipelineChangeOut,
     PipelineIn,
     PipelineOut,
     PipelinePatch,
+    ReviseRequest,
+    ReviseResponse,
     RunRequest,
     RunResponse,
 )
+from api.services import pipeline_revision as revision_service
 from api.services import pipelines as pipeline_service
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
@@ -49,6 +53,23 @@ def generate_pipeline(
     request = pipeline_service.PlanRequest(body.description, body.planner_model)
     plan = pipeline_service.generate(providers(), profile, request, catalog.available_sync())
     return GenerateResponse(generated_pipeline=plan, available_models=profile.models)
+
+
+# Declared before the "/{pipeline_id}/" routes, like /generate, so no id route
+# can ever claim the path.
+@router.post("/revise")
+def revise_pipeline(
+    body: ReviseRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
+) -> ReviseResponse:
+    request = revision_service.RevisionRequest(
+        body.pipeline.model_dump(), body.instruction, body.planner_model
+    )
+    revision = revision_service.revise(providers(), profile, request, catalog.available_sync())
+    return ReviseResponse(
+        revised_pipeline=revision.pipeline,
+        changes=[PipelineChangeOut.model_validate(asdict(change)) for change in revision.changes],
+        available_models=profile.models,
+    )
 
 
 @router.get("/{pipeline_id}/")

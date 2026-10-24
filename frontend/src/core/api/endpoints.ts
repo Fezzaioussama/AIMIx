@@ -13,6 +13,7 @@ export const API = {
   pipelines: '/api/pipelines/',
   pipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/`,
   generatePipeline: '/api/pipelines/generate',
+  revisePipeline: '/api/pipelines/revise',
   runPipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/run`,
   extractDocument: '/api/documents/extract',
   llmSettings: '/api/llm-settings',
