@@ -76,6 +76,7 @@ describe('TemplatesPage', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(json(TEMPLATES))
       .mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)));
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
     renderGallery();
 
     await user.click(await screen.findByRole('button', { name: /^Use this template: Document/ }));
@@ -88,6 +89,8 @@ describe('TemplatesPage', () => {
 
     expect(await screen.findByText('Builder opened with {"pipelineId":42}')).toBeInTheDocument();
     expect(fetchMock.mock.calls[1][0]).toBe(API.createFromTemplate('document-digest'));
+    // The builder opens at its top, wherever the card was in the gallery.
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
   });
 
   it('explains a failure and lets the user try again', async () => {
