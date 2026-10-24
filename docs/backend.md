@@ -39,6 +39,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
 | `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
+| `llm_max_retries` / `llm_retry_base_delay_seconds` / `llm_retry_max_delay_seconds` | `LLM_MAX_RETRIES` / `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | Retries of a transient model failure (2; at most 10, 0 turns them off) / backoff base and cap in seconds (1 / 20). See [the retry policy](llm-providers.md#retry-policy) |
 | `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Per chat or pipeline step agent limit (3600 seconds) / graph step limit (25) |
 | `agent_tool_description_max_chars` | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | Maximum tool description length in the catalogue and planner prompt (300) |
 | `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds) / configured server JSON |
@@ -164,7 +165,7 @@ Each write commits its own transaction.
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
 | `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
-| `llm.py` | **The only reader of provider credentials and transport settings.** `LLMProfile`, `provider_config(profile)`, `get_provider(profile)` and `get_agent_model(profile, model_id)`. A saved key wins over the `.env` one. |
+| `llm.py` | **The only reader of provider credentials and transport settings** (timeout, base URL, retry policy). `LLMProfile`, `provider_config(profile)`, `get_provider(profile)` and `get_agent_model(profile, model_id)`. A saved key wins over the `.env` one. |
 | `llm_settings.py` | The Settings page: `resolve_profile()` (per request), `read()`, `save()`, `remove_key()`, and `environment_profile()` for the CLI. Keys are sealed with `SecretBox` and only their hint is returned. |
 | `catalog.py` | `available_model_ids()` (default first), `default_model_id()` and `known_model_ids()`, for a given provider or `LLM_PROVIDER`. |
 | `errors.py` | `PROVIDER_ERROR_MAP` and `as_domain_error()` — the one translation from `llm` errors to domain errors. |
@@ -245,6 +246,7 @@ so tests can never reach a real LLM.
 | `use_pipeline_generator(app, generator)` | Override the pipeline step agent dependency |
 | `FakeAgent`, `use_agent(app, agent)` | Override the chat agent dependency |
 | `default_model` | The active default model id |
+| `retry_fakes.py` | Provider failures as each SDK raises them, a `FakeClock` that records retry waits instead of sleeping, and ready `ProviderConfig`s |
 
 | Test module | Covers |
 |---|---|
@@ -257,6 +259,8 @@ so tests can never reach a real LLM.
 | `test_pipeline_inputs.py` | Named run inputs and expected outputs: binding, placeholder filling, planner sanitising, and the HTTP contract |
 | `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, and failure propagation |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
+| `test_llm_retry.py` | The retry policy: retried and failing statuses, connection errors, timeouts, backoff, `Retry-After`, logging, streams |
+| `test_llm_provider_retries.py` / `test_agent_model_retries.py` | Retries on the direct provider and on the LangChain models (SDK retries off, exact attempt counts, no replayed stream), and the settings behind them |
 | `test_chat_agent.py` | MCP settings, discovery, streaming and failure mapping |
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |

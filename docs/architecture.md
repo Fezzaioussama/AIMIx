@@ -215,7 +215,7 @@ name, description, and `AIMIx` or `MCP` source for the builder.
 ## Error flow
 
 ```
-llm/ raises LLMError subclass
+llm/ retries a transient failure (llm/retry.py), then raises LLMError subclass
   → services translate via api/services/errors.PROVIDER_ERROR_MAP
   → DomainError (code + status) propagates out of the endpoint
   → FastAPI calls the handler installed by api/errors.install_error_handlers
@@ -235,6 +235,7 @@ server — never a 200 with an error inside.
 | Registry + Factory | `llm/registry.py`, `api/services/llm.get_provider` | New provider = one dict entry, no `if` chain |
 | Adapter | `llm/base.OpenAICompatibleProvider`, `api/services/multiagent/mapper.py`, `step_agent.py` | Wrap provider SDKs, snapshot ORM records, and bind agents to a graph port |
 | Strategy map | `api/services/errors.PROVIDER_ERROR_MAP` | Provider error → domain error, in one place |
+| Decorator (retry) | `llm/retry.Retrier`, `llm/agent_models.RetryingChatModel` | One bounded retry policy around every model call, direct or LangChain |
 | Repository | `api/repositories/pipelines.py`, `users.py` | Ownership-scoped queries and atomic writes |
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
