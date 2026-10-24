@@ -3,10 +3,10 @@ worked out in parallel, then turned into one dated, budgeted plan."""
 
 from __future__ import annotations
 
+from api.services.multiagent.contracts import InputField
 from api.services.templates.contracts import (
     WEB_RESEARCH,
     MissionTemplate,
-    TemplateInput,
     TemplateStep,
 )
 from api.services.templates.review import Review
@@ -71,17 +71,17 @@ PRODUCT_LAUNCH_PLAN = MissionTemplate(
     category="Marketing",
     description="Plan a launch: positioning, channels, budget, timeline and risks.",
     inputs=(
-        TemplateInput(
+        InputField(
             "product",
             "Product",
             "What you are launching, who it is for, and what makes it different.",
         ),
-        TemplateInput(
+        InputField(
             "goal",
             "Launch goal",
             "What success looks like, e.g. '1,000 sign-ups in the first month'.",
         ),
-        TemplateInput(
+        InputField(
             "launch",
             "Launch date and resources",
             "When you launch and what you have to work with, e.g. 'March 15, a budget of "

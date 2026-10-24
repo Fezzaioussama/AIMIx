@@ -8,7 +8,8 @@ mental arithmetic.
 
 from __future__ import annotations
 
-from api.services.templates.contracts import MissionTemplate, TemplateInput, TemplateStep
+from api.services.multiagent.contracts import InputField
+from api.services.templates.contracts import MissionTemplate, TemplateStep
 from api.services.templates.review import Review
 from api.services.toolbox.tools import CALCULATOR, LIST_WORKSPACE_FILES, READ_CSV
 
@@ -75,13 +76,13 @@ DATA_INSIGHTS_REPORT = MissionTemplate(
     category="Data",
     description="Find the trends, outliers and answers in a CSV file or a table.",
     inputs=(
-        TemplateInput(
+        InputField(
             "data",
             "Data",
             "Attach a CSV file or paste a table. You can also give the name of a CSV file in "
             "your workspace.",
         ),
-        TemplateInput(
+        InputField(
             "question",
             "Your question",
             "What you want the data to tell you, e.g. 'Which products drive our revenue growth?'",

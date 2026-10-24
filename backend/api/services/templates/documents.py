@@ -7,7 +7,8 @@ original, so the deliverable stays faithful to it.
 
 from __future__ import annotations
 
-from api.services.templates.contracts import MissionTemplate, TemplateInput, TemplateStep
+from api.services.multiagent.contracts import InputField
+from api.services.templates.contracts import MissionTemplate, TemplateStep
 from api.services.templates.review import Review
 
 # --- Document digest ---------------------------------------------------------
@@ -67,12 +68,12 @@ DOCUMENT_DIGEST = MissionTemplate(
     category="Documents",
     description="Turn a long document into its key points, risks and open questions.",
     inputs=(
-        TemplateInput(
+        InputField(
             "document",
             "Document",
             "Paste the text, or attach a PDF, Word or text file.",
         ),
-        TemplateInput(
+        InputField(
             "reader",
             "Who it is for",
             "Who will read the digest and what they need from it, e.g. 'our legal team, "
@@ -184,12 +185,12 @@ MEETING_NOTES_TO_ACTIONS = MissionTemplate(
     description="Turn meeting notes or a transcript into decisions, action items and a "
     "follow-up email.",
     inputs=(
-        TemplateInput(
+        InputField(
             "notes",
             "Meeting notes or transcript",
             "Paste the notes or the transcript, or attach a file.",
         ),
-        TemplateInput(
+        InputField(
             "meeting",
             "About the meeting",
             "What it was about and who attended, with their roles, e.g. 'Weekly product "

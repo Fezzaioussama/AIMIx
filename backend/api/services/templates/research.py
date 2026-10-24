@@ -7,10 +7,10 @@ researchers fall back on what the model knows and say so.
 
 from __future__ import annotations
 
+from api.services.multiagent.contracts import InputField
 from api.services.templates.contracts import (
     WEB_RESEARCH,
     MissionTemplate,
-    TemplateInput,
     TemplateStep,
 )
 from api.services.templates.review import Review
@@ -75,13 +75,13 @@ short paragraphs, plain words, no filler.
 Research:
 {input}"""
 
-MARKET = TemplateInput(
+MARKET = InputField(
     "market",
     "Market",
     "The market or product category to research, with the region if it matters, "
     "e.g. 'plant-based snacks in Germany'.",
 )
-GOAL = TemplateInput(
+GOAL = InputField(
     "goal",
     "Your goal",
     "What the brief should help you decide, e.g. 'whether to launch a premium range next year'.",
@@ -193,12 +193,12 @@ evidence from the research.
 Research:
 {input}"""
 
-PRODUCT = TemplateInput(
+PRODUCT = InputField(
     "product",
     "Your product",
     "What you sell, to whom and at what price, in two or three sentences.",
 )
-COMPETITORS = TemplateInput(
+COMPETITORS = InputField(
     "competitors",
     "Competitors",
     "The two to five competitors to compare, separated by commas.",

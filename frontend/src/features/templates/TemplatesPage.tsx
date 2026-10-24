@@ -31,12 +31,60 @@ function TemplatesHeader() {
   );
 }
 
+function LoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-3 ${ALERT_CLASS}`}>
+      <p role="alert">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="rounded-lg border border-red-300/30 px-3 py-1 font-medium text-red-200 transition-colors hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+interface TemplateGridProps {
+  templates: MissionTemplate[];
+  /** The slug of the template being turned into a pipeline, if any. */
+  creating: string | null;
+  onUse: (template: MissionTemplate) => void;
+}
+
+/** The category chips and the cards they filter. */
+function TemplateGrid({ templates, creating, onUse }: TemplateGridProps) {
+  const [category, setCategory] = useState(ALL_CATEGORIES);
+  return (
+    <>
+      <CategoryFilter
+        categories={categoryChips(templates)}
+        value={category}
+        onChange={setCategory}
+      />
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {inCategory(templates, category).map((template, index) => (
+          <li key={template.slug}>
+            <AnimatedContent distance={18} delay={Math.min(index, 8) * 0.05} className="h-full">
+              <TemplateCard
+                template={template}
+                busy={creating === template.slug}
+                disabled={creating !== null}
+                onUse={onUse}
+              />
+            </AnimatedContent>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 /** The template gallery: filter by category, then turn a template into a pipeline. */
 export function TemplatesPage() {
   const navigate = useNavigate();
   const { templates, status, loadError, creating, createError, actions } = useTemplates();
-  const [category, setCategory] = useState(ALL_CATEGORIES);
-  const shown = inCategory(templates, category);
   const creatingTitle = templates.find((template) => template.slug === creating)?.title;
 
   async function handleUse(template: MissionTemplate) {
@@ -53,7 +101,6 @@ export function TemplatesPage() {
     <div className="min-h-[calc(100vh-60px)] px-4 py-10 text-slate-50 sm:px-8">
       <div className="mx-auto max-w-6xl">
         <TemplatesHeader />
-
         <p aria-live="polite" className="sr-only">
           {creatingTitle ? `Creating your pipeline from ${creatingTitle}…` : ''}
         </p>
@@ -62,46 +109,14 @@ export function TemplatesPage() {
             {createError}
           </p>
         )}
-
         {status === 'loading' && <BusyNotice className="py-16">Loading templates…</BusyNotice>}
-        {status === 'failed' && (
-          <div className={`flex flex-wrap items-center gap-3 ${ALERT_CLASS}`}>
-            <p role="alert">{loadError}</p>
-            <button
-              type="button"
-              onClick={actions.reload}
-              className="rounded-lg border border-red-300/30 px-3 py-1 font-medium text-red-200 transition-colors hover:bg-red-500/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
-            >
-              Try again
-            </button>
-          </div>
-        )}
+        {status === 'failed' && <LoadFailure message={loadError} onRetry={actions.reload} />}
         {status === 'ready' && (
-          <>
-            <CategoryFilter
-              categories={categoryChips(templates)}
-              value={category}
-              onChange={setCategory}
-            />
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {shown.map((template, index) => (
-                <li key={template.slug}>
-                  <AnimatedContent
-                    distance={18}
-                    delay={Math.min(index, 8) * 0.05}
-                    className="h-full"
-                  >
-                    <TemplateCard
-                      template={template}
-                      busy={creating === template.slug}
-                      disabled={creating !== null}
-                      onUse={(chosen) => void handleUse(chosen)}
-                    />
-                  </AnimatedContent>
-                </li>
-              ))}
-            </ul>
-          </>
+          <TemplateGrid
+            templates={templates}
+            creating={creating}
+            onUse={(chosen) => void handleUse(chosen)}
+          />
         )}
       </div>
     </div>

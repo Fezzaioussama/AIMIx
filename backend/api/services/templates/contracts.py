@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from api.services.multiagent.contracts import InputField
 from api.services.toolbox.tools import FETCH_URL, WEB_SEARCH
 
 #: The gallery's filters, in no particular order; the API lists templates in
@@ -17,15 +18,6 @@ Category = Literal["Research", "Documents", "Data", "Marketing"]
 
 #: Reading the web: search, then open the pages worth reading.
 WEB_RESEARCH = (WEB_SEARCH, FETCH_URL)
-
-
-@dataclass(frozen=True)
-class TemplateInput:
-    """A named value every run is given; step prompts insert it as ``{name}``."""
-
-    name: str
-    label: str
-    description: str
 
 
 @dataclass(frozen=True)
@@ -64,7 +56,9 @@ class MissionTemplate:
     category: Category
     #: One line for the gallery card.
     description: str
-    inputs: tuple[TemplateInput, ...]
+    #: The pipeline's named run inputs, the same contract a saved pipeline's
+    #: inputs are read into; a template gives each a label and description.
+    inputs: tuple[InputField, ...]
     steps: tuple[TemplateStep, ...]
 
     @property

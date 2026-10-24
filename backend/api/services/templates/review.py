@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from api.models import RESERVED_INPUT_NAME
 from api.services.templates.contracts import TemplateStep
 
 REVIEWER_ROLE = "Editor and fact-checker"
 
-#: The previous stage's output, i.e. the draft. Kept out of the f-strings
-#: below, where ``{input}`` would be read as an expression.
-DRAFT = "{input}"
+#: ``{input}``: the previous stage's output, i.e. the draft. A constant, since
+#: inside the f-strings below the braces would be read as an expression.
+DRAFT = "{" + RESERVED_INPUT_NAME + "}"
 
 
 @dataclass(frozen=True)

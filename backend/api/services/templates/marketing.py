@@ -6,10 +6,10 @@ usually works and say that it is not based on live results.
 
 from __future__ import annotations
 
+from api.services.multiagent.contracts import InputField
 from api.services.templates.contracts import (
     WEB_RESEARCH,
     MissionTemplate,
-    TemplateInput,
     TemplateStep,
 )
 from api.services.templates.review import Review
@@ -61,12 +61,12 @@ alternatives
 Research:
 {input}"""
 
-TOPIC = TemplateInput(
+TOPIC = InputField(
     "topic",
     "Topic or main keyword",
     "What the article should rank for, e.g. 'how to choose running shoes'.",
 )
-READER_AND_GOAL = TemplateInput(
+READER_AND_GOAL = InputField(
     "audience",
     "Reader and goal",
     "Who the article is for and what it should lead them to do, e.g. 'beginner runners; "
@@ -167,17 +167,17 @@ CONTENT_CALENDAR = MissionTemplate(
     category="Marketing",
     description="Plan blog and social posts around one topic, with the first week written.",
     inputs=(
-        TemplateInput(
+        InputField(
             "topic",
             "Topic or product",
             "What the content is about, e.g. 'our new budgeting app'.",
         ),
-        TemplateInput(
+        InputField(
             "audience",
             "Audience",
             "Who you want to reach and what they care about.",
         ),
-        TemplateInput(
+        InputField(
             "channels",
             "Channels and pace",
             "Which networks, for how long and how often, e.g. 'LinkedIn and Instagram, 4 "

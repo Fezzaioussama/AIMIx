@@ -98,16 +98,16 @@ def test_a_template_passes_the_validation_of_a_saved_pipeline(
 
 
 @each_template
-def test_a_template_fits_every_field_limit_without_clipping(template: MissionTemplate) -> None:
+def test_a_template_fills_every_field_within_its_limit(template: MissionTemplate) -> None:
     # The sanitiser would silently cut an overlong value, so check the source.
     assert len(template.title) <= PIPELINE_NAME_MAX_LENGTH
     for field in template.inputs:
-        assert len(field.label) <= PIPELINE_INPUT_LABEL_MAX_LENGTH
-        assert len(field.description) <= PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH
+        assert 0 < len(field.label) <= PIPELINE_INPUT_LABEL_MAX_LENGTH, field.name
+        assert 0 < len(field.description) <= PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH, field.name
     for step in template.steps:
-        assert len(step.title) <= STEP_TITLE_MAX_LENGTH
-        assert len(step.role) <= STEP_ROLE_MAX_LENGTH
-        assert len(step.expected_output) <= STEP_EXPECTED_OUTPUT_MAX_LENGTH
+        assert 0 < len(step.title) <= STEP_TITLE_MAX_LENGTH
+        assert 0 < len(step.role) <= STEP_ROLE_MAX_LENGTH, step.title
+        assert 0 < len(step.expected_output) <= STEP_EXPECTED_OUTPUT_MAX_LENGTH, step.title
 
 
 @each_template
