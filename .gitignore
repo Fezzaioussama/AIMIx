@@ -144,6 +144,8 @@ Thumbs.db
 .agents-server/
 # Archify skill work folders (diagram candidates, receipts, browser evidence).
 /.archify/
+# Graphify's generated local code graph and reports.
+/graphify-out/
 
 # ── Local notes ──────────────────────────────────────────────────────────────
 doc_understanding.md

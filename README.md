@@ -183,7 +183,7 @@ backend/
     services/            # business logic: pipelines, chat, accounts, prompts, llm
       agent_runtime.py    # shared chat/pipeline tool policy and error mapping
       multiagent/         # contracts, ORM mapper, stage graph, step agent
-      toolbox/            # built-in agent tools: web search, fetch, calculator, clock
+      toolbox/            # built-in web, calculation, clock and local workspace tools
     repositories/        # data access; ownership filtering lives here
     models.py            # SQLAlchemy: User, Pipeline, PipelineStep
     security.py          # password hashing + JWT signing
@@ -287,6 +287,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 | `MCP_SERVERS` | No | JSON object of MCP servers available to chat and pipeline agents (default `{}`) |
 | `MCP_TIMEOUT_SECONDS` | No | Bounds MCP discovery and tool calls (default 30) |
+| `AGENT_WORKSPACE_DIR` | No | Sandboxed local files available to agents (default `backend/workspace`) |
 | `AGENT_TIMEOUT_SECONDS` | No | Bounds one chat or pipeline step agent run (default 3600) |
 | `AGENT_RECURSION_LIMIT` | No | Limits agent model/tool steps (default 25) |
 | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | No | Maximum tool description length in the catalogue and planner prompt (default 300) |

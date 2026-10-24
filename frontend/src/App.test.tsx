@@ -19,6 +19,13 @@ function renderAt(path: string) {
 describe('App routing', () => {
   afterEach(() => clearTokens());
 
+  it('serves the public landing page at the root, without a session', async () => {
+    renderAt('/');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /multi-agent workflows/i }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the login screen on the login route', () => {
     renderAt('/login');
     expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,9 +24,11 @@ from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.html_text import html_to_text
 from api.services.toolbox.registry import toolbox_tools
 from api.services.toolbox.tools import calculator_tool, current_datetime_tool
+from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
 from tests.conftest import TEST_SETTINGS, tool_call
 
 CONFIG = toolbox_config(TEST_SETTINGS)
+WORKSPACE_LIMITS = WorkspaceLimits(1_000, 500, 20, 10, 5)
 
 
 @pytest.mark.parametrize(
@@ -96,6 +99,61 @@ def test_web_search_is_offered_only_with_a_search_key() -> None:
 def test_enabled_list_selects_tools_and_ignores_unknown_names() -> None:
     config = replace(CONFIG, enabled=("calculator", "no_such_tool"))
     assert [item.name for item in toolbox_tools(config)] == ["calculator"]
+
+
+def test_registry_offers_configured_workspace_tools(tmp_path: Path) -> None:
+    enabled = (
+        "list_workspace_files",
+        "read_workspace_file",
+        "search_workspace_files",
+        "read_csv",
+        "save_artifact",
+    )
+    config = replace(CONFIG, enabled=enabled, workspace_dir=tmp_path)
+
+    assert [item.name for item in toolbox_tools(config)] == list(enabled)
+
+
+def test_workspace_lists_reads_searches_and_parses_csv(tmp_path: Path) -> None:
+    (tmp_path / "notes.md").write_text("Quarterly revenue grew 12%.")
+    (tmp_path / "sales.csv").write_text("name,total\nAlpha,42\nBeta,7\n")
+    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+
+    assert workspace.list_files() == "notes.md\nsales.csv"
+    assert workspace.read_file("notes.md") == "Quarterly revenue grew 12%."
+    assert workspace.search_files("REVENUE") == "notes.md:1: Quarterly revenue grew 12%."
+    assert workspace.read_csv("sales.csv") == (
+        '[{"name": "Alpha", "total": "42"}, {"name": "Beta", "total": "7"}]'
+    )
+
+
+def test_workspace_saves_new_artifacts_without_overwriting(tmp_path: Path) -> None:
+    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+
+    assert workspace.save_artifact("reports/summary.md", "Done") == "Saved reports/summary.md"
+    assert (tmp_path / "reports" / "summary.md").read_text() == "Done"
+    with pytest.raises(ToolException, match="already exists"):
+        workspace.save_artifact("reports/summary.md", "Replace")
+
+
+@pytest.mark.parametrize("path", ["../secret.txt", ".env", "/tmp/secret.txt"])
+def test_workspace_rejects_paths_outside_the_sandbox(tmp_path: Path, path: str) -> None:
+    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+
+    with pytest.raises(ToolException, match=r"relative to the workspace|outside the workspace"):
+        workspace.read_file(path)
+
+
+def test_workspace_does_not_follow_symlinks(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+    outside.write_text("secret")
+    (tmp_path / "linked.txt").symlink_to(outside)
+    workspace = LocalWorkspace(tmp_path, WORKSPACE_LIMITS)
+
+    assert workspace.list_files() == "No files found."
+    assert workspace.search_files("secret") == "No matches found."
+    with pytest.raises(ToolException, match="outside the workspace"):
+        workspace.read_file("linked.txt")
 
 
 def test_pipeline_agent_uses_built_in_tools_and_survives_a_failing_one(

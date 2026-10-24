@@ -101,7 +101,17 @@ class Settings(BaseSettings):
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
     # --- Built-in agent tools (api/services/toolbox) --------------------------
     agent_builtin_tools: CommaList = Field(
-        ["web_search", "fetch_url", "calculator", "current_datetime"],
+        [
+            "web_search",
+            "fetch_url",
+            "calculator",
+            "current_datetime",
+            "list_workspace_files",
+            "read_workspace_file",
+            "search_workspace_files",
+            "read_csv",
+            "save_artifact",
+        ],
         validation_alias="AGENT_BUILTIN_TOOLS",
     )
     web_timeout_seconds: float = Field(15.0, gt=0, validation_alias="WEB_TIMEOUT_SECONDS")
@@ -112,6 +122,20 @@ class Settings(BaseSettings):
     tavily_search_url: str = Field(
         "https://api.tavily.com/search", validation_alias="TAVILY_SEARCH_URL"
     )
+    workspace_dir: Path = Field(BASE_DIR / "workspace", validation_alias="AGENT_WORKSPACE_DIR")
+    workspace_max_file_bytes: int = Field(
+        2_000_000, ge=1, validation_alias="WORKSPACE_MAX_FILE_BYTES"
+    )
+    workspace_max_output_chars: int = Field(
+        20_000, ge=1, validation_alias="WORKSPACE_MAX_OUTPUT_CHARS"
+    )
+    workspace_search_max_files: int = Field(
+        200, ge=1, validation_alias="WORKSPACE_SEARCH_MAX_FILES"
+    )
+    workspace_search_max_results: int = Field(
+        50, ge=1, validation_alias="WORKSPACE_SEARCH_MAX_RESULTS"
+    )
+    workspace_csv_max_rows: int = Field(200, ge=1, validation_alias="WORKSPACE_CSV_MAX_ROWS")
     # Upper bound on provider calls one pipeline run makes at once for a stage
     # whose steps run in parallel.
     pipeline_max_parallel_steps: int = Field(
@@ -150,6 +174,11 @@ class Settings(BaseSettings):
     @classmethod
     def _upper(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("workspace_dir", mode="after")
+    @classmethod
+    def _workspace_path(cls, value: Path) -> Path:
+        return value if value.is_absolute() else BASE_DIR / value
 
     @model_validator(mode="after")
     def _check_environment(self) -> Settings:

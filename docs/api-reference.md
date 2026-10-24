@@ -137,7 +137,12 @@ server's key, if any. Idempotent. `200` returns the same shape as `GET`.
   { "name": "web_search", "description": "Search the web for current information...", "source": "AIMIx" },
   { "name": "fetch_url", "description": "Read a public web page...", "source": "AIMIx" },
   { "name": "calculator", "description": "Evaluate an arithmetic expression reliably...", "source": "AIMIx" },
-  { "name": "current_datetime", "description": "Return the current date and time in UTC...", "source": "AIMIx" }
+  { "name": "current_datetime", "description": "Return the current date and time in UTC...", "source": "AIMIx" },
+  { "name": "list_workspace_files", "description": "List visible local workspace files...", "source": "AIMIx" },
+  { "name": "read_workspace_file", "description": "Read a bounded local text file...", "source": "AIMIx" },
+  { "name": "search_workspace_files", "description": "Search local text files...", "source": "AIMIx" },
+  { "name": "read_csv", "description": "Read a local CSV as structured rows...", "source": "AIMIx" },
+  { "name": "save_artifact", "description": "Save a new local deliverable...", "source": "AIMIx" }
 ]
 ```
 
@@ -147,6 +152,12 @@ their server name. Use the exact `name` values in a step's `allowed_tools`.
 Descriptions may be shortened by `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. If a
 configured MCP server is unavailable, discovery returns `502 tool_unavailable`.
 Pipeline steps cannot call the chat-only `run_pipeline` function.
+
+The five workspace tools are confined to `AGENT_WORKSPACE_DIR` (default
+`backend/workspace`). They reject absolute, parent and hidden paths; reads,
+searches and CSV rows are bounded by the `WORKSPACE_*` settings. `save_artifact`
+accepts only `.txt`, `.md`, `.json` and `.csv` and never overwrites an existing
+file.
 
 ---
 

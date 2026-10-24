@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { RequireAuth } from './core/auth/RequireAuth';
@@ -11,6 +12,11 @@ import { ChatPage } from './features/chat/ChatPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+
+// The public front page is split out: signed-in users who open /chat never download it.
+const LandingPage = lazy(() =>
+  import('./features/landing/LandingPage').then((module) => ({ default: module.LandingPage })),
+);
 
 // `paths` lists every route a section owns, so Pipelines stays lit on /auto-pipeline.
 const NAV_ITEMS = [
@@ -87,6 +93,14 @@ function AppShell() {
 export function App() {
   return (
     <Routes>
+      <Route
+        path="/"
+        element={
+          <Suspense fallback={null}>
+            <LandingPage />
+          </Suspense>
+        }
+      />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<AppShell />}>

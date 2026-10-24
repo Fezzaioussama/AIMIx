@@ -4,7 +4,8 @@ import { hasSession } from './tokenStorage';
 
 /**
  * Route guard — AGENTS.md §6 "auth-protected by default". Every feature route
- * sits behind this; only /login and /register are public, deliberately.
+ * sits behind this; only the landing page (/) and /login and /register are
+ * public, deliberately.
  */
 export function RequireAuth() {
   const location = useLocation();

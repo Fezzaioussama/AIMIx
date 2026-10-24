@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from config.settings import Settings
 
@@ -20,6 +21,12 @@ class ToolboxConfig:
     fetch_max_chars: int
     search_url: str
     search_max_results: int
+    workspace_dir: Path
+    workspace_max_file_bytes: int
+    workspace_max_output_chars: int
+    workspace_search_max_files: int
+    workspace_search_max_results: int
+    workspace_csv_max_rows: int
     # Kept out of repr, so a logged config never shows it.
     search_api_key: str = field(default="", repr=False)
 
@@ -32,5 +39,11 @@ def toolbox_config(settings: Settings) -> ToolboxConfig:
         fetch_max_chars=settings.web_fetch_max_chars,
         search_url=settings.tavily_search_url,
         search_max_results=settings.web_search_max_results,
+        workspace_dir=settings.workspace_dir,
+        workspace_max_file_bytes=settings.workspace_max_file_bytes,
+        workspace_max_output_chars=settings.workspace_max_output_chars,
+        workspace_search_max_files=settings.workspace_search_max_files,
+        workspace_search_max_results=settings.workspace_search_max_results,
+        workspace_csv_max_rows=settings.workspace_csv_max_rows,
         search_api_key=settings.tavily_api_key,
     )

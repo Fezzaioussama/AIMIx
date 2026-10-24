@@ -1,8 +1,9 @@
 # Frontend reference
 
 React 19 + TypeScript (strict) + Vite 7, React Router 7, Tailwind CSS 4,
-`motion` for animation, `marked` + `DOMPurify` for Markdown, Vitest + Testing
-Library for tests.
+`motion` for animation, `three` + `@react-three/fiber` for the landing page's 3D
+hero, `lucide-react` icons, `marked` + `DOMPurify` for Markdown, Vitest +
+Testing Library for tests.
 
 ```
 frontend/src/
@@ -18,6 +19,7 @@ frontend/src/
       reactbits/    # effects adapted from React Bits, with its LICENSE.md
   features/
     auth/           # LoginPage, RegisterPage, AuthCard, AuthLayout
+    landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
 ```
@@ -26,6 +28,7 @@ frontend/src/
 
 | Path | Page | Auth |
 |---|---|---|
+| `/` | `LandingPage` (lazy-loaded) | public |
 | `/login` | `LoginPage` | public |
 | `/register` | `RegisterPage` | public |
 | `/chat` | `ChatPage` | guarded |
@@ -102,7 +105,10 @@ Components here render and animate; they never fetch or touch storage.
 |---|---|
 | `brand.ts` | `BRAND_COLORS` (the logo's sky → indigo → purple) for WebGL, canvas and inline gradients |
 | `BrandMark.tsx` | The animated "AIMIx" wordmark used by every header |
-| `GlowButton.tsx` | Primary call to action: brand gradient, StarBorder while usable, ClickSpark, `busy` spinner. One per view |
+| `GlowButton.tsx` | Primary call to action: brand gradient, StarBorder while usable, ClickSpark, `busy` spinner. One per view. Also exports `glowButtonClass` / `BUTTON_SIZES` (sm, md, lg), the single source for the button look |
+| `GlowLink.tsx` | `GlowButton`'s look on a router `Link`, for navigation that should stay a real link |
+| `TiltCard.tsx` | Leans its children toward the pointer in 3D; flat on touch and under reduced motion |
+| `webgl.ts` | `hasWebGL()`: probes for a context and releases it, so effects can pick a fallback |
 | `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers |
 | `PageTransition.tsx` | Enter-only fade/slide keyed by the route |
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
@@ -112,7 +118,8 @@ Components here render and animate; they never fetch or touch storage.
 (MIT + Commons Clause — keep `LICENSE.md` next to them): `Aurora` (WebGL2
 background, split into `aurora/` shader, palette, program and renderer
 modules), `GradientText`, `ShinyText`, `BlurText`, `RotatingText`,
-`SpotlightCard`, `StarBorder`, `ClickSpark`, `CountUp`, `AnimatedContent`.
+`SpotlightCard`, `StarBorder`, `ClickSpark`, `CountUp`, `AnimatedContent`
+(on mount, or once on first scroll into view with `whenInView`).
 They are trimmed to the props the app uses and refactored to the size
 budgets; take a new one from the site the same way rather than pasting it.
 
@@ -127,8 +134,19 @@ Rules for motion:
 - Do not use `bg-clip-text` on a parent of transformed letters — Chrome clips to
   their untransformed positions. `RotatingText` takes `colors` instead.
 - Keep `backdrop-blur` off panels that sit over an animated background; the
-  blur is recomputed every frame. Animations start on mount: `whileInView`
-  would need `IntersectionObserver`, which jsdom lacks.
+  blur is recomputed every frame.
+- Scroll-triggered motion (`whileInView`, `useInView`, `useScroll`) needs
+  `IntersectionObserver` / `ResizeObserver`, which jsdom lacks; `test-setup.ts`
+  installs inert stand-ins, so such content mounts but never "scrolls into view"
+  in tests.
+- Anything that starts a reveal from outside the viewport (e.g. sliding in from
+  the side) must sit inside an `overflow-x-clip` ancestor, or a phone widens the
+  page before the reveal fires.
+- Auto-advancing or looping content (the hero's tab carousel, the tech marquee)
+  pauses on hover/focus, stops once the visitor takes over, and does not run
+  under reduced motion. The 3D hero backdrop deliberately has no on-screen pause
+  control; it is decorative, honours reduced motion and stops rendering while
+  off-screen. Add a control back if WCAG 2.2.2 conformance is required.
 
 ## Features
 
@@ -181,6 +199,40 @@ Rules for motion:
 - `SettingsPage` renders the provider picker and one `ProviderCard` (key
   status, password field, "Remove saved key", default-model select) each.
 
+### `features/landing`
+
+The public front page at `/`, structured after a product-marketing page: hero,
+"Built on" marquee, what it is, platform, how it works, use cases, tools,
+security, FAQ, closing call to action and footer. It keeps the app's palette
+(sky → indigo → purple on `#050816`) and only claims what the product does.
+This version is closed source, so the page carries no licence, repository link
+or install instructions and links nowhere off-site; `LandingPage.test.tsx`
+fails if such text or an external link appears. `RELEASE_STAGE` in
+`content/site.ts` ("Beta") labels the release in the nav and footer — change that
+one word to say "Demo" — and is kept out of the hero on purpose.
+
+| File | Role |
+|---|---|
+| `LandingPage.tsx` | Composes the sections; the only place that knows their order |
+| `content/site.ts`, `product.ts`, `solutions.ts` | All copy as typed data: nav and footer links, hero steps, stats, features, process, use cases, tools, security points, FAQ. Edit text here, not in JSX |
+| `LandingSection.tsx` | One section: anchor, labelled region, centred heading block revealed on scroll |
+| `useLandingCtas.ts` | The two calls to action, switched once on `useAuth()` ("Get started" / "Sign in", or "Open the app" for a signed-in visitor) |
+| `Hero.tsx`, `HeroScene.tsx`, `HeroSteps.tsx` | The headline, the 3D backdrop, and the four-step tabs over a product window |
+| `ConstellationFallback.tsx` | The same pipeline drawn as flat SVG: shown while three.js loads and when there is no WebGL or reduced motion is on |
+| `SceneBoundary.tsx` | Error boundary: if the 3D scene throws, the flat version stays |
+| `scene/` | The react-three-fiber constellation. `sceneLayout.ts` (pure, shared with the SVG), `Nodes`, `Edges` (travelling pulses), `Backdrop` (stars, rings), `PipelineScene.tsx` (the lazy default export) |
+| `StackedSwap.tsx` | Cross-fades states stacked in one grid cell, so switching never shifts the layout |
+| `useStepCarousel.ts` | Auto-advance for the hero tabs; stops on a manual choice, pauses on hover/focus |
+| `PerspectiveWindow.tsx`, `previewPanels.tsx` | The product window that settles flat as it scrolls into view, and its four mock screens |
+| `ProcessSection.tsx`, `PlatformSection.tsx`, … | The remaining sections, one component each |
+
+How the 3D hero degrades: `HeroScene` renders WebGL only when `hasWebGL()` is
+true and the visitor has not asked for reduced motion; the three.js chunk is
+loaded lazily (`PipelineScene` is a `React.lazy` default export, so `three` never
+enters the main bundle). It stops rendering while off-screen (`useInView`).
+Pixel ratio is capped at 1.5. The scene reads the pointer from `window`, not the
+canvas, because the headline sits on top of it.
+
 ### `features/auth`
 
 `LoginPage` and `RegisterPage` share the `AuthCard` (glass `SpotlightCard`,
@@ -202,6 +254,10 @@ Rules for motion:
 error), `core/markdown/renderMarkdown.test.ts` (sanitisation),
 `core/ui/GlowButton.test.tsx`, `core/ui/reactbits/reactbits.test.tsx`
 (fallbacks and accessible text of the adapted effects) and
-`features/chat/ChatPage.test.tsx`. `test-setup.ts` makes `getContext` return
-`null`, i.e. tests run as a browser without WebGL or canvas. Watch mode:
+`features/chat/ChatPage.test.tsx`, and for the landing page
+`features/landing/LandingPage.test.tsx` (CTAs by sign-in state, tab keyboard
+behaviour, FAQ disclosure, WebGL-less fallback), `useStepCarousel.test.ts` and
+`scene/sceneLayout.test.ts` (the layout is deterministic and well-formed).
+`test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
+without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.

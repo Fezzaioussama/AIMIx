@@ -120,8 +120,8 @@ Each agent uses its selected model and optional role, and a system prompt from
 it has one and, when the agent has tools, tells it to use them instead of
 guessing, cite web sources and adapt when a tool fails.
 `allowed_tools: null` grants the signed-in user's pipeline list and inspect
-tools, the enabled built-in tools (`web_search`, `fetch_url`, `calculator`,
-`current_datetime`; see below) and all configured MCP tools; `[]` grants none;
+tools, the enabled built-in web, calculation, clock and local workspace tools
+(see below), and all configured MCP tools; `[]` grants none;
 an explicit list grants only named tools. A missing selected tool raises
 `tool_unavailable`. The graph keeps step results in saved order even if agents
 finish out of order. The response contains tool call names and success/error
@@ -140,7 +140,9 @@ when its tool is not configured, so `web_search` appears only when
 `TAVILY_API_KEY` is set. `tools.py` adapts the helpers into LangChain tools with
 `handle_tool_error`; `web.py` is the httpx gateway (Tavily search, page fetch);
 `calculator.py` evaluates arithmetic over a whitelisted AST, never `eval`;
-`html_text.py` reduces HTML to readable text. `agent_tools.native_tools` joins
+`html_text.py` reduces HTML to readable text; `workspace.py` confines file listing,
+search, text/CSV reads and new artifacts to `AGENT_WORKSPACE_DIR`, without hidden
+paths, symlink traversal or overwrites. `agent_tools.native_tools` joins
 them with the pipeline tools, so pipeline agents, the chat agent, the planner
 and `GET /agent-tools` all see the same set.
 

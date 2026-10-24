@@ -61,6 +61,10 @@ def test_builtin_agent_tools_are_a_comma_list() -> None:
     assert settings(AGENT_BUILTIN_TOOLS="").agent_builtin_tools == []
 
 
+def test_relative_agent_workspace_is_resolved_from_backend() -> None:
+    assert settings(AGENT_WORKSPACE_DIR="agent-files").workspace_dir == BACKEND_DIR / "agent-files"
+
+
 def test_legacy_django_variable_names_still_work() -> None:
     legacy = settings(DJANGO_SECRET_KEY="legacy-key", DJANGO_ALLOWED_HOSTS="a.example, b.example")
     assert legacy.secret_key == "legacy-key"
