@@ -40,7 +40,7 @@ describe('LandingPage', () => {
   });
 
   it('sends a signed-in user straight into the app instead', () => {
-    saveTokens({ access: 'token', refresh: 'refresh' });
+    saveTokens({ access: 'token' });
     renderLanding();
     expect(screen.queryByRole('link', { name: /get started/i })).toBeNull();
     for (const link of screen.getAllByRole('link', { name: /open the app/i })) {

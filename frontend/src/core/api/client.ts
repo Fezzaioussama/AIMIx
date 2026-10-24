@@ -1,4 +1,6 @@
-import { clearTokens, getAccessToken } from '../auth/tokenStorage';
+import { clearTokens, getAccessToken, saveTokens } from '../auth/tokenStorage';
+import { API } from './endpoints';
+import type { AuthTokens } from './types';
 
 /**
  * Gateway for every backend call (AGENTS.md §7 Adapter/Interceptor): it is the
@@ -67,11 +69,6 @@ function authHeaders(extra?: HeadersInit): Headers {
   return headers;
 }
 
-/** A 401 means the token is gone or expired; drop it so the guard redirects. */
-function handleUnauthorized(status: number): void {
-  if (status === 401) clearTokens();
-}
-
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   /** A FormData is sent as multipart (a file upload); anything else as JSON. */
@@ -81,18 +78,16 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function send(path: string, options: RequestOptions): Promise<Response> {
   const { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS, signal } = options;
-  // A FormData must not get a Content-Type: the browser adds one with the multipart boundary.
   const isForm = body instanceof FormData;
   const headers = authHeaders(
     body === undefined || isForm ? undefined : { 'Content-Type': 'application/json' },
   );
   const timeout = AbortSignal.timeout(timeoutMs);
 
-  let response: Response;
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       method,
       headers,
       body: body === undefined || isForm ? (body as FormData | undefined) : JSON.stringify(body),
@@ -107,9 +102,42 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       timedOut ? 'timeout' : 'network_error',
     );
   }
+}
+
+let refreshRequest: Promise<AuthTokens> | null = null;
+
+async function performRefresh(): Promise<AuthTokens> {
+  const response = await fetch(API.refresh, {
+    method: 'POST',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    clearTokens();
+    throw await toApiError(response);
+  }
+  const tokens = (await response.json()) as AuthTokens;
+  saveTokens(tokens);
+  return tokens;
+}
+
+export function refreshAccessToken(): Promise<AuthTokens> {
+  refreshRequest ??= performRefresh().finally(() => {
+    refreshRequest = null;
+  });
+  return refreshRequest;
+}
+
+const AUTH_PATHS = new Set([API.login, API.register, API.refresh, API.logout]);
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  let response = await send(path, options);
+  if (response.status === 401 && !AUTH_PATHS.has(path)) {
+    await refreshAccessToken();
+    response = await send(path, options);
+  }
 
   if (!response.ok) {
-    handleUnauthorized(response.status);
+    if (response.status === 401) clearTokens();
     throw await toApiError(response);
   }
 
@@ -122,17 +150,15 @@ export async function* streamText(
   body: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
-  const headers = authHeaders({ 'Content-Type': 'application/json' });
-  const timeout = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
-  const response = await fetch(path, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-  });
+  const options = { method: 'POST' as const, body, signal, timeoutMs: GENERATION_TIMEOUT_MS };
+  let response = await send(path, options);
+  if (response.status === 401) {
+    await refreshAccessToken();
+    response = await send(path, options);
+  }
 
   if (!response.ok) {
-    handleUnauthorized(response.status);
+    if (response.status === 401) clearTokens();
     throw await toApiError(response);
   }
   if (!response.body)

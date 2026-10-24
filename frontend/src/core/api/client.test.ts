@@ -18,7 +18,7 @@ describe('api client', () => {
   });
 
   it('attaches the bearer token when a session exists', async () => {
-    saveTokens({ access: 'token-abc', refresh: 'refresh-abc' });
+    saveTokens({ access: 'token-abc' });
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ok: true }));
 
     await request(API.models);
@@ -69,8 +69,10 @@ describe('api client', () => {
   });
 
   it('clears the stored session on a 401 so the guard can redirect', async () => {
-    saveTokens({ access: 'stale', refresh: 'stale-refresh' });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ error: 'not_authenticated', detail: 'Token expired' }, 401));
+    saveTokens({ access: 'stale' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ error: 'not_authenticated', detail: 'Token expired' }, 401),
+    );
 
     await expect(request(API.pipelines)).rejects.toBeInstanceOf(ApiError);
     expect(getAccessToken()).toBeNull();

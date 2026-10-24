@@ -61,7 +61,7 @@ function AppNav() {
       </div>
       <button
         type="button"
-        onClick={logout}
+        onClick={() => void logout()}
         className="ml-auto shrink-0 rounded-lg px-2 py-2 text-sm whitespace-nowrap text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-50 sm:px-3"
       >
         Log out

@@ -6,6 +6,7 @@ export const API = {
   login: '/api/login',
   register: '/api/register',
   refresh: '/api/token/refresh',
+  logout: '/api/token/logout',
   chat: '/api/chat',
   models: '/api/models',
   agentTools: '/api/agent-tools',

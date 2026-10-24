@@ -114,6 +114,22 @@ def test_registry_offers_configured_workspace_tools(tmp_path: Path) -> None:
     assert [item.name for item in toolbox_tools(config)] == list(enabled)
 
 
+def test_workspace_readers_disable_outbound_tools_without_explicit_opt_in(
+    tmp_path: Path,
+) -> None:
+    enabled = ("fetch_url", "web_search", "read_workspace_file")
+    config = replace(CONFIG, enabled=enabled, workspace_dir=tmp_path, search_api_key="key")
+
+    assert [item.name for item in toolbox_tools(config)] == ["read_workspace_file"]
+
+    opted_in = replace(config, allow_workspace_network_access=True)
+    assert [item.name for item in toolbox_tools(opted_in)] == [
+        "web_search",
+        "fetch_url",
+        "read_workspace_file",
+    ]
+
+
 def test_workspace_lists_reads_searches_and_parses_csv(tmp_path: Path) -> None:
     (tmp_path / "notes.md").write_text("Quarterly revenue grew 12%.")
     (tmp_path / "sales.csv").write_text("name,total\nAlpha,42\nBeta,7\n")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -103,6 +104,29 @@ def test_chat_tools_include_the_built_in_toolbox(app: FastAPI, user: User) -> No
     assert {"fetch_url", "calculator", "current_datetime"} <= set(
         chat_tools(app, user, FakeProvider())
     )
+
+
+def test_workspace_tools_are_scoped_to_the_authenticated_user(
+    app: FastAPI, session: Session, user: User, tmp_path: Path
+) -> None:
+    stranger = users.create(session, "workspace-stranger", hash_password("password-123", 1))
+    settings = agent_tools.get_settings().model_copy(
+        update={
+            "workspace_dir": tmp_path,
+            "agent_builtin_tools": ["read_workspace_file", "save_artifact"],
+        }
+    )
+    mine = {tool.name: tool for tool in agent_tools.native_tools(app.state.database, user, settings)}
+    theirs = {
+        tool.name: tool for tool in agent_tools.native_tools(app.state.database, stranger, settings)
+    }
+
+    mine["save_artifact"].invoke({"path": "private.txt", "content": "owner secret"})
+
+    assert mine["read_workspace_file"].invoke({"path": "private.txt"}) == "owner secret"
+    denied = theirs["read_workspace_file"].invoke({"path": "private.txt"})
+    assert "does not exist" in denied
+    assert "owner secret" not in denied
 
 
 def test_authenticated_chat_can_call_a_native_tool(

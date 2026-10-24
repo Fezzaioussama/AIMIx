@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from api.deps import app_settings
 from api.models import Pipeline, PipelineStep, User
 from api.repositories import users
 from api.security import hash_password
@@ -24,7 +25,13 @@ from tests.conftest import (
     use_provider,
 )
 
-PUBLIC_PATHS = {"/api/register", "/api/login", "/api/token/refresh", "/api/health"}
+PUBLIC_PATHS = {
+    "/api/register",
+    "/api/login",
+    "/api/token/refresh",
+    "/api/token/logout",
+    "/api/health",
+}
 
 
 def make_pipeline(session: Session, owner: User, name: str, steps: int = 1) -> Pipeline:
@@ -82,6 +89,20 @@ def test_register_is_public_and_creates_a_user(client: TestClient, session: Sess
     assert users.get_by_username(session, "newcomer") is not None
 
 
+def test_public_registration_can_be_disabled(app: FastAPI, client: TestClient) -> None:
+    from tests.conftest import TEST_SETTINGS
+
+    disabled = TEST_SETTINGS.model_copy(update={"allow_public_registration": False})
+    app.dependency_overrides[app_settings] = lambda: disabled
+
+    response = client.post(
+        "/api/register", json={"username": "outsider", "password": "a-strong-pass-9182"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "permission_denied"
+
+
 def test_register_rejects_a_weak_password(client: TestClient) -> None:
     response = client.post("/api/register", json={"username": "weak", "password": "123"})
     assert response.status_code == 400
@@ -103,11 +124,14 @@ def test_login_returns_a_token_pair_that_can_be_refreshed(
     login = client.post("/api/login", json={"username": user.username, "password": password})
     assert login.status_code == 200
     tokens = login.json()
-    assert set(tokens) == {"access", "refresh"}
+    assert set(tokens) == {"access"}
+    assert "HttpOnly" in login.headers["set-cookie"]
+    original_refresh = client.cookies["aimix_refresh"]
 
-    refreshed = client.post("/api/token/refresh", json={"refresh": tokens["refresh"]})
+    refreshed = client.post("/api/token/refresh")
     assert refreshed.status_code == 200
     access = refreshed.json()["access"]
+    assert client.cookies["aimix_refresh"] != original_refresh
     who = client.get("/api/protected", headers={"Authorization": f"Bearer {access}"})
     assert who.json()["user_id"] == user.id
 
@@ -118,14 +142,55 @@ def test_login_rejects_a_wrong_password(client: TestClient, user: User) -> None:
     assert response.json()["error"] == "not_authenticated"
 
 
+def test_authentication_requests_are_rate_limited_across_attempts(
+    app: FastAPI, client: TestClient, user: User
+) -> None:
+    from tests.conftest import TEST_SETTINGS
+
+    limited = TEST_SETTINGS.model_copy(update={"auth_rate_limit_requests": 2})
+    app.dependency_overrides[app_settings] = lambda: limited
+    payload = {"username": user.username, "password": "wrong-password"}
+
+    assert client.post("/api/login", json=payload).status_code == 401
+    assert client.post("/api/login", json=payload).status_code == 401
+    blocked = client.post("/api/login", json=payload)
+
+    assert blocked.status_code == 429
+    assert blocked.json()["error"] == "throttled"
+    assert int(blocked.headers["retry-after"]) > 0
+
+
 def test_a_refresh_token_is_not_an_access_token(
     client: TestClient, user: User, password: str
 ) -> None:
-    refresh = client.post(
-        "/api/login", json={"username": user.username, "password": password}
-    ).json()["refresh"]
+    client.post("/api/login", json={"username": user.username, "password": password})
+    refresh = client.cookies["aimix_refresh"]
     response = client.get("/api/models", headers={"Authorization": f"Bearer {refresh}"})
     assert response.status_code == 401
+
+
+def test_refresh_tokens_are_single_use(
+    app: FastAPI, client: TestClient, user: User, password: str
+) -> None:
+    client.post("/api/login", json={"username": user.username, "password": password})
+    previous = client.cookies["aimix_refresh"]
+    assert client.post("/api/token/refresh").status_code == 200
+
+    with TestClient(app) as replay_client:
+        replay_client.cookies.set("aimix_refresh", previous, path="/api/token")
+        replay = replay_client.post("/api/token/refresh")
+
+    assert replay.status_code == 401
+
+
+def test_logout_revokes_the_refresh_cookie(client: TestClient, user: User, password: str) -> None:
+    client.post("/api/login", json={"username": user.username, "password": password})
+    refresh = client.cookies["aimix_refresh"]
+
+    assert client.post("/api/token/logout").status_code == 204
+
+    client.cookies.set("aimix_refresh", refresh, path="/api/token")
+    assert client.post("/api/token/refresh").status_code == 401
 
 
 def test_models_endpoint_serves_the_catalogue(auth_client: TestClient, default_model: str) -> None:

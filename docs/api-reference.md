@@ -30,7 +30,8 @@ an unexpected failure). A validation error's `detail` lists each problem as
 `@ . + - _`. The password must pass the same rules the Django version applied
 (at least 8 characters, not a common password, not all numeric, not similar to
 the username) or a `400 validation_error` lists what is wrong. A taken username
-is also a `400`.
+is also a `400`. Production deployments must explicitly enable public sign-up
+with `ALLOW_PUBLIC_REGISTRATION=true`; otherwise this endpoint returns `403`.
 
 ### `POST /login` — public
 
@@ -38,12 +39,23 @@ is also a `400`.
 { "username": "alice", "password": "a-long-pass-123" }
 ```
 
-`200` → `{ "access": "<jwt>", "refresh": "<jwt>" }`. Wrong credentials → `401`.
-Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
+`200` → `{ "access": "<jwt>" }` and sets the refresh token in an `HttpOnly`,
+`SameSite=Strict` cookie. JavaScript and browser storage never receive the
+refresh token. Wrong credentials → `401`. Lifetimes: `JWT_ACCESS_MINUTES` (60),
+`JWT_REFRESH_DAYS` (1).
 
 ### `POST /token/refresh` — public
 
-`{ "refresh": "<jwt>" }` → `{ "access": "<jwt>" }`.
+No request body. The refresh cookie is rotated and the previous token becomes
+invalid. `200` → `{ "access": "<jwt>" }` plus the replacement refresh cookie.
+
+### `POST /token/logout` — public
+
+Revokes the presented refresh cookie and clears it. Idempotent; returns `204`.
+
+All public authentication operations are limited per client and operation by
+`AUTH_RATE_LIMIT_REQUESTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`; excess requests
+return `429 throttled` with `Retry-After`.
 
 ### `GET /protected`
 
@@ -153,11 +165,13 @@ Descriptions may be shortened by `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. If a
 configured MCP server is unavailable, discovery returns `502 tool_unavailable`.
 Pipeline steps cannot call the chat-only `run_pipeline` function.
 
-The five workspace tools are confined to `AGENT_WORKSPACE_DIR` (default
-`backend/workspace`). They reject absolute, parent and hidden paths; reads,
+The five workspace tools are confined to a private
+`AGENT_WORKSPACE_DIR/user-<id>` directory. They reject absolute, parent and hidden paths; reads,
 searches and CSV rows are bounded by the `WORKSPACE_*` settings. `save_artifact`
 accepts only `.txt`, `.md`, `.json` and `.csv` and never overwrites an existing
-file.
+file. When any workspace-reading tool is enabled, outbound `web_search` and
+`fetch_url` are suppressed unless `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`
+explicitly accepts the data-exfiltration risk.
 
 ---
 

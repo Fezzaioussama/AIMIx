@@ -51,6 +51,9 @@ class User(Base):
     #: ``pbkdf2_sha256$<iterations>$<salt>$<hash>`` — the format Django used, so
     #: accounts imported from the previous backend keep their passwords.
     password_hash: Mapped[str] = mapped_column(String(256))
+    #: SHA-256 of the one currently valid refresh token. Keeping only a hash
+    #: makes refresh rotation and logout possible without storing bearer secrets.
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     #: The LLM provider this user's requests go to; None means LLM_PROVIDER.
     llm_provider: Mapped[str | None] = mapped_column(String(PROVIDER_NAME_MAX_LENGTH))
@@ -61,6 +64,19 @@ class User(Base):
     provider_settings: Mapped[list[ProviderSetting]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+
+
+class RateLimitBucket(Base):
+    """A cross-process fixed-window counter containing no raw client address."""
+
+    __tablename__ = "rate_limit_buckets"
+    __table_args__ = (UniqueConstraint("identity_hash", "action", name="uq_rate_limit_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    identity_hash: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64))
+    window_started_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    hits: Mapped[int] = mapped_column(default=0)
 
 
 class ProviderSetting(Base):

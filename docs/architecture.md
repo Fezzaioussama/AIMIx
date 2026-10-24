@@ -141,7 +141,8 @@ when its tool is not configured, so `web_search` appears only when
 `handle_tool_error`; `web.py` is the httpx gateway (Tavily search, page fetch);
 `calculator.py` evaluates arithmetic over a whitelisted AST, never `eval`;
 `html_text.py` reduces HTML to readable text; `workspace.py` confines file listing,
-search, text/CSV reads and new artifacts to `AGENT_WORKSPACE_DIR`, without hidden
+search, text/CSV reads and new artifacts to a per-user directory below
+`AGENT_WORKSPACE_DIR`, without hidden
 paths, symlink traversal or overwrites. `agent_tools.native_tools` joins
 them with the pipeline tools, so pipeline agents, the chat agent, the planner
 and `GET /agent-tools` all see the same set.
@@ -151,7 +152,9 @@ refused if any address is loopback, private, link-local or otherwise
 non-global, which keeps a prompt-injected agent out of the server's network and
 cloud metadata endpoint. httpx resolves the host again when it connects, so a
 DNS-rebinding window remains; drop `fetch_url` from `AGENT_BUILTIN_TOOLS` where
-that is unacceptable. Downloads stop at `WEB_FETCH_MAX_BYTES`, the text handed
+that is unacceptable. Outbound web tools are automatically removed when
+workspace readers are enabled unless the operator explicitly sets
+`AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`. Downloads stop at `WEB_FETCH_MAX_BYTES`, the text handed
 to the model at `WEB_FETCH_MAX_CHARS`, and each request at
 `WEB_TIMEOUT_SECONDS`, with no retries.
 

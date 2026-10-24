@@ -87,9 +87,19 @@ class Settings(BaseSettings):
 
     jwt_access_minutes: float = Field(60, gt=0, validation_alias="JWT_ACCESS_MINUTES")
     jwt_refresh_days: float = Field(1, gt=0, validation_alias="JWT_REFRESH_DAYS")
+    refresh_cookie_name: str = Field(
+        "aimix_refresh", min_length=1, validation_alias="REFRESH_COOKIE_NAME"
+    )
     # Django 5.2's PBKDF2 work factor, so imported and new hashes match.
     password_hash_iterations: int = Field(
         1_000_000, ge=1, validation_alias="PASSWORD_HASH_ITERATIONS"
+    )
+    allow_public_registration: bool = Field(False, validation_alias="ALLOW_PUBLIC_REGISTRATION")
+    auth_rate_limit_requests: int = Field(
+        20, ge=1, validation_alias="AUTH_RATE_LIMIT_REQUESTS"
+    )
+    auth_rate_limit_window_seconds: int = Field(
+        60, ge=1, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
     )
 
     # --- LLM provider layer: handed to llm/ by api.services.llm (§5 D) -------
@@ -116,6 +126,11 @@ class Settings(BaseSettings):
             "save_artifact",
         ],
         validation_alias="AGENT_BUILTIN_TOOLS",
+    )
+    # Explicit opt-in: otherwise file-reading tools suppress outbound web tools,
+    # preventing model-driven disclosure of workspace data.
+    agent_allow_workspace_network_access: bool = Field(
+        False, validation_alias="AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS"
     )
     web_timeout_seconds: float = Field(15.0, gt=0, validation_alias="WEB_TIMEOUT_SECONDS")
     web_fetch_max_bytes: int = Field(2_000_000, ge=1, validation_alias="WEB_FETCH_MAX_BYTES")

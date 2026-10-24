@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import * as authApi from '../api/auth';
@@ -10,15 +10,35 @@ import { clearTokens, hasSession, saveTokens } from './tokenStorage';
  */
 interface AuthContextValue {
   isAuthenticated: boolean;
+  isReady: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(hasSession);
+  const [isReady, setIsReady] = useState(hasSession);
+
+  useEffect(() => {
+    if (hasSession()) return;
+    let active = true;
+    void authApi
+      .restoreSession()
+      .then((tokens) => {
+        saveTokens(tokens);
+        if (active) setIsAuthenticated(true);
+      })
+      .catch(() => clearTokens())
+      .finally(() => {
+        if (active) setIsReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const login = useCallback(async (username: string, password: string) => {
     const tokens = await authApi.login(username, password);
@@ -30,14 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.register(username, password);
   }, []);
 
-  const logout = useCallback(() => {
-    clearTokens();
-    setIsAuthenticated(false);
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      clearTokens();
+      setIsAuthenticated(false);
+    }
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, login, register, logout }),
-    [isAuthenticated, login, register, logout],
+    () => ({ isAuthenticated, isReady, login, register, logout }),
+    [isAuthenticated, isReady, login, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

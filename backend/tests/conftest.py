@@ -33,6 +33,7 @@ TEST_SETTINGS = Settings(
     database_url="sqlite://",
     # Hashing is the slowest part of auth-heavy tests.
     password_hash_iterations=1,
+    allow_public_registration=True,
     log_level="WARNING",
     llm_provider="openrouter",
     llm_timeout_seconds=1.0,
@@ -41,6 +42,7 @@ TEST_SETTINGS = Settings(
     mcp_timeout_seconds=1.0,
     mcp_servers={},
     agent_builtin_tools=["web_search", "fetch_url", "calculator", "current_datetime"],
+    agent_allow_workspace_network_access=False,
     web_timeout_seconds=1.0,
     web_fetch_max_bytes=2_000,
     web_fetch_max_chars=1_000,

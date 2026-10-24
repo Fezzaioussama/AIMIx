@@ -21,7 +21,7 @@ describe('extractDocument', () => {
   });
 
   it('uploads the file as multipart form data with the session token', async () => {
-    saveTokens({ access: 'token-abc', refresh: 'refresh-abc' });
+    saveTokens({ access: 'token-abc' });
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(JSON.stringify(extracted), { status: 200 }));

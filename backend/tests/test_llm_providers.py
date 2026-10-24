@@ -137,14 +137,17 @@ def test_openrouter_passes_timeout_and_base_url_to_its_client(
     assert captured["base_url"] == openrouter.DEFAULT_BASE_URL
 
 
-def test_together_passes_timeout_to_its_client(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_together_passes_transport_settings_to_its_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: dict[str, Any] = {}
 
-    def fake_together(**kwargs: Any) -> Any:
+    def fake_openai(**kwargs: Any) -> Any:
         captured.update(kwargs)
         return _Client(_Response("x"))
 
-    monkeypatch.setattr("llm.providers.together.Together", fake_together)
+    monkeypatch.setattr("llm.providers.together.OpenAI", fake_openai)
     create_provider("togetherai", CONFIG)
 
     assert captured["timeout"] == 7.5
+    assert captured["base_url"] == together.DEFAULT_BASE_URL

@@ -14,7 +14,7 @@ llm/
   catalog.py       # ModelInfo, ModelCatalog, OpenRouterModels, TogetherAIModels, CATALOGS
   providers/
     openrouter.py  # builds an openai.OpenAI client with the OpenRouter base URL
-    together.py    # builds a together.Together client
+    together.py    # builds an openai.OpenAI client with the Together base URL
 ```
 
 ## The contract

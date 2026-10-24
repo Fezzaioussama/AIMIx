@@ -42,6 +42,15 @@ def test_health_is_public(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_responses_have_browser_security_boundaries(client: TestClient) -> None:
+    response = client.get("/api/health")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cross-origin-resource-policy"] == "same-origin"
+    assert "object-src 'none'" in response.headers["content-security-policy"]
+    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+
+
 def test_without_a_build_only_the_api_is_served(client: TestClient) -> None:
     assert client.get("/chat").status_code == 404
 

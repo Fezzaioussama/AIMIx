@@ -35,6 +35,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `log_level` | `LOG_LEVEL` (`DJANGO_LOG_LEVEL`) | `INFO` |
 | `frontend_dist_dir` | `FRONTEND_DIST_DIR` | Built React app to serve next to `/api` (the image sets it); empty serves none |
 | `jwt_access_minutes` / `jwt_refresh_days` | `JWT_ACCESS_MINUTES` / `JWT_REFRESH_DAYS` | 60 minutes / 1 day |
+| auth controls | `ALLOW_PUBLIC_REGISTRATION`, `AUTH_RATE_LIMIT_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`, `REFRESH_COOKIE_NAME` | Public registration is off by default; auth operations are database-throttled; refresh tokens use a rotating HttpOnly cookie |
 | `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
 | `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
@@ -42,6 +43,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `agent_tool_description_max_chars` | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | Maximum tool description length in the catalogue and planner prompt (300) |
 | `mcp_timeout_seconds` / `mcp_servers` | `MCP_TIMEOUT_SECONDS` / `MCP_SERVERS` | MCP call limit (30 seconds) / configured server JSON |
 | `workspace_dir` | `AGENT_WORKSPACE_DIR` | Sandboxed agent file root (`backend/workspace`) |
+| workspace/network policy | `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS` | `false`: workspace readers and outbound web tools cannot be offered together; explicit opt-in required |
 | workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
 | document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
@@ -62,7 +64,8 @@ logging once, from the app factory.
 `create_app()` builds the app: it creates the `Database`, installs the error
 handlers and middleware, and mounts `routes.api_router()` under `/api`.
 `routes.py` is the routing table. Routers in `PUBLIC_ROUTERS` (register, login,
-refresh, health) are open. When `FRONTEND_DIST_DIR` is set, `frontend.py` then
+refresh/logout, health) are open; auth operations are rate-limited and registration
+can be disabled. When `FRONTEND_DIST_DIR` is set, `frontend.py` then
 serves the built app at `/` with an `index.html` fallback for client routes;
 unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` is mounted behind the
 `current_user` dependency, so **new routes are authenticated by default**.

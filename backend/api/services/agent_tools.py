@@ -66,7 +66,11 @@ def read_only_tools(database: Database, user: User) -> list[BaseTool]:
 def native_tools(database: Database, user: User, settings: Settings) -> list[BaseTool]:
     """Every in-process tool an agent may use: pipeline inspection plus the
     built-in toolbox (web search, page fetch, calculator, clock)."""
-    return [*read_only_tools(database, user), *toolbox_tools(toolbox_config(settings))]
+    workspace = settings.workspace_dir / f"user-{user.id}"
+    return [
+        *read_only_tools(database, user),
+        *toolbox_tools(toolbox_config(settings, workspace)),
+    ]
 
 
 def built_in_tools(

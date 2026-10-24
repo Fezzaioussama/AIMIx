@@ -43,7 +43,10 @@ def _web_search(config: ToolboxConfig) -> BaseTool | None:
 
 
 def _workspace(config: ToolboxConfig) -> LocalWorkspace | None:
-    if not config.workspace_dir.is_dir():
+    try:
+        config.workspace_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        config.workspace_dir.chmod(0o700)
+    except OSError:
         return None
     limits = WorkspaceLimits(
         config.workspace_max_file_bytes,
@@ -74,8 +77,16 @@ TOOLBOX: dict[str, ToolBuilder] = {
     SAVE_ARTIFACT: lambda config: _workspace_tool(config, save_artifact_tool),
 }
 
+WORKSPACE_READ_TOOLS = frozenset(
+    {LIST_WORKSPACE_FILES, READ_WORKSPACE_FILE, SEARCH_WORKSPACE_FILES, READ_CSV}
+)
+OUTBOUND_TOOLS = frozenset({WEB_SEARCH, FETCH_URL})
+
 
 def toolbox_tools(config: ToolboxConfig) -> list[BaseTool]:
     """The enabled and configured built-in tools, in registry order."""
-    built = (build(config) for name, build in TOOLBOX.items() if name in config.enabled)
+    enabled = set(config.enabled)
+    if not config.allow_workspace_network_access and enabled & WORKSPACE_READ_TOOLS:
+        enabled -= OUTBOUND_TOOLS
+    built = (build(config) for name, build in TOOLBOX.items() if name in enabled)
     return [item for item in built if item is not None]

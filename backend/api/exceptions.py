@@ -32,6 +32,20 @@ class NotAuthenticated(DomainError):
     headers = {"WWW-Authenticate": "Bearer"}  # noqa: RUF012 - read-only per class
 
 
+class PermissionDenied(DomainError):
+    code = "permission_denied"
+    status_code = 403
+
+
+class Throttled(DomainError):
+    code = "throttled"
+    status_code = 429
+
+    def __init__(self, detail: str, retry_after: int) -> None:
+        super().__init__(detail)
+        self.headers = {"Retry-After": str(retry_after)}
+
+
 class NotFound(DomainError):
     code = "not_found"
     status_code = 404

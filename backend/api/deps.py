@@ -23,6 +23,7 @@ from api.services.documents.contracts import ExtractionLimits
 from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
+from api.services.rate_limits import RateLimitRequest, enforce
 from api.services.tool_catalog import PipelineToolCatalog
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
@@ -38,6 +39,21 @@ def app_settings() -> Settings:
 
 DbSession = Annotated[Session, Depends(db_session)]
 AppSettings = Annotated[Settings, Depends(app_settings)]
+
+
+def auth_rate_limit(request: Request, session: DbSession, settings: AppSettings) -> None:
+    """Persist one counter per client and auth path, shared by every app process."""
+    identity = request.client.host if request.client else "unknown"
+    enforce(
+        session,
+        settings.secret_key,
+        RateLimitRequest(
+            identity,
+            request.url.path,
+            settings.auth_rate_limit_requests,
+            settings.auth_rate_limit_window_seconds,
+        ),
+    )
 
 
 def document_limits(settings: AppSettings) -> ExtractionLimits:
@@ -62,6 +78,20 @@ def token_signer(settings: AppSettings) -> TokenSigner:
 
 
 Signer = Annotated[TokenSigner, Depends(token_signer)]
+
+
+@dataclass(frozen=True)
+class AuthFlow:
+    session: Session
+    signer: TokenSigner
+    settings: Settings
+
+
+def auth_flow(session: DbSession, signer: Signer, settings: AppSettings) -> AuthFlow:
+    return AuthFlow(session, signer, settings)
+
+
+Auth = Annotated[AuthFlow, Depends(auth_flow)]
 
 _bearer = HTTPBearer(auto_error=False)
 

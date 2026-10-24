@@ -27,11 +27,12 @@ class ToolboxConfig:
     workspace_search_max_files: int
     workspace_search_max_results: int
     workspace_csv_max_rows: int
+    allow_workspace_network_access: bool
     # Kept out of repr, so a logged config never shows it.
     search_api_key: str = field(default="", repr=False)
 
 
-def toolbox_config(settings: Settings) -> ToolboxConfig:
+def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> ToolboxConfig:
     return ToolboxConfig(
         enabled=tuple(settings.agent_builtin_tools),
         timeout_seconds=settings.web_timeout_seconds,
@@ -39,11 +40,12 @@ def toolbox_config(settings: Settings) -> ToolboxConfig:
         fetch_max_chars=settings.web_fetch_max_chars,
         search_url=settings.tavily_search_url,
         search_max_results=settings.web_search_max_results,
-        workspace_dir=settings.workspace_dir,
+        workspace_dir=workspace_dir or settings.workspace_dir,
         workspace_max_file_bytes=settings.workspace_max_file_bytes,
         workspace_max_output_chars=settings.workspace_max_output_chars,
         workspace_search_max_files=settings.workspace_search_max_files,
         workspace_search_max_results=settings.workspace_search_max_results,
         workspace_csv_max_rows=settings.workspace_csv_max_rows,
+        allow_workspace_network_access=settings.agent_allow_workspace_network_access,
         search_api_key=settings.tavily_api_key,
     )

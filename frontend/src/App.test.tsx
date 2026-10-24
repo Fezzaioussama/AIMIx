@@ -31,13 +31,13 @@ describe('App routing', () => {
     expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
-  it('redirects an unauthenticated visitor away from a protected route', () => {
+  it('redirects an unauthenticated visitor away from a protected route', async () => {
     renderAt('/pipeline');
-    expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
   it('renders the app nav for an authenticated visitor', () => {
-    saveTokens({ access: 'token', refresh: 'refresh' });
+    saveTokens({ access: 'token' });
     renderAt('/chat');
     expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Pipelines' })).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe('App routing', () => {
   });
 
   it('keeps Pipelines current on the auto-pipeline screen', () => {
-    saveTokens({ access: 'token', refresh: 'refresh' });
+    saveTokens({ access: 'token' });
     renderAt('/auto-pipeline');
     expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
