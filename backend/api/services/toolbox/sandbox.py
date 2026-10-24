@@ -4,8 +4,13 @@ lifecycle of one call (AGENTS.md §7 Adapter port; the E2B adapter lives in
 
 Every call gets a fresh sandbox that is destroyed afterwards — after success,
 after an error or a timeout, and when the agent itself is cancelled — so no
-state or user data outlives the call. Failures raise ``SandboxError``, a
-``ToolException``: the agent receives it as an error result it can react to.
+state or user data outlives the call. One deadline, SANDBOX_TIMEOUT_SECONDS,
+covers the whole call: creating the sandbox, uploading the inputs, running the
+code and collecting its files. It starts before the sandbox exists, so it
+always ends before the sandbox's own lifetime (the same timeout) does.
+
+Failures raise ``SandboxError``, a ``ToolException``: the agent receives it as
+an error result it can react to.
 """
 
 from __future__ import annotations
@@ -25,6 +30,9 @@ logger = logging.getLogger(__name__)
 #: Where uploaded input files appear, and the directory collected after the run.
 INPUT_DIR = "/home/user/inputs"
 OUTPUT_DIR = "/home/user/outputs"
+#: Where a call's files go, relative to its folder: separate, so never colliding.
+CHARTS_FOLDER = "charts"
+OUTPUTS_FOLDER = "outputs"
 
 
 class SandboxError(ToolException):
@@ -83,10 +91,12 @@ class SandboxLimits:
 @dataclass(frozen=True)
 class SandboxRun:
     execution: CodeExecution
-    #: Charts first (``chart-<n>.png``), then OUTPUT_DIR files, within the limits.
-    files: tuple[SandboxFile, ...]
+    #: ``charts/chart-<n>.png``, then ``outputs/<path>``, within the limits.
+    files: tuple[SandboxFile, ...] = ()
     #: Files left behind for exceeding the file count or size limit.
-    skipped: tuple[str, ...]
+    skipped: tuple[str, ...] = ()
+    #: Files that could not be downloaded, as ``"<path>: <reason>"``.
+    failed: tuple[str, ...] = ()
 
 
 class CodeSandbox(Protocol):
@@ -101,8 +111,8 @@ class CodeSandbox(Protocol):
     async def list_outputs(self) -> list[OutputEntry]:
         """The regular files below OUTPUT_DIR, with paths relative to it."""
 
-    async def download(self, path: str) -> bytes:
-        """The content of OUTPUT_DIR/<path>."""
+    async def download(self, path: str, max_bytes: int) -> bytes:
+        """OUTPUT_DIR/<path>; raise ``SandboxError`` once it exceeds ``max_bytes``."""
 
     async def close(self) -> None:
         """Destroy the sandbox and everything in it."""
@@ -114,10 +124,12 @@ SandboxOpener = Callable[[], Awaitable[CodeSandbox]]
 
 @dataclass(frozen=True)
 class _Candidate:
+    #: Where the file goes, relative to the call's folder.
     path: str
     size: int
-    #: Already in memory (a chart); None means it still has to be downloaded.
+    #: A chart is already in memory; an output is downloaded from ``source``.
     content: bytes | None = None
+    source: str = ""
 
 
 async def run_in_sandbox(
@@ -159,42 +171,61 @@ async def _run(
     inputs: Sequence[SandboxFile],
     limits: SandboxLimits,
 ) -> SandboxRun:
-    sandbox = await open_sandbox()
+    sandbox: CodeSandbox | None = None
     try:
         with anyio.fail_after(limits.timeout_seconds):
-            for item in inputs:
-                await sandbox.upload(item)
-            execution = await sandbox.execute(code)
-            files, skipped = await _collect(sandbox, execution.charts, limits)
+            sandbox = await open_sandbox()
+            run = await _use(sandbox, code, inputs, limits)
     except TimeoutError as cause:
         raise SandboxTimedOut(
             f"The code did not finish within {limits.timeout_seconds:g} seconds."
         ) from cause
     finally:
-        await _close(sandbox, limits.timeout_seconds)
-    return SandboxRun(execution, tuple(files), tuple(skipped))
+        if sandbox is not None:  # outside the deadline: closing must not be cut short
+            await _close(sandbox, limits.timeout_seconds)
+    return run
 
 
-async def _collect(
-    sandbox: CodeSandbox, charts: tuple[bytes, ...], limits: SandboxLimits
-) -> tuple[list[SandboxFile], list[str]]:
-    """Download only what fits: at most ``max_files`` files of ``max_file_bytes``."""
+async def _use(
+    sandbox: CodeSandbox, code: str, inputs: Sequence[SandboxFile], limits: SandboxLimits
+) -> SandboxRun:
+    for item in inputs:
+        await sandbox.upload(item)
+    execution = await sandbox.execute(code)
     candidates = [
-        _Candidate(f"chart-{number}.png", len(png), png)
-        for number, png in enumerate(charts, start=1)
+        _Candidate(f"{CHARTS_FOLDER}/chart-{number}.png", len(png), content=png)
+        for number, png in enumerate(execution.charts, start=1)
     ]
     outputs = sorted(await sandbox.list_outputs(), key=attrgetter("path"))
-    candidates += [_Candidate(entry.path, entry.size) for entry in outputs]
-    fitting = [item for item in candidates if item.size <= limits.max_file_bytes]
-    kept = fitting[: limits.max_files]
-    files = [
-        SandboxFile(
-            item.path,
-            item.content if item.content is not None else await sandbox.download(item.path),
-        )
-        for item in kept
+    candidates += [
+        _Candidate(f"{OUTPUTS_FOLDER}/{entry.path}", entry.size, source=entry.path)
+        for entry in outputs
     ]
-    return files, [item.path for item in candidates if item not in kept]
+    fitting = [item for item in candidates if item.size <= limits.max_file_bytes]
+    too_large = [item.path for item in candidates if item.size > limits.max_file_bytes]
+    over_count = [item.path for item in fitting[limits.max_files :]]
+    files, failed = await _download(sandbox, fitting[: limits.max_files], limits.max_file_bytes)
+    return SandboxRun(execution, tuple(files), (*too_large, *over_count), tuple(failed))
+
+
+async def _download(
+    sandbox: CodeSandbox, kept: Sequence[_Candidate], max_bytes: int
+) -> tuple[list[SandboxFile], list[str]]:
+    """Fetch what was kept; a file that cannot be fetched is reported, not fatal."""
+    files: list[SandboxFile] = []
+    failed: list[str] = []
+    for item in kept:
+        try:
+            content = item.content
+            if content is None:
+                content = await sandbox.download(item.source, max_bytes)
+        except SandboxTimedOut:
+            raise
+        except SandboxError as cause:
+            failed.append(f"{item.path}: {cause}")
+        else:
+            files.append(SandboxFile(item.path, content))
+    return files, failed
 
 
 async def _close(sandbox: CodeSandbox, timeout_seconds: float) -> None:

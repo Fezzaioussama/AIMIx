@@ -178,9 +178,9 @@ explicitly accepts the data-exfiltration risk.
 `run_python` takes `code` and optional `input_files` (workspace paths, under the
 same rules, copied to `/home/user/inputs/`). Each call runs in a fresh E2B
 sandbox without internet access. Files the code writes to `/home/user/outputs/`
-and the PNG charts it displays are saved to `sandbox/<UTC time>/` in the
-workspace, never overwriting. It counts as a workspace reader for the rule
-above. A failure in the code, a timeout or an unavailable sandbox is an `error`
+and the PNG charts it displays are saved to `sandbox/<UTC time>/outputs/` and
+`sandbox/<UTC time>/charts/` in the workspace, never overwriting. It counts as
+a workspace reader for the rule above, but only when it is offered. A failure in the code, a timeout or an unavailable sandbox is an `error`
 tool call that the agent can react to.
 
 ---

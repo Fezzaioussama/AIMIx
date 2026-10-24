@@ -11,7 +11,10 @@ already have succeeded.
 
 The SDK keeps everything a run streams back in memory, so a run that streams
 more than SANDBOX_MAX_STREAM_CHARS is stopped: a runaway print loop cannot fill
-the server's memory.
+the server's memory. The SDK reads each message whole before it can be
+counted, so this does not bound one single huge message (a displayed result
+of hundreds of megabytes). Output files are downloaded as streams and dropped
+as soon as they exceed the file size limit.
 """
 
 from __future__ import annotations
@@ -39,10 +42,11 @@ from api.services.toolbox.sandbox import (
     SandboxTimedOut,
 )
 
-#: How many directory levels below OUTPUT_DIR are collected.
-OUTPUT_DEPTH = 5
+#: How many directory levels below OUTPUT_DIR are collected; deeper files are not.
+OUTPUT_DEPTH = 10
 #: The payloads of a displayed result that count against the stream budget.
-RESULT_FORMATS = ("text", "html", "markdown", "svg", "png", "jpeg", "pdf", "latex", "javascript")
+RESULT_TEXTS = ("text", "html", "markdown", "svg", "png", "jpeg", "pdf", "latex", "javascript")
+RESULT_DATA = ("json", "data", "extra")
 _TIMEOUTS = (TimeoutException, TimeoutError, httpx.TimeoutException)
 
 CreateSandbox = Callable[..., Awaitable[Any]]
@@ -57,6 +61,8 @@ def _sdk_errors() -> Iterator[None]:
     """Re-raise whatever the SDK throws as our own error (the §8 adapter case)."""
     try:
         yield
+    except SandboxError:
+        raise
     except _TIMEOUTS as cause:
         raise SandboxTimedOut("The code sandbox timed out.") from cause
     except Exception as cause:  # the SDK's errors share no base class
@@ -70,6 +76,12 @@ def _charts(results: list[Any]) -> Iterator[bytes]:
                 yield base64.b64decode(result.png)
             except binascii.Error:
                 continue
+
+
+def _result_chars(result: Any) -> int:
+    texts = sum(len(getattr(result, name) or "") for name in RESULT_TEXTS)
+    data = sum(len(str(value)) for name in RESULT_DATA if (value := getattr(result, name)))
+    return texts + data
 
 
 class _Recorder:
@@ -97,7 +109,7 @@ class _Recorder:
         self._stderr.append(message.line)
 
     def result(self, result: Any) -> None:
-        self._spend(sum(len(getattr(result, name) or "") for name in RESULT_FORMATS))
+        self._spend(_result_chars(result))
         self._results.append(result)
 
     def error(self, error: Any) -> None:
@@ -166,9 +178,16 @@ class E2BSandbox:
                 return []
         return _outputs(entries)
 
-    async def download(self, path: str) -> bytes:
+    async def download(self, path: str, max_bytes: int) -> bytes:
+        """Streamed, so a file still growing after the listing stays bounded."""
+        content = bytearray()
         with _sdk_errors():
-            content = await self._sandbox.files.read(f"{OUTPUT_DIR}/{path}", format="bytes")
+            stream = await self._sandbox.files.read(f"{OUTPUT_DIR}/{path}", format="stream")
+            async with stream:
+                async for chunk in stream:
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise SandboxError(f"The file grew beyond the {max_bytes}-byte limit.")
         return bytes(content)
 
     async def close(self) -> None:

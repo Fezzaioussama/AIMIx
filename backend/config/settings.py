@@ -156,7 +156,8 @@ class Settings(BaseSettings):
     # --- Code sandbox behind run_python (api/services/toolbox/sandbox.py) -----
     # Empty: run_python is not offered. Each call sends its code and input files to E2B.
     e2b_api_key: str = Field("", validation_alias="E2B_API_KEY")
-    # Bounds one call's code execution and the lifetime of its sandbox.
+    # Bounds one call (creating its sandbox, moving files, running the code) and
+    # the sandbox's lifetime.
     sandbox_timeout_seconds: float = Field(60.0, gt=0, validation_alias="SANDBOX_TIMEOUT_SECONDS")
     sandbox_max_output_chars: int = Field(10_000, ge=1, validation_alias="SANDBOX_MAX_OUTPUT_CHARS")
     # Input files uploaded, and output files or charts saved, per call.

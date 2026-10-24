@@ -67,7 +67,7 @@ def _report(
     sections = (
         _error_section(execution.error),
         _section("Saved to the workspace", "\n".join(saved)),
-        _section("Not saved", "\n".join(refused)),
+        _section("Not saved", "\n".join([*run.failed, *refused])),
         _section(
             f"Not saved (over the {limits.max_files}-file or {limits.max_file_bytes}-byte limit)",
             _listed(run.skipped, limits.max_files),

@@ -51,6 +51,30 @@ def entry(path: str, kind: FileType, size: int = 0) -> EntryInfo:
     )
 
 
+class FakeStream:
+    """The SDK's streamed download: an async context manager over chunks."""
+
+    def __init__(self, data: bytes) -> None:
+        self._chunks = [data[start : start + 4] for start in range(0, len(data), 4)]
+        self.read = 0
+        self.closed = False
+
+    async def __aenter__(self) -> FakeStream:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        self.closed = True
+
+    def __aiter__(self) -> FakeStream:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if not self._chunks:
+            raise StopAsyncIteration
+        self.read += 1
+        return self._chunks.pop(0)
+
+
 class FakeFiles:
     def __init__(self) -> None:
         self.written: dict[str, bytes] = {}
@@ -58,6 +82,7 @@ class FakeFiles:
         self.entries: list[EntryInfo] = []
         self.listed: list[tuple[str, int]] = []
         self.contents: dict[str, bytes] = {}
+        self.streams: list[FakeStream] = []
         self.error: Exception | None = None
 
     async def write(self, path: str, data: bytes) -> None:
@@ -73,9 +98,10 @@ class FakeFiles:
         self.listed.append((path, depth))
         return self.entries
 
-    async def read(self, path: str, format: str = "text") -> bytearray:
-        assert format == "bytes"
-        return bytearray(self.contents[path])
+    async def read(self, path: str, format: str = "text") -> FakeStream:
+        assert format == "stream"
+        self.streams.append(FakeStream(self.contents[path]))
+        return self.streams[-1]
 
 
 class FakeSdkSandbox:
@@ -230,12 +256,26 @@ async def test_a_removed_output_directory_means_no_outputs() -> None:
 @pytest.mark.asyncio
 async def test_download_and_close() -> None:
     sdk = FakeSdkSandbox()
-    sdk.files.contents = {"/home/user/outputs/charts/a.png": b"png"}
+    sdk.files.contents = {"/home/user/outputs/charts/a.png": b"png bytes"}
     sandbox = await opened(sdk)
 
-    assert await sandbox.download("charts/a.png") == b"png"
+    assert await sandbox.download("charts/a.png", 9) == b"png bytes"
+    assert sdk.files.streams[0].closed
     await sandbox.close()
     assert sdk.killed
+
+
+@pytest.mark.asyncio
+async def test_a_download_stops_as_soon_as_the_file_outgrows_the_limit() -> None:
+    sdk = FakeSdkSandbox()
+    sdk.files.contents = {"/home/user/outputs/log.txt": b"x" * 400}
+
+    with pytest.raises(SandboxError, match="grew beyond the 10-byte limit") as raised:
+        await (await opened(sdk)).download("log.txt", 10)
+
+    assert type(raised.value) is SandboxError
+    assert sdk.files.streams[0].read == 3  # 12 bytes read of 400, then it stopped
+    assert sdk.files.streams[0].closed
 
 
 @pytest.mark.asyncio
@@ -282,10 +322,12 @@ async def test_cancellation_is_not_mistaken_for_a_sandbox_failure() -> None:
 
 
 def test_the_sdk_never_logs_submitted_code_even_at_debug_level() -> None:
-    configure_logging("DEBUG")
+    sdk_logger = logging.getLogger("e2b_code_interpreter.code_interpreter_async")
     try:
-        sdk_logger = logging.getLogger("e2b_code_interpreter.code_interpreter_async")
+        configure_logging("DEBUG")
         assert not sdk_logger.isEnabledFor(logging.DEBUG)
         assert logging.getLogger("api").isEnabledFor(logging.DEBUG)
+        configure_logging("ERROR")  # and it is never louder than the app
+        assert not sdk_logger.isEnabledFor(logging.WARNING)
     finally:
         configure_logging("WARNING")

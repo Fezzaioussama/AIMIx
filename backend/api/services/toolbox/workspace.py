@@ -79,6 +79,8 @@ class LocalWorkspace:
     def read_bytes(self, path: str) -> bytes:
         """Any visible file's raw content, within the file size limit."""
         target = self._resolve(path)
+        if not self._visible(target):  # a visible link to a hidden file stays hidden
+            raise ToolException("Use a visible path relative to the workspace.")
         try:
             return self._within_size_limit(target).read_bytes()
         except OSError as cause:

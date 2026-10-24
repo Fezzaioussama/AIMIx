@@ -57,6 +57,18 @@ def test_run_python_counts_as_a_workspace_reader_but_not_as_outbound(tmp_path: P
     ]
 
 
+def test_run_python_without_a_key_does_not_take_the_web_tools_away(tmp_path: Path) -> None:
+    """Only readers that are actually offered can leak workspace data."""
+    config = replace(
+        CONFIG,
+        enabled=("web_search", "fetch_url", "run_python"),
+        workspace_dir=tmp_path,
+        search_api_key="tvly-test",
+    )
+
+    assert [item.name for item in toolbox_tools(config)] == ["web_search", "fetch_url"]
+
+
 @pytest.mark.asyncio
 async def test_run_python_uses_the_signed_in_users_own_workspace(
     app: FastAPI, user: User, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

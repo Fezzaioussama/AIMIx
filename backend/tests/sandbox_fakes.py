@@ -29,6 +29,9 @@ class FakeSandbox:
     ) -> None:
         self.execution = execution or CodeExecution(stdout="hello\n")
         self.outputs = outputs or {}
+        #: Sizes the listing reports when they differ from the content (a file
+        #: that keeps growing after it was listed).
+        self.listed_sizes: dict[str, int] = {}
         self.delay = delay
         self.fail_on = fail_on
         self.uploads: dict[str, bytes] = {}
@@ -52,11 +55,16 @@ class FakeSandbox:
 
     async def list_outputs(self) -> list[OutputEntry]:
         self._fail_if("list_outputs")
-        return [OutputEntry(path, len(content)) for path, content in self.outputs.items()]
+        return [
+            OutputEntry(path, self.listed_sizes.get(path, len(content)))
+            for path, content in self.outputs.items()
+        ]
 
-    async def download(self, path: str) -> bytes:
+    async def download(self, path: str, max_bytes: int) -> bytes:
         self._fail_if("download")
         self.downloads.append(path)
+        if len(self.outputs[path]) > max_bytes:
+            raise SandboxError(f"The file grew beyond the {max_bytes}-byte limit.")
         return self.outputs[path]
 
     async def close(self) -> None:

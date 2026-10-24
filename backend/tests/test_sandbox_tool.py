@@ -16,7 +16,13 @@ import pytest
 from langchain_core.tools import BaseTool
 
 from api.services.toolbox.code_runner import TRUNCATED_NOTE, CodeRunner
-from api.services.toolbox.sandbox import CodeError, CodeExecution, SandboxLimits, run_in_sandbox
+from api.services.toolbox.sandbox import (
+    CodeError,
+    CodeExecution,
+    SandboxLimits,
+    SandboxTimedOut,
+    run_in_sandbox,
+)
 from api.services.toolbox.tools import run_python_tool
 from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
 from tests.sandbox_fakes import FakeSandbox, Opener, call
@@ -47,14 +53,25 @@ async def test_run_python_reports_the_run_and_saves_its_files(tmp_path: Path) ->
 
     assert message.status == "success"
     assert message.content == (
-        f"Saved to the workspace:\n{FOLDER}/chart-1.png\n{FOLDER}/nested/notes.txt\n"
-        f"{FOLDER}/summary.csv\n\nResult:\n42\n\nStdout:\ntotal 42"
+        f"Saved to the workspace:\n{FOLDER}/charts/chart-1.png\n"
+        f"{FOLDER}/outputs/nested/notes.txt\n{FOLDER}/outputs/summary.csv\n\n"
+        "Result:\n42\n\nStdout:\ntotal 42"
     )
     assert sandbox.uploads == {"data/sales.csv": b"total\n42\n"}
     assert sandbox.codes == ["run()"]
     assert sandbox.closed
-    assert (tmp_path / FOLDER / "chart-1.png").read_bytes() == b"\x89PNG chart"
-    assert (tmp_path / FOLDER / "nested" / "notes.txt").read_bytes() == b"done"
+    assert (tmp_path / FOLDER / "charts" / "chart-1.png").read_bytes() == b"\x89PNG chart"
+    assert (tmp_path / FOLDER / "outputs" / "nested" / "notes.txt").read_bytes() == b"done"
+
+
+@pytest.mark.asyncio
+async def test_a_chart_and_an_output_with_the_same_name_are_both_saved(tmp_path: Path) -> None:
+    sandbox = FakeSandbox(CodeExecution(charts=(b"shown",)), {"chart-1.png": b"saved"})
+
+    await call(run_python(tmp_path, Opener(sandbox)), code="plot()")
+
+    assert (tmp_path / FOLDER / "charts" / "chart-1.png").read_bytes() == b"shown"
+    assert (tmp_path / FOLDER / "outputs" / "chart-1.png").read_bytes() == b"saved"
 
 
 @pytest.mark.asyncio
@@ -133,6 +150,7 @@ async def test_the_report_is_cut_at_the_output_limit_and_the_error_stays_visible
         ("../outside.txt", "relative to the workspace"),
         (".env", "relative to the workspace"),
         ("/etc/passwd", "relative to the workspace"),
+        ("linked.csv", "relative to the workspace"),  # a visible link to a hidden file
         ("missing.csv", "does not exist"),
         ("big.csv", "larger than the configured limit"),
     ],
@@ -141,9 +159,11 @@ async def test_input_files_are_confined_to_the_workspace_and_its_limits(
     tmp_path: Path, path: str, reason: str
 ) -> None:
     root = tmp_path / "workspace"
-    root.mkdir()
+    (root / ".secrets").mkdir(parents=True)
     (tmp_path / "outside.txt").write_text("secret")
     (root / ".env").write_text("KEY=secret")
+    (root / ".secrets" / "key.csv").write_text("secret")
+    (root / "linked.csv").symlink_to(root / ".secrets" / "key.csv")
     (root / "big.csv").write_bytes(b"x" * (WORKSPACE_LIMITS.max_file_bytes + 1))
     opener = Opener()
 
@@ -185,12 +205,31 @@ async def test_only_files_within_the_count_and_size_limits_are_downloaded(
     message = await call(run_python(tmp_path, Opener(sandbox)), code="write()")
 
     assert sandbox.downloads == ["a.txt", "b.txt", "c.txt"]
-    assert sorted(path.name for path in (tmp_path / FOLDER).iterdir()) == [
+    assert sorted(path.name for path in (tmp_path / FOLDER / "outputs").iterdir()) == [
         "a.txt",
         "b.txt",
         "c.txt",
     ]
-    assert "Not saved (over the 3-file or 100-byte limit):\nbig.bin, d.txt" in str(message.content)
+    assert "Not saved (over the 3-file or 100-byte limit):\noutputs/big.bin, outputs/d.txt" in str(
+        message.content
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_file_that_cannot_be_downloaded_is_reported_and_the_run_kept(
+    tmp_path: Path,
+) -> None:
+    sandbox = FakeSandbox(CodeExecution(stdout="done\n"), {"a.txt": b"a", "log.txt": b"x" * 500})
+    sandbox.listed_sizes["log.txt"] = 1  # still growing after the listing
+
+    message = await call(run_python(tmp_path, Opener(sandbox)), code="write()")
+
+    assert message.status == "success"
+    assert message.content == (
+        f"Saved to the workspace:\n{FOLDER}/outputs/a.txt\n\n"
+        "Not saved:\noutputs/log.txt: The file grew beyond the 100-byte limit.\n\n"
+        "Stdout:\ndone"
+    )
 
 
 @pytest.mark.asyncio
@@ -204,15 +243,15 @@ async def test_saved_outputs_never_overwrite_or_leave_the_workspace(tmp_path: Pa
     await call(tool, code="write()")
     message = await call(tool, code="write()")  # same clock: the same folder
 
-    assert (tmp_path / FOLDER / "report.csv").read_bytes() == b"first"
-    assert not (tmp_path / FOLDER / ".hidden").exists()
+    assert (tmp_path / FOLDER / "outputs" / "report.csv").read_bytes() == b"first"
+    assert not (tmp_path / FOLDER / "outputs" / ".hidden").exists()
     content = str(message.content)
-    assert "report.csv: The artifact already exists; choose a new path." in content
-    assert ".hidden: Use a visible path relative to the workspace." in content
+    assert "outputs/report.csv: The artifact already exists; choose a new path." in content
+    assert "outputs/.hidden: Use a visible path relative to the workspace." in content
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("step", ["upload", "execute", "list_outputs", "download"])
+@pytest.mark.parametrize("step", ["upload", "execute", "list_outputs"])
 async def test_a_failing_sandbox_is_an_error_result_and_always_closed(
     tmp_path: Path, step: str
 ) -> None:
@@ -224,6 +263,31 @@ async def test_a_failing_sandbox_is_an_error_result_and_always_closed(
     assert message.status == "error"
     assert f"failed during {step}" in str(message.content)
     assert sandbox.closed
+
+
+@pytest.mark.asyncio
+async def test_a_download_that_times_out_still_fails_the_call(tmp_path: Path) -> None:
+    class SlowDownloads(FakeSandbox):
+        async def download(self, path: str, max_bytes: int) -> bytes:
+            raise SandboxTimedOut("The code sandbox timed out.")
+
+    sandbox = SlowDownloads(CodeExecution(), {"out.txt": b"x"})
+
+    message = await call(run_python(tmp_path, Opener(sandbox)), code="go()")
+
+    assert message.status == "error"
+    assert "timed out" in str(message.content)
+    assert sandbox.closed
+
+
+@pytest.mark.asyncio
+async def test_the_deadline_covers_creating_the_sandbox() -> None:
+    async def slow_opener() -> FakeSandbox:
+        await anyio.sleep(5)
+        return FakeSandbox()
+
+    with pytest.raises(SandboxTimedOut, match=r"within 0\.05 seconds"):
+        await run_in_sandbox(slow_opener, "go()", [], replace(LIMITS, timeout_seconds=0.05))
 
 
 @pytest.mark.asyncio

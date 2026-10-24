@@ -111,9 +111,15 @@ OUTBOUND_TOOLS = frozenset({WEB_SEARCH, FETCH_URL})
 
 
 def toolbox_tools(config: ToolboxConfig) -> list[BaseTool]:
-    """The enabled and configured built-in tools, in registry order."""
+    """The enabled and configured built-in tools, in registry order.
+
+    Only readers actually offered remove the outbound tools: run_python without
+    an E2B key reads nothing, so it must not take web search away.
+    """
     enabled = set(config.enabled)
-    if not config.allow_workspace_network_access and enabled & WORKSPACE_READ_TOOLS:
-        enabled -= OUTBOUND_TOOLS
     built = (build(config) for name, build in TOOLBOX.items() if name in enabled)
-    return [item for item in built if item is not None]
+    tools = [item for item in built if item is not None]
+    readers = {item.name for item in tools} & WORKSPACE_READ_TOOLS
+    if readers and not config.allow_workspace_network_access:
+        return [item for item in tools if item.name not in OUTBOUND_TOOLS]
+    return tools

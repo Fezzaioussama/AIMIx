@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import logging.config
+
+
+def _at_least_info(level: str) -> str:
+    numeric = logging.getLevelName(level)
+    return level if isinstance(numeric, int) and numeric >= logging.INFO else "INFO"
 
 
 def configure_logging(level: str) -> None:
@@ -19,6 +25,6 @@ def configure_logging(level: str) -> None:
             "root": {"handlers": ["console"], "level": level},
             # The E2B SDK logs the code it submits at DEBUG, and agent-written
             # code can embed user data, so it never logs below INFO (§6).
-            "loggers": {"e2b_code_interpreter": {"level": "INFO"}},
+            "loggers": {"e2b_code_interpreter": {"level": _at_least_info(level)}},
         }
     )
