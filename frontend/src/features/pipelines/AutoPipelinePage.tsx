@@ -9,6 +9,7 @@ import { GlowButton } from '../../core/ui/GlowButton';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
+import { StartFromTemplateLink } from '../templates/StartFromTemplateLink';
 import { GeneratedSteps } from './GeneratedSteps';
 import { PipelineGraph } from './PipelineGraph';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
@@ -55,6 +56,7 @@ export function AutoPipelinePage() {
             Review the generated inputs and stages before saving. Give each agent a role, the
             output it must deliver, and the tools it can use.
           </p>
+          <StartFromTemplateLink className="mt-3" />
         </header>
 
         <SpotlightCard as="section" className={cardClass}>

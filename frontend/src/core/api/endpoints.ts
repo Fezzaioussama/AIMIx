@@ -17,4 +17,6 @@ export const API = {
   extractDocument: '/api/documents/extract',
   llmSettings: '/api/llm-settings',
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
+  templates: '/api/templates',
+  createFromTemplate: (slug: string) => `/api/templates/${encodeURIComponent(slug)}/use`,
 } as const;

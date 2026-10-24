@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
@@ -49,5 +49,22 @@ describe('App routing', () => {
     renderAt('/auto-pipeline');
     expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Start from a template' })).toHaveAttribute(
+      'href',
+      '/templates',
+    );
+  });
+
+  it('serves the template gallery as a pipeline screen', async () => {
+    const gallery = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([]));
+    saveTokens({ access: 'token' });
+    renderAt('/templates');
+    expect(await screen.findByRole('group', { name: 'Filter by category' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Start from a template' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Templates' })).toHaveAttribute('aria-current', 'page');
+    gallery.mockRestore();
   });
 });
