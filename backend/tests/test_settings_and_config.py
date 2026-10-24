@@ -40,6 +40,21 @@ def test_the_error_handler_is_wired_in(app: FastAPI) -> None:
     assert DomainError in app.exception_handlers
 
 
+def test_request_urls_stay_out_of_the_logs() -> None:
+    """httpx and the MCP client log every URL at INFO; users' URLs may hold a token."""
+    import logging
+
+    from config.logging_setup import configure_logging
+
+    configure_logging("INFO")
+    try:
+        assert logging.getLogger("api.services").isEnabledFor(logging.INFO)
+        for name in ("httpx", "mcp.client.streamable_http"):
+            assert not logging.getLogger(name).isEnabledFor(logging.INFO)
+    finally:
+        configure_logging(TEST_SETTINGS.log_level)
+
+
 def test_no_logging_is_configured_at_import_time_in_the_llm_package() -> None:
     """basicConfig used to run on import and write to a relative app.log path."""
     assert "basicConfig" not in (BACKEND_DIR / "llm" / "base.py").read_text()
