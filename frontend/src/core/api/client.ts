@@ -15,7 +15,10 @@ export const REQUEST_TIMEOUT_MS = 30_000;
  */
 export const GENERATION_TIMEOUT_MS = 60 * 60 * 1000;
 
-/** Uploading and reading a document: longer than a normal call, far shorter than a generation. */
+/**
+ * Moving a file (an upload, a document to read, a download): longer than a normal
+ * call, far shorter than a generation.
+ */
 export const UPLOAD_TIMEOUT_MS = 120_000;
 
 export class ApiError extends Error {

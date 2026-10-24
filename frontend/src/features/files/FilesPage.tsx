@@ -58,10 +58,58 @@ function EmptyState() {
   );
 }
 
+type FilesState = ReturnType<typeof useFiles>;
+
+/** The files, or what this page is for when there are none yet. */
+function FileList({ state }: { state: FilesState & { listing: FileListing } }) {
+  const { listing, pending, rowError, actions } = state;
+  if (listing.files.length === 0) return <EmptyState />;
+  return (
+    <ul
+      aria-label="Your files"
+      className="divide-y divide-white/[0.06] rounded-2xl border border-white/10 bg-slate-900/60"
+    >
+      {listing.files.map((file) => (
+        <FileRow
+          key={file.path}
+          file={file}
+          action={pending.get(file.path)}
+          error={rowError?.path === file.path ? rowError.message : ''}
+          onDownload={() => void actions.download(file)}
+          onDelete={() => void actions.remove(file)}
+        />
+      ))}
+    </ul>
+  );
+}
+
+/** Upload, an announced status line, and the list. */
+function FilesBody({ state }: { state: FilesState & { listing: FileListing } }) {
+  const { listing, uploading, problems, notice, actions } = state;
+  return (
+    <>
+      <UploadPanel
+        listing={listing}
+        uploading={uploading}
+        problems={problems}
+        onUpload={(files) => void actions.upload(files)}
+        onReplace={(problem) => void actions.replace(problem)}
+        onDismiss={actions.dismiss}
+      />
+      <p
+        role="status"
+        className={`my-3 min-h-5 truncate text-sm ${uploading ? 'text-slate-300' : 'text-emerald-300'}`}
+      >
+        {uploading ? `Uploading ${uploading}…` : notice}
+      </p>
+      <FileList state={state} />
+    </>
+  );
+}
+
 export function FilesPage() {
-  const { listing, loadError, uploading, problems, notice, pending, rowError, actions } =
-    useFiles();
-  const status = uploading ? `Uploading ${uploading}…` : notice;
+  const state = useFiles();
+  const { listing, loadError } = state;
 
   return (
     <div className="min-h-[calc(100vh-60px)] px-4 py-10 text-slate-50">
@@ -73,43 +121,7 @@ export function FilesPage() {
           </p>
         )}
         {!listing && !loadError && <BusyNotice className="py-16">Loading your files…</BusyNotice>}
-        {listing && (
-          <>
-            <UploadPanel
-              listing={listing}
-              uploading={uploading}
-              problems={problems}
-              onUpload={(files) => void actions.upload(files)}
-              onReplace={(problem) => void actions.replace(problem)}
-              onDismiss={actions.dismiss}
-            />
-            <p
-              role="status"
-              className={`my-3 min-h-5 truncate text-sm ${uploading ? 'text-slate-300' : 'text-emerald-300'}`}
-            >
-              {status}
-            </p>
-            {listing.files.length > 0 ? (
-              <ul
-                aria-label="Your files"
-                className="divide-y divide-white/[0.06] rounded-2xl border border-white/10 bg-slate-900/60"
-              >
-                {listing.files.map((file) => (
-                  <FileRow
-                    key={file.path}
-                    file={file}
-                    action={pending.get(file.path)}
-                    error={rowError?.path === file.path ? rowError.message : ''}
-                    onDownload={() => void actions.download(file)}
-                    onDelete={() => void actions.remove(file)}
-                  />
-                ))}
-              </ul>
-            ) : (
-              <EmptyState />
-            )}
-          </>
-        )}
+        {listing && <FilesBody state={{ ...state, listing }} />}
       </div>
     </div>
   );

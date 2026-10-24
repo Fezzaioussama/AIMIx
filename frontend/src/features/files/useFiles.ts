@@ -1,22 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../../core/api/client';
-import { deleteFile, downloadFile, listFiles, uploadFile } from '../../core/api/files';
+import { deleteFile, downloadFile, listFiles } from '../../core/api/files';
 import type { FileListing, WorkspaceFile } from '../../core/api/types';
-import { fileName, withFile, withoutFile } from './fileFormat';
+import { fileName, withoutFile } from './fileFormat';
 import { saveBlob } from './saveBlob';
-
-/** A file that could not be uploaded, and why. */
-export interface UploadProblem {
-  id: number;
-  file: File;
-  message: string;
-  /** Its name is taken: uploading it again with `replace` overwrites the stored file. */
-  canReplace: boolean;
-}
+import { messageOf, useFileUploads, type Lifetime, type SetListing } from './useFileUploads';
 
 /** What is running on one file's row. */
 export type RowAction = 'download' | 'delete';
+
+/** The request behind a row action, cancelled with the screen. */
+type RowTask = (signal: AbortSignal) => Promise<void>;
 
 /** Why a download or a delete of one file failed, shown next to that file. */
 export interface RowError {
@@ -24,130 +19,74 @@ export interface RowError {
   message: string;
 }
 
-function messageOf(cause: unknown, fallback: string): string {
-  return cause instanceof Error ? cause.message : fallback;
-}
-
-function problemFor(id: number, file: File, cause: unknown): UploadProblem {
-  const taken = cause instanceof ApiError && cause.code === 'file_exists';
-  return {
-    id,
-    file,
-    // The server's wording also speaks to agents; here the Replace button answers it.
-    message: taken
-      ? 'A file with this name already exists.'
-      : messageOf(cause, 'The file could not be uploaded.'),
-    canReplace: taken,
-  };
-}
-
-function uploadedNotice(stored: WorkspaceFile[]): string {
-  if (stored.length === 0) return '';
-  return stored.length === 1
-    ? `${fileName(stored[0].path)} uploaded.`
-    : `${stored.length} files uploaded.`;
-}
-
-/**
- * State and transport for the Files screen, kept out of the components (§2). Every
- * request shares one AbortController that leaving the screen aborts, so nothing
- * updates state after teardown. Uploads go one file at a time, so each refusal is
- * reported against its own file and the rest still arrive.
- */
-export function useFiles() {
-  const [listing, setListing] = useState<FileListing | null>(null);
-  const [loadError, setLoadError] = useState('');
-  const [uploading, setUploading] = useState('');
-  const [problems, setProblems] = useState<UploadProblem[]>([]);
-  const [notice, setNotice] = useState('');
-  const [pending, setPending] = useState<ReadonlyMap<string, RowAction>>(new Map());
-  const [rowError, setRowError] = useState<RowError | null>(null);
+/** One AbortController per mount: unmounting aborts every request made through it. */
+function useLifetime(): Lifetime {
   const lifetime = useRef(new AbortController());
-  const problemCount = useRef(0);
-
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    listFiles(controller.signal)
-      .then((loaded) => {
-        if (!controller.signal.aborted) setListing(loaded);
-      })
-      .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setLoadError(messageOf(cause, 'Could not load files.'));
-      });
     return () => controller.abort();
   }, []);
+  return lifetime;
+}
 
-  const send = useCallback(async (files: File[], replace: boolean) => {
+function useListing(lifetime: Lifetime) {
+  const [listing, setListing] = useState<FileListing | null>(null);
+  const [loadError, setLoadError] = useState('');
+  // Runs after useLifetime's effect, so the signal is this mount's.
+  useEffect(() => {
     const { signal } = lifetime.current;
-    const stored: WorkspaceFile[] = [];
-    setNotice('');
-    for (const file of files) {
-      setUploading(file.name);
-      try {
-        const entry = await uploadFile(file, { replace, signal });
-        if (signal.aborted) return;
-        stored.push(entry);
-        setListing((current) => current && withFile(current, entry));
-      } catch (cause) {
-        if (signal.aborted) return;
-        problemCount.current += 1;
-        const problem = problemFor(problemCount.current, file, cause);
-        setProblems((current) => [...current, problem]);
-      }
-    }
-    setUploading('');
-    setNotice(uploadedNotice(stored));
-  }, []);
+    listFiles(signal)
+      .then((loaded) => {
+        if (!signal.aborted) setListing(loaded);
+      })
+      .catch((cause: unknown) => {
+        if (!signal.aborted) setLoadError(messageOf(cause, 'Could not load files.'));
+      });
+  }, [lifetime]);
+  return { listing, setListing, loadError };
+}
 
-  const upload = useCallback(
-    async (files: File[]) => {
-      setProblems([]);
-      await send(files, false);
-    },
-    [send],
-  );
+/** Deletes a file; one that is already gone is what was asked for. */
+async function deleteIfPresent(path: string, signal: AbortSignal): Promise<void> {
+  try {
+    await deleteFile(path, signal);
+  } catch (cause) {
+    if (!(cause instanceof ApiError && cause.code === 'not_found')) throw cause;
+  }
+}
 
-  const replace = useCallback(
-    async (problem: UploadProblem) => {
-      setProblems((current) => current.filter((entry) => entry.id !== problem.id));
-      await send([problem.file], true);
-    },
-    [send],
-  );
+function withoutKey<T>(map: ReadonlyMap<string, T>, key: string): ReadonlyMap<string, T> {
+  const next = new Map(map);
+  next.delete(key);
+  return next;
+}
 
-  const dismiss = useCallback((problem: UploadProblem) => {
-    setProblems((current) => current.filter((entry) => entry.id !== problem.id));
-  }, []);
+/** Download and delete, each shown busy (and failed, if so) on its own row. */
+function useRowActions(
+  lifetime: Lifetime,
+  setListing: SetListing,
+  setNotice: (text: string) => void,
+) {
+  const [pending, setPending] = useState<ReadonlyMap<string, RowAction>>(new Map());
+  const [rowError, setRowError] = useState<RowError | null>(null);
 
   const track = useCallback(
-    async (
-      file: WorkspaceFile,
-      kind: RowAction,
-      action: (signal: AbortSignal) => Promise<void>,
-    ) => {
+    async (file: WorkspaceFile, kind: RowAction, task: RowTask) => {
       const { signal } = lifetime.current;
       setPending((current) => new Map(current).set(file.path, kind));
       setRowError(null);
       setNotice('');
       try {
-        await action(signal);
+        await task(signal);
       } catch (cause) {
-        if (!signal.aborted)
-          setRowError({
-            path: file.path,
-            message: messageOf(cause, `Could not ${kind} the file.`),
-          });
+        if (signal.aborted) return;
+        setRowError({ path: file.path, message: messageOf(cause, `Could not ${kind} the file.`) });
       } finally {
-        if (!signal.aborted)
-          setPending((current) => {
-            const next = new Map(current);
-            next.delete(file.path);
-            return next;
-          });
+        if (!signal.aborted) setPending((current) => withoutKey(current, file.path));
       }
     },
-    [],
+    [lifetime, setNotice],
   );
 
   const download = useCallback(
@@ -162,27 +101,43 @@ export function useFiles() {
   const remove = useCallback(
     (file: WorkspaceFile) =>
       track(file, 'delete', async (signal) => {
-        try {
-          await deleteFile(file.path, signal);
-        } catch (cause) {
-          // Already gone is what was asked for.
-          if (!(cause instanceof ApiError && cause.code === 'not_found')) throw cause;
-        }
+        await deleteIfPresent(file.path, signal);
         if (signal.aborted) return;
         setListing((current) => current && withoutFile(current, file.path));
         setNotice(`${fileName(file.path)} deleted.`);
       }),
-    [track],
+    [setListing, setNotice, track],
   );
+
+  return { pending, rowError, download, remove };
+}
+
+/**
+ * State and transport for the Files screen, kept out of the components (§2): the
+ * listing, uploads, and download/delete per row. Every request carries the
+ * signal of this mount, so nothing updates state after the screen is gone.
+ */
+export function useFiles() {
+  const lifetime = useLifetime();
+  const { listing, setListing, loadError } = useListing(lifetime);
+  const [notice, setNotice] = useState('');
+  const uploads = useFileUploads(lifetime, setListing, setNotice);
+  const rows = useRowActions(lifetime, setListing, setNotice);
 
   return {
     listing,
     loadError,
-    uploading,
-    problems,
     notice,
-    pending,
-    rowError,
-    actions: { upload, replace, dismiss, download, remove },
+    uploading: uploads.uploading,
+    problems: uploads.problems,
+    pending: rows.pending,
+    rowError: rows.rowError,
+    actions: {
+      upload: uploads.upload,
+      replace: uploads.replace,
+      dismiss: uploads.dismiss,
+      download: rows.download,
+      remove: rows.remove,
+    },
   };
 }

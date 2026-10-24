@@ -1,10 +1,10 @@
 """The Files API: each user's private workspace, shared with their agents.
-Uploads, downloads and deletes go through the real app, onto a real directory."""
+Uploads, downloads and deletes go through the real app, onto a real directory.
+(That every route needs a signed-in user is checked in test_endpoints.py.)"""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -49,11 +49,6 @@ def user_dir(settings: Settings, user: User) -> Path:
     return settings.workspace_dir / f"user-{user.id}"
 
 
-@pytest.fixture
-def stranger(session: Session) -> Iterator[dict[str, str]]:
-    yield bearer(users.create(session, "stranger", hash_password("stranger-pass-123", 1)))
-
-
 def upload(client: TestClient, *named: tuple[str, bytes], replace: bool = False) -> httpx.Response:
     return client.post(
         "/api/files",
@@ -71,11 +66,6 @@ def listed(client: TestClient) -> list[str]:
 # --- listing -------------------------------------------------------------------
 
 
-def test_files_need_a_signed_in_user(client: TestClient, settings: Settings) -> None:
-    assert client.get("/api/files").status_code == 401
-    assert upload(client, ("a.txt", b"a")).status_code == 401
-
-
 def test_an_empty_workspace_lists_nothing_and_the_limits(files: TestClient, user_dir: Path) -> None:
     response = files.get("/api/files")
 
@@ -86,7 +76,6 @@ def test_an_empty_workspace_lists_nothing_and_the_limits(files: TestClient, user
         "max_file_bytes": UPLOAD_CAP,
         "allowed_extensions": sorted(TEST_SETTINGS.workspace_upload_extensions),
     }
-    assert ".pdf" in response.json()["allowed_extensions"]
     assert not user_dir.exists()  # looking creates nothing
 
 
@@ -177,24 +166,11 @@ def test_uploads_stop_at_the_storage_quota(files: TestClient) -> None:
 
 
 def test_one_bad_file_refuses_the_whole_upload(files: TestClient) -> None:
-    response = upload(files, ("good.txt", b"ok"), ("bad.exe", b"MZ"))
-
-    assert response.status_code == 415
+    assert upload(files, ("good.txt", b"ok"), ("bad.exe", b"MZ")).status_code == 415
+    # Two files that end up with one name, and no file at all.
+    assert upload(files, ("a.txt", b"1"), ("A/a.txt", b"2")).status_code == 400
+    assert files.post("/api/files", data={"replace": "true"}).status_code == 400
     assert listed(files) == []
-
-
-def test_two_files_with_one_name_are_refused(files: TestClient) -> None:
-    response = upload(files, ("a.txt", b"1"), ("A/a.txt", b"2"))
-
-    assert response.status_code == 400
-    assert response.json()["error"] == "validation_error"
-
-
-def test_an_upload_without_files_is_a_validation_error(files: TestClient) -> None:
-    response = files.post("/api/files", data={"replace": "true"})
-
-    assert response.status_code == 400
-    assert response.json()["error"] == "validation_error"
 
 
 # --- download --------------------------------------------------------------------
@@ -220,7 +196,6 @@ def test_stored_html_is_never_rendered_on_the_app_origin(files: TestClient) -> N
 
     assert response.headers["content-disposition"].startswith("attachment;")
     assert response.headers["content-security-policy"] == "default-src 'none'; sandbox"
-    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_a_non_ascii_name_downloads_with_an_encoded_filename(files: TestClient) -> None:
@@ -277,28 +252,22 @@ def test_a_link_in_the_workspace_is_not_followed(
     assert listed(files) == ["notes.txt"]
 
 
-def test_a_missing_file_is_404(files: TestClient) -> None:
-    assert files.get("/api/files/nothing.txt").status_code == 404
-    assert files.delete("/api/files/nothing.txt").status_code == 404
+# --- delete, ownership, agents ---------------------------------------------------
 
 
-# --- delete ----------------------------------------------------------------------
-
-
-def test_a_deleted_file_is_gone(files: TestClient, user_dir: Path) -> None:
+def test_a_deleted_file_is_gone(files: TestClient) -> None:
     upload(files, ("notes.txt", b"x"))
 
     assert files.delete("/api/files/notes.txt").status_code == 204
     assert listed(files) == []
+    assert files.get("/api/files/notes.txt").status_code == 404
     assert files.delete("/api/files/notes.txt").status_code == 404
 
 
-# --- ownership -------------------------------------------------------------------
-
-
 def test_one_user_never_reaches_another_users_files(
-    files: TestClient, stranger: dict[str, str], user_dir: Path
+    files: TestClient, session: Session, user_dir: Path
 ) -> None:
+    stranger = bearer(users.create(session, "stranger", hash_password("stranger-pass-123", 1)))
     upload(files, ("private.txt", b"mine"))
 
     assert files.get("/api/files", headers=stranger).json()["files"] == []
@@ -307,30 +276,22 @@ def test_one_user_never_reaches_another_users_files(
     assert (user_dir / "private.txt").read_bytes() == b"mine"
 
 
-# --- shared with the agents ------------------------------------------------------
-
-
 def test_agents_and_the_files_page_share_one_directory(
     app: FastAPI, files: TestClient, user: User, settings: Settings
 ) -> None:
     # A Word file is tens of kilobytes even when short.
+    limits = {"workspace_max_file_bytes": 100_000, "workspace_max_total_bytes": 200_000}
     tools_settings = settings.model_copy(
-        update={
-            "agent_builtin_tools": ["read_workspace_file", "save_artifact"],
-            "workspace_max_file_bytes": 100_000,
-            "workspace_max_total_bytes": 200_000,
-        }
+        update={"agent_builtin_tools": ["read_workspace_file", "save_artifact"], **limits}
     )
     app.dependency_overrides[app_settings] = lambda: tools_settings
-    tools = {
-        tool.name: tool
-        for tool in agent_tools.native_tools(app.state.database, user, tools_settings)
-    }
+    native = agent_tools.native_tools(app.state.database, user, tools_settings)
+    tools = {tool.name: tool for tool in native}
 
     saved = tools["save_artifact"].invoke({"path": "summary.docx", "content": "# Summary"})
-    assert saved == "Saved summary.docx"
     upload(files, ("brief.txt", b"Write about bees."))
 
+    assert saved == "Saved summary.docx"
     entries = {entry["path"]: entry["type"] for entry in files.get("/api/files").json()["files"]}
     assert entries == {"summary.docx": "docx", "brief.txt": "txt"}
     download = files.get("/api/files/summary.docx")

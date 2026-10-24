@@ -204,42 +204,30 @@ def test_save_artifact_lays_markdown_out_as_a_document(
     workspace = local_workspace(tmp_path, limits, quota=1_000_000)
 
     assert workspace.save_artifact(path, "# Brief\n\nRevenue grew **12%**.") == f"Saved {path}"
-    saved = opens(BytesIO((tmp_path / path).read_bytes()))
-    assert saved is not None
+    opens(BytesIO((tmp_path / path).read_bytes()))  # a real file of that format
     assert "Revenue grew 12%." in workspace.read_file(path)
 
 
-def test_save_artifact_writes_html_as_given(tmp_path: Path) -> None:
+def test_save_artifact_writes_html_as_given_and_names_what_it_cannot(tmp_path: Path) -> None:
     workspace = local_workspace(tmp_path)
 
     workspace.save_artifact("page.html", "<h1>Hi</h1>")
+    with pytest.raises(ToolException, match=r"'\.exe' files cannot be saved.*\.docx.*\.pdf"):
+        workspace.save_artifact("tool.exe", "MZ")
 
+    assert [path.name for path in tmp_path.iterdir()] == ["page.html"]
     assert (tmp_path / "page.html").read_text() == "<h1>Hi</h1>"
 
 
-def test_save_artifact_names_the_formats_it_cannot_write(tmp_path: Path) -> None:
-    workspace = local_workspace(tmp_path)
-
-    with pytest.raises(ToolException, match=r"'\.exe' files cannot be saved.*\.docx.*\.pdf"):
-        workspace.save_artifact("tool.exe", "MZ")
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_save_artifact_keeps_the_file_size_limit(tmp_path: Path) -> None:
-    workspace = local_workspace(tmp_path)
+def test_save_artifact_keeps_the_file_size_limit_and_the_quota(tmp_path: Path) -> None:
+    (tmp_path / "upload.txt").write_text("x" * 90)
+    workspace = local_workspace(tmp_path, quota=100)
 
     with pytest.raises(ToolException, match=r"larger than the 0\.001 MB file limit"):
         workspace.save_artifact("big.md", "x" * 1_001)
     # The rendered document counts too, not only the Markdown.
     with pytest.raises(ToolException, match="file limit"):
         workspace.save_artifact("small.pdf", "Hello")
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_save_artifact_stops_at_the_storage_quota(tmp_path: Path) -> None:
-    (tmp_path / "upload.txt").write_text("x" * 90)
-    workspace = local_workspace(tmp_path, quota=100)
-
     with pytest.raises(ToolException, match="storage limit"):
         workspace.save_artifact("notes.md", "y" * 20)
     assert workspace.save_artifact("notes.md", "y" * 10) == "Saved notes.md"

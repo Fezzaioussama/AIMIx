@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'r
 import type { FileListing } from '../../core/api/types';
 import { GlowButton } from '../../core/ui/GlowButton';
 import { describeTypes, formatBytes } from './fileFormat';
-import type { UploadProblem } from './useFiles';
+import type { UploadProblem } from './useFileUploads';
 
 interface UploadPanelProps {
   listing: FileListing;
