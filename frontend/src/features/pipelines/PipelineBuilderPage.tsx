@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
+import { elapsedMs } from '../../core/time';
 import { BrandMark } from '../../core/ui/BrandMark';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { LiveRunHeader } from '../runs/LiveRunHeader';
+import { isActive, ranThisVersion } from '../runs/runStatus';
+import { useLatestRun } from '../runs/useLatestRun';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
@@ -26,22 +30,36 @@ export function PipelineBuilderPage() {
       : undefined;
   const { models, defaultModel, error: modelsError } = useModels();
   const { tools, error: toolsError } = useAgentTools();
-  const { pipeline, saved, results, elapsedMs, status, message, dirty, actions } =
-    usePipelineBuilder(defaultModel, typeof initialId === 'number' ? initialId : undefined);
+  const { pipeline, saved, status, message, dirty, actions } = usePipelineBuilder(
+    defaultModel,
+    typeof initialId === 'number' ? initialId : undefined,
+  );
   const [draft, setDraft] = useState<RunDraft>(EMPTY_RUN_DRAFT);
+  // The pipeline's newest run, followed live; reopening the pipeline shows it again.
+  const latest = useLatestRun(pipeline.id);
+  const run = latest.run;
+  // The diagram shows the run only if it executed exactly what is on screen.
+  const shown = run !== null && !dirty && ranThisVersion(run, pipeline) ? run : null;
 
   const isSaving = status === 'saving';
-  const isRunning = status === 'running';
+  const isStarting = status === 'running';
+  const isRunning = isStarting || (run !== null && isActive(run.status));
+  const shownActive = shown !== null && isActive(shown.status);
   const stageCount = new Set(pipeline.steps.map((step) => step.stage)).size;
 
   function editStep(order: number) {
     document.getElementById(`step-editor-${order}`)?.scrollIntoView?.({ behavior: 'smooth' });
   }
 
+  async function startRun() {
+    const started = await actions.run(draft);
+    if (started) latest.follow(started);
+  }
+
   return (
     <div className="flex min-h-[calc(100vh-60px)] flex-col text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
       <aside
-        inert={isRunning || isSaving}
+        inert={isStarting || isSaving}
         className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-950/60 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0"
       >
         <div className="mb-4 flex items-baseline gap-2">
@@ -88,8 +106,7 @@ export function PipelineBuilderPage() {
           Run Inputs
         </h3>
         <p className="mb-3 text-xs text-slate-400">
-          Named values you fill in on every run. Any step, in any stage, can use one as{' '}
-          {'{name}'}.
+          Named values you fill in on every run. Any step, in any stage, can use one as {'{name}'}.
         </p>
         <div className="mb-6">
           <PipelineInputsEditor inputs={pipeline.inputs} onChange={actions.setInputs} />
@@ -146,10 +163,15 @@ export function PipelineBuilderPage() {
             <PipelineRunView
               steps={pipeline.steps}
               inputs={pipeline.inputs}
-              results={results}
-              isRunning={isRunning}
+              liveSteps={shown?.steps}
+              runKey={shown?.id ?? null}
+              isRunning={shown ? shownActive : isStarting}
               input={draft.text}
-              elapsedMs={elapsedMs}
+              elapsedMs={
+                shown && !shownActive
+                  ? elapsedMs(shown.started_at, shown.finished_at, Date.now())
+                  : null
+              }
               onEditStep={isRunning || isSaving ? undefined : editStep}
               onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
               onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
@@ -162,8 +184,33 @@ export function PipelineBuilderPage() {
                 isSaved={pipeline.id !== undefined}
                 message={message || modelsError || ''}
                 onDraftChange={setDraft}
-                onRun={() => void actions.run(draft)}
+                onRun={() => void startRun()}
               />
+              {run && (
+                <LiveRunHeader
+                  run={run}
+                  onStop={() => void latest.stop()}
+                  onResume={() => void latest.resume()}
+                  busy={latest.busy}
+                  error={latest.error}
+                  actions={
+                    <Link
+                      to={`/runs/${run.id}`}
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+                    >
+                      Open in Runs
+                    </Link>
+                  }
+                  note={
+                    shown ? undefined : (
+                      <p className="mt-2 text-xs text-slate-400">
+                        This run used another version of the pipeline; open it in Runs to see its
+                        steps.
+                      </p>
+                    )
+                  }
+                />
+              )}
             </PipelineRunView>
           </div>
         </div>

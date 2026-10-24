@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
@@ -17,7 +17,10 @@ function renderAt(path: string) {
 }
 
 describe('App routing', () => {
-  afterEach(() => clearTokens());
+  afterEach(() => {
+    clearTokens();
+    vi.restoreAllMocks();
+  });
 
   it('serves the public landing page at the root, without a session', async () => {
     renderAt('/');
@@ -49,5 +52,13 @@ describe('App routing', () => {
     renderAt('/auto-pipeline');
     expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('serves a run deep link under Pipelines, with the Runs tab current', () => {
+    saveTokens({ access: 'token' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+    renderAt('/runs/7');
+    expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
   });
 });

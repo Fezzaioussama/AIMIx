@@ -1,15 +1,20 @@
 import { motion } from 'motion/react';
 
-import type { PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
+import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { GraphNodeCard, GraphTerminal, OutputBadge } from './GraphNodeCard';
 import { buildGraph, type GraphNode, type OutputTarget } from './pipelineGraph';
 import { inputsSummary } from './pipelineInputs';
+
+/** A node the diagram can open: its output, or the error it stopped on. */
+const SELECTABLE = new Set<GraphNode['status']>(['done', 'failed']);
 
 interface PipelineGraphProps {
   steps: PipelineStep[];
   /** Named run inputs, listed on the Input terminal instead of the typed text. */
   inputs?: PipelineInput[];
   results?: StepResult[];
+  /** The followed run's steps: each node shows its own live status. */
+  liveSteps?: RunStep[];
   isRunning?: boolean;
   input?: string;
   selected?: OutputTarget | null;
@@ -42,6 +47,7 @@ export function PipelineGraph({
   steps,
   inputs = [],
   results = [],
+  liveSteps,
   isRunning = false,
   input = '',
   selected = null,
@@ -52,15 +58,15 @@ export function PipelineGraph({
   parallelLabel = '+ Parallel step',
   nextLabel = '+ Next stage',
 }: PipelineGraphProps) {
-  const stages = buildGraph(steps, results, isRunning);
+  const stages = buildGraph(steps, results, isRunning, liveSteps);
   const outputCount = stages.flatMap((stage) => stage.items).filter((node) => node.isOutput).length;
   const hasRun = results.length > 0;
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/50 bg-[radial-gradient(rgba(148,163,184,0.09)_1px,transparent_1px)] bg-[size:18px_18px] p-6">
       <p className="mb-8 text-xs text-slate-400">
-        Each stage receives the previous stage’s result. Steps in one stage share its input and
-        run in parallel. Mark steps as Output to keep their results.
+        Each stage receives the previous stage’s result. Steps in one stage share its input and run
+        in parallel. Mark steps as Output to keep their results.
         {onEditStep && ' Select a step to edit its prompt.'}
       </p>
       <div className="flex min-w-max items-start pt-6" role="list" aria-label="Pipeline diagram">
@@ -137,7 +143,7 @@ function StageNodes({ stage, nodes, selected, onSelect, onEditStep }: StageNodes
   const parallel = nodes.length > 1;
   return (
     <div className={`relative flex flex-col gap-3 ${parallel ? 'px-3' : ''}`}>
-      <span className="absolute -top-6 right-0 left-0 text-center text-[10px] font-semibold tracking-wide text-slate-500 uppercase">
+      <span className="absolute -top-6 right-0 left-0 text-center text-[10px] font-semibold tracking-wide text-slate-400 uppercase">
         Stage {stage}
         {parallel ? ' · parallel' : ''}
       </span>
@@ -154,9 +160,11 @@ function StageNodes({ stage, nodes, selected, onSelect, onEditStep }: StageNodes
           node={node}
           selected={selected === node.order}
           onClick={
-            node.status === 'done' && onSelect
+            SELECTABLE.has(node.status) && onSelect
               ? () => onSelect(node.order)
-              : onEditStep ? () => onEditStep(node.order) : undefined
+              : onEditStep
+                ? () => onEditStep(node.order)
+                : undefined
           }
         />
       ))}
@@ -170,18 +178,30 @@ type StageActionsProps = Pick<
 >;
 
 function StageActions({
-  stage, onAddParallel, onAddAfter, parallelLabel, nextLabel,
+  stage,
+  onAddParallel,
+  onAddAfter,
+  parallelLabel,
+  nextLabel,
 }: StageActionsProps) {
   if (!onAddParallel && !onAddAfter) return null;
   return (
     <div className="flex gap-2 text-[11px]">
       {onAddParallel && (
-        <button type="button" onClick={() => onAddParallel(stage)} className="rounded-md border border-dashed border-sky-400/40 px-2 py-1 text-sky-300 hover:bg-sky-400/10">
+        <button
+          type="button"
+          onClick={() => onAddParallel(stage)}
+          className="rounded-md border border-dashed border-sky-400/40 px-2 py-1 text-sky-300 hover:bg-sky-400/10"
+        >
           {parallelLabel}
         </button>
       )}
       {onAddAfter && (
-        <button type="button" onClick={() => onAddAfter(stage)} className="rounded-md border border-dashed border-white/20 px-2 py-1 text-slate-300 hover:bg-white/10">
+        <button
+          type="button"
+          onClick={() => onAddAfter(stage)}
+          className="rounded-md border border-dashed border-white/20 px-2 py-1 text-slate-300 hover:bg-white/10"
+        >
           {nextLabel}
         </button>
       )}
@@ -191,7 +211,7 @@ function StageActions({
 
 function Legend() {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
+    <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
       <span className="flex items-center gap-1.5">
         <OutputBadge /> result you receive
       </span>

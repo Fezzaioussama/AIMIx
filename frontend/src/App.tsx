@@ -11,6 +11,7 @@ import { RegisterPage } from './features/auth/RegisterPage';
 import { ChatPage } from './features/chat/ChatPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
+import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 
 // The public front page is split out: signed-in users who open /chat never download it.
@@ -18,12 +19,17 @@ const LandingPage = lazy(() =>
   import('./features/landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
 
-// `paths` lists every route a section owns, so Pipelines stays lit on /auto-pipeline.
+// `paths` lists every route a section owns (and the routes below them), so
+// Pipelines stays lit on /auto-pipeline and /runs/7.
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat', paths: ['/chat'] },
-  { to: '/pipeline', label: 'Pipelines', paths: ['/pipeline', '/auto-pipeline'] },
+  { to: '/pipeline', label: 'Pipelines', paths: ['/pipeline', '/auto-pipeline', '/runs'] },
   { to: '/settings', label: 'Settings', paths: ['/settings'] },
 ] as const;
+
+function ownsPath(paths: readonly string[], pathname: string): boolean {
+  return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
 
 const navLinkClass = (isActive: boolean) =>
   [
@@ -40,7 +46,7 @@ function AppNav() {
       <img src="/logo.png" alt="AIMIx" className="h-8 w-auto sm:h-10" />
       <div className="flex gap-1 sm:gap-2">
         {NAV_ITEMS.map((item) => {
-          const isActive = (item.paths as readonly string[]).includes(pathname);
+          const isActive = ownsPath(item.paths, pathname);
           return (
             <Link
               key={item.to}
@@ -107,6 +113,7 @@ export function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/pipeline" element={<PipelineBuilderPage />} />
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
+        <Route path="/runs/:runId?" element={<RunsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

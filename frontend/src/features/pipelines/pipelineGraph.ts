@@ -1,7 +1,11 @@
-import type { PipelineStep, StepResult } from '../../core/api/types';
+import type { PipelineStep, RunStep, RunStepStatus, StepResult } from '../../core/api/types';
 import { groupByStage, outputOrders, type StageGroup } from './stages';
 
-export type NodeStatus = 'pending' | 'running' | 'done';
+/**
+ * How the diagram shows a step. `pending` has not run (and will not, for now);
+ * `waiting` is queued behind earlier stages of a run in progress.
+ */
+export type NodeStatus = 'pending' | 'waiting' | 'running' | 'done' | 'failed' | 'stopped';
 
 export interface GraphNode {
   order: number;
@@ -16,19 +20,37 @@ export interface GraphNode {
   isOutput: boolean;
 }
 
+const LIVE_STATUS: Record<RunStepStatus, NodeStatus> = {
+  pending: 'waiting',
+  running: 'running',
+  succeeded: 'done',
+  failed: 'failed',
+  cancelled: 'stopped',
+};
+
+/** A run's step as the diagram shows it; a pending step waits only while its run is active. */
+export function liveNodeStatus(step: RunStep, runActive: boolean): NodeStatus {
+  return step.status === 'pending' && !runActive ? 'pending' : LIVE_STATUS[step.status];
+}
+
 /**
  * The diagram's view of a pipeline: its stages, each step's status taken from
- * the latest run. Kept pure so the component only draws (§2).
+ * the run shown — `liveSteps` when one is being followed — else from the latest
+ * results. Kept pure so the component only draws (§2).
  */
 export function buildGraph(
   steps: PipelineStep[],
   results: StepResult[],
   isRunning: boolean,
+  liveSteps?: RunStep[],
 ): StageGroup<GraphNode>[] {
   const outputs = new Map(results.map((result) => [result.step_order, result.output]));
-  const deliverables = deliverableOrders(steps, results);
+  const live = liveSteps && new Map(liveSteps.map((step) => [step.step_order, step]));
+  // A followed run knows every step's verdict before its result exists.
+  const deliverables = deliverableOrders(steps, liveSteps?.length ? liveSteps : results);
   const nodes = steps.map((step) => {
     const output = outputs.get(step.order);
+    const liveStep = live?.get(step.order);
     return {
       stage: step.stage,
       node: {
@@ -37,7 +59,7 @@ export function buildGraph(
         model: step.model,
         prompt: step.prompt,
         expectedOutput: step.expected_output,
-        status: nodeStatus(output, isRunning),
+        status: liveStep ? liveNodeStatus(liveStep, isRunning) : nodeStatus(output, isRunning),
         outputLength: output === undefined ? null : output.length,
         isOutput: deliverables.has(step.order),
       },

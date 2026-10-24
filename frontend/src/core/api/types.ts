@@ -86,6 +86,56 @@ export interface PipelineRunResponse {
   intermediate_results: StepResult[];
 }
 
+/** Where a run is. `queued` and `running` are active; the rest are final. */
+export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
+
+/** Where one step of a run is. */
+export type RunStepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface RunError {
+  code: string;
+  detail: string;
+}
+
+/** One step of a run: its result fields (filled once it succeeded) and its progress. */
+export interface RunStep extends StepResult {
+  status: RunStepStatus;
+  error: RunError | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** A run in the history list (GET /api/runs): no inputs, outputs or steps. */
+export interface RunSummary {
+  id: number;
+  /** null once the pipeline was deleted; the run keeps its name. */
+  pipeline_id: number | null;
+  pipeline_name: string;
+  status: RunStatus;
+  error: RunError | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** A whole run (GET /api/runs/<id>), polled while it is active. */
+export interface Run extends RunSummary {
+  /** The free text it was started with ("" when the pipeline has named inputs). */
+  input: string;
+  /** The value of each named input it was started with. */
+  inputs: Record<string, string>;
+  final_output: string;
+  /** The pipeline as it was when the run started; later edits never change it. */
+  definition: { name: string; inputs: PipelineInput[]; steps: PipelineStep[] };
+  steps: RunStep[];
+}
+
+export interface RunPage {
+  items: RunSummary[];
+  /** How many runs match in all. */
+  total: number;
+}
+
 export interface GeneratedPipelineResponse {
   generated_pipeline: Pipeline;
   available_models: string[];

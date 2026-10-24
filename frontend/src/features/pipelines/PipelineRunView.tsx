@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 
-import type { PipelineInput, PipelineStep, StepResult } from '../../core/api/types';
+import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
@@ -15,11 +15,18 @@ import { groupByStage } from './stages';
 type Tab = 'outputs' | 'steps';
 
 const TAB_LIST = 'flex gap-1 rounded-xl border border-white/10 bg-slate-900/70 p-1';
+const NO_RESULTS: StepResult[] = [];
 
 interface PipelineRunViewProps {
   steps: PipelineStep[];
   inputs?: PipelineInput[];
-  results: StepResult[];
+  /** The latest finished results; ignored while `liveSteps` are shown. */
+  results?: StepResult[];
+  /** A followed run's steps with their progress: nodes show each step's status,
+   * and an output appears as soon as it is saved. */
+  liveSteps?: RunStep[];
+  /** Which run `liveSteps` belong to; the view starts over when another replaces it. */
+  runKey?: number | null;
   isRunning: boolean;
   input: string;
   elapsedMs: number | null;
@@ -33,7 +40,9 @@ interface PipelineRunViewProps {
 export function PipelineRunView({
   steps,
   inputs,
-  results,
+  results: finished = NO_RESULTS,
+  liveSteps,
+  runKey = null,
   isRunning,
   input,
   elapsedMs,
@@ -42,17 +51,27 @@ export function PipelineRunView({
   onAddAfter,
   children,
 }: PipelineRunViewProps) {
-  const [tab, setTab] = useState<Tab>('outputs');
-  const [focus, setFocus] = useState<OutputTarget | null>(null);
-  const [shownResults, setShownResults] = useState(results);
+  const results = liveSteps ? liveSteps.filter((step) => step.status === 'succeeded') : finished;
   const outputs = results.filter((result) => result.is_output);
+  const shownRun = liveSteps ? runKey : finished;
+  const [tab, setTab] = useState<Tab>(liveSteps && isRunning ? 'steps' : 'outputs');
+  const [focus, setFocus] = useState<OutputTarget | null>(null);
+  const [seenRun, setSeenRun] = useState(shownRun);
+  const [wasRunning, setWasRunning] = useState(isRunning);
 
-  // A new run starts on its outputs (React's "adjust state on prop change").
-  if (shownResults !== results) {
-    setShownResults(results);
-    setTab('outputs');
+  // React's "adjust state on prop change": a new run starts on its progress
+  // while it runs, on its outputs once done; a followed run that finishes
+  // turns to its outputs.
+  if (seenRun !== shownRun) {
+    setSeenRun(shownRun);
+    setWasRunning(isRunning);
+    setTab(liveSteps && isRunning ? 'steps' : 'outputs');
     setFocus(null);
+  } else if (wasRunning !== isRunning) {
+    setWasRunning(isRunning);
+    if (!isRunning && outputs.length > 0) setTab('outputs');
   }
+  const hasResults = liveSteps ? liveSteps.length > 0 : results.length > 0 && !isRunning;
 
   function select(target: OutputTarget) {
     const isOutput = target === 'outputs' || outputs.some((r) => r.step_order === target);
@@ -68,6 +87,7 @@ export function PipelineRunView({
         steps={steps}
         inputs={inputs}
         results={results}
+        liveSteps={liveSteps}
         isRunning={isRunning}
         input={input}
         selected={focus}
@@ -79,13 +99,13 @@ export function PipelineRunView({
 
       {children}
 
-      {isRunning && (
+      {isRunning && !liveSteps && (
         <BusyNotice className="mt-8">
           Running the pipeline — parallel steps run at the same time…
         </BusyNotice>
       )}
 
-      {results.length > 0 && !isRunning && (
+      {hasResults && (
         <div className="mt-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className={TAB_LIST} role="tablist">
@@ -93,7 +113,7 @@ export function PipelineRunView({
                 Outputs ({outputs.length})
               </TabButton>
               <TabButton active={tab === 'steps'} onClick={() => setTab('steps')}>
-                All steps ({results.length})
+                All steps ({liveSteps?.length ?? results.length})
               </TabButton>
             </div>
             <RunStats results={results} outputCount={outputs.length} elapsedMs={elapsedMs} />
@@ -102,7 +122,11 @@ export function PipelineRunView({
           {tab === 'outputs' ? (
             <OutputsPanel outputs={outputs} focusedStep={focusedStep} />
           ) : (
-            <RunResults results={results} focusedStep={focusedStep} />
+            <RunResults
+              results={liveSteps ?? results}
+              focusedStep={focusedStep}
+              runActive={isRunning}
+            />
           )}
         </div>
       )}
@@ -118,12 +142,22 @@ function OutputsPanel({
   focusedStep: number | null;
 }) {
   const stages = groupByStage(outputs, (result) => result.stage);
+  if (stages.length === 0) {
+    return (
+      <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-400">
+        No outputs yet. Each one appears here as soon as it is ready.
+      </p>
+    );
+  }
   return (
     <div className="space-y-6">
       {stages.map((group) => (
         <section key={group.stage} aria-label={`Stage ${group.stage} outputs`}>
           <h3 className="mb-3 text-sm font-semibold text-slate-300">
-            Stage {group.stage} <span className="text-slate-500">· {group.items.length} {group.items.length === 1 ? 'output' : 'outputs'}</span>
+            Stage {group.stage}{' '}
+            <span className="text-slate-400">
+              · {group.items.length} {group.items.length === 1 ? 'output' : 'outputs'}
+            </span>
           </h3>
           <div className={group.items.length > 1 ? 'grid gap-4 xl:grid-cols-2' : ''}>
             {group.items.map((result, index) => (
