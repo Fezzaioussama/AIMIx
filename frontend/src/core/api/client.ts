@@ -70,7 +70,7 @@ function authHeaders(extra?: HeadersInit): Headers {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** A FormData is sent as multipart (a file upload); anything else as JSON. */
   body?: unknown;
   timeoutMs?: number;

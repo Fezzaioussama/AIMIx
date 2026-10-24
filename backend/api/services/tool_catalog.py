@@ -3,44 +3,26 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
-import anyio
-import httpx
-from exceptiongroup import ExceptionGroup
 from langchain_core.tools import BaseTool
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.sessions import Connection
-from mcp import McpError
 
 from api.db import Database
-from api.exceptions import ToolUnavailable
 from api.models import User
 from api.services.agent_tools import native_tools
 from api.services.agent_types import ToolDescriptor
-from api.services.mcp import connections
+from api.services.integrations.connections import mcp_connections_for
+from api.services.mcp_discovery import discover_tools, integration_of
 from config.settings import get_settings
 
-logger = logging.getLogger(__name__)
+#: Sources shown for tools that are not from one of the user's integrations,
+#: whose tools show the integration's name instead.
+NATIVE_SOURCE = "AIMIx"
+OPERATOR_MCP_SOURCE = "MCP"
 
 
-async def discover_tools(
-    configured: dict[str, Connection], native: list[BaseTool], timeout_seconds: float
-) -> list[BaseTool]:
-    """Load MCP tools once per agent run; native tools stay available without MCP."""
-    if not configured:
-        return native
-    client = MultiServerMCPClient(configured, tool_name_prefix=True)
-    try:
-        with anyio.fail_after(timeout_seconds):
-            mcp_tools = await client.get_tools()
-    except (TimeoutError, McpError, ExceptionGroup, httpx.HTTPError) as cause:
-        logger.warning("agent.mcp_discovery_failed error=%s", type(cause).__name__)
-        raise ToolUnavailable("An MCP server is unavailable.") from cause
-    tools = [*native, *mcp_tools]
-    if len({item.name for item in tools}) != len(tools):
-        raise ToolUnavailable("Configured tools have duplicate names.")
-    return tools
+def describe(tool: BaseTool, limit: int) -> str:
+    """A tool's description as people see it, cut to AGENT_TOOL_DESCRIPTION_MAX_CHARS."""
+    return tool.description.strip()[:limit]
 
 
 class PipelineToolCatalog:
@@ -52,7 +34,7 @@ class PipelineToolCatalog:
         settings = get_settings()
         native = native_tools(self._database, self._user, settings)
         tools = await discover_tools(
-            connections(settings.mcp_servers, settings.mcp_timeout_seconds),
+            mcp_connections_for(self._database, self._user, settings),
             native,
             settings.mcp_timeout_seconds,
         )
@@ -61,8 +43,10 @@ class PipelineToolCatalog:
         return [
             ToolDescriptor(
                 item.name,
-                item.description.strip()[:limit],
-                "AIMIx" if item.name in native_names else "MCP",
+                describe(item, limit),
+                NATIVE_SOURCE
+                if item.name in native_names
+                else integration_of(item) or OPERATOR_MCP_SOURCE,
             )
             for item in tools
         ]

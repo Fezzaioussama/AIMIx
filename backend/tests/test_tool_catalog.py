@@ -11,7 +11,12 @@ from langchain_core.tools import tool
 from langchain_mcp_adapters.sessions import Connection
 
 from api.exceptions import ToolUnavailable
-from api.services import tool_catalog
+from api.services import mcp_discovery
+from api.services.mcp import MCPConnections
+
+
+def operator_servers(*names: str) -> MCPConnections:
+    return MCPConnections(operator=cast(dict[str, Connection], {name: {} for name in names}))
 
 
 def test_catalog_endpoint_lists_native_tools_without_mcp(auth_client: TestClient) -> None:
@@ -44,9 +49,8 @@ async def test_mcp_discovery_prefixes_names(monkeypatch: pytest.MonkeyPatch) -> 
         async def get_tools(self) -> list[Any]:
             return [docs_search]
 
-    monkeypatch.setattr(tool_catalog, "MultiServerMCPClient", FakeMCPClient)
-    configured = cast(dict[str, Connection], {"docs": {}})
-    discovered = await tool_catalog.discover_tools(configured, [], 1)
+    monkeypatch.setattr(mcp_discovery, "MultiServerMCPClient", FakeMCPClient)
+    discovered = await mcp_discovery.discover_tools(operator_servers("docs"), [], 1)
     assert [item.name for item in discovered] == ["docs_search"]
     assert observed["prefix"] is True
 
@@ -60,7 +64,6 @@ async def test_mcp_discovery_failure_is_a_domain_error(monkeypatch: pytest.Monke
         async def get_tools(self) -> list[Any]:
             raise httpx.ConnectError("offline")
 
-    monkeypatch.setattr(tool_catalog, "MultiServerMCPClient", FailingMCPClient)
-    configured = cast(dict[str, Connection], {"docs": {}})
+    monkeypatch.setattr(mcp_discovery, "MultiServerMCPClient", FailingMCPClient)
     with pytest.raises(ToolUnavailable):
-        await tool_catalog.discover_tools(configured, [], 1)
+        await mcp_discovery.discover_tools(operator_servers("docs"), [], 1)

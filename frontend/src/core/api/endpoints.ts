@@ -19,4 +19,7 @@ export const API = {
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
   templates: '/api/templates',
   createFromTemplate: (slug: string) => `/api/templates/${encodeURIComponent(slug)}/use`,
+  integrations: '/api/integrations',
+  integration: (integrationId: number) => `/api/integrations/${integrationId}`,
+  testIntegration: (integrationId: number) => `/api/integrations/${integrationId}/test`,
 } as const;

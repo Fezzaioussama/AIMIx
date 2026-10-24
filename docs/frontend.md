@@ -22,6 +22,7 @@ frontend/src/
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
+    settings/       # SettingsPage: LLM providers and Integrations (users' MCP servers)
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -59,6 +60,8 @@ resolves the session before the first render without a redirect flash.
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
 | `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
+| `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
+| `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 
 ### What `client.ts` does for every call
 
@@ -92,8 +95,9 @@ Both pipeline screens use it; the frontend never hard-codes a model list.
 ## `core/hooks/useAgentTools.ts`
 
 Loads `GET /api/agent-tools` for the builder's tool picker. The catalogue
-contains exact names, descriptions, and `AIMIx` or `MCP` sources; pipeline
-steps store names rather than copying tool definitions.
+contains exact names, descriptions, and sources (`AIMIx`, `MCP`, or the name of
+one of the user's integrations); pipeline steps store names rather than copying
+tool definitions.
 
 ## `core/markdown/renderMarkdown.ts`
 
@@ -178,7 +182,7 @@ Rules for motion:
 | `pipelineInputs.ts` | Pure helpers for named inputs and attached documents (`appendDocument`, `documentSummary`): the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, and `runRequest`, which sends only declared inputs |
 | `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model and prompt |
 | `PromptPlaceholders.tsx` | Under a prompt: `{input}` and the declared `{name}` placeholders, plus a warning for a placeholder nothing fills |
-| `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise) |
+| `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise); the checklist groups tools by source, so an integration's tools sit under its name |
 | `StepRoleFields.tsx` | A step's title, its Intermediate / Output toggle and its expected output, shared by both editors |
 | `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
 | `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished node opens its output. Stages slide in; during a run connectors pulse and running nodes carry a StarBorder |
@@ -219,7 +223,23 @@ builder through the same `{ pipelineId }` router state Auto Pipeline uses
   untouched provider keeps following the server default. A typed key is cleared
   from the form once saved; the API never sends a key back.
 - `SettingsPage` renders the provider picker and one `ProviderCard` (key
-  status, password field, "Remove saved key", default-model select) each.
+  status, password field, "Remove saved key", default-model select) each,
+  then the Integrations section.
+- `useSubmission()` is the busy flag, notice and `submit(task, done, failed)`
+  both sections share; `NoticeLine` shows the notice (`status`, or `alert` for
+  an error).
+
+Integrations (the user's own MCP servers):
+
+| File | Role |
+|---|---|
+| `IntegrationsSection.tsx` | Heading, a plain-words explanation, the list, "+ Add an integration" and the section's notice |
+| `IntegrationCard.tsx` | One server: name, host, an on/off `role="switch"`, header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline confirmation that takes focus ("Keep it") and gives it back |
+| `ConnectionTestResult.tsx` | An always-present `aria-live` region: "Connecting…", the tools found (name and description), or why the test failed |
+| `IntegrationForm.tsx`, `HeaderRows.tsx` | Add or edit: name (typed as snake_case), server URL, and header rows whose values are password fields; a saved value shows only as "Saved value ending in …", and is kept when its field is left empty |
+| `integrationDraft.ts` | Pure helpers: the form draft, `draftProblem` (mirrors the backend rules: name pattern, URL, header names and values; every value again when the address changes), `toCreate`, `toPatch` (only what changed; a kept header is sent without its value) |
+| `useIntegrations.ts` | Loads the list, creates, updates, switches on/off and deletes through `useSubmission`, and keeps each connection test's result while the page is open (tests still running are cancelled on unmount) |
+| `actionButton.ts` | The small secondary button styles the section uses (the page keeps one `GlowButton`) |
 
 ### `features/landing`
 
@@ -281,7 +301,12 @@ error), `core/markdown/renderMarkdown.test.ts` (sanitisation),
 behaviour, FAQ disclosure, WebGL-less fallback), `useStepCarousel.test.ts` and
 `scene/sceneLayout.test.ts` (the layout is deterministic and well-formed), and
 for the gallery `features/templates/` (filters, the hook, and the page: busy
-state, errors, retry and opening the builder).
+state, errors, retry and opening the builder). The
+Settings page has `SettingsPage.test.tsx`, `useLLMSettings.test.tsx`, and for
+integrations `IntegrationsSection.test.tsx` (list, add, validation, test
+connection, delete confirmation, switch, edit with hints), `useIntegrations.test.tsx`
+and `integrationDraft.test.ts`; `testData.ts` holds their fixtures and `byPath`,
+a fetch stand-in that answers each API path.
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.

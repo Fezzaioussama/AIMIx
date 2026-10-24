@@ -25,8 +25,8 @@ from api.services.agent_runtime import (
 )
 from api.services.agent_tools import native_tools
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model
-from api.services.mcp import connections
 from api.services.prompts import step_agent_system_prompt
 from config.settings import Settings, get_settings
 
@@ -115,7 +115,7 @@ class PipelineAgentGenerator:
         agent = LangGraphStepAgent(
             self._dependencies.model_factory(task.model),
             AgentToolset(
-                connections(settings.mcp_servers, settings.mcp_timeout_seconds),
+                mcp_connections_for(self._database, self._user, settings),
                 native_tools(self._database, self._user, settings),
             ),
             AgentLimits(

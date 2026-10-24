@@ -17,9 +17,12 @@ from api.exceptions import NotAuthenticated
 from api.models import User
 from api.security import SecretBox, TokenSigner
 from api.services import accounts, llm_settings
+from api.services.addresses import Resolver, resolve_host
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.documents.contracts import ExtractionLimits
+from api.services.integrations.rules import IntegrationRules, rules_from
+from api.services.integrations.service import IntegrationAccess
 from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
@@ -202,3 +205,27 @@ def agent_factory(
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]
+
+
+def host_resolver() -> Resolver:
+    """How the integration address checks resolve host names; tests swap in a fake."""
+    return resolve_host
+
+
+def integration_rules(
+    settings: AppSettings, resolver: Annotated[Resolver, Depends(host_resolver)]
+) -> IntegrationRules:
+    return rules_from(settings, resolver)
+
+
+def integration_access(
+    user: CurrentUser,
+    session: DbSession,
+    box: Secrets,
+    rules: Annotated[IntegrationRules, Depends(integration_rules)],
+) -> IntegrationAccess:
+    """The signed-in user's integrations (Settings → Integrations)."""
+    return IntegrationAccess(session, user, box, rules)
+
+
+Integrations = Annotated[IntegrationAccess, Depends(integration_access)]

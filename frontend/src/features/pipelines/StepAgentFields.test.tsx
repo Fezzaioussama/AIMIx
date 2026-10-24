@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -11,7 +11,13 @@ const tools: AgentTool[] = [
   { name: 'mcp_search', source: 'Search MCP', description: 'Search the web' },
 ];
 
-function Harness() {
+const integrationTools: AgentTool[] = [
+  ...tools,
+  { name: 'crm_find_contact', source: 'crm', description: 'Find a contact' },
+  { name: 'calculator', source: 'AIMIx', description: 'Do arithmetic' },
+];
+
+function Harness({ catalog = tools }: { catalog?: AgentTool[] }) {
   const [step, setStep] = useState<PipelineStep>({
     order: 1,
     stage: 1,
@@ -27,7 +33,7 @@ function Harness() {
     <>
       <StepAgentFields
         step={step}
-        tools={tools}
+        tools={catalog}
         onChange={(patch) => setStep((current) => ({ ...current, ...patch }))}
       />
       <output data-testid="step-config">
@@ -59,5 +65,17 @@ describe('StepAgentFields', () => {
     await user.type(screen.getByRole('textbox', { name: 'Agent role' }), 'Researcher');
     expect(screen.getByTestId('step-config')).toHaveTextContent('"role":"Researcher"');
     expect(screen.getByTestId('step-config')).toHaveTextContent('"allowed_tools":null');
+  });
+
+  it('groups tools by where they come from, each integration under its name', async () => {
+    const user = userEvent.setup();
+    render(<Harness catalog={integrationTools} />);
+
+    await user.click(screen.getByText('Choose tools · All configured tools'));
+
+    const builtIn = screen.getByRole('group', { name: 'AIMIx tools' });
+    expect(within(builtIn).getAllByRole('checkbox')).toHaveLength(2);
+    const crm = screen.getByRole('group', { name: 'crm tools' });
+    expect(within(crm).getByRole('checkbox', { name: /crm_find_contact/ })).toBeChecked();
   });
 });

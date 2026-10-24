@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import * as settingsApi from '../../core/api/llmSettings';
 import type { LLMSettings, LLMSettingsUpdate, ProviderSettings } from '../../core/api/types';
+import { errorText, useSubmission } from './useSubmission';
 
 export interface ProviderDraft {
   /** A newly typed key; empty keeps whatever is saved. */
@@ -11,11 +12,6 @@ export interface ProviderDraft {
 
 type Drafts = Record<string, ProviderDraft>;
 
-export interface Notice {
-  kind: 'success' | 'error';
-  text: string;
-}
-
 function initialModel(entry: ProviderSettings): string {
   return entry.models.includes(entry.default_model) ? entry.default_model : (entry.models[0] ?? '');
 }
@@ -24,10 +20,6 @@ function draftsFrom(settings: LLMSettings): Drafts {
   return Object.fromEntries(
     settings.providers.map((entry) => [entry.name, { apiKey: '', model: initialModel(entry) }]),
   );
-}
-
-function errorText(cause: unknown, fallback: string): string {
-  return cause instanceof Error ? cause.message : fallback;
 }
 
 /**
@@ -56,8 +48,7 @@ export function useLLMSettings() {
   const [settings, setSettings] = useState<LLMSettings | null>(null);
   const [provider, setProvider] = useState('');
   const [drafts, setDrafts] = useState<Drafts>({});
-  const [status, setStatus] = useState<'loading' | 'idle' | 'saving'>('loading');
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const { status, setStatus, notice, setNotice, submit } = useSubmission('loading');
 
   const adopt = useCallback((next: LLMSettings) => {
     setSettings(next);
@@ -82,30 +73,23 @@ export function useLLMSettings() {
     return () => {
       active = false;
     };
-  }, [adopt]);
+  }, [adopt, setNotice, setStatus]);
 
-  const chooseProvider = useCallback((name: string) => {
-    setProvider(name);
-    setNotice(null);
-  }, []);
+  const chooseProvider = useCallback(
+    (name: string) => {
+      setProvider(name);
+      setNotice(null);
+    },
+    [setNotice],
+  );
 
-  const editDraft = useCallback((name: string, patch: Partial<ProviderDraft>) => {
-    setDrafts((current) => ({ ...current, [name]: { ...current[name], ...patch } }));
-    setNotice(null);
-  }, []);
-
-  const submit = useCallback(async (task: () => Promise<void>, done: string, failed: string) => {
-    setStatus('saving');
-    setNotice(null);
-    try {
-      await task();
-      setNotice({ kind: 'success', text: done });
-    } catch (cause) {
-      setNotice({ kind: 'error', text: errorText(cause, failed) });
-    } finally {
-      setStatus('idle');
-    }
-  }, []);
+  const editDraft = useCallback(
+    (name: string, patch: Partial<ProviderDraft>) => {
+      setDrafts((current) => ({ ...current, [name]: { ...current[name], ...patch } }));
+      setNotice(null);
+    },
+    [setNotice],
+  );
 
   const save = useCallback(async () => {
     if (!settings) return;

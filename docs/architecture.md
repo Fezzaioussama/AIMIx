@@ -7,12 +7,15 @@ graph LR
     Browser["React SPA<br/>Vite :4200"] -->|"/api/* + Bearer JWT<br/>(proxied in dev)"| API["FastAPI + Uvicorn<br/>:8000"]
     API -->|SQLAlchemy| DB[("SQLite")]
     API -->|"HTTPS, API key,<br/>LLM_TIMEOUT_SECONDS"| LLM["OpenRouter / TogetherAI"]
-    API -->|"configured MCP tools<br/>MCP_TIMEOUT_SECONDS"| MCP["MCP servers"]
+    API -->|"configured MCP tools<br/>MCP_TIMEOUT_SECONDS"| MCP["MCP servers<br/>(MCP_SERVERS)"]
+    API -->|"streamable HTTP, https,<br/>public addresses only"| Own["Each user's MCP servers<br/>(Settings → Integrations)"]
 ```
 
 The backend is a **chokepoint**: it holds the provider API key (the browser never
 sees it), validates every model id against a catalogue, and bounds every
-outbound call with a timeout.
+outbound call with a timeout. It also holds each user's integration header
+values (encrypted, never sent back) and is the only thing that talks to those
+servers.
 
 ## Backend layers
 
@@ -81,8 +84,8 @@ sequenceDiagram
     participant G as services/multiagent/graph
     participant A as services/multiagent/step_agent
     participant U as services/agent_runtime
-    participant T as services/tool_catalog
-    participant M as configured MCP servers
+    participant T as services/mcp_discovery
+    participant M as MCP servers + the user's integrations
     UI->>C: runPipeline(id, input) (timeout 1 h)
     C->>E: POST + Bearer token
     E->>E: FastAPI validates {"input"} / {"inputs"} against RunRequest
@@ -96,9 +99,10 @@ sequenceDiagram
     loop each stage in order
         G->>G: start step nodes on shared input (bounded concurrency)
         G->>A: execute agent for each step (async)
+        A->>A: mcp_connections_for(user): MCP_SERVERS + enabled integrations
         A->>U: resolve selected tool policy
         U->>T: discover selected tools as needed
-        T->>M: discover configured MCP tools
+        T->>M: list tools (a failing integration is skipped)
         A->>M: call MCP tool if the agent selects it
         A-->>G: final text and tool name/status trace, or DomainError
         G->>G: join all step nodes; merge in saved order
@@ -121,9 +125,10 @@ it has one and, when the agent has tools, tells it to use them instead of
 guessing, cite web sources and adapt when a tool fails.
 `allowed_tools: null` grants the signed-in user's pipeline list and inspect
 tools, the enabled built-in web, calculation, clock and local workspace tools
-(see below), and all configured MCP tools; `[]` grants none;
+(see below), all configured MCP tools and the tools of the user's enabled
+integrations; `[]` grants none;
 an explicit list grants only named tools. A missing selected tool raises
-`tool_unavailable`. The graph keeps step results in saved order even if agents
+`tool_unavailable`, naming it. The graph keeps step results in saved order even if agents
 finish out of order. The response contains tool call names and success/error
 statuses, without arguments or tool output. A built-in tool that fails (a page
 that times out, a refused address, a bad expression) returns an error result
@@ -158,6 +163,53 @@ workspace readers are enabled unless the operator explicitly sets
 to the model at `WEB_FETCH_MAX_CHARS`, and each request at
 `WEB_TIMEOUT_SECONDS`, with no retries.
 
+### MCP servers and tool discovery
+
+Agents get MCP tools from two places: the operator's `MCP_SERVERS` (shared,
+trusted configuration, HTTP or stdio) and each user's own **integrations**
+(Settings → Integrations, `api/services/integrations/`). One function,
+`integrations.connections.mcp_connections_for(database, user, settings)`, builds
+both into an `MCPConnections(operator, user)` value; the chat agent
+(`agent.py`), pipeline step agents (`multiagent/step_agent.py`) and the
+catalogue (`tool_catalog.py`, behind `GET /agent-tools` and the planner) all
+call it, so they always agree on what a user can reach.
+
+`mcp_discovery.discover_tools` loads the tools, every name prefixed with its
+server's name:
+
+- **Operator servers** load together, as before: if one fails, discovery fails
+  with `tool_unavailable`, and duplicate names among native and operator tools
+  are refused.
+- **Integrations** load one by one through `load_server_tools`, the adapter
+  that turns any MCP SDK failure into a `ToolUnavailable` with a plain reason.
+  One that fails is skipped with a logged warning
+  (`integration.discovery_skipped`), so runs and chats that do not need it keep
+  working; a step that *selected* one of its tools then fails in
+  `agent_runtime.resolve_tools`, because the tool is missing. A tool whose name
+  is taken or is not a valid model-API function name is dropped, and the rest
+  are tagged with their integration so the catalogue shows its name as the
+  source.
+
+The builder skips (and logs) an integration whose name an operator server now
+uses, whose URL the current settings refuse, or whose header values
+`SECRET_KEY` can no longer decrypt.
+
+Users' servers are untrusted input to the server's network, so they are held
+to the `fetch_url` rules, which live in `api/services/addresses.py` for both:
+streamable HTTP only (never stdio, which would run a command on this server),
+`https` (plain `http` only when `APP_ENV=local`), and a host that resolves only
+to public addresses. The check runs when an integration is saved, before a
+connection test, and before **every** request to it: the integration's
+connection carries a `GuardedClientFactory` whose httpx request hook resolves
+the host again (each discovery and tool call opens its own session). The MCP
+SDK follows redirects only within the same origin, and that request is
+checked too. httpx still resolves the name once more when it connects, so a
+DNS server that answers differently within those milliseconds (DNS rebinding)
+remains possible; this is the same window `fetch_url` accepts. Local
+development reaches a server on `127.0.0.1` with `APP_ENV=local` and
+`INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true`, which also drops the per-request
+guard; production refuses to start with that setting.
+
 The graph lives in `api/services/multiagent/`: `contracts.py` defines immutable
 pipeline and step snapshots, results, and the async step-agent contract;
 `mapper.py` copies loaded ORM records into a `PipelineSpec`; `graph.py` composes
@@ -179,7 +231,7 @@ record, LangGraph checkpoint for the pipeline, or approval flow for tool actions
    `services/chat.stream_reply(agent, prompt)`.
 3. `services/agent` builds a chat-only LangGraph agent from the configured
    model, binds the signed-in user's native pipeline tools, and discovers tools
-   from every server in `MCP_SERVERS`. Graph execution runs in one producer
+   from every server in `MCP_SERVERS` and the user's enabled integrations. Graph execution runs in one producer
    task, which sends assistant text through a queue. Model and MCP calls have
    timeouts; tool results stay out of the text stream. Shared tool policy and
    error mapping live in `services/agent_runtime`.
@@ -196,8 +248,9 @@ record, LangGraph checkpoint for the pipeline, or approval flow for tool actions
 
 1. `GenerateRequest` validates `description` and an optional
    `planner_model` (defaults to the configured default model).
-2. `services/tool_catalog` discovers the native pipeline tools and the
-   configured MCP tools. `services/pipelines.generate` builds a prompt with
+2. `services/tool_catalog` discovers the native pipeline tools, the
+   configured MCP tools and the user's integration tools.
+   `services/pipelines.generate` builds a prompt with
    their names and descriptions plus the allowed model ids, then calls the
    direct provider adapter.
 3. `parse_plan` extracts the first `{...}` block, parses JSON, requires `name`
@@ -210,7 +263,8 @@ record, LangGraph checkpoint for the pipeline, or approval flow for tool actions
    `AutoPipelinePage` and saves through the normal `POST /api/pipelines/`.
 
 `GET /api/agent-tools` uses the same catalogue and returns each tool's exact
-name, description, and `AIMIx` or `MCP` source for the builder.
+name, description, and source for the builder: `AIMIx`, `MCP`, or the name of
+the user's integration it comes from.
 
 ## Error flow
 
@@ -234,7 +288,7 @@ server — never a 200 with an error inside.
 |---|---|---|
 | Registry + Factory | `llm/registry.py`, `api/services/llm.get_provider` | New provider = one dict entry, no `if` chain |
 | Adapter | `llm/base.OpenAICompatibleProvider`, `api/services/multiagent/mapper.py`, `step_agent.py` | Wrap provider SDKs, snapshot ORM records, and bind agents to a graph port |
-| Strategy map | `api/services/errors.PROVIDER_ERROR_MAP` | Provider error → domain error, in one place |
+| Strategy map | `api/services/errors.PROVIDER_ERROR_MAP`, `api/services/mcp_discovery.REASONS` | Provider error → domain error, MCP failure → plain reason, each in one place |
 | Decorator (retry) | `llm/retry.Retrier`, `llm/agent_models.RetryingChatModel` | One bounded retry policy around every model call, direct or LangChain |
 | Repository | `api/repositories/pipelines.py`, `users.py` | Ownership-scoped queries and atomic writes |
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |

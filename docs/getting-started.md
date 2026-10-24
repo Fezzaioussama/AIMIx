@@ -94,8 +94,16 @@ tool calls are never retried automatically; only model calls are, under
 `LLM_MAX_RETRIES` (see [the retry policy](llm-providers.md#retry-policy)). The
 selected model must support tool calling.
 
+Each user can also connect **their own** MCP servers on the Settings page
+(**Integrations**): a name, the server URL, and headers such as
+`Authorization: Bearer …`. Their tools serve only that user's agents, named
+`<name>_<tool>`; **Test connection** lists them. These servers must use
+`https` and a public address. To try one running on your machine, set
+`APP_ENV=local` and `INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true` in `backend/.env`;
+then `http://127.0.0.1:<port>/mcp` is accepted.
+
 After starting the backend, `GET /api/agent-tools` lists each pipeline tool's
-name, description, and source (`AIMIx` or `MCP`). The builder uses this list to
+name, description, and source (`AIMIx`, `MCP`, or the integration's name). The builder uses this list to
 offer tool choices. Give a step an **Agent role** and choose **All tools**, **No
 tools**, or exact named tools. All tools is the default for older pipelines;
 the two native pipeline tools are `list_pipelines` and `inspect_pipeline`.
