@@ -45,6 +45,8 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `workspace_dir` | `AGENT_WORKSPACE_DIR` | Sandboxed agent file root (`backend/workspace`) |
 | workspace/network policy | `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS` | `false`: workspace readers and outbound web tools cannot be offered together; explicit opt-in required |
 | workspace limits | `WORKSPACE_MAX_FILE_BYTES`, `WORKSPACE_MAX_OUTPUT_CHARS`, `WORKSPACE_SEARCH_MAX_FILES`, `WORKSPACE_SEARCH_MAX_RESULTS`, `WORKSPACE_CSV_MAX_ROWS` | Bound local reads, searches, output, and CSV rows |
+| `e2b_api_key` | `E2B_API_KEY` | Enables `run_python` (E2B code sandbox); empty or a placeholder leaves the tool out. Server-wide: every user who can run agents spends it |
+| sandbox limits | `SANDBOX_TIMEOUT_SECONDS`, `SANDBOX_MAX_OUTPUT_CHARS`, `SANDBOX_MAX_FILES`, `SANDBOX_MAX_STREAM_CHARS` | Per `run_python` call: code execution and sandbox lifetime (60 seconds), the report returned to the agent (10,000 characters), input files uploaded and output files or charts saved (10), and what the run may stream back before it is stopped (5,000,000 characters) |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
 | document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
@@ -159,6 +161,7 @@ Each write commits its own transaction.
 | `agent_types.py` | Immutable step task, agent outcome, tool descriptor, and tool call trace. |
 | `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository. `native_tools` adds the built-in toolbox. |
 | `toolbox/` | Built-in agent tools: `registry.py` (name → builder, filtered by `AGENT_BUILTIN_TOOLS`), `tools.py` (LangChain adapters), `web.py` (Tavily search and SSRF-guarded fetch), `workspace.py` (sandboxed local text, CSV and artifacts), `calculator.py`, `html_text.py`, and `config.py`. See [architecture.md](architecture.md#built-in-tools). |
+| `toolbox/` code sandbox | `run_python`: `sandbox.py` (the `CodeSandbox` port, value objects and one call's lifecycle: timeout, always-closed sandbox, `sandbox.run` log), `e2b_sandbox.py` (the E2B adapter: offline, short-lived sandboxes; SDK errors become `SandboxError`; stream budget), `code_runner.py` (workspace files in and out, the report). |
 | `mcp.py` | Converts validated HTTP or stdio MCP server settings into bounded adapter connections. |
 | `tool_catalog.py` | Discovers native read tools and configured MCP tools for `GET /agent-tools` and the planner. |
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
@@ -261,4 +264,5 @@ so tests can never reach a real LLM.
 | `test_pipeline_agents.py` | Step model selection, MCP tool calls, and discovery failures |
 | `test_agent_tools.py` | Native pipeline functions, ownership, and chat tool invocation |
 | `test_toolbox.py` / `test_web_tools.py` | Built-in tools: calculator safety, HTML text, registry, search, SSRF guard, size caps, and a run that survives a failing tool |
+| `test_sandbox_tool.py` / `test_sandbox_wiring.py` / `test_e2b_sandbox.py` | `run_python` over an in-memory sandbox (`sandbox_fakes.py`): report, timeouts, truncation, input confinement, output limits and no overwrites, always-closed sandboxes; the key and data-leak rules; the E2B adapter against a fake SDK (offline creation, error mapping, stream budget) |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards |

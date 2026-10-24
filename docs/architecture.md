@@ -158,6 +158,37 @@ workspace readers are enabled unless the operator explicitly sets
 to the model at `WEB_FETCH_MAX_CHARS`, and each request at
 `WEB_TIMEOUT_SECONDS`, with no retries.
 
+`run_python` lets an agent run code for data analysis and charts, offered only
+when `E2B_API_KEY` is set. Code never runs in the web process: `sandbox.py`
+defines the `CodeSandbox` port (Adapter) and one call's lifecycle, and
+`e2b_sandbox.py`, the only importer of the e2b-code-interpreter SDK, creates a
+fresh E2B cloud sandbox per call with no internet access, authenticated URLs,
+a lifetime of `SANDBOX_TIMEOUT_SECONDS` and kill-on-timeout. Uploading the
+inputs, running the code and collecting its files are bounded by that same
+timeout, and the sandbox is closed in a shielded `finally`, so an error, a
+timeout or a cancelled agent still destroys it. `code_runner.py` reads the
+`input_files` through `workspace.py` (same confinement and size limit) into
+`/home/user/inputs/`, saves what the code writes to `/home/user/outputs/` and
+the PNG charts it displays into a new `sandbox/<UTC time>/` workspace folder
+(at most `SANDBOX_MAX_FILES` files within `WORKSPACE_MAX_FILE_BYTES`, never
+overwriting), and returns the error with a short traceback, the saved files,
+the final result, stdout and stderr, cut at `SANDBOX_MAX_OUTPUT_CHARS`. A run
+that streams back more than `SANDBOX_MAX_STREAM_CHARS` is stopped, because the
+SDK holds all of it in memory. An exception in the code, a timeout and an E2B
+failure are error results the agent can react to. The SDK is async, so
+sandbox calls do not block the event loop; workspace disk work runs in a
+worker thread. `sandbox.run` is logged with its outcome and duration, never
+the code or its output.
+
+`run_python` counts as a workspace reader, since its `input_files` read the
+workspace, so it also removes the outbound web tools unless
+`AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`. It is not outbound itself: E2B
+creates the sandbox with `allow_internet_access=False`, which denies all of its
+outbound traffic, so the code can only hand data back to the agent. The code
+(which can embed anything in the agent's context) and the input files the
+agent names do leave the server for E2B, the operator's chosen provider, the
+way prompts go to the LLM provider.
+
 The graph lives in `api/services/multiagent/`: `contracts.py` defines immutable
 pipeline and step snapshots, results, and the async step-agent contract;
 `mapper.py` copies loaded ORM records into a `PipelineSpec`; `graph.py` composes
