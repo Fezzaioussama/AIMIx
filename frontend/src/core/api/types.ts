@@ -68,6 +68,30 @@ export interface ExtractedDocument {
   truncated: boolean;
 }
 
+/** A file in the user's workspace, the folder their agents read and save to. */
+export interface WorkspaceFile {
+  /** Relative to the workspace, '/'-separated, e.g. "reports/q3.pdf". */
+  path: string;
+  /** In bytes. */
+  size: number;
+  /** ISO 8601, UTC. */
+  modified_at: string;
+  /** Lower-case extension without the dot, e.g. "pdf"; empty when there is none. */
+  type: string;
+}
+
+/** GET /api/files: the files, newest first, and the limits that apply to them. */
+export interface FileListing {
+  files: WorkspaceFile[];
+  /** The sum of the files' sizes: what the storage limit counts. */
+  used_bytes: number;
+  quota_bytes: number;
+  /** The largest file one upload may be. */
+  max_file_bytes: number;
+  /** What an upload may be, lower-case with the dot, e.g. ".pdf". */
+  allowed_extensions: string[];
+}
+
 export interface StepResult {
   step_order: number;
   stage: number;

@@ -15,6 +15,9 @@ export const API = {
   generatePipeline: '/api/pipelines/generate',
   runPipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/run`,
   extractDocument: '/api/documents/extract',
+  files: '/api/files',
+  /** One file of the user's workspace, by its '/'-separated path. */
+  file: (path: string) => `/api/files/${path.split('/').map(encodeURIComponent).join('/')}`,
   llmSettings: '/api/llm-settings',
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
 } as const;

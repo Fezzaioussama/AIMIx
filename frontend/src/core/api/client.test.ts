@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { ApiError, request } from './client';
+import { ApiError, request, requestBlob } from './client';
 import { clearTokens, getAccessToken, saveTokens } from '../auth/tokenStorage';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -98,6 +98,22 @@ describe('api client', () => {
     const init = fetchMock.mock.calls[0][1];
     expect(init?.body).toBe('{"message":"hi"}');
     expect((init?.headers as Headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('fetches a download like any call: refreshed once on a 401, then read as a Blob', async () => {
+    saveTokens({ access: 'stale' });
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ error: 'not_authenticated', detail: 'Expired' }, 401))
+      .mockResolvedValueOnce(jsonResponse({ access: 'fresh' }))
+      .mockResolvedValueOnce(new Response('file body', { status: 200 }));
+
+    const content = await requestBlob(API.file('notes.txt'));
+
+    expect(content.size).toBe('file body'.length);
+    expect(fetchMock.mock.calls[1][0]).toBe(API.refresh);
+    const retried = fetchMock.mock.calls[2][1]?.headers as Headers;
+    expect(retried.get('Authorization')).toBe('Bearer fresh');
   });
 
   it('reports a caller-cancelled request as cancelled, not as a network failure', async () => {

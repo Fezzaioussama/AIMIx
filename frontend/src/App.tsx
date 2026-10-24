@@ -1,3 +1,4 @@
+import { LogOut } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
@@ -9,6 +10,7 @@ import { PageTransition } from './core/ui/PageTransition';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { ChatPage } from './features/chat/ChatPage';
+import { FilesPage } from './features/files/FilesPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
 import { SettingsPage } from './features/settings/SettingsPage';
@@ -22,12 +24,14 @@ const LandingPage = lazy(() =>
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat', paths: ['/chat'] },
   { to: '/pipeline', label: 'Pipelines', paths: ['/pipeline', '/auto-pipeline'] },
+  { to: '/files', label: 'Files', paths: ['/files'] },
   { to: '/settings', label: 'Settings', paths: ['/settings'] },
 ] as const;
 
+// Tighter on a phone, so four items and the logo fit a 390px bar.
 const navLinkClass = (isActive: boolean) =>
   [
-    'relative isolate rounded-lg px-2.5 py-2 text-[0.95rem] font-medium transition-colors sm:px-4',
+    'relative isolate rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 sm:text-[0.95rem]',
     isActive ? 'text-white' : 'text-slate-400 hover:text-slate-50',
   ].join(' ');
 
@@ -36,7 +40,7 @@ function AppNav() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center gap-3 border-b border-white/[0.06] bg-slate-950/70 px-4 backdrop-blur-xl sm:gap-8 sm:px-8">
+    <nav className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center gap-2 border-b border-white/[0.06] bg-slate-950/70 px-4 backdrop-blur-xl sm:gap-8 sm:px-8">
       <img src="/logo.png" alt="AIMIx" className="h-8 w-auto sm:h-10" />
       <div className="flex gap-1 sm:gap-2">
         {NAV_ITEMS.map((item) => {
@@ -59,12 +63,16 @@ function AppNav() {
           );
         })}
       </div>
+      {/* An icon on a phone; the label is its accessible name at every width. */}
       <button
         type="button"
         onClick={() => void logout()}
-        className="ml-auto shrink-0 rounded-lg px-2 py-2 text-sm whitespace-nowrap text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-50 sm:px-3"
+        aria-label="Log out"
+        title="Log out"
+        className="ml-auto shrink-0 rounded-lg p-2 text-sm whitespace-nowrap text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-50 sm:px-3"
       >
-        Log out
+        <LogOut aria-hidden="true" className="size-5 sm:hidden" />
+        <span className="hidden sm:inline">Log out</span>
       </button>
       {/* Hairline in the brand gradient along the bottom edge. */}
       <span
@@ -107,6 +115,7 @@ export function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/pipeline" element={<PipelineBuilderPage />} />
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
+        <Route path="/files" element={<FilesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
