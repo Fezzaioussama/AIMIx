@@ -51,47 +51,20 @@ export function PipelineRunView({
   onAddAfter,
   children,
 }: PipelineRunViewProps) {
-  const results = liveSteps ? liveSteps.filter((step) => step.status === 'succeeded') : finished;
-  const outputs = results.filter((result) => result.is_output);
-  const shownRun = liveSteps ? runKey : finished;
-  const [tab, setTab] = useState<Tab>(liveSteps && isRunning ? 'steps' : 'outputs');
-  const [focus, setFocus] = useState<OutputTarget | null>(null);
-  const [seenRun, setSeenRun] = useState(shownRun);
-  const [wasRunning, setWasRunning] = useState(isRunning);
-
-  // React's "adjust state on prop change": a new run starts on its progress
-  // while it runs, on its outputs once done; a followed run that finishes
-  // turns to its outputs.
-  if (seenRun !== shownRun) {
-    setSeenRun(shownRun);
-    setWasRunning(isRunning);
-    setTab(liveSteps && isRunning ? 'steps' : 'outputs');
-    setFocus(null);
-  } else if (wasRunning !== isRunning) {
-    setWasRunning(isRunning);
-    if (!isRunning && outputs.length > 0) setTab('outputs');
-  }
-  const hasResults = liveSteps ? liveSteps.length > 0 : results.length > 0 && !isRunning;
-
-  function select(target: OutputTarget) {
-    const isOutput = target === 'outputs' || outputs.some((r) => r.step_order === target);
-    setTab(isOutput ? 'outputs' : 'steps');
-    setFocus(target);
-  }
-
-  const focusedStep = typeof focus === 'number' ? focus : null;
+  const view = useRunView({ finished, liveSteps, runKey, isRunning });
+  const hasResults = liveSteps ? liveSteps.length > 0 : view.results.length > 0 && !isRunning;
 
   return (
     <section>
       <PipelineGraph
         steps={steps}
         inputs={inputs}
-        results={results}
+        results={view.results}
         liveSteps={liveSteps}
         isRunning={isRunning}
         input={input}
-        selected={focus}
-        onSelect={select}
+        selected={view.focus}
+        onSelect={view.select}
         onEditStep={onEditStep}
         onAddParallel={onAddParallel}
         onAddAfter={onAddAfter}
@@ -106,34 +79,97 @@ export function PipelineRunView({
       )}
 
       {hasResults && (
-        <div className="mt-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className={TAB_LIST} role="tablist">
-              <TabButton value="outputs" active={tab === 'outputs'} onClick={setTab}>
-                Outputs ({outputs.length})
-              </TabButton>
-              <TabButton value="steps" active={tab === 'steps'} onClick={setTab}>
-                All steps ({liveSteps?.length ?? results.length})
-              </TabButton>
-            </div>
-            {/* Totals count up once the run has ended; the status bar tracks progress. */}
-            {!isRunning && (
-              <RunStats results={results} outputCount={outputs.length} elapsedMs={elapsedMs} />
-            )}
-          </div>
-
-          {tab === 'outputs' ? (
-            <OutputsPanel outputs={outputs} focusedStep={focusedStep} />
-          ) : (
-            <RunResults
-              results={liveSteps ?? results}
-              focusedStep={focusedStep}
-              runActive={isRunning}
-            />
-          )}
-        </div>
+        <ResultsArea
+          view={view}
+          allSteps={liveSteps ?? view.results}
+          isRunning={isRunning}
+          elapsedMs={elapsedMs}
+        />
       )}
     </section>
+  );
+}
+
+interface ShownRun {
+  finished: StepResult[];
+  liveSteps?: RunStep[];
+  runKey: number | null;
+  isRunning: boolean;
+}
+
+/**
+ * What the results show — finished results, or a followed run's steps — with
+ * the open tab and the step the diagram points at. React's "adjust state on
+ * prop change": a new run opens on its progress while it runs and on its
+ * outputs once done, and a followed run that finishes turns to its outputs.
+ */
+function useRunView({ finished, liveSteps, runKey, isRunning }: ShownRun) {
+  const results = liveSteps ? liveSteps.filter((step) => step.status === 'succeeded') : finished;
+  const outputs = results.filter((result) => result.is_output);
+  const firstTab: Tab = liveSteps && isRunning ? 'steps' : 'outputs';
+  const shownRun = liveSteps ? runKey : finished;
+  const [tab, setTab] = useState<Tab>(firstTab);
+  const [focus, setFocus] = useState<OutputTarget | null>(null);
+  const [seenRun, setSeenRun] = useState(shownRun);
+  const [wasRunning, setWasRunning] = useState(isRunning);
+
+  if (seenRun !== shownRun) {
+    setSeenRun(shownRun);
+    setWasRunning(isRunning);
+    setTab(firstTab);
+    setFocus(null);
+  } else if (wasRunning !== isRunning) {
+    setWasRunning(isRunning);
+    if (!isRunning && outputs.length > 0) setTab('outputs');
+  }
+
+  function select(target: OutputTarget) {
+    const isOutput = target === 'outputs' || outputs.some((r) => r.step_order === target);
+    setTab(isOutput ? 'outputs' : 'steps');
+    setFocus(target);
+  }
+
+  return { results, outputs, tab, setTab, focus, select };
+}
+
+interface ResultsAreaProps {
+  view: ReturnType<typeof useRunView>;
+  /** Every step the "All steps" tab lists: finished results, or a run's steps. */
+  allSteps: (StepResult | RunStep)[];
+  isRunning: boolean;
+  elapsedMs: number | null;
+}
+
+/** The "Outputs" / "All steps" tabs, the run's totals and the open tab's cards. */
+function ResultsArea({ view, allSteps, isRunning, elapsedMs }: ResultsAreaProps) {
+  const focusedStep = typeof view.focus === 'number' ? view.focus : null;
+  return (
+    <div className="mt-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className={TAB_LIST} role="tablist">
+          <TabButton value="outputs" active={view.tab === 'outputs'} onClick={view.setTab}>
+            Outputs ({view.outputs.length})
+          </TabButton>
+          <TabButton value="steps" active={view.tab === 'steps'} onClick={view.setTab}>
+            All steps ({allSteps.length})
+          </TabButton>
+        </div>
+        {/* Totals count up once the run has ended; the status bar tracks progress. */}
+        {!isRunning && (
+          <RunStats
+            results={view.results}
+            outputCount={view.outputs.length}
+            elapsedMs={elapsedMs}
+          />
+        )}
+      </div>
+
+      {view.tab === 'outputs' ? (
+        <OutputsPanel outputs={view.outputs} focusedStep={focusedStep} />
+      ) : (
+        <RunResults results={allSteps} focusedStep={focusedStep} runActive={isRunning} />
+      )}
+    </div>
   );
 }
 

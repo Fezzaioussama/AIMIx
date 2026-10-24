@@ -5,12 +5,8 @@ import { useNow } from '../../core/hooks/useNow';
 import { elapsedMs, formatDuration } from '../../core/time';
 import { stepLabel } from '../pipelines/stages';
 import { RUN_STATUS_STYLES, RunStatusBadge } from './RunStatusBadge';
+import { RUN_BUTTON } from './runButtons';
 import { finishedStepCount, isActive, isResumable } from './runStatus';
-
-const BUTTON =
-  'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-50';
-export const STOP_BUTTON = `${BUTTON} border-red-400/40 text-red-200 enabled:hover:bg-red-500/10`;
-export const RESUME_BUTTON = `${BUTTON} border-sky-400/50 bg-sky-500/10 text-sky-200 enabled:hover:bg-sky-500/20`;
 
 /** One plain line on where the run is, when there is something to say. */
 const STATUS_NOTES: Partial<Record<RunStatus, string>> = {
@@ -61,12 +57,12 @@ export function LiveRunHeader({
         </div>
         <div className="flex flex-wrap gap-2">
           {active && onStop && (
-            <button type="button" onClick={onStop} disabled={busy} className={STOP_BUTTON}>
+            <button type="button" onClick={onStop} disabled={busy} className={RUN_BUTTON.stop}>
               Stop
             </button>
           )}
           {isResumable(run.status) && onResume && (
-            <button type="button" onClick={onResume} disabled={busy} className={RESUME_BUTTON}>
+            <button type="button" onClick={onResume} disabled={busy} className={RUN_BUTTON.resume}>
               Resume
             </button>
           )}

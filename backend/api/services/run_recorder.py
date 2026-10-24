@@ -19,7 +19,7 @@ from typing import Any
 from api.db import Database
 from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, StepStatus
 from api.repositories import runs as repository
-from api.repositories.runs import RunEnding
+from api.repositories.runs import RunEnding, StepChange
 from api.services.multiagent.contracts import StepEvent, StepEventKind
 
 logger = logging.getLogger(__name__)
@@ -64,12 +64,12 @@ def _cancelled(_event: StepEvent, now: datetime) -> dict[str, Any]:
     return {"status": StepStatus.CANCELLED, "finished_at": now}
 
 
-StepChange = Callable[[StepEvent, datetime], dict[str, Any]]
+StepColumns = Callable[[StepEvent, datetime], dict[str, Any]]
 
 #: For each event: the step statuses it applies to, and the columns it sets
 #: (Strategy + Registry, AGENTS.md §5 O). A step already stopped by the user
 #: keeps that status, whatever its agent reports afterwards.
-STEP_CHANGES: dict[StepEventKind, tuple[frozenset[StepStatus], StepChange]] = {
+STEP_CHANGES: dict[StepEventKind, tuple[frozenset[StepStatus], StepColumns]] = {
     StepEventKind.STARTED: (frozenset({StepStatus.PENDING}), _started),
     StepEventKind.SUCCEEDED: (frozenset({StepStatus.RUNNING}), _succeeded),
     StepEventKind.FAILED: (frozenset({StepStatus.RUNNING}), _failed),
@@ -130,11 +130,10 @@ class RunRecorder:
         return run
 
     async def on_step_event(self, event: StepEvent) -> None:
-        expected, change = STEP_CHANGES[event.kind]
+        expected, columns = STEP_CHANGES[event.kind]
+        change = StepChange(event.step.order, expected, columns(event, utcnow()))
         with self._database.session() as session:
-            repository.set_step(
-                session, self._run_id, event.step.order, expected, change(event, utcnow())
-            )
+            repository.set_step(session, self._run_id, change)
 
     def end(self, ending: RunEnding) -> bool:
         """Record how the run ended; False when someone else ended it first."""

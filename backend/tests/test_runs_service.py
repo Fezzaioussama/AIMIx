@@ -19,6 +19,7 @@ from api.exceptions import Conflict, ProviderUnavailable, ValidationFailed
 from api.models import Base, Pipeline, Run, RunStatus, StepStatus, User
 from api.repositories import pipelines, runs, users
 from api.repositories.pipelines import PipelineChanges
+from api.repositories.runs import StepChange
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
 from api.services.run_executor import BackgroundRunExecutor
 from api.services.runs import RunService, RunStart, interrupt_abandoned_runs
@@ -299,11 +300,12 @@ def test_runs_a_stopped_process_left_active_become_interrupted_and_resumable(
     previous = RunService(database, ParkedExecutor(), max_parallel_steps=4)
     queued = previous.start(owner, pipeline, RunStart("one"), ScriptedAgent()).run
     midway = previous.start(owner, pipeline, RunStart("two"), ScriptedAgent()).run
+    pending = frozenset({StepStatus.PENDING})
     with database.session() as session:
         runs.set_status(session, midway.id, [RunStatus.QUEUED], {"status": RunStatus.RUNNING})
         done = {"status": StepStatus.SUCCEEDED, "input_used": "two", "output": "kept"}
-        runs.set_step(session, midway.id, 1, [StepStatus.PENDING], done)
-        runs.set_step(session, midway.id, 2, [StepStatus.PENDING], {"status": StepStatus.RUNNING})
+        runs.set_step(session, midway.id, StepChange(1, pending, done))
+        runs.set_step(session, midway.id, StepChange(2, pending, {"status": StepStatus.RUNNING}))
 
     assert interrupt_abandoned_runs(database) == 2
 

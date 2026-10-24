@@ -1,7 +1,6 @@
 import { useState } from 'react';
 
-const BUTTON =
-  'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:opacity-50';
+import { RUN_BUTTON } from './runButtons';
 
 interface DeleteRunButtonProps {
   onDelete: () => void;
@@ -15,11 +14,7 @@ export function DeleteRunButton({ onDelete, busy = false }: DeleteRunButtonProps
 
   if (!confirming) {
     return (
-      <button
-        type="button"
-        onClick={() => setConfirming(true)}
-        className={`${BUTTON} border-white/15 text-slate-200 hover:bg-white/10`}
-      >
+      <button type="button" onClick={() => setConfirming(true)} className={RUN_BUTTON.neutral}>
         Delete
       </button>
     );
@@ -27,12 +22,7 @@ export function DeleteRunButton({ onDelete, busy = false }: DeleteRunButtonProps
   return (
     <span role="group" aria-label="Confirm delete" className="flex flex-wrap items-center gap-2">
       <span className="text-sm text-slate-200">Delete this run for good?</span>
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={busy}
-        className={`${BUTTON} border-red-400/50 bg-red-500/15 text-red-100 hover:bg-red-500/25`}
-      >
+      <button type="button" onClick={onDelete} disabled={busy} className={RUN_BUTTON.danger}>
         {busy ? 'Deleting…' : 'Yes, delete'}
       </button>
       <button
@@ -40,7 +30,7 @@ export function DeleteRunButton({ onDelete, busy = false }: DeleteRunButtonProps
         // The safe choice takes the focus, so Enter never deletes by accident.
         autoFocus
         onClick={() => setConfirming(false)}
-        className={`${BUTTON} border-white/15 text-slate-200 hover:bg-white/10`}
+        className={RUN_BUTTON.neutral}
       >
         Keep
       </button>

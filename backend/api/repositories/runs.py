@@ -76,6 +76,16 @@ class RunPage:
 
 
 @dataclass(frozen=True)
+class StepChange:
+    """A compare-and-set on one step: set ``values`` only while the step is in
+    one of the ``expected`` statuses."""
+
+    step_order: int
+    expected: frozenset[StepStatus]
+    values: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
 class RunEnding:
     """How a run ends: its final status, from which statuses it may get there,
     and what its steps still running become."""
@@ -154,23 +164,17 @@ def set_status(
     return changed == 1
 
 
-def set_step(
-    session: Session,
-    run_id: int,
-    step_order: int,
-    expected: Collection[StepStatus],
-    values: Mapping[str, Any],
-) -> bool:
+def set_step(session: Session, run_id: int, change: StepChange) -> bool:
     """Compare-and-set on one step, like ``set_status``."""
     changed = _changed(
         session,
         update(RunStep)
         .where(
             RunStep.run_id == run_id,
-            RunStep.step_order == step_order,
-            RunStep.status.in_(expected),
+            RunStep.step_order == change.step_order,
+            RunStep.status.in_(change.expected),
         )
-        .values(**values),
+        .values(**change.values),
     )
     session.commit()
     return changed == 1

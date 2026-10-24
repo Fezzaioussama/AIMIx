@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { errorMessage } from '../../core/api/errorMessage';
 import { deleteRun, listRuns } from '../../core/api/runs';
 import type { RunSummary } from '../../core/api/types';
 import { isActive } from './runStatus';
@@ -9,12 +10,8 @@ export const RUN_PAGE_SIZE = 20;
 /** While a listed run is active, the list is fetched again this often. */
 export const RUN_LIST_REFRESH_MS = 5000;
 
-function messageOf(cause: unknown, fallback: string): string {
-  return cause instanceof Error ? cause.message : fallback;
-}
-
 /** The fields a summary shares with a whole run, to keep a listed run up to date. */
-function summaryOf(run: RunSummary): RunSummary {
+export function summaryOf(run: RunSummary): RunSummary {
   const { id, pipeline_id, pipeline_name, status, error, created_at, started_at, finished_at } =
     run;
   return { id, pipeline_id, pipeline_name, status, error, created_at, started_at, finished_at };
@@ -57,7 +54,8 @@ export function useRunHistory() {
           setError('');
         })
         .catch((cause: unknown) => {
-          if (!controller.signal.aborted) setError(messageOf(cause, 'Could not load your runs.'));
+          if (!controller.signal.aborted)
+            setError(errorMessage(cause, 'Could not load your runs.'));
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);
@@ -82,7 +80,7 @@ export function useRunHistory() {
       ]);
       setTotal(page.total);
     } catch (cause) {
-      if (mounted.current) setError(messageOf(cause, 'Could not load more runs.'));
+      if (mounted.current) setError(errorMessage(cause, 'Could not load more runs.'));
     } finally {
       if (mounted.current) setLoadingMore(false);
     }
@@ -103,7 +101,7 @@ export function useRunHistory() {
     try {
       await deleteRun(runId);
     } catch (cause) {
-      if (mounted.current) setError(messageOf(cause, 'Could not delete this run.'));
+      if (mounted.current) setError(errorMessage(cause, 'Could not delete this run.'));
       return false;
     }
     if (mounted.current) {

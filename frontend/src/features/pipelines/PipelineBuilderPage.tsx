@@ -1,15 +1,13 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
-import { elapsedMs } from '../../core/time';
 import { BrandMark } from '../../core/ui/BrandMark';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
-import { LiveRunHeader } from '../runs/LiveRunHeader';
-import { isActive, ranThisVersion } from '../runs/runStatus';
-import { useLatestRun } from '../runs/useLatestRun';
+import { FollowedRunBar } from '../runs/FollowedRunBar';
+import { useFollowedRun } from '../runs/useFollowedRun';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
@@ -36,15 +34,11 @@ export function PipelineBuilderPage() {
   );
   const [draft, setDraft] = useState<RunDraft>(EMPTY_RUN_DRAFT);
   // The pipeline's newest run, followed live; reopening the pipeline shows it again.
-  const latest = useLatestRun(pipeline.id);
-  const run = latest.run;
-  // The diagram shows the run only if it executed exactly what is on screen.
-  const shown = run !== null && !dirty && ranThisVersion(run, pipeline) ? run : null;
+  const followed = useFollowedRun(pipeline, dirty);
 
   const isSaving = status === 'saving';
   const isStarting = status === 'running';
-  const isRunning = isStarting || (run !== null && isActive(run.status));
-  const shownActive = shown !== null && isActive(shown.status);
+  const isRunning = isStarting || followed.active;
   const stageCount = new Set(pipeline.steps.map((step) => step.stage)).size;
 
   function editStep(order: number) {
@@ -53,7 +47,7 @@ export function PipelineBuilderPage() {
 
   async function startRun() {
     const started = await actions.run(draft);
-    if (started) latest.follow(started);
+    if (started) followed.follow(started);
   }
 
   return (
@@ -163,15 +157,11 @@ export function PipelineBuilderPage() {
             <PipelineRunView
               steps={pipeline.steps}
               inputs={pipeline.inputs}
-              liveSteps={shown?.steps}
-              runKey={shown?.id ?? null}
-              isRunning={shown ? shownActive : isStarting}
+              liveSteps={followed.shown?.steps}
+              runKey={followed.shown?.id ?? null}
+              isRunning={followed.shown ? followed.shownActive : isStarting}
               input={draft.text}
-              elapsedMs={
-                shown && !shownActive
-                  ? elapsedMs(shown.started_at, shown.finished_at, Date.now())
-                  : null
-              }
+              elapsedMs={followed.shownElapsedMs}
               onEditStep={isRunning || isSaving ? undefined : editStep}
               onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
               onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
@@ -186,31 +176,7 @@ export function PipelineBuilderPage() {
                 onDraftChange={setDraft}
                 onRun={() => void startRun()}
               />
-              {run && (
-                <LiveRunHeader
-                  run={run}
-                  onStop={() => void latest.stop()}
-                  onResume={() => void latest.resume()}
-                  busy={latest.busy}
-                  error={latest.error}
-                  actions={
-                    <Link
-                      to={`/runs/${run.id}`}
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
-                    >
-                      Open in Runs
-                    </Link>
-                  }
-                  note={
-                    shown ? undefined : (
-                      <p className="mt-2 text-xs text-slate-400">
-                        This run used another version of the pipeline; open it in Runs to see its
-                        steps.
-                      </p>
-                    )
-                  }
-                />
-              )}
+              <FollowedRunBar followed={followed} />
             </PipelineRunView>
           </div>
         </div>

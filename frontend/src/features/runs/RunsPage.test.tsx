@@ -4,9 +4,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from '../../core/api/endpoints';
-import type { Run, RunSummary } from '../../core/api/types';
 import { RunsPage } from './RunsPage';
 import { json, makeRun, runStep } from './testData';
+import { summaryOf as summary } from './useRunHistory';
 
 const finished = makeRun({
   status: 'succeeded',
@@ -14,12 +14,6 @@ const finished = makeRun({
   steps: [runStep(1, 'succeeded', 'a'), runStep(2, 'succeeded', 'b'), runStep(3, 'succeeded', 'c')],
 });
 const older = makeRun({ id: 6, pipeline_name: 'Weekly digest', status: 'failed' });
-
-function summary(run: Run): RunSummary {
-  const { id, pipeline_id, pipeline_name, status, error, created_at, started_at, finished_at } =
-    run;
-  return { id, pipeline_id, pipeline_name, status, error, created_at, started_at, finished_at };
-}
 
 function serveHistory() {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (path, init) => {

@@ -38,7 +38,8 @@ def start(client: TestClient, pipeline: Pipeline, text: str = "seed") -> dict[st
 def make_active(session: Session, run_id: int) -> None:
     """As if the run were still executing: running, its first step too."""
     runs.set_status(session, run_id, list(RunStatus), {"status": RunStatus.RUNNING})
-    runs.set_step(session, run_id, 1, list(StepStatus), {"status": StepStatus.RUNNING})
+    running = {"status": StepStatus.RUNNING}
+    runs.set_step(session, run_id, runs.StepChange(1, frozenset(StepStatus), running))
 
 
 def test_starting_a_run_returns_202_and_the_run_can_be_polled(

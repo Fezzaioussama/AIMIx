@@ -61,6 +61,7 @@ resolves the session before the first render without a redirect flash.
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`) and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
 | `runs.ts` | `startRun`, `listRuns` (page, optional pipeline), `getRun`, `cancelRun`, `resumeRun`, `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
+| `errorMessage.ts` | `errorMessage(cause, fallback)`: a caught value as words for the person (an `ApiError`'s message, else the fallback) |
 
 ### What `client.ts` does for every call
 
@@ -177,7 +178,7 @@ Rules for motion:
 
 | File | Role |
 |---|---|
-| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results. It follows the open pipeline's newest run (`features/runs/useLatestRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`LiveRunHeader`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
+| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results. It follows the open pipeline's newest run (`features/runs/useFollowedRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`FollowedRunBar`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
 | `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, HTML, CSV or text file, the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
 | `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
@@ -213,10 +214,12 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 |---|---|
 | `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume, adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued or running and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
 | `useLatestRun.ts` | The builder's follower: loads the pipeline's newest run when it opens (`GET /runs?pipeline_id=…&limit=1`) and `follow(run)` switches to a run started here |
+| `useFollowedRun.ts`, `FollowedRunBar.tsx` | What the builder needs from that run: whether one is active, the run the diagram may show (`shown`, only a run of exactly the version on screen) and its duration; and its status bar with Stop, Resume and "Open in Runs" |
 | `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
 | `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, any `children` (e.g. its inputs), then the results. Pair it with `useRun` |
 | `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, Stop / Resume and extra `actions`, an `aria-live` line, and why the run stopped (the failed step and its error, "You stopped this run", "The server restarted…") |
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Done, Failed, Stopped, Interrupted) and colours |
+| `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive`, `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 

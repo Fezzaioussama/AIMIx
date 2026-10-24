@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../../core/api/client';
+import { errorMessage } from '../../core/api/errorMessage';
 import { cancelRun, getRun, resumeRun } from '../../core/api/runs';
 import type { Run } from '../../core/api/types';
 import { isActive } from './runStatus';
@@ -24,10 +25,6 @@ export interface LiveRunState {
 interface Failure {
   runId: number;
   message: string;
-}
-
-function messageOf(cause: unknown, fallback: string): string {
-  return cause instanceof Error ? cause.message : fallback;
 }
 
 /**
@@ -66,7 +63,7 @@ export function useRun(runId: number | null): LiveRunState {
         if (isActive(next.status)) timer = setTimeout(() => void poll(), RUN_POLL_INTERVAL_MS);
       } catch (cause) {
         if (controller.signal.aborted) return;
-        setFailure({ runId, message: messageOf(cause, 'Could not load this run.') });
+        setFailure({ runId, message: errorMessage(cause, 'Could not load this run.') });
         // A deleted run will not come back; anything else may be a passing hiccup.
         const gone = cause instanceof ApiError && cause.status === 404;
         if (!gone) timer = setTimeout(() => void poll(), RUN_POLL_INTERVAL_MS);
@@ -89,7 +86,7 @@ export function useRun(runId: number | null): LiveRunState {
         const next = await action(runId);
         if (mounted.current) setRun(next);
       } catch (cause) {
-        if (mounted.current) setFailure({ runId, message: messageOf(cause, fallback) });
+        if (mounted.current) setFailure({ runId, message: errorMessage(cause, fallback) });
       } finally {
         if (mounted.current) setBusy(false);
       }
