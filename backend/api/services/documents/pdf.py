@@ -71,10 +71,12 @@ class _Renderer:
             page = self._document[index]
             try:
                 bitmap = page.render(scale=self._scale(*page.get_size()), grayscale=True)
-                # A native bitmap's buffer outlives close(): the image keeps it alive.
-                image: Image.Image = bitmap.to_pil()
-                bitmap.close()
-                return image
+                try:
+                    # A native bitmap's buffer outlives close(): the image keeps it alive.
+                    image: Image.Image = bitmap.to_pil()
+                    return image
+                finally:
+                    bitmap.close()
             finally:
                 page.close()
 
