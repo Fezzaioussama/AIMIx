@@ -14,7 +14,7 @@ DEFAULT_BASE_URL = "https://api.together.xyz/v1"
 def build(config: ProviderConfig) -> LLMProvider:
     if not config.api_key:
         raise ProviderNotConfigured("TOGAI_API_KEY is not set.")
-    # max_retries=0 for the same reason as the OpenRouter client.
+    # max_retries=0 for the same reason as the OpenRouter client: llm/retry.py retries.
     client = OpenAI(
         base_url=config.base_url or DEFAULT_BASE_URL,
         api_key=config.api_key,

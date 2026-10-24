@@ -13,11 +13,12 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from api.exceptions import ProviderNotConfigured
 from api.services.catalog import available_model_ids
-from config.settings import get_settings
+from config.settings import Settings, get_settings
 from llm import exceptions as llm_exceptions
 from llm.agent_models import create_agent_model
 from llm.base import LLMProvider, ProviderConfig
 from llm.registry import create_provider
+from llm.retry import RetryPolicy
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,14 @@ def has_environment_key(provider: str) -> bool:
     return bool(get_settings().llm_api_keys.get(provider))
 
 
+def _retry_policy(settings: Settings) -> RetryPolicy:
+    return RetryPolicy(
+        max_retries=settings.llm_max_retries,
+        base_delay_seconds=settings.llm_retry_base_delay_seconds,
+        max_delay_seconds=settings.llm_retry_max_delay_seconds,
+    )
+
+
 def provider_config(profile: LLMProfile, model_id: str | None = None) -> ProviderConfig:
     settings = get_settings()
     api_key = profile.api_key or settings.llm_api_keys.get(profile.provider, "")
@@ -53,6 +62,7 @@ def provider_config(profile: LLMProfile, model_id: str | None = None) -> Provide
         default_model=model_id or profile.default_model,
         timeout_seconds=settings.llm_timeout_seconds,
         base_url=settings.llm_base_urls.get(profile.provider) or None,
+        retry=_retry_policy(settings),
     )
 
 

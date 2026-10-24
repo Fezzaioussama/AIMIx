@@ -144,13 +144,16 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
 
 
 def test_agent_model_factories_build_offline() -> None:
+    from langchain_openrouter import ChatOpenRouter
+    from langchain_together import ChatTogether
+
     from llm.agent_models import create_agent_model
     from llm.base import ProviderConfig
     from llm.exceptions import ProviderNotConfigured
 
     config = ProviderConfig(api_key="test-key", default_model="test/model", timeout_seconds=1.5)
-    assert type(create_agent_model("openrouter", config)).__name__ == "ChatOpenRouter"
-    assert type(create_agent_model("togetherai", config)).__name__ == "ChatTogether"
+    assert isinstance(create_agent_model("openrouter", config), ChatOpenRouter)
+    assert isinstance(create_agent_model("togetherai", config), ChatTogether)
     with pytest.raises(ProviderNotConfigured):
         create_agent_model(
             "openrouter", ProviderConfig(api_key="", default_model="test/model", timeout_seconds=1)
