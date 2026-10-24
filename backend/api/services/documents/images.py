@@ -22,6 +22,8 @@ IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".g
 _DECODERS = ("PNG", "JPEG", "WEBP", "TIFF", "BMP", "GIF")
 #: Formats whose frames are pages; the extra frames of the others are animation.
 _PAGED = frozenset({"TIFF"})
+#: 16-bit gray, as some scanners save: values 0-65535.
+_WIDE_GRAY = frozenset({"I;16", "I;16L", "I;16B", "I;16N"})
 
 
 def read_image(data: bytes, context: ReadContext) -> ReadResult:
@@ -30,13 +32,14 @@ def read_image(data: bytes, context: ReadContext) -> ReadResult:
             "No text could be read from this image: images need OCR, which is not available."
         )
     max_pixels = context.limits.max_image_pixels
-    image = _open(data, max_pixels)
-    paged = image.format in _PAGED
-    count, more = _count_pages(image, context.limits.max_pages) if paged else (1, False)
     scans = PageOcr(context)
-    texts = [
-        scans.read(index + 1, partial(_page, image, index, max_pixels)) for index in range(count)
-    ]
+    with _open(data, max_pixels) as image:
+        paged = image.format in _PAGED
+        count, more = _count_pages(image, context.limits.max_pages) if paged else (1, False)
+        texts = [
+            scans.read(index + 1, partial(_page, image, index, max_pixels))
+            for index in range(count)
+        ]
     return ReadResult(
         "\n\n".join(texts),
         pages=count if paged else None,
@@ -75,12 +78,17 @@ def _page(image: Image.Image, index: int, max_pixels: int) -> Image.Image:
     if image.width * image.height > max_pixels:
         raise _too_many_pixels(max_pixels)
     page = _on_white(image)
-    ImageOps.exif_transpose(page, in_place=True)  # phone photos are often stored sideways
+    # Photos are often stored sideways, with an EXIF rotation. The gray copy has no
+    # EXIF of its own (a TIFF keeps it in its tags), so it is given the original's.
+    page.info["exif"] = image.getexif().tobytes()
+    ImageOps.exif_transpose(page, in_place=True)
     return page
 
 
 def _on_white(image: Image.Image) -> Image.Image:
     """8-bit gray, with transparency flattened onto white so dark text stays readable."""
+    if image.mode in _WIDE_GRAY:  # convert() would clip these to 8 bits, not scale them
+        return image.convert("I").point(lambda value: value / 256).convert("L")
     if image.has_transparency_data:
         rgba = image.convert("RGBA")
         image = Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba)

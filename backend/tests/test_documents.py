@@ -3,8 +3,10 @@ and the failure paths. Files are built for real, not mocked, so the parsers run.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from docx import Document
@@ -35,6 +37,7 @@ from config.settings import MULTIPART_OVERHEAD_BYTES, Settings, pin_settings
 from tests.conftest import TEST_SETTINGS, FakeProvider
 from tests.test_endpoints import make_pipeline
 
+REPOSITORY = Path(__file__).resolve().parents[2]
 LIMITS = ExtractionLimits(
     max_bytes=1_000_000,
     max_chars=1_000,
@@ -229,6 +232,12 @@ def test_the_registry_lists_what_the_readers_handle() -> None:
     assert supported_extensions() == sorted(READERS)
     expected = {".pdf", ".docx", ".xlsx", ".pptx", ".html", ".txt", ".csv", ".png", ".tiff"}
     assert expected <= set(supported_extensions())
+
+
+def test_the_file_picker_offers_exactly_what_the_readers_handle() -> None:
+    # The frontend's DOCUMENT_FORMATS mirrors READERS; this keeps the two in step.
+    source = (REPOSITORY / "frontend" / "src" / "core" / "api" / "documents.ts").read_text()
+    assert set(re.findall(r"'(\.[a-z0-9]+)'", source)) == set(READERS)
 
 
 # --- HTTP ----------------------------------------------------------------------

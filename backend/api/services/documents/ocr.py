@@ -56,13 +56,21 @@ class TesseractOcr:
             )
         # TesseractError is a RuntimeError too, so it is matched first.
         except (pytesseract.TesseractError, OSError, TypeError) as cause:
-            logger.warning("documents.ocr_failed error=%s", type(cause).__name__)
-            raise DocumentUnreadable("Text recognition (OCR) failed on this file.") from cause
-        except RuntimeError as cause:  # how pytesseract reports its timeout
+            raise _failed(cause) from cause
+        except RuntimeError as cause:
+            # pytesseract reports its timeout as a bare RuntimeError, by its message.
+            if "timeout" not in str(cause).lower():
+                raise _failed(cause) from cause
+            logger.info("documents.ocr_timeout seconds=%g", self._timeout)
             raise OcrTimedOut(
                 f"Text recognition (OCR) took longer than {self._timeout:g} seconds on a page."
             ) from cause
         return text.strip()
+
+
+def _failed(cause: Exception) -> DocumentUnreadable:
+    logger.warning("documents.ocr_failed error=%s", type(cause).__name__)
+    return DocumentUnreadable("Text recognition (OCR) failed on this file.")
 
 
 def ocr_engine(config: OcrConfig) -> OcrEngine | None:

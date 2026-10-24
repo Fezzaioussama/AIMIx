@@ -56,7 +56,7 @@ resolves the session before the first render without a redirect flash.
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
-| `documents.ts` | `extractDocument` (5 min, `UPLOAD_TIMEOUT_MS`, room for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
+| `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
 
 ### What `client.ts` does for every call
 

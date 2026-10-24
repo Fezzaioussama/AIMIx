@@ -4,6 +4,7 @@ python-pptx, so the real parsers run."""
 
 from __future__ import annotations
 
+import zipfile
 from dataclasses import replace
 from io import BytesIO
 
@@ -16,6 +17,9 @@ from pptx.util import Inches
 from api.exceptions import DocumentUnreadable
 from api.services.documents.extraction import TRUNCATION_NOTE, extract_document
 from tests.test_documents import LIMITS, upload
+
+SPREADSHEET_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+FIRST_SHEET = "xl/worksheets/sheet1.xml"
 
 
 def make_xlsx() -> bytes:
@@ -30,6 +34,18 @@ def make_xlsx() -> bytes:
     workbook.create_sheet("Costs").append(["Rent", 1000])
     buffer = BytesIO()
     workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def with_first_sheet(body: str) -> bytes:
+    """make_xlsx(), with the first sheet's XML replaced by ``body`` inside <worksheet>."""
+    sheet = f'<worksheet xmlns="{SPREADSHEET_NS}">{body}</worksheet>'
+    source = zipfile.ZipFile(BytesIO(make_xlsx()))
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as target:
+        for item in source.infolist():
+            content = source.read(item.filename)
+            target.writestr(item, sheet if item.filename == FIRST_SHEET else content)
     return buffer.getvalue()
 
 
@@ -81,6 +97,28 @@ def test_rows_past_the_limit_are_cut_across_the_whole_workbook() -> None:
     result = extract_document("figures.xlsx", make_xlsx(), replace(LIMITS, max_spreadsheet_rows=3))
     assert "South" not in result.text
     assert "Costs" not in result.text
+    assert result.text.endswith(TRUNCATION_NOTE.strip())
+
+
+def test_a_sheet_is_read_as_it_is_not_as_its_declared_size() -> None:
+    # Some generators declare a wrong size; read-only openpyxl would cut to it.
+    cells = '<c r="A1" t="inlineStr"><is><t>North</t></is></c><c r="B1"><v>42</v></c>'
+    sheet = f'<dimension ref="A1:A1"/><sheetData><row r="1">{cells}</row></sheetData>'
+    result = extract_document("figures.xlsx", with_first_sheet(sheet), LIMITS)
+    assert result.text == "## Sheet: Sales\nNorth\t42\n\n## Sheet: Costs\nRent\t1000"
+
+
+def test_reading_stops_once_more_cells_were_read_than_the_text_holds() -> None:
+    # Each row is 16,384 cells wide (one in column XFD), however small the file.
+    rows = "".join(
+        f'<row r="{n}"><c r="A{n}" t="inlineStr"><is><t>row {n}</t></is></c><c r="XFD{n}"/></row>'
+        for n in range(1, 101)
+    )
+    result = extract_document(
+        "wide.xlsx", with_first_sheet(f"<sheetData>{rows}</sheetData>"), LIMITS
+    )
+    assert "row 1" in result.text
+    assert "row 2" not in result.text
     assert result.text.endswith(TRUNCATION_NOTE.strip())
 
 

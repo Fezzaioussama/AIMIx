@@ -72,7 +72,11 @@ def test_a_tesseract_timeout_becomes_ocr_timed_out(monkeypatch: pytest.MonkeyPat
 
 @pytest.mark.parametrize(
     "error",
-    [ocr.pytesseract.TesseractError(1, "Failed loading language"), FileNotFoundError("gone")],
+    [
+        ocr.pytesseract.TesseractError(1, "Failed loading language"),
+        FileNotFoundError("gone"),
+        RuntimeError("something else broke"),
+    ],
 )
 def test_a_tesseract_failure_is_unreadable_not_a_timeout(
     monkeypatch: pytest.MonkeyPatch, error: Exception

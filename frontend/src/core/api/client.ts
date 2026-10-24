@@ -17,10 +17,11 @@ export const GENERATION_TIMEOUT_MS = 60 * 60 * 1000;
 
 /**
  * Uploading and reading a document: longer than a normal call, far shorter than a
- * generation. Text recognition of a long scan (DOCUMENT_OCR_MAX_PAGES pages, a few
- * seconds each) needs a few minutes.
+ * generation. Kept above the server's worst case for text recognition of a long scan,
+ * DOCUMENT_OCR_MAX_PAGES x DOCUMENT_OCR_TIMEOUT_SECONDS (7.5 minutes by default), so
+ * the browser does not give up on a result the server is still producing.
  */
-export const UPLOAD_TIMEOUT_MS = 300_000;
+export const UPLOAD_TIMEOUT_MS = 600_000;
 
 export class ApiError extends Error {
   readonly status: number;

@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from api.exceptions import OcrTimedOut
+from api.exceptions import DocumentUnreadable, OcrTimedOut
 from api.services.documents.contracts import ReadContext
 
 if TYPE_CHECKING:
@@ -20,6 +20,7 @@ class Skipped(Enum):
     UNAVAILABLE = "no text layer, and OCR is not available"
     OVER_LIMIT = "OCR reads at most {limit} pages per document"
     TIMED_OUT = "OCR took too long"
+    FAILED = "OCR failed"
 
 
 class PageOcr:
@@ -36,17 +37,24 @@ class PageOcr:
         self._skipped: dict[Skipped, list[int]] = {}
 
     def read(self, number: int, render: Callable[[], Image.Image]) -> str:
-        """Page ``number``'s text, or "" when it is skipped (and remembered)."""
+        """Page ``number``'s text, or "" when it is skipped (and remembered).
+
+        One page OCR fails on is skipped, not the document. A page that cannot be
+        rendered (e.g. over the pixel limit) refuses the document: that is the file.
+        """
         engine = self._engine
         if engine is None:
             return self._skip(Skipped.UNAVAILABLE, number)
         if self.pages_read >= self._limit:
             return self._skip(Skipped.OVER_LIMIT, number)
         self.pages_read += 1
+        image = render()
         try:
-            return engine.read(render())
+            return engine.read(image)
         except OcrTimedOut:
             return self._skip(Skipped.TIMED_OUT, number)
+        except DocumentUnreadable:
+            return self._skip(Skipped.FAILED, number)
 
     def omissions(self) -> tuple[str, ...]:
         """One sentence per reason pages were skipped, naming the pages."""

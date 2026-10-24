@@ -25,7 +25,7 @@ from pptx.slide import Slide
 from pptx.text.text import TextFrame
 
 from api.exceptions import DocumentUnreadable
-from api.services.documents.contracts import ReadContext, ReadResult
+from api.services.documents.contracts import ExtractionLimits, ReadContext, ReadResult
 
 #: Between the cells of a table row, in Word and PowerPoint alike.
 CELL_SEPARATOR = " | "
@@ -73,25 +73,29 @@ def read_xlsx(data: bytes, context: ReadContext) -> ReadResult:
     # read_only streams the rows; data_only gives a formula's saved value, not its code.
     workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
     try:
-        return _read_workbook(workbook, context.limits.max_spreadsheet_rows)
+        return _read_workbook(workbook, context.limits)
     finally:
         workbook.close()
 
 
-def _read_workbook(workbook: Workbook, max_rows: int) -> ReadResult:
+def _read_workbook(workbook: Workbook, limits: ExtractionLimits) -> ReadResult:
     """Each sheet as a heading, then its rows as tab-separated values.
 
-    ``max_rows`` counts every row read, blank ones too, across the whole workbook,
-    so a sheet padded with empty rows cannot make reading it endless.
+    Stops after ``max_spreadsheet_rows`` rows (blank ones count too) across the whole
+    workbook, or once it has read more cells than the text may hold characters: a
+    row as wide as its last cell costs as much as its width, even when it is empty.
     """
     lines: list[str] = []
-    rows_read = 0
+    rows = cells = 0
     for sheet in workbook.worksheets:
+        # Rows are padded to the size the file declares; read what is really there.
+        sheet.reset_dimensions()
         lines.append(f"## Sheet: {sheet.title}")
         for row in sheet.iter_rows(values_only=True):
-            if rows_read == max_rows:
+            if rows == limits.max_spreadsheet_rows or cells > limits.max_chars:
                 return ReadResult("\n".join(lines), cut_short=True)
-            rows_read += 1
+            rows += 1
+            cells += len(row)
             lines.append(_row_text(row))
         lines.append("")
     return ReadResult("\n".join(lines))
