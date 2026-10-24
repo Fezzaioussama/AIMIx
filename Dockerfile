@@ -16,6 +16,16 @@ RUN npm run build
 FROM python:3.10-slim AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
 
+# Tesseract reads scanned PDFs and images (OCR). English and French match the
+# DOCUMENT_OCR_LANGUAGES default; add a tesseract-ocr-<lang> package for more.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra \
+    && rm -rf /var/lib/apt/lists/*
+# One thread per tesseract run: more made no page faster, and under a one-CPU
+# quota they made each page about 3.5 times slower.
+ENV OMP_THREAD_LIMIT=1
+
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

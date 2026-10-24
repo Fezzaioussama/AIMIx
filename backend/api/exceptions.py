@@ -93,3 +93,7 @@ class DocumentUnreadable(DomainError):
 
     code = "document_unreadable"
     status_code = 422
+
+
+class OcrTimedOut(DocumentUnreadable):
+    """OCR gave up on one page. A multi-page reader skips that page; alone, it is a 422."""

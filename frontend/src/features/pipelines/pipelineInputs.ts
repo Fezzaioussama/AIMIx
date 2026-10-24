@@ -83,10 +83,13 @@ export function appendDocument(current: string, document: ExtractedDocument): st
   return current.trim() ? `${current.trimEnd()}\n\n${block}` : block;
 }
 
-/** One line telling the person what was added, and warning when it was cut short. */
+/**
+ * One line telling the person what was added, and warning when part was left out: cut
+ * at a limit, or pages text recognition skipped (the text itself says which).
+ */
 export function documentSummary(document: ExtractedDocument): string {
   const pages =
     document.pages === null ? '' : ` · ${document.pages} page${document.pages === 1 ? '' : 's'}`;
   const added = `${document.filename} added${pages} · ${document.characters.toLocaleString('en-US')} characters`;
-  return document.truncated ? `${added} · only the first part fit` : added;
+  return document.truncated ? `${added} · part of it was left out` : added;
 }

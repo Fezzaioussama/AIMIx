@@ -1,8 +1,13 @@
-"""Value objects shared by the document readers and the extraction service (§7 DTO)."""
+"""Value objects shared by the document readers and the extraction service (§7 DTO),
+and the OCR port they read images through (§5 D)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 @dataclass(frozen=True)
@@ -11,8 +16,36 @@ class ExtractionLimits:
 
     max_bytes: int
     max_chars: int
+    #: Pages of a PDF, slides of a deck or frames of a TIFF read before stopping.
     max_pages: int
     max_unpacked_bytes: int
+    #: An image, or a PDF page rendered for OCR, never has more pixels than this.
+    max_image_pixels: int
+    #: Rows read from one workbook, across all its sheets.
+    max_spreadsheet_rows: int
+    #: Pages one document may send to OCR; the rest are skipped and named.
+    max_ocr_pages: int
+    #: Resolution a PDF page is rendered at for OCR (lower if over max_image_pixels).
+    ocr_dpi: int
+
+
+class OcrEngine(Protocol):
+    """The text in one page image (§5 D: readers depend on this, not on Tesseract).
+
+    Returns "" for a page with no text. Raises OcrTimedOut when the page takes too
+    long, and DocumentUnreadable when the engine fails on it.
+    """
+
+    def read(self, image: Image.Image) -> str: ...
+
+
+@dataclass(frozen=True)
+class ReadContext:
+    """What a reader is given besides the file."""
+
+    limits: ExtractionLimits
+    #: None when OCR is turned off or not installed: pages that need it are skipped.
+    ocr: OcrEngine | None = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +57,10 @@ class ReadResult:
     pages: int | None = None
     #: True when the reader stopped early (e.g. at the page limit).
     cut_short: bool = False
+    #: One sentence per gap in the text, e.g. pages OCR skipped; the service adds them.
+    omissions: tuple[str, ...] = ()
+    #: Pages sent to OCR, for the log.
+    ocr_pages: int = 0
 
 
 @dataclass(frozen=True)

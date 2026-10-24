@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
+import { DOCUMENT_KINDS } from '../../../core/api/documents';
+
 /** Landing content about applying the product: use cases, tools, security, FAQ. */
 
 export interface UseCase {
@@ -154,7 +156,6 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
   },
   {
     question: 'Can a pipeline read my documents?',
-    answer:
-      'Yes. Attach a PDF, Word, HTML, CSV or text file to any run input and AIMIx reads it into that input, where you can still edit it. Scanned PDFs and images need OCR, which is not supported yet.',
+    answer: `Yes. Attach a ${DOCUMENT_KINDS} file to any run input and AIMIx reads it into that input, where you can still edit it. Scanned pages and photos of text are read with text recognition.`,
   },
 ];

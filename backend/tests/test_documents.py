@@ -3,7 +3,10 @@ and the failure paths. Files are built for real, not mocked, so the parsers run.
 
 from __future__ import annotations
 
+import re
+from dataclasses import replace
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from docx import Document
@@ -34,8 +37,16 @@ from config.settings import MULTIPART_OVERHEAD_BYTES, Settings, pin_settings
 from tests.conftest import TEST_SETTINGS, FakeProvider
 from tests.test_endpoints import make_pipeline
 
+REPOSITORY = Path(__file__).resolve().parents[2]
 LIMITS = ExtractionLimits(
-    max_bytes=1_000_000, max_chars=1_000, max_pages=3, max_unpacked_bytes=1_000_000
+    max_bytes=1_000_000,
+    max_chars=1_000,
+    max_pages=3,
+    max_unpacked_bytes=1_000_000,
+    max_image_pixels=1_000_000,
+    max_spreadsheet_rows=100,
+    max_ocr_pages=3,
+    ocr_dpi=72,
 )
 
 
@@ -159,7 +170,7 @@ def test_a_password_protected_pdf_is_refused() -> None:
 
 
 def test_a_pdf_with_no_text_layer_explains_ocr() -> None:
-    with pytest.raises(DocumentUnreadable, match="OCR"):
+    with pytest.raises(DocumentUnreadable, match="OCR is not available"):
         extract_document("scan.pdf", make_pdf([""]), LIMITS)
 
 
@@ -182,7 +193,7 @@ def test_a_word_file_keeps_tables_between_the_paragraphs_around_them() -> None:
 
 
 def test_a_word_file_that_unpacks_too_large_is_refused() -> None:
-    tight = ExtractionLimits(1_000_000, 1_000, 3, max_unpacked_bytes=100)
+    tight = replace(LIMITS, max_unpacked_bytes=100)
     with pytest.raises(DocumentUnreadable, match="unpacked"):
         extract_document("bomb.docx", make_docx(), tight)
 
@@ -195,7 +206,7 @@ def test_something_that_is_not_a_word_file_is_unreadable() -> None:
 # --- refusals ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["tool.exe", "image.png", "README", "archive.tar.gz"])
+@pytest.mark.parametrize("name", ["tool.exe", "photo.heic", "README", "archive.tar.gz"])
 def test_an_unsupported_type_names_what_is_supported(name: str) -> None:
     with pytest.raises(UnsupportedDocument, match=r"\.pdf"):
         extract_document(name, b"data", LIMITS)
@@ -207,7 +218,7 @@ def test_an_empty_file_is_refused() -> None:
 
 
 def test_a_file_over_the_size_limit_is_refused() -> None:
-    small = ExtractionLimits(10, 1_000, 3, 1_000_000)
+    small = replace(LIMITS, max_bytes=10)
     with pytest.raises(DocumentTooLarge, match="limit"):
         extract_document("a.txt", b"x" * 11, small)
 
@@ -219,7 +230,14 @@ def test_only_the_file_name_is_kept_and_the_extension_is_case_insensitive() -> N
 
 def test_the_registry_lists_what_the_readers_handle() -> None:
     assert supported_extensions() == sorted(READERS)
-    assert {".pdf", ".docx", ".html", ".txt", ".csv"} <= set(supported_extensions())
+    expected = {".pdf", ".docx", ".xlsx", ".pptx", ".html", ".txt", ".csv", ".png", ".tiff"}
+    assert expected <= set(supported_extensions())
+
+
+def test_the_file_picker_offers_exactly_what_the_readers_handle() -> None:
+    # The frontend's DOCUMENT_FORMATS mirrors READERS; this keeps the two in step.
+    source = (REPOSITORY / "frontend" / "src" / "core" / "api" / "documents.ts").read_text()
+    assert set(re.findall(r"'(\.[a-z0-9]+)'", source)) == set(READERS)
 
 
 # --- HTTP ----------------------------------------------------------------------
@@ -278,7 +296,7 @@ def test_upload_failures_use_the_error_contract(
 
 
 def test_upload_over_the_size_limit_is_413(app: FastAPI, auth_client: TestClient) -> None:
-    app.dependency_overrides[document_limits] = lambda: ExtractionLimits(10, 1_000, 3, 1_000_000)
+    app.dependency_overrides[document_limits] = lambda: replace(LIMITS, max_bytes=10)
     response = upload(auth_client, "a.txt", b"x" * 11)
     assert response.status_code == 413
     assert response.json()["error"] == "document_too_large"

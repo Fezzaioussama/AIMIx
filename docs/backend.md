@@ -51,7 +51,8 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `e2b_api_key` | `E2B_API_KEY` | Enables `run_python` (E2B code sandbox); empty or a placeholder leaves the tool out. Server-wide: every user who can run agents spends it |
 | sandbox limits | `SANDBOX_TIMEOUT_SECONDS`, `SANDBOX_MAX_OUTPUT_CHARS`, `SANDBOX_MAX_FILES`, `SANDBOX_MAX_STREAM_CHARS` | Per `run_python` call: the whole call, from creating the sandbox to collecting its files, and the sandbox's lifetime (60 seconds), the report returned to the agent (10,000 characters), input files uploaded and output files or charts saved (10), and what the run may stream back before it is stopped (5,000,000 characters) |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
-| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages read (300) and what a `.docx` may unpack to (50 MB). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
+| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES`, `DOCUMENT_MAX_SPREADSHEET_ROWS`, `DOCUMENT_MAX_IMAGE_PIXELS` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages, slides or TIFF pages read (300), what a `.docx`, `.xlsx` or `.pptx` may unpack to (50 MB), workbook rows read across all sheets (5,000; reading also stops past `DOCUMENT_MAX_CHARS` cells) and an image's pixels, checked before decoding (40 million). `max_request_bytes` is `DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead |
+| document OCR | `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_LANGUAGES`, `DOCUMENT_OCR_MAX_PAGES`, `DOCUMENT_OCR_TIMEOUT_SECONDS`, `DOCUMENT_OCR_DPI` | Tesseract OCR for images and PDF pages without a text layer: on (`true`), languages `eng+fra` (Tesseract codes joined by `+`, validated), at most 30 pages per document, 15 seconds per page, PDF pages rendered at 300 dpi |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
@@ -66,8 +67,10 @@ logging once, from the app factory.
 
 ### `main.py` and `routes.py`
 
-`create_app()` builds the app: it creates the `Database`, installs the error
-handlers and middleware, and mounts `routes.api_router()` under `/api`.
+`create_app()` builds the app: it creates the `Database` and the OCR engine
+(`app.state.ocr`, checked once because checking starts a `tesseract` process),
+installs the error handlers and middleware, and mounts `routes.api_router()`
+under `/api`.
 `routes.py` is the routing table. Routers in `PUBLIC_ROUTERS` (register, login,
 refresh/logout, health) are open; auth operations are rate-limited and registration
 can be disabled. When `FRONTEND_DIST_DIR` is set, `frontend.py` then
@@ -91,6 +94,7 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `TemplateUse` | The user, a session and their `StepDefaults` (model list, default first, and tool discovery that runs only once the template is found), for `POST /templates/{slug}/use` |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
 | `Integrations` | An `IntegrationAccess` (session, user, `SecretBox`, `IntegrationRules`) for the Integrations endpoints; `host_resolver` supplies the DNS lookup its address checks use, so tests swap in a fake |
+| `DocumentLimits` / `DocumentOcr` | The `ExtractionLimits` from settings / the OCR engine `create_app()` built once (`app.state.ocr`), or `None` when OCR is off or Tesseract or a language is missing |
 
 Tests replace any of these with `app.dependency_overrides`.
 
@@ -163,7 +167,7 @@ Each write commits its own transaction.
 | `pipelines.py` | Compatibility facade: validates saved runs, snapshots them through `multiagent/mapper.py`, binds the run's inputs, delegates to the graph, and owns `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). `ask_planner` is the one call-and-parse path that generation and revision share. |
 | `pipeline_revision.py` | `revise`: applies one instruction to a draft through the planner (`prompts.pipeline_revision_prompt` → `ask_planner`), keeps the draft's name when the planner gives none, and returns a `Revision` (the whole sanitised pipeline and its changes). Saves nothing. |
 | `pipeline_changes.py` | `diff_pipelines`: the pure change list a revision is reviewed with. Steps pair by content, title, prompt, then position (`STEP_MATCHERS`); a stage change is reported only when a step really runs at another point. |
-| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates), `readers.py` (the `READERS` registry: PDF via pypdf, Word via python-docx, HTML via `toolbox/html_text.py`, plain text; every parser runs inside `_guarded`, which re-raises anything it throws as `DocumentUnreadable`), and `contracts.py` (`ExtractionLimits`, `ReadResult`, `ExtractedDocument`). Stateless: nothing is stored. A new format is one reader and one registry entry. |
+| `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates, and appends each omission a reader reports, such as skipped pages), `readers.py` (the `READERS` registry; plain text, and HTML via `toolbox/html_text.py`; every third-party parser is registered through `guarded`, which re-raises anything it throws as `DocumentUnreadable`), `pdf.py` (pypdf text layer; pages without one are rendered with PDFium through pypdfium2, under one process-wide lock because PDFium is not thread-safe), `images.py` (Pillow with only the PNG, JPEG, WebP, TIFF, BMP and GIF decoders, a pixel cap checked from each frame's header, TIFF pages counted by seeking, transparency onto white, 16-bit gray scaled, EXIF rotation), `office.py` (Word via python-docx, Excel via openpyxl in read-only mode, reading a sheet's real size rather than its declared one, PowerPoint via python-pptx with a `singledispatch` registry per shape kind; all three behind the unpacked-size zip guard), `scans.py` (`PageOcr`: the per-document OCR page cap, a page OCR times out or fails on skipped rather than the document, and the `[Not read: ...]` sentences), `ocr.py` (`TesseractOcr`, the adapter over pytesseract, and `ocr_engine`, which `create_app()` calls once and which returns `None`, logging why, when OCR is off or the binary or a language is missing), and `contracts.py` (`ExtractionLimits`, `ReadContext`, `ReadResult`, `ExtractedDocument`, and the `OcrEngine` port). Stateless: nothing is stored. A new format is one reader and one registry entry. |
 | `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
 | `templates/` | Mission templates (Registry): `contracts.py` (frozen `MissionTemplate` and `TemplateStep`, inputs as the shared `InputField`; templates never name a model), `review.py` (`Review`, the builder of the reviewer step every template ends with), one module per theme (`research.py`, `documents.py`, `data.py`, `marketing.py`, `launch.py`), `registry.py` (`CATALOGUE` in gallery order, `get_template` or `NotFound`) and `use.py` (`use_template`: builds the steps through `pipelines.sanitise_step`, the planner's sanitiser, so each step gets the owner's default model and only the tools they have, then saves through the repository). A new template is one entry in a theme module. |
 | `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, and the async `StepAgent` protocol. |
@@ -208,7 +212,8 @@ raises `UnreadableSecret`.
 `WWW-Authenticate: Bearer`), `NotFound` (404), `ProviderNotConfigured` (503),
 `ProviderUnavailable` (502), `ToolUnavailable` (502), `ProviderTimedOut` (504),
 `UpstreamResponseInvalid` (502), and for documents `DocumentTooLarge` (413),
-`UnsupportedDocument` (415) and `DocumentUnreadable` (422).
+`UnsupportedDocument` (415) and `DocumentUnreadable` (422), whose subclass
+`OcrTimedOut` lets a multi-page reader skip the one page OCR gave up on.
 
 `errors.install_error_handlers` renders:
 - `DomainError` as its own code and status.
@@ -296,3 +301,8 @@ so tests can never reach a real LLM.
 | `test_integration_runs.py` | Runs that do or do not need a failing integration, a step getting the integration tools it selected, and `POST /integrations/{id}/test` (tools found, every failure reason, a re-checked address, unreadable headers) |
 | `test_sandbox_tool.py` / `test_sandbox_lifecycle.py` / `test_sandbox_wiring.py` / `test_e2b_sandbox.py` | `run_python` over an in-memory sandbox (`sandbox_fakes.py`): the report, truncation, input confinement, output limits and no overwrites; fresh, always-closed sandboxes, one deadline, the boundary log; the key and data-leak rules; the E2B adapter against a fake SDK (`e2b_fakes.py`: offline creation, error mapping, stream and download budgets) |
 | `test_settings_and_config.py` | Settings parsing, legacy names, production guards, request URLs kept out of the logs |
+| `test_documents.py` | Document extraction: text, HTML, PDF and Word, limits, refusals, the HTTP contract and the request-size guard |
+| `test_document_scans.py` | Scanned and mixed PDFs through a fake `OcrEngine`: render resolution and pixel cap, OCR page cap, a page that times out or fails, OCR off |
+| `test_document_images.py` | Every image type, TIFF pages (counted without `n_frames`), transparency, 16-bit scans, EXIF rotation, the pixel cap and decompression bombs, decoders allowed, OCR off |
+| `test_document_office.py` | `.xlsx` and `.pptx` text, row and slide limits, the shared zip-bomb guard |
+| `test_document_ocr.py` | The Tesseract adapter and the startup check (pytesseract and the binary faked), OCR settings; one test runs the real binary and is skipped where it is not installed (CI) |

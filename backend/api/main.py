@@ -9,6 +9,7 @@ from api.errors import install_error_handlers
 from api.frontend import install_frontend
 from api.middleware import install_middleware
 from api.routes import API_PREFIX, api_router
+from api.services.documents.ocr import ocr_config, ocr_engine
 from config.logging_setup import configure_logging
 from config.settings import get_settings
 
@@ -27,6 +28,8 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     app.state.database = Database(settings.database_url)
+    # Built once: finding out whether OCR can run here starts a process.
+    app.state.ocr = ocr_engine(ocr_config(settings))
     install_error_handlers(app)
     install_middleware(app, settings)
     app.include_router(api_router())

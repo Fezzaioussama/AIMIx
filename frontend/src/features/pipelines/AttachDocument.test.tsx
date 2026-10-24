@@ -37,6 +37,18 @@ describe('AttachDocument', () => {
     );
   });
 
+  it('offers every format the server reads, and names them', () => {
+    render(<AttachDocument onDocument={vi.fn()} />);
+
+    const accept = fileInput().accept.split(',');
+    for (const extension of ['.pdf', '.docx', '.xlsx', '.pptx', '.png', '.jpg', '.tiff', '.csv']) {
+      expect(accept).toContain(extension);
+    }
+    expect(
+      screen.getByText('PDF, Word, Excel, PowerPoint, image, HTML, CSV or text file'),
+    ).toBeInTheDocument();
+  });
+
   it('shows the backend reason when a file is refused, and adds nothing', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       json({ error: 'unsupported_document', detail: "'.exe' files are not supported." }, 415),
@@ -44,7 +56,9 @@ describe('AttachDocument', () => {
     const onDocument = vi.fn();
     render(<AttachDocument onDocument={onDocument} />);
 
-    await userEvent.upload(fileInput(), new File(['x'], 'tool.exe'));
+    // `accept` only filters the picker: a person can still choose "All files".
+    const user = userEvent.setup({ applyAccept: false });
+    await user.upload(fileInput(), new File(['x'], 'tool.exe'));
 
     expect(await screen.findByRole('alert')).toHaveTextContent("'.exe' files are not supported.");
     expect(onDocument).not.toHaveBeenCalled();
@@ -57,7 +71,7 @@ describe('AttachDocument', () => {
 
     await userEvent.upload(fileInput(), pdf());
 
-    expect(await screen.findByRole('status')).toHaveTextContent('only the first part fit');
+    expect(await screen.findByRole('status')).toHaveTextContent('part of it was left out');
   });
 
   it('blocks a second file while one is being read', async () => {

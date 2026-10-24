@@ -1,6 +1,7 @@
 import { Paperclip } from 'lucide-react';
 import type { ChangeEvent } from 'react';
 
+import { DOCUMENT_ACCEPT, DOCUMENT_KINDS } from '../../core/api/documents';
 import type { ExtractedDocument } from '../../core/api/types';
 import { useAttachDocument } from './useAttachDocument';
 
@@ -10,10 +11,10 @@ interface AttachDocumentProps {
 }
 
 /**
- * "Attach a document" under a run input: pick a PDF, Word, CSV, text… file and its
- * text is added to the input, where it can still be read and edited. The file input
- * is visually hidden but real, so the label is its accessible name and the keyboard
- * works without script.
+ * "Attach a document" under a run input: pick a PDF, Office file, image or text file
+ * (DOCUMENT_FORMATS) and its text is added to the input, where it can still be read
+ * and edited. The file input is visually hidden but real, so the label is its
+ * accessible name and the keyboard works without script.
  */
 export function AttachDocument({ onDocument, disabled = false }: AttachDocumentProps) {
   const { reading, error, notice, attach } = useAttachDocument(onDocument);
@@ -36,6 +37,7 @@ export function AttachDocument({ onDocument, disabled = false }: AttachDocumentP
       >
         <input
           type="file"
+          accept={DOCUMENT_ACCEPT}
           className="sr-only"
           disabled={disabled || reading}
           onChange={handleChange}
@@ -43,7 +45,7 @@ export function AttachDocument({ onDocument, disabled = false }: AttachDocumentP
         <Paperclip aria-hidden="true" className="size-3.5" />
         {reading ? 'Reading…' : 'Attach a document'}
       </label>
-      <span className="text-slate-400">PDF, Word, CSV, text and more</span>
+      <span className="text-slate-400">{DOCUMENT_KINDS} file</span>
       {notice && (
         <span role="status" className="text-emerald-300">
           {notice}

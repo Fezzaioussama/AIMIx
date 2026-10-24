@@ -313,11 +313,28 @@ Reads an uploaded file and returns its text, so a document can be a pipeline
 run's input. `multipart/form-data` with one `file` field. Nothing is stored: the
 client puts the returned `text` in a run input (see `POST /pipelines/<id>/run`).
 
-Supported by extension (case-insensitive): `.pdf`, `.docx`, `.html`, `.htm`, and
-plain text: `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`,
-`.xml`, `.log`, `.rst`. A PDF is read page by page; a Word file keeps its tables
-in place (`a | b` per row); HTML keeps visible text only; text is decoded as
-UTF-8 (BOM, UTF-16 and Windows-1252 are handled).
+Supported by extension (case-insensitive):
+
+| Format | Extensions | What the text holds |
+|---|---|---|
+| PDF | `.pdf` | Each page's text layer; a page without one is read by OCR (see below) |
+| Word | `.docx` | Paragraphs, with tables in place (`a \| b` per row) |
+| Excel | `.xlsx` | `## Sheet: <name>`, then each row as tab-separated values. Formulas give their saved value; a sheet is read as it is, not as the size it declares |
+| PowerPoint | `.pptx` | Per slide: `## Slide <n>: <title>`, its text, table rows (`a \| b`), grouped shapes, then `Speaker notes: ...` |
+| Image | `.png`, `.jpg`, `.jpeg`, `.webp`, `.tif`, `.tiff`, `.bmp`, `.gif` | Read by OCR. Every page of a TIFF; the first frame of an animated GIF or WebP. Transparency is read as white and an EXIF rotation is applied. The content decides the decoder, so a misnamed photo still reads, but only these decoders ever run |
+| HTML | `.html`, `.htm` | Visible text only |
+| Text | `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`, `.xml`, `.log`, `.rst` | Decoded as UTF-8 (BOM, UTF-16 and Windows-1252 are handled) |
+
+**OCR** (Tesseract, languages `DOCUMENT_OCR_LANGUAGES`, default English and
+French) reads images and the PDF pages that have no text layer; pages with a
+text layer are never sent to it. A PDF page is rendered at `DOCUMENT_OCR_DPI`
+(300), less if that would exceed `DOCUMENT_MAX_IMAGE_PIXELS`. At most
+`DOCUMENT_OCR_MAX_PAGES` (30) pages of one document are recognised, each
+within `DOCUMENT_OCR_TIMEOUT_SECONDS` (15). A page past that cap, one that
+takes too long or that OCR fails on, or every scanned page when OCR is off or not
+installed, is skipped, and the text names it at the end, for example
+`[Not read: pages 31-40 (OCR reads at most 30 pages per document).]` or
+`[Not read: page 2 (no text layer, and OCR is not available).]`.
 
 `200`:
 
@@ -332,10 +349,16 @@ UTF-8 (BOM, UTF-16 and Windows-1252 are handled).
 }
 ```
 
-`pages` is `null` for formats without pages. `truncated` is `true` when part of
-the document was left out (more than `DOCUMENT_MAX_PAGES` pages, or more than
-`DOCUMENT_MAX_CHARS` characters of text); the returned `text` then ends with
-`[Document truncated: the rest was not included.]` so the model knows too.
+`pages` is the page count of a PDF, the slide count of a deck or the page
+count of a TIFF (counted only up to `DOCUMENT_MAX_PAGES`: counting every page of
+a TIFF can take quadratic time), and `null` for other formats. `truncated` is
+`true` when part of the document was left out: more than `DOCUMENT_MAX_PAGES`
+(300) pages, slides or TIFF pages, more than `DOCUMENT_MAX_SPREADSHEET_ROWS`
+(5,000) rows in a workbook (all sheets together, blank rows included) or more
+cells than `DOCUMENT_MAX_CHARS` (a row is as wide as its last cell), more than
+`DOCUMENT_MAX_CHARS` characters of text, or pages OCR skipped. A cut text ends
+with `[Document truncated: the rest was not included.]`, and skipped pages are
+named as above, so the model knows too.
 
 | Status | `error` | When |
 |---|---|---|
@@ -343,10 +366,15 @@ the document was left out (more than `DOCUMENT_MAX_PAGES` pages, or more than
 | 401 | `not_authenticated` | No or invalid token |
 | 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request whose declared `Content-Length` is over that plus 1 MB is refused earlier, before it is read, as `request_too_large` |
 | 415 | `unsupported_document` | The extension is not supported; `detail` lists the supported ones |
-| 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES`, or no text at all (a scanned PDF or image needs OCR, which is not supported) |
+| 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx`, `.xlsx` or `.pptx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES` (50 MB), an image (or one TIFF page) over `DOCUMENT_MAX_IMAGE_PIXELS` (40 million) checked before it is decoded, an image while OCR is off or not installed, or no text at all (`detail` then says which pages were skipped and why) |
 
 Limits are per request and come from settings (see `backend/.env.example`).
 The file's name and content are never logged.
+
+The call is synchronous. OCR takes about three seconds per dense A4 page on one
+CPU, so a long scan can hold the request for a minute or two (at worst
+`DOCUMENT_OCR_MAX_PAGES` x `DOCUMENT_OCR_TIMEOUT_SECONDS`); the frontend waits
+up to ten minutes (`UPLOAD_TIMEOUT_MS`), longer than that worst case by default.
 
 ## Pipelines
 

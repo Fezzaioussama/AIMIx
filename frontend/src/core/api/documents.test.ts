@@ -1,9 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { clearTokens, saveTokens } from '../auth/tokenStorage';
-import { extractDocument } from './documents';
+import { DOCUMENT_ACCEPT, DOCUMENT_FORMATS, DOCUMENT_KINDS, extractDocument } from './documents';
 import { API } from './endpoints';
 import type { ExtractedDocument } from './types';
+
+describe('document formats', () => {
+  it('accepts each extension once, in lower case with its dot', () => {
+    const extensions = DOCUMENT_ACCEPT.split(',');
+    expect(new Set(extensions).size).toBe(extensions.length);
+    for (const extension of extensions) expect(extension).toMatch(/^\.[a-z]+$/);
+    expect(extensions).toHaveLength(
+      DOCUMENT_FORMATS.reduce((count, format) => count + format.extensions.length, 0),
+    );
+  });
+
+  it('names the kinds as one list for copy', () => {
+    expect(DOCUMENT_KINDS).toBe('PDF, Word, Excel, PowerPoint, image, HTML, CSV or text');
+  });
+});
 
 const extracted: ExtractedDocument = {
   filename: 'notes.txt',

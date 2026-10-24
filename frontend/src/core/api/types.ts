@@ -62,9 +62,9 @@ export interface ExtractedDocument {
   format: string;
   text: string;
   characters: number;
-  /** Page count for paged formats (PDF), else null. */
+  /** Page count for paged formats (PDF pages, slides, TIFF pages), else null. */
   pages: number | null;
-  /** True when part of the document was left out (size or page limit). */
+  /** True when part of the document was left out (a limit, or pages OCR skipped). */
   truncated: boolean;
 }
 

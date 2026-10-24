@@ -9,6 +9,7 @@
 | Node.js + npm | Node 20+ (tested on 24) | Frontend (Vite, React 19) |
 | make | any | All commands are wrapped in the root `Makefile` |
 | An LLM API key | — | OpenRouter (default) or TogetherAI |
+| Tesseract (optional) | 4+, with the `eng` and `fra` languages | OCR of attached images and scanned PDFs, e.g. `apt install tesseract-ocr tesseract-ocr-fra`. Without it, everything else works; images are refused and scanned pages skipped, with a message saying OCR is not available |
 
 ## First-time setup
 

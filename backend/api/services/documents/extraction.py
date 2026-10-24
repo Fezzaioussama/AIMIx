@@ -13,12 +13,19 @@ import time
 from pathlib import PurePath
 
 from api.exceptions import DocumentTooLarge, DocumentUnreadable, UnsupportedDocument
-from api.services.documents.contracts import ExtractedDocument, ExtractionLimits
-from api.services.documents.readers import READERS
+from api.services.documents.contracts import (
+    ExtractedDocument,
+    ExtractionLimits,
+    OcrEngine,
+    ReadContext,
+    ReadResult,
+)
+from api.services.documents.readers import READERS, Reader
 
 logger = logging.getLogger(__name__)
 
 TRUNCATION_NOTE = "\n\n[Document truncated: the rest was not included.]"
+NO_TEXT = "No text could be read from this file."
 _BLANK_RUNS = re.compile(r"\n{3,}")
 
 
@@ -36,41 +43,57 @@ def _tidy(text: str) -> str:
     return _BLANK_RUNS.sub("\n\n", "\n".join(lines)).strip()
 
 
-def extract_document(filename: str, data: bytes, limits: ExtractionLimits) -> ExtractedDocument:
-    """The text of ``data``, chosen by the extension of ``filename``.
-
-    Raises UnsupportedDocument, DocumentTooLarge or DocumentUnreadable.
-    """
-    name = PurePath(filename.replace("\\", "/")).name or "document"
-    suffix = PurePath(name).suffix.lower()
+def _reader(name: str, suffix: str) -> Reader:
     reader = READERS.get(suffix)
     if reader is None:
         raise UnsupportedDocument(
             f"'{suffix or name}' files are not supported. "
             f"Use one of: {', '.join(supported_extensions())}."
         )
+    return reader
+
+
+def _finish(result: ReadResult, max_chars: int) -> tuple[str, bool]:
+    """The text to return, and whether part of the document was left out.
+
+    Each omission (e.g. pages OCR skipped) is said in the text, so the model knows.
+    """
+    text = _tidy(result.text)
+    if not text:
+        raise DocumentUnreadable(" ".join((NO_TEXT, *result.omissions)))
+    cut = result.cut_short or len(text) > max_chars
+    if cut:
+        text = text[:max_chars].rstrip() + TRUNCATION_NOTE
+    text += "".join(f"\n\n[{omission}]" for omission in result.omissions)
+    return text, cut or bool(result.omissions)
+
+
+def extract_document(
+    filename: str, data: bytes, limits: ExtractionLimits, ocr: OcrEngine | None = None
+) -> ExtractedDocument:
+    """The text of ``data``, chosen by the extension of ``filename``.
+
+    ``ocr`` reads scanned pages and images; without it they are skipped, and said so.
+    Raises UnsupportedDocument, DocumentTooLarge or DocumentUnreadable.
+    """
+    name = PurePath(filename.replace("\\", "/")).name or "document"
+    suffix = PurePath(name).suffix.lower()
+    reader = _reader(name, suffix)
     if not data:
         raise DocumentUnreadable("The file is empty.")
     if len(data) > limits.max_bytes:
         raise DocumentTooLarge(f"The file is larger than the {_megabytes(limits.max_bytes)} limit.")
 
     started = time.monotonic()
-    result = reader(data, limits)
-    text = _tidy(result.text)
-    if not text:
-        raise DocumentUnreadable(
-            "No text could be read from this file. A scanned document or an image "
-            "needs OCR, which is not supported yet."
-        )
-    truncated = result.cut_short or len(text) > limits.max_chars
-    if truncated:
-        text = text[: limits.max_chars].rstrip() + TRUNCATION_NOTE
+    result = reader(data, ReadContext(limits, ocr))
+    text, truncated = _finish(result, limits.max_chars)
     logger.info(
-        "documents.extracted format=%s bytes=%d chars=%d truncated=%s duration_ms=%d",
+        "documents.extracted format=%s bytes=%d chars=%d truncated=%s ocr_pages=%d duration_ms=%d",
         suffix.lstrip("."),
         len(data),
         len(text),
         truncated,
+        result.ocr_pages,
         (time.monotonic() - started) * 1000,
     )
     return ExtractedDocument(name, suffix.lstrip("."), text, len(text), result.pages, truncated)
