@@ -19,7 +19,7 @@ from api.security import SecretBox, TokenSigner
 from api.services import accounts, llm_settings
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
-from api.services.documents.contracts import ExtractionLimits
+from api.services.documents.contracts import ExtractionLimits, OcrEngine
 from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
@@ -63,10 +63,23 @@ def document_limits(settings: AppSettings) -> ExtractionLimits:
         max_chars=settings.document_max_chars,
         max_pages=settings.document_max_pages,
         max_unpacked_bytes=settings.document_max_unpacked_bytes,
+        max_image_pixels=settings.document_max_image_pixels,
+        max_spreadsheet_rows=settings.document_max_spreadsheet_rows,
+        max_ocr_pages=settings.document_ocr_max_pages,
+        ocr_dpi=settings.document_ocr_dpi,
     )
 
 
 DocumentLimits = Annotated[ExtractionLimits, Depends(document_limits)]
+
+
+def document_ocr(request: Request) -> OcrEngine | None:
+    """The OCR engine the app built at startup; None when OCR is off or not installed."""
+    engine: OcrEngine | None = request.app.state.ocr
+    return engine
+
+
+DocumentOcr = Annotated[OcrEngine | None, Depends(document_ocr)]
 
 
 def token_signer(settings: AppSettings) -> TokenSigner:

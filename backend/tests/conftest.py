@@ -51,6 +51,8 @@ TEST_SETTINGS = Settings(
     tavily_api_key="",
     tavily_search_url="https://search.test/search",
     pipeline_max_parallel_steps=4,
+    # Never the real binary: OCR tests inject a fake engine (or skip without one).
+    document_ocr_enabled=False,
     openrouter_api_key="",
     togetherai_api_key="",
     openrouter_base_url="",

@@ -158,10 +158,30 @@ class Settings(BaseSettings):
     # Text kept from one document; the rest is dropped and the run is told so.
     document_max_chars: int = Field(120_000, ge=1, validation_alias="DOCUMENT_MAX_CHARS")
     document_max_pages: int = Field(300, ge=1, validation_alias="DOCUMENT_MAX_PAGES")
-    # A .docx is a zip: refuse one that would unpack to more than this.
+    # .docx, .xlsx and .pptx are zips: refuse one that would unpack to more than this.
     document_max_unpacked_bytes: int = Field(
         50_000_000, ge=1, validation_alias="DOCUMENT_MAX_UNPACKED_BYTES"
     )
+    # Refuse an image (or cap a rendered PDF page) past this size, before decoding it.
+    document_max_image_pixels: int = Field(
+        40_000_000, ge=1, validation_alias="DOCUMENT_MAX_IMAGE_PIXELS"
+    )
+    # Rows read from one .xlsx workbook, across all its sheets.
+    document_max_spreadsheet_rows: int = Field(
+        5_000, ge=1, validation_alias="DOCUMENT_MAX_SPREADSHEET_ROWS"
+    )
+    # OCR for scanned PDFs and images (Tesseract; api/services/documents/ocr.py).
+    document_ocr_enabled: bool = Field(True, validation_alias="DOCUMENT_OCR_ENABLED")
+    document_ocr_languages: str = Field(
+        "eng+fra",
+        pattern=r"^[A-Za-z0-9_]+(\+[A-Za-z0-9_]+)*$",
+        validation_alias="DOCUMENT_OCR_LANGUAGES",
+    )
+    document_ocr_max_pages: int = Field(30, ge=1, validation_alias="DOCUMENT_OCR_MAX_PAGES")
+    document_ocr_timeout_seconds: float = Field(
+        15.0, gt=0, validation_alias="DOCUMENT_OCR_TIMEOUT_SECONDS"
+    )
+    document_ocr_dpi: int = Field(300, ge=72, validation_alias="DOCUMENT_OCR_DPI")
     # Upper bound on provider calls one pipeline run makes at once for a stage
     # whose steps run in parallel.
     pipeline_max_parallel_steps: int = Field(

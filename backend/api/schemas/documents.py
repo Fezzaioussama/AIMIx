@@ -13,7 +13,7 @@ class DocumentOut(BaseModel):
     format: str
     text: str
     characters: int
-    #: Page count for paged formats (PDF), else null.
+    #: Page count for paged formats (PDF pages, slides, TIFF pages), else null.
     pages: int | None
-    #: True when part of the document was left out (size or page limit).
+    #: True when part of the document was left out (a limit, or pages OCR skipped).
     truncated: bool
