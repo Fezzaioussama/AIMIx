@@ -439,3 +439,89 @@ becomes `false`. Inputs that could not be saved are dropped: entries that are
 not objects, or whose `name` is invalid, reserved or already taken. A missing
 or non-list `inputs` becomes `[]`.
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.
+
+---
+
+## Templates
+
+Ready-made missions a user can start from. The catalogue is code
+(`api/services/templates/`), the same for every account; nothing is stored
+until a template is used, and then only the caller's own pipeline.
+
+### `GET /templates`
+
+`200` → every template, in gallery order:
+
+```json
+[
+  {
+    "slug": "market-research-brief",
+    "title": "Market research brief",
+    "category": "Research",
+    "description": "Size up a market: its size, customers, trends and risks, in a brief you can act on.",
+    "inputs": [
+      { "name": "market", "label": "Market", "description": "The market or product category to research, ..." },
+      { "name": "goal", "label": "Your goal", "description": "What the brief should help you decide, ..." }
+    ],
+    "step_count": 5,
+    "stage_count": 3
+  }
+]
+```
+
+`category` is `Research`, `Documents`, `Data` or `Marketing`. `inputs` are the
+named run inputs the pipeline will declare, and `step_count` is its number of
+agents. The steps themselves are only returned once the template is used.
+
+| Slug | Agents · stages | The user provides |
+|---|---|---|
+| `market-research-brief` | 5 · 3 | `market`, `goal` |
+| `competitor-analysis` | 4 · 3 | `product`, `competitors` |
+| `document-digest` | 5 · 3 | `document`, `reader` |
+| `meeting-actions` | 4 · 3 | `notes`, `meeting` |
+| `data-insights-report` | 4 · 3 | `data`, `question` |
+| `seo-content-brief` | 4 · 3 | `topic`, `audience` |
+| `content-calendar` | 4 · 3 | `topic`, `audience`, `channels` |
+| `product-launch-plan` | 5 · 3 | `product`, `goal`, `launch` |
+
+Every template runs independent work in parallel in its first stage, then a
+writer, and ends with a single reviewer step, the only `is_output` step: it
+checks the draft against the run's inputs (and, for `document-digest` and
+`meeting-actions`, against the original text) and returns the corrected final
+version. A document or a CSV file can be attached to the run input as usual
+(`POST /documents/extract`); `data-insights-report` can also open a CSV file
+from the workspace by name.
+
+### `POST /templates/<slug>/use`
+
+Creates the caller's own pipeline from the template. The body is optional:
+
+```json
+{ "name": "Plant snacks brief" }
+```
+
+`name` (non-blank, at most 255 characters) defaults to the template's `title`.
+`201` → the created pipeline, in the same shape as `GET /pipelines/<id>/`, with
+the template's inputs and its steps in order (`order` 1..N). Templates never
+name a model or a tool the caller lacks:
+
+- each step's `model` is the caller's default model (Settings page, else
+  `.env`);
+- each step's `allowed_tools` keeps, in the template's order, only the tools
+  `GET /agent-tools` currently lists for the caller, which may leave `[]`.
+  Templates name built-in tools only (`web_search`, `fetch_url`, `calculator`,
+  `current_datetime`, `list_workspace_files`, `read_csv`). For example,
+  `web_search` is dropped without `TAVILY_API_KEY`, and both web tools while
+  workspace readers suppress them (see [Agent tools](#agent-tools)); the
+  prompts then work from what the model knows and label unverified figures.
+
+This is the rule the planner's output goes through
+(`services/pipelines.sanitise_step`). Using a template twice creates two
+pipelines.
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | `name` is blank or too long |
+| 404 | `not_found` | No template has that slug (checked before any tool discovery) |
+| 502 | `tool_unavailable` | A configured MCP server could not be reached while listing the caller's tools |
+| 503 | `provider_not_configured` | The caller's saved key can no longer be decrypted (as for `GET /models`) |

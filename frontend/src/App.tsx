@@ -12,6 +12,7 @@ import { ChatPage } from './features/chat/ChatPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { TemplatesPage } from './features/templates/TemplatesPage';
 
 // The public front page is split out: signed-in users who open /chat never download it.
 const LandingPage = lazy(() =>
@@ -21,7 +22,7 @@ const LandingPage = lazy(() =>
 // `paths` lists every route a section owns, so Pipelines stays lit on /auto-pipeline.
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat', paths: ['/chat'] },
-  { to: '/pipeline', label: 'Pipelines', paths: ['/pipeline', '/auto-pipeline'] },
+  { to: '/pipeline', label: 'Pipelines', paths: ['/pipeline', '/auto-pipeline', '/templates'] },
   { to: '/settings', label: 'Settings', paths: ['/settings'] },
 ] as const;
 
@@ -107,6 +108,7 @@ export function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/pipeline" element={<PipelineBuilderPage />} />
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
+        <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />

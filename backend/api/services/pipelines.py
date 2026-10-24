@@ -108,7 +108,7 @@ def parse_plan(
     for index, step in enumerate(steps, start=1):
         if not isinstance(step, dict):
             raise UpstreamResponseInvalid("The planner returned a malformed step.")
-        _sanitise_step(step, index, available_models, available_tools)
+        sanitise_step(step, index, available_models, available_tools)
 
     plan["inputs"] = _sanitise_inputs(plan.get("inputs"))
     return plan
@@ -140,14 +140,15 @@ def _sanitise_inputs(raw: object) -> list[dict[str, str]]:
     return list(inputs.values())[:PIPELINE_MAX_INPUTS]
 
 
-def _sanitise_step(
+def sanitise_step(
     step: dict[str, Any],
     index: int,
     available_models: list[str],
     available_tools: list[str] | None,
 ) -> None:
     """Make a planner step storable: unique order, a valid stage, a known model,
-    a short title, role and expected output, and a boolean output flag.
+    a short title, role and expected output, and a boolean output flag. Mission
+    templates reuse it, so their steps get models and tools by the same rule.
 
     ``order`` is renumbered by position because planners that group steps into
     parallel stages tend to repeat it; a missing or invalid stage falls back to

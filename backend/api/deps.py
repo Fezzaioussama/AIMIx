@@ -24,6 +24,7 @@ from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, enforce
+from api.services.templates.use import StepDefaults
 from api.services.tool_catalog import PipelineToolCatalog
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
@@ -170,6 +171,24 @@ def pipeline_run_context(
 
 
 PipelineRun = Annotated[PipelineRunContext, Depends(pipeline_run_context)]
+
+
+@dataclass(frozen=True)
+class TemplateUseContext:
+    user: User
+    session: Session
+    defaults: StepDefaults
+
+
+def template_use_context(
+    user: CurrentUser, session: DbSession, profile: Profile, catalog: ToolCatalog
+) -> TemplateUseContext:
+    """Who a template's pipeline is for, and the models and tools its steps may
+    use. Tool discovery stays lazy: the service runs it once the slug is known."""
+    return TemplateUseContext(user, session, StepDefaults(profile.models, catalog.available_sync))
+
+
+TemplateUse = Annotated[TemplateUseContext, Depends(template_use_context)]
 
 
 AgentFactory = Callable[[], ChatAgent]

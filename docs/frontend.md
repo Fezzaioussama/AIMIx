@@ -22,6 +22,7 @@ frontend/src/
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
+    templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
 ## Routing (`App.tsx`)
@@ -34,11 +35,12 @@ frontend/src/
 | `/chat` | `ChatPage` | guarded |
 | `/pipeline` | `PipelineBuilderPage` | guarded |
 | `/auto-pipeline` | `AutoPipelinePage` | guarded |
+| `/templates` | `TemplatesPage` | guarded |
 | `/settings` | `SettingsPage` | guarded |
 | `*` | redirect to `/login` | — |
 
 Guarded routes render inside `AppShell`: a static `AmbientBackdrop`, the fixed
-top nav (its highlight slides between items; "Pipelines" covers both pipeline
+top nav (its highlight slides between items; "Pipelines" covers all three pipeline
 routes) and the `RequireAuth` outlet, which `PageTransition` eases in on every
 route change.
 `RequireAuth` checks `hasSession()` from storage directly, so a page reload
@@ -56,6 +58,7 @@ resolves the session before the first render without a redirect flash.
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` and `generatePipeline` (1 h, `GENERATION_TIMEOUT_MS`) |
+| `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
 
 ### What `client.ts` does for every call
 
@@ -187,8 +190,26 @@ Rules for motion:
 | `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
 | `stages.ts` | `groupByStage`, `nextStage`, `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
-| `PipelineNav.tsx` | Switch between Builder and Auto |
+| `PipelineNav.tsx` | Switch between Builder, Auto and Templates |
 | `modelLabel.ts` | Human-friendly label for a model id |
+
+### `features/templates`
+
+The template gallery at `/templates`, reached from the Templates tab of
+`PipelineNav` and the "Start from a template" link on Auto Pipeline. Using a
+template creates the user's own pipeline on the server, then opens it in the
+builder through the same `{ pipelineId }` router state Auto Pipeline uses
+(the window is scrolled to the top first, since routes keep the scroll).
+
+| File | Role |
+|---|---|
+| `TemplatesPage.tsx` | Header, category chips, the card grid, a polite live region for "Creating your pipeline…", and alerts for a failed load (with "Try again") or a failed use |
+| `useTemplates.ts` | Loads the gallery (cancelled on unmount, reloadable) and `create(template)`, which resolves to the new pipeline or `null` with a message saying which template failed |
+| `TemplateCard.tsx` | Icon, category, title, description, "You provide:" (the input labels), agent and stage counts, and "Use this template" (busy spinner; disabled while any template is being created) |
+| `CategoryFilter.tsx` | `aria-pressed` chips: "All", then each category as it first appears |
+| `templateFilters.ts` | Pure `categoryChips` and `inCategory` |
+| `templateIcons.ts` | Card icon by slug; a template the server adds later gets a generic icon |
+| `StartFromTemplateLink.tsx` | The link into the gallery, used on Auto Pipeline |
 
 ### `features/settings`
 
@@ -258,7 +279,9 @@ error), `core/markdown/renderMarkdown.test.ts` (sanitisation),
 `features/chat/ChatPage.test.tsx`, and for the landing page
 `features/landing/LandingPage.test.tsx` (CTAs by sign-in state, tab keyboard
 behaviour, FAQ disclosure, WebGL-less fallback), `useStepCarousel.test.ts` and
-`scene/sceneLayout.test.ts` (the layout is deterministic and well-formed).
+`scene/sceneLayout.test.ts` (the layout is deterministic and well-formed), and
+for the gallery `features/templates/` (filters, the hook, and the page: busy
+state, errors, retry and opening the builder).
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.

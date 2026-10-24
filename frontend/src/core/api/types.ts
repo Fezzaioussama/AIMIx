@@ -126,3 +126,18 @@ export interface LLMSettingsUpdate {
   provider: string;
   providers: ProviderSettingsUpdate[];
 }
+
+/** A ready-made mission in the template gallery (GET /api/templates). */
+export interface MissionTemplate {
+  slug: string;
+  title: string;
+  /** What the gallery filters by, e.g. "Research". */
+  category: string;
+  /** One line for the card. */
+  description: string;
+  /** What the user fills in on every run of the pipeline. */
+  inputs: PipelineInput[];
+  /** How many agents the pipeline has. */
+  step_count: number;
+  stage_count: number;
+}
