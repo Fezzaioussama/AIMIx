@@ -32,7 +32,7 @@ Try it locally — production settings refuse to start without these two:
 ```bash
 docker run --rm -p 8080:8000 -v aimix-data:/data \
   -e SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" \
-  -e ALLOWED_HOSTS=localhost aimix
+  -e ALLOWED_HOSTS=localhost -e ALLOW_PUBLIC_REGISTRATION=true aimix
 # open http://localhost:8080, register, then add your key on the Settings page
 ```
 
@@ -55,6 +55,7 @@ application files change.
    | `SECRET_KEY` | `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` | Signs JWTs and encrypts saved API keys. Changing it signs everyone out and makes saved keys unreadable. |
    | `ALLOWED_HOSTS` | `${{RAILWAY_PUBLIC_DOMAIN}},healthcheck.railway.app` | Railway's health check calls with host `healthcheck.railway.app`; without it the deploy never turns healthy. |
    | `CORS_ALLOWED_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Same origin, so only for completeness. |
+   | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`python -m api.cli create-user NAME` in the service shell). Existing accounts are unaffected. |
    | `RAILWAY_RUN_UID` | `0` | Railway mounts volumes as root; the non-root image user could not write the database otherwise. |
 
 4. **Domain.** *Settings → Networking → Generate Domain*.
@@ -64,8 +65,8 @@ application files change.
 
 ### Do not put LLM keys in Railway variables
 
-Registration is open. A server-wide `OPEN_ROUTER_KEY` or `TOGAI_API_KEY` would
-let **anyone who registers** spend it. Leave them unset: each user saves their
+If you set `ALLOW_PUBLIC_REGISTRATION=true`, registration is open. A server-wide
+`OPEN_ROUTER_KEY` or `TOGAI_API_KEY` would let **anyone who registers** spend it. Leave them unset: each user saves their
 own key on the Settings page, encrypted with `SECRET_KEY`.
 
 ### Limits of this setup
