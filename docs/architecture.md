@@ -234,8 +234,9 @@ redone → that stage runs again in the same round with the feedback, the
 reviewer's older answer is not reused; stopped between two rounds → the saved
 `REVISE` sends the work back; a loop that ended (`PASS`, or the last round's
 `REVISE`) is not run again and a later failed step runs alone. The one loss is
-the feedback of a step that had not yet run in a round whose reviewer had
-already run again.
+the feedback of a step that shares the reviewer's stage and places `{feedback}`
+itself: if the run stopped after the reviewer began the next round but before that
+step did, the step is given an empty `{feedback}` (known-issues.md, entry 10).
 
 #### Extension points
 

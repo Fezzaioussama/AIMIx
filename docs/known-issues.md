@@ -229,11 +229,11 @@ simple rules and leave some things out:
   final answer.
 - **Progress can go back.** "3 of 5 steps done" falls when a step is redone in
   another round, because the step is running again.
-- **A resumed run can lose one thing.** A step that places `{feedback}` in its own
-  prompt without being in the stage the work goes back to, and that had not yet
-  started its next round when the run stopped, is given empty feedback if the
-  reviewer had by then started its next round (its earlier answer is replaced as it
-  starts). Steps in the stage the work goes back to are never affected.
+- **A resumed run can lose one thing.** A step that shares the reviewer's stage and
+  places `{feedback}` in its own prompt is given an empty `{feedback}` when the run
+  stopped after the reviewer began the next round but before that step did (the
+  reviewer's earlier answer is replaced as it starts). Steps in the stage the work
+  goes back to, and in the stages between, are never affected.
 - **Names and numbers, not links.** A condition names a step by its number and a
   review a stage by its number. The builder follows renumbering and new stages, and
   a condition whose step was removed is left pointing at "step 0" and flagged, but
