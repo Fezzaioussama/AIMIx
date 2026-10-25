@@ -325,9 +325,9 @@ class RunStep(Base):
 class RunApproval(Base):
     """A step's tool call that waits for the run owner's OK before it acts.
 
-    ``arguments`` holds the call's arguments as JSON text, for the owner to
-    read, cut at APPROVAL_ARGUMENTS_MAX_CHARS (``arguments_truncated``); they
-    are never logged. ``tool_source`` is where the tool comes from (an
+    ``arguments`` holds the call's arguments as a JSON object, for the owner to
+    read, shortened to fit APPROVAL_ARGUMENTS_MAX_CHARS (``arguments_truncated``);
+    they are never logged. ``tool_source`` is where the tool comes from (an
     integration's name, ``MCP`` or ``AIMIx``). ``expires_at`` is when an
     unanswered request counts as declined.
     """
@@ -340,7 +340,7 @@ class RunApproval(Base):
     tool_name: Mapped[str] = mapped_column(String(TOOL_NAME_MAX_LENGTH))
     tool_source: Mapped[str] = mapped_column(String(TOOL_SOURCE_MAX_LENGTH), default="")
     tool_description: Mapped[str] = mapped_column(Text, default="")
-    arguments: Mapped[str] = mapped_column(Text, default="")
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     arguments_truncated: Mapped[bool] = mapped_column(default=False)
     status: Mapped[ApprovalStatus] = mapped_column(
         _status_type(ApprovalStatus), default=ApprovalStatus.PENDING

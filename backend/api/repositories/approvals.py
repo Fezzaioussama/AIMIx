@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Select, exists, select, update
 from sqlalchemy.orm import Session
@@ -22,6 +23,8 @@ from api.models import ApprovalStatus, Run, RunApproval, RunStatus
 from api.repositories.bulk import changed
 
 _PENDING = ApprovalStatus.PENDING
+#: A run can only wait for an answer while its job is executing.
+_ASKING = frozenset({RunStatus.RUNNING, RunStatus.WAITING})
 
 
 @dataclass(frozen=True)
@@ -33,7 +36,7 @@ class NewApproval:
     tool_name: str
     tool_source: str
     tool_description: str
-    arguments: str
+    arguments: dict[str, Any]
     arguments_truncated: bool
     created_at: datetime
     expires_at: datetime
@@ -49,16 +52,21 @@ class Settlement:
     decided_at: datetime
 
 
-def ask(session: Session, new: NewApproval) -> RunApproval:
-    """Save a pending approval and show its run as waiting, in one transaction."""
-    approval = RunApproval(**asdict(new), status=_PENDING)
-    session.add(approval)
-    changed(
+def ask(session: Session, new: NewApproval) -> RunApproval | None:
+    """Save a pending approval and show its run as waiting, in one transaction.
+    None, and nothing saved, when the run is no longer executing (it was
+    stopped meanwhile): nobody is left to ask."""
+    moved = changed(
         session,
         update(Run)
-        .where(Run.id == new.run_id, Run.status == RunStatus.RUNNING)
+        .where(Run.id == new.run_id, Run.status.in_(_ASKING))
         .values(status=RunStatus.WAITING),
     )
+    if not moved:
+        session.rollback()
+        return None
+    approval = RunApproval(**asdict(new), status=_PENDING)
+    session.add(approval)
     session.commit()
     return approval
 

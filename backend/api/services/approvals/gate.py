@@ -9,12 +9,14 @@ reaches it. A request not answered by its ``expires_at`` expires and counts
 as declined; so does one whose wait is cancelled (the run was stopped, a
 parallel step failed, the step ran out of time, the server shut down). Each
 write is a short transaction on the run's loop, as in ``run_recorder``.
+
+The wait counts toward the step's AGENT_TIMEOUT_SECONDS, which is why a
+request never waits longer than that.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -28,6 +30,7 @@ from api.models import TOOL_NAME_MAX_LENGTH, TOOL_SOURCE_MAX_LENGTH, ApprovalSta
 from api.repositories import approvals as repository
 from api.services.agent_types import RunStepRef
 from api.services.approvals.decisions import settle
+from api.services.approvals.preview import preview_arguments
 from api.services.run_recorder import utcnow
 from api.services.tool_catalog import describe
 from config.settings import Settings
@@ -73,12 +76,6 @@ def approval_limits(settings: Settings) -> ApprovalLimits:
     )
 
 
-def preview(arguments: Mapping[str, Any], max_chars: int) -> tuple[str, bool]:
-    """The arguments as JSON text for the owner to read, and whether it was cut."""
-    text = json.dumps(arguments, ensure_ascii=False, default=str)
-    return (text, False) if len(text) <= max_chars else (text[:max_chars], True)
-
-
 class RunApprovalGate:
     """The gate of one step of a recorded run, kept in the database (§7 Adapter)."""
 
@@ -92,15 +89,20 @@ class RunApprovalGate:
 
     async def ask(self, request: ToolRequest) -> ApprovalStatus:
         approval = self._record(request)
+        if approval is None:
+            # The run was stopped while its step was working: nobody is left to ask.
+            return ApprovalStatus.EXPIRED
         try:
             return await self._answer(approval)
         except asyncio.CancelledError:
             self._expire(approval)
             raise
 
-    def _record(self, request: ToolRequest) -> RunApproval:
+    def _record(self, request: ToolRequest) -> RunApproval | None:
         now = self._clock()
-        arguments, truncated = preview(request.arguments, self._limits.arguments_max_chars)
+        arguments, truncated = preview_arguments(
+            request.arguments, self._limits.arguments_max_chars
+        )
         new = repository.NewApproval(
             run_id=self._place.run_id,
             step_order=self._place.step_order,
@@ -116,11 +118,11 @@ class RunApprovalGate:
             approval = repository.ask(session, new)
         # Ids and the tool's name only: arguments can hold anything (§6).
         logger.info(
-            "approval.requested run_id=%s approval_id=%s step=%s tool=%s",
-            approval.run_id,
-            approval.id,
-            approval.step_order,
-            approval.tool_name,
+            "approval.requested run_id=%s step=%s tool=%s approval_id=%s",
+            new.run_id,
+            new.step_order,
+            new.tool_name,
+            approval.id if approval else None,
         )
         return approval
 

@@ -23,8 +23,14 @@ ToolCallResult = ToolMessage | Command[Any]
 
 #: What the agent is told when the tool did not act, by outcome (§5 O).
 NOT_ACTED: dict[ApprovalStatus, str] = {
-    ApprovalStatus.DECLINED: "The user declined this action, so it was not carried out.",
-    ApprovalStatus.EXPIRED: "The user did not answer in time, so this action was not carried out.",
+    ApprovalStatus.DECLINED: (
+        "The user declined this action. Do not repeat it: continue without it, "
+        "and say in your answer what was not done."
+    ),
+    ApprovalStatus.EXPIRED: (
+        "The user did not answer in time, so this action was not carried out. "
+        "Continue without it, and say in your answer what was not done."
+    ),
 }
 
 

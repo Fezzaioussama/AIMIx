@@ -8,6 +8,7 @@ every tool and its gated ones wait for the owner; where nobody can be asked
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from langchain.agents.middleware import AgentMiddleware
@@ -28,6 +29,9 @@ class GuardedTools:
 
     tools: list[BaseTool]
     middleware: list[AgentMiddleware] = field(default_factory=list)
+    #: The tools that ask first, by name, with where each comes from (offered
+    #: behind the gate, or left out when there is none).
+    asking: Mapping[str, str] = field(default_factory=dict)
 
 
 def guard_tools(
@@ -37,13 +41,17 @@ def guard_tools(
     ``gate``; without a gate, those tools are left out."""
     native = {item.name for item in toolset.native_tools}
     sources = {item.name: source_of(item, native) for item in tools}
-    asking = {name: source for name, source in sources.items() if toolset.approvals.asks(name, source)}
+    asking = {
+        name: source for name, source in sources.items() if toolset.approvals.asks(name, source)
+    }
     if gate is None:
-        return GuardedTools([item for item in tools if item.name not in asking])
-    return GuardedTools(tools, [ApprovalMiddleware(gate, asking)] if asking else [])
+        return GuardedTools([item for item in tools if item.name not in asking], asking=asking)
+    return GuardedTools(tools, [ApprovalMiddleware(gate, asking)] if asking else [], asking)
 
 
-def run_gate(database: Database, place: RunStepRef | None, settings: Settings) -> ApprovalGate | None:
+def run_gate(
+    database: Database, place: RunStepRef | None, settings: Settings
+) -> ApprovalGate | None:
     """The gate of a recorded run's step; None outside one, where nobody can be asked."""
     if place is None:
         return None

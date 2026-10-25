@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column("tool_name", sa.String(length=64), nullable=False),
         sa.Column("tool_source", sa.String(length=64), nullable=False),
         sa.Column("tool_description", sa.Text(), nullable=False),
-        sa.Column("arguments", sa.Text(), nullable=False),
+        sa.Column("arguments", sa.JSON(), nullable=False),
         sa.Column("arguments_truncated", sa.Boolean(), nullable=False),
         # A plain VARCHAR(16): no native enum type and no CHECK constraint.
         sa.Column(

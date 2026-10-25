@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 from api.models import ApprovalStatus
@@ -20,8 +22,9 @@ class RunApprovalOut(BaseModel):
     #: Where the tool comes from: an integration's name, ``MCP`` or ``AIMIx``.
     tool_source: str
     tool_description: str
-    #: The call's arguments as JSON text, cut at APPROVAL_ARGUMENTS_MAX_CHARS.
-    arguments: str
+    #: The call's arguments, long text values shortened to fit
+    #: APPROVAL_ARGUMENTS_MAX_CHARS (``arguments_truncated`` says whether any was).
+    arguments: dict[str, Any]
     arguments_truncated: bool
     status: ApprovalStatus
     created_at: UtcDateTime
