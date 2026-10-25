@@ -53,7 +53,8 @@ describe('the mission workspace: starting', () => {
       '/mission/7',
     );
     expect(screen.getByRole('link', { name: /Launch plan/ })).toHaveAttribute('href', '/mission/8');
-    expect(log()).toBeInTheDocument();
+    // AIMIx's answers are announced as they arrive.
+    expect(log()).toHaveAttribute('aria-live', 'polite');
     // Nothing to send yet.
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
   });

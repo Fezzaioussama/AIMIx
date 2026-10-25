@@ -70,6 +70,7 @@ function MessageLog({ mission, context, fresh, end }: MessageLogProps) {
   return (
     <div
       role="log"
+      aria-live="polite"
       aria-label="Conversation with AIMIx"
       tabIndex={fresh ? undefined : 0}
       className={fresh ? '' : LOG_CLASS}
