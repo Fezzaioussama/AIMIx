@@ -162,19 +162,88 @@ a resumed run asks again.
 
 **Resume** (`POST /runs/<id>/resume`, from `failed`, `cancelled` or
 `interrupted`): the run is queued again with the requester's current model and
-key, steps that did not succeed are reset to `pending`, and the graph runs the
-run's own snapshot with `RunControl.completed` holding the saved results:
-those steps are not executed again, so the run continues from the first stage
-that did not fully succeed. Resuming any other run returns it unchanged.
+key, steps that neither succeeded nor were skipped are reset to `pending`, and
+the graph runs the run's own snapshot with `RunControl.completed` holding the
+saved results: those steps are not executed again, so the run continues from
+the first stage that did not fully succeed (inside a review loop, where it was:
+see below). Resuming any other run returns it unchanged.
 
 **Waiting callers.** `POST /pipelines/<id>/run` (kept for API compatibility)
 and the chat agent's `run_pipeline` tool start a run the same way and wait for
 its end (`RunService.run_to_end`), so their runs are recorded too.
 
+#### Conditions and review loops
+
+A step may carry a **condition** ("run this step only if…") and a **review**
+("send the work back for fixes"); both are step fields saved with the pipeline,
+stored in a run's snapshot, and checked when a pipeline is saved
+(`services/pipeline_flow`: an unknown input or step, a step that does not run
+earlier, a review that does not go to an earlier stage, loops that share a
+stage) and again when a run starts. The rules themselves are pure functions
+(`multiagent/conditions.py`, `reviews.py`); the graph only applies them.
+
+```mermaid
+flowchart LR
+    S1["stage 1<br/>research"] --> J1(("join"))
+    J1 --> S2["stage 2<br/>writer"]
+    S2 --> J2(("join"))
+    J2 --> S3["stage 3<br/>reviewer<br/>review: back to stage 2, 2 times"]
+    S3 --> J3(("join"))
+    J3 -- "PASS, no verdict, or no rounds left" --> S4["stage 4"]
+    J3 -- "REVISE with rounds left" --> B["back node:<br/>stage 2's input again,<br/>the reviewer's feedback"]
+    B --> S2
+```
+
+**Conditions.** `StepNode` (`multiagent/nodes.py`) decides for its step, right
+before it would start: a result an earlier attempt saved *for this round* is
+reused; otherwise the condition is read from the stage's input, the run's named
+inputs and the outputs so far (`ConditionTexts`) and, when it does not hold, the
+step is **skipped** (event `SKIPPED`, status `skipped`, empty output); otherwise
+its agent runs. A skipped step is final and kept by a resume. The stage's join
+merges only the steps that ran, so one step left passes its output on unchanged
+and a stage that skipped every step hands its own input on.
+
+**Loops.** `multiagent/loops.py` turns each usable review into a `ReviewLoop`
+(the stages from its target to its reviewer) and adds a conditional edge to the
+reviewer's join. A reviewer's answer is read when its step finishes
+(`reviews.read_verdict`): the last line that holds only `VERDICT: PASS` or
+`VERDICT: REVISE` becomes the step's `verdict` and is taken out of its output.
+After the join, the router sends the work back when the verdict says so and the
+loop has rounds left: the "back" node restores the input the target stage had
+(`GraphState.stage_inputs`), stores the reviewer's answer as the loop's
+feedback and counts the round (`GraphState.loops`); the stages then run again in
+order. Their steps are told the round they are in: the steps of the stage the
+work went back to get the feedback block (or `{feedback}`), and every step
+reports `STARTED` or, for a step that already finished in an earlier round,
+`RESTARTED` with its `round`, so the recorder updates **the same row in place**
+(status back to `running`, output replaced, `rounds` set; usage keeps adding up).
+The graph's step limit grows with the rounds a loop may add
+(`loops.recursion_limit`), and a review that cannot work or shares a stage with
+an earlier loop is ignored with a warning, so a run is bounded whatever the data
+holds. Two loops may not share a stage: that is the simpler of the two ways to
+keep one round counter per step, and it is refused when a pipeline is saved.
+
+**Resume inside a loop.** A step's row keeps the round it was last in, and a
+reviewer's row keeps its `verdict` and answer; that is all a resumed run needs.
+`loops.initial_loops` reads each loop's round from the newest `rounds` of any
+step in its stages (one time fewer than that, the work had been sent back) and
+the feedback from the reviewer's saved answer while it still holds it. The graph
+then runs from the first stage as usual, but a saved result is reused only when
+it belongs to the round the loop is in, so: stopped while a stage was being
+redone → that stage runs again in the same round with the feedback, the
+reviewer's older answer is not reused; stopped between two rounds → the saved
+`REVISE` sends the work back; a loop that ended (`PASS`, or the last round's
+`REVISE`) is not run again and a later failed step runs alone. The one loss is
+the feedback of a step that had not yet run in a round whose reviewer had
+already run again.
+
 #### Extension points
 
 | Need | Hook |
 |---|---|
+| A new way for a condition to compare, or a new thing for it to look at | One entry in `conditions.CONDITION_OPERATORS` or `CONDITION_SOURCES` (`multiagent/conditions.py`); the editor's words are `CONDITION_OPERATORS` and `SOURCE_CHECKS` in `frontend/src/features/pipelines/stepFlow.ts` and `stepFlowProblems.ts`. The graph needs no change. |
+| A new verdict a reviewer can give | One entry in `reviews.VERDICTS` (the word and whether it sends the work back); the prompt rule is in `flow_prompts.REVIEWER_RULE`. |
+| React to a skipped or redone step | `StepObserver.on_step_event` already hears `SKIPPED` and `RESTARTED` with the review `round`; `run_recorder.STEP_CHANGES` says which statuses each may follow. |
 | React to each step (notifications, exports) | Implement `StepObserver.on_step_event(StepEvent)` (`multiagent/contracts.py`). New data goes in a new optional field of `StepEvent` or `StepResult` (an agent fills it through `AgentOutcome`); the graph's control flow does not change. The graph awaits the observer, so it can also hold a step back. `StepResult.usage` already carries each step's tokens and cost. |
 | Count or cap what model calls use | Implement `llm.usage.UsageMeter` (`before_call()` may raise to refuse a call; `after_call(usage)`) and hand it to the steps through `RunControl.meter` (step order → meter). `run_budget.RunMeter` is the run's budget; a new limit kind is one entry in `run_budget.LIMITS`, a new way to learn a call's cost one entry in `llm.usage.COST_SOURCES`. |
 | Hold a tool call for a person (approval gates, built) | A tool asks first when `ApprovalPolicy.asks(name, source)` says so (`approvals/policy.py`: `MCP_REQUIRE_APPROVAL`, each integration's switch, `AGENT_APPROVAL_TOOLS`). To gate something else, add the source or tool name to the policy; the guard and the middleware need no change. See [Approval gates](#approval-gates). |
@@ -563,7 +632,10 @@ crash, startup recovery logs only how many runs it interrupted
    and a non-empty `steps` list, fills a missing `order`, replaces unknown model
    ids with the default, removes unavailable names from explicit tool
    allowlists, clips each step's `expected_output`, and keeps only the planned
-   `inputs` whose names follow the same rule the save endpoint enforces.
+   `inputs` whose names follow the same rule the save endpoint enforces. A
+   planned `condition` or `review` is read into its stored form, and each one
+   that cannot work in the plan (the checks of `services/pipeline_flow`) is set
+   to `null`: a planner's slip never fails the request.
    Unusable output → `upstream_response_invalid` (502).
 4. The endpoint returns the plan **without saving it**. The user edits it in
    `AutoPipelinePage` and saves through the normal `POST /api/pipelines/`.
@@ -615,7 +687,10 @@ sequenceDiagram
 4. `pipeline_changes.diff_pipelines` is a pure function: it pairs steps (same
    content, then title, then prompt, then position), compares fields and
    inputs, and reports a stage change only when a step really runs at another
-   point. The endpoint returns the revision, the changes and the models.
+   point; a step's `condition` and `review` are compared as fields of the step.
+   The endpoint returns the revision, the changes and the models. A draft may
+   hold a flow that does not work yet: only a save checks it, and the planner's
+   answer is cleaned up as for generation.
 5. **Nothing is saved.** Apply in the UI replaces the draft and marks it
    unsaved; the user saves through `POST`/`PUT /api/pipelines/`. A proposal
    belongs to the draft it was made from, so editing the draft sets it aside.
@@ -694,6 +769,9 @@ server — never a 200 with an error inside.
 | Port + Adapter | `approvals/gate.ApprovalGate`, `RunApprovalGate` | The middleware asks a port; the database-backed gate is one implementation, a scripted one serves tests |
 | Value Object | `approvals/policy.ApprovalPolicy` | Which tools ask first, resolved once and passed with the tools |
 | Strategy + Registry | `api/services/schedules/timing.FREQUENCIES`; `frontend/src/features/schedules/scheduleDraft.FREQUENCIES` | A new frequency preset is one entry, never another branch |
+| Strategy + Registry | `multiagent/conditions.CONDITION_OPERATORS` / `CONDITION_SOURCES`, `multiagent/reviews.VERDICTS`; `frontend/src/features/pipelines/stepFlow.CONDITION_OPERATORS`, `stepFlowProblems.SOURCE_CHECKS` | A new comparison, kind of source or verdict is one entry, never another branch |
+| Observer events + Compare-and-set | `StepEventKind.RESTARTED` / `SKIPPED`, `run_recorder.STEP_CHANGES` | A review loop redoes a step in its own row and a skipped step ends without running, each only from the statuses it may follow |
+| Value Object | `StepCondition`, `StepReview`, `LoopState`, `Feedback` | Frozen data crossing the layers: the stored flow fields, a loop's progress, a reviewer's feedback |
 | Null Object | `api/services/schedules/scheduler.IdleScheduler` | `SCHEDULER_ENABLED=false` leaves the lifespan code unchanged |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
 | Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |

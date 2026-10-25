@@ -75,69 +75,19 @@ resolves the session before the first render without a redirect flash.
 | File | Contents |
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
-| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary` with its `RunTrigger` and `schedule_id`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, `RunApproval`, `ApprovalStatus`), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`) and schedules (`Schedule`, `ScheduleTiming`, `ScheduleFrequency`, `ScheduleInput`, `SchedulePatch`, `SchedulePreview`). |
+| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary` with its `RunTrigger` and `schedule_id`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, which includes `skipped`, and `RunStep`'s `rounds` and `verdict`, `RunApproval`, `ApprovalStatus`), a step's `condition` and `review` (`StepCondition`, `ConditionOperator`, `StepReview`; every `PipelineStep` has both, `null` when unset), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`) and schedules (`Schedule`, `ScheduleTiming`, `ScheduleFrequency`, `ScheduleInput`, `SchedulePatch`, `SchedulePreview`). |
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request` and `requestBlob` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
 | `chat.ts` | `streamChatReply` |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
-| `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal) |
+| `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal). `normalizePipeline` fills what older pipelines and plans leave out (inputs, role, tools, expected output, `condition` and `review` as `null`) |
 | `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 | `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
-|
-`runs.ts`
-|
-`startRun`
-(its
-body
-may
-carry
-`max_cost_usd`
-/
-`max_tokens`),
-`listRuns`
-(page,
-optional
-pipeline
-and
-status),
-`countWaitingRuns`
-(`listRuns`
-for
-`status=waiting`,
-one
-run:
-its
-`total`),
-`getRun`,
-`cancelRun`,
-`resumeRun`
-(optionally
-with
-new
-limits),
-`deleteRun`
-—
-all
-with
-the
-default
-30
-s
-timeout,
-since
-a
-run
-executes
-on
-the
-server
-|
-
-
+| `runs.ts` | `startRun` (its body may carry `max_cost_usd` / `max_tokens`), `listRuns` (page, optional pipeline and status), `countWaitingRuns` (`listRuns` for `status=waiting`, one run: its `total`), `getRun`, `cancelRun`, `resumeRun` (optionally with new limits), `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
 | `approvals.ts` | `approveToolCall(runId, approvalId)` and `declineToolCall(...)`: answer a tool call a run waits on; each gives back the updated run, and a clash or an expired request is a 409 `conflict` |
 | `usage.ts` | `fetchUsage(days, signal)`: what the account's runs of the last days used and cost (`GET /usage`) |
 | `schedules.ts` | `listSchedules` (all, or one pipeline's), `createSchedule`, `updateSchedule` (`PATCH`), `deleteSchedule`, `runScheduleNow` and `previewSchedule` (when a timing would first run) — each takes an optional abort signal, all with the default 30 s timeout |
@@ -348,8 +298,8 @@ server would need a table and endpoints; that is not part of this version.
 | `missionIntent.ts`, `teamBrief.ts` | Pure: which phrases mean "run it"; a team as words (agents, tasks, tools, what to provide) |
 | `ConversationPane.tsx`, `MissionComposer.tsx`, `MissionStart.tsx`, `useRecentMissions.ts` | The conversation pane: the log, the message box (Enter sends, Shift + Enter adds a line), the empty state with examples, templates and recent missions |
 | `MessageItem.tsx`, `TeamMessageView.tsx`, `ProposalMessageView.tsx`, `InputsMessageView.tsx`, `RunMessageView.tsx`, `Bubble.tsx`, `messageContext.ts` | One view per kind of answer, in a registry (a new kind is a new entry); the context carries the live proposal, form and run each one needs |
-| `TeamPane.tsx`, `StepDrawer.tsx`, `useStepDrawer.ts` | The team pane and the agent drawer; the hook follows the team (a removed agent closes it) and gives focus back |
-| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables, the folded live run, the newest files (reloaded when a run ends) |
+| `TeamPane.tsx`, `StepDrawer.tsx`, `useStepDrawer.ts` | The team pane and the agent drawer (its editor is the builder's `StepCard`, so it has the two flow sections too, over the team's own steps); the hook follows the team (a removed agent closes it) and gives focus back |
+| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables (a skipped step is never one), the folded live run, the newest files (reloaded when a run ends) |
 
 `testData.ts` (fixtures and `routeFetch`, a fetch stand-in that answers
 `"METHOD /api/path"`) and `testRender.tsx` serve the tests.
@@ -373,7 +323,7 @@ server would need a table and endpoints; that is not part of this version.
 | `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, Excel, PowerPoint, image, HTML, CSV or text file (the picker's `accept` and the helper text both come from `DOCUMENT_FORMATS`), the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
 | `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none, then the optional cost limit. `RunInputCard` exports `RunInputFields` (those fields alone, with "Attach a document"; an optional `label` names the free-text field), which the schedule form asks its inputs with too, naming it "Input for each scheduled run" so the builder page never holds two fields called "Run input" |
 | `CostLimitField.tsx` | The "Stop if it costs more than $…" field of the run form: optional, labelled, with its hint or problem under it as a polite live region. The draft keeps it as typed text (`RunDraft.maxCost`); `costLimitProblem` flags text that is not an amount above zero and `isRunReady` then blocks the run, because running without the cap the person asked for would be worse than not running. `runRequest` sends it as `max_cost_usd` |
-| `StepHeading.tsx` | The title row of a step's card: name, position, model, Output badge and, for a followed run's step, what its model calls cost (`CostText`; a pending step shows nothing) |
+| `StepHeading.tsx` | The title row of a step's card: name, position, model, Output badge (never on a skipped step) and, for a followed run's step, what its model calls cost (`CostText`; a pending step shows nothing), its "Round 2 of 3" chip when a review loop ran it again, and a reviewer's outcome ("Sent back 2 times, then accepted"; `roundNotes.ts`) |
 | `FoldablePanel.tsx` | `PanelToggle` (the bar: a heading holding one button with an icon, a title and a chevron, `aria-expanded` / `aria-controls`) and `Foldable` (the body, animated by its grid row, `inert` while folded). `RevisePanel` and `SchedulePanel` are built on them |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, replacing the whole draft (`replace`, for an accepted revision), saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
@@ -386,20 +336,25 @@ server would need a table and endpoints; that is not part of this version.
 | `buttonStyles.ts` | Primary and secondary in-card button looks for actions beside a page's GlowButton |
 | `PipelineInputsEditor.tsx` | The named run inputs (name, label, description), shared by both screens; names are typed as snake_case and problems show before saving |
 | `pipelineInputs.ts` | Pure helpers for named inputs and attached documents (`appendDocument`, `documentSummary`): the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, and `runRequest`, which sends only declared inputs |
-| `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model and prompt. `StepCard` (one step's editor) is exported: the mission screen's drawer uses it |
-| `PromptPlaceholders.tsx` | Under a prompt: `{input}` and the declared `{name}` placeholders, plus a warning for a placeholder nothing fills |
+| `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model, prompt and, folded away, the two options that change how work flows (`StepFlowFields`). `StepCard` (one step's editor; it takes every step of the pipeline too) is exported: the mission screen's drawer uses it |
+| `StepFlowFields.tsx`, `ConditionFields.tsx`, `ReviewFields.tsx`, `FlowFieldParts.tsx` | Two `<details>` sections, folded by default (the first file holds the sections, the next two their fields, the last the labelled field and the problem line they share): "Run this step only if…" (a source list: the previous result, each input, each earlier step by title; a comparison; the text, hidden for "is empty" / "is not empty") and "Review loop" ("Send the work back to stage [2 · Writer] up to [2 times] when this step says the work needs fixes", offered to a step with an earlier stage, plus one line saying its prompt should judge the work). Each shows what is set next to its title, and what is wrong in amber (`aria-invalid`, `aria-describedby`); a source or stage that is no longer on offer stays in its list, so the person sees what it was. Used by the step card (builder and the mission drawer) and by the planned steps |
+| `stepFlow.ts`, `stepFlowProblems.ts`, `stepFlowEdits.ts`, `flowSources.ts` | The flow helpers. `stepFlow.ts`: the `CONDITION_OPERATORS` registry (the six comparisons in plain words), the limits (they mirror the backend's), `conditionSources`, `describeCondition` / `describeReview`, `reviewLoops` / `roundTotals` (which loops the engine follows and how many rounds each step may take: loops that cannot work or share a stage are dropped as the engine drops them). `stepFlowProblems.ts`: `conditionProblem` / `reviewProblem` in plain words (`SOURCE_CHECKS` is a registry like the engine's). `stepFlowEdits.ts`: editing renumbers steps and moves stages, and a condition names a step by number and a review a stage by number, so `withoutStep`, `followRenumbering` and `followNewStage` keep each pointing where it did (a condition whose step was removed is left looking at `step:0`, a step that does not exist, and the editor says so; nothing is moved onto another step or silently removed). `flowSources.ts` is their import-free leaf |
+| `PromptPlaceholders.tsx` | Under a prompt: `{input}`, `{feedback}` (a reviewer's feedback when work is sent back) and the declared `{name}` placeholders, plus a warning for a placeholder nothing fills |
 | `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise); the checklist groups tools by source, so an integration's tools sit under its name |
 | `StepRoleFields.tsx` | A step's title, its Intermediate / Output toggle and its expected output, shared by both editors |
-| `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side |
-| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished (or failed) node opens its output (or error). Stages slide in; during a run connectors pulse and running nodes carry a StarBorder. `NODE_STATUS_STYLES` holds each status's colours and word: Not run, Waiting, Running, Done, Failed, Stopped |
-| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`, which takes a followed run's steps for live statuses; `liveNodeStatus`) and the `OutputTarget` type |
-| `PipelineRunView.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (outputs, steps, stages, seconds — counted up once the run has ended, with a one-line `sr-only` summary); deliverables are grouped by stage. Given a followed run's `liveSteps` (and its `runKey`), nodes show each step's status, outputs appear as soon as they are saved, and "All steps" lists every step — a run in progress opens on it, a finished one on its outputs |
-| `StepProgressCard.tsx` | In "All steps", a step without an output: its status, live elapsed time and, for a failed step, the error |
+| `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side; each step shows the condition or review loop the planner gave it, editable like in the builder |
+| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished (or failed) node opens its output (or error). Stages slide in; during a run connectors pulse and running nodes carry a StarBorder. `NODE_STATUS_STYLES` holds each status's colours and word: Not run, Waiting, Running, Done, Failed, Stopped, Skipped (muted and dashed, with "Its condition was not met" on hover). A step with a condition carries an "Only if…" mark (its words on hover and in its accessible name), a reviewer a "Reviewer" mark, and a step a followed run redid a "Round 2 of 3" mark. The legend explains the marks that are on the diagram |
+| `LoopRail.tsx`, `graphLayout.ts` | The line that shows a reviewer sending work back: a row above the stages, from the reviewer's stage back to the stage it goes to, ending in an arrow into that stage with "Back here up to 2 times". It lines up with the columns because both read their widths from `graphLayout.ts` (stage columns have a fixed width), and it hides from assistive technology (the reviewer's node and the legend say the same in words). Drawn only for loops the engine would follow; it scrolls with the diagram on a phone |
+| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`, which takes a followed run's steps for live statuses and gives each node its condition, review, round and the most rounds it may take; a skipped node is never an output; `liveNodeStatus`) and the `OutputTarget` type |
+| `PipelineRunView.tsx`, `RunStats.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (`RunStats`: outputs, steps, stages, seconds — counted up once the run has ended, with a one-line `sr-only` summary); deliverables are grouped by stage, and a run whose output steps were all skipped says so instead of "No outputs yet". It provides the `RunFlowContext` its step cards read. Given a followed run's `liveSteps` (and its `runKey`), nodes show each step's status, outputs appear as soon as they are saved, and "All steps" lists every step — a run in progress opens on it, a finished one on its outputs |
+| `StepProgressCard.tsx` | In "All steps", a step without an output: its status, live elapsed time and, for a failed step, the error; for a skipped step "Skipped. Its condition was not met. It runs only if the previous result contains “blog”." |
+| `RunFlowContext.tsx`, `roundNotes.ts` | The pipeline a followed run executed, handed to the cards of its steps by context (`PipelineRunView` and the mission's deliverables provide it) so a skipped step can say what its condition was and a step what its loop allows; and the words of a loop's outcome (`roundLabel`, `reviewNote`: "Sent back 2 times, then accepted") |
 | `StepHeading.tsx` | Title row of a step's output card (name, model, Output badge) |
 | `RunResults.tsx`, `ToolCallTrace.tsx` | Every step's output grouped by stage, with called tool names and success/error statuses |
 | `OutputCard.tsx` | One output: rendered/raw toggle, copy, the input it saw, folding for long text |
 | `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
-| `stages.ts` | `groupByStage`, `nextStage`, `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
+| `stages.ts` | `groupByStage`, `nextStage`, `insertStep` (which keeps conditions and review loops pointing where they did when it renumbers steps or opens a stage), `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
+| `fieldStyles.ts` | The builder's field looks (`FIELD`, `INLINE_FIELD`, `SMALL_ACTION`) |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
 | `OpenInMissionLink.tsx` | On the builder's title, for a saved pipeline: "Open in mission view" (`/mission/<id>`); with unsaved edits it asks to save first instead |
 | `PipelineNav.tsx` | Switch between Pipeline, Auto Pipeline, Templates and Runs; the Runs tab carries an amber count (and the same in words for screen readers) while runs wait for the person to approve an action (`useWaitingRuns`) |
@@ -450,7 +405,7 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `useFollowedRun.ts`, `FollowedRunBar.tsx` | What the builder needs from that run: whether one is active, the run the diagram may show (`shown`, only a run of exactly the version on screen) and its duration; and its status bar with Stop, Resume and "Open in Runs", and a card for each action the run waits on, so it can be answered there |
 | `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
 | `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume onApprove onDecline busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, the cards of the actions it waits on, any `children` (e.g. its inputs), then the results. Pair it with `useRun` (`onApprove={live.approve}`, `onDecline={live.decline}`); without both, requests are shown but not answerable on that screen |
-| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, the running cost (`RunCost`), Stop / Resume (`ResumeControl`) and extra `actions`, an `aria-live` line, and why the run stopped or waits (the failed step and its error, "Spending limit reached." with the server's message, "You stopped this run", "The server restarted…", "This run is waiting for you…") |
+| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done" (a skipped step counts as done: "4 of 4 steps done (1 skipped)"), ticking elapsed time, the running cost (`RunCost`), Stop / Resume (`ResumeControl`) and extra `actions`, an `aria-live` line, and why the run stopped or waits (the failed step and its error, "Spending limit reached." with the server's message, "You stopped this run", "The server restarted…", "This run is waiting for you…") |
 | `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under its status bar (a polite `aria-live` count), each as an `ApprovalCard`: "Needs your OK", `Allow “Send email”?`, which step and agent role asks and from which integration, the tool's description, what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), the time left (ticking, `useNow`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "No answer counts as a decline". `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`) |
 | `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. `PipelineNav` shows it as a badge on the Runs tab, with the same count in words for screen readers |
 | `RunCost.tsx` | The run's cost in the status bar: `$0.0123` (its token counts a hover away, and read out), "$0.0123 or more" when part of it is unpriced, "Cost unknown for this model" when none is, next to "of $0.50 limit" when the run has a limit; nothing before an active run has used anything (or "Limit $0.50" if it has one), and "No usage recorded" for a finished run with none |
@@ -458,7 +413,7 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `runBudget.ts` | `limitReached(run)` (which limit a run is at; mirrors the server's rule, rounding slack included), `limitParts`, `suggestedLimit`, `limitBudget` and `limitProblem` for the resume form, and `BUDGET_ERROR_CODE` |
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
-| `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
+| `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount` (succeeded or skipped), and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen, conditions and review loops included |
 | `RunsHeader.tsx` | The header both views of the Runs screen share: brand, the pipeline sub-navigation, and two underline tabs, History (`/runs`) and Schedules (`/runs/schedules`, `aria-current` on the one shown), then a line of text. The sub-navigation is unchanged, so it still fits a phone |
 | `RunTriggerTag.tsx` | A small clock and "Scheduled" for a run a schedule started (`trigger === 'schedule'`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
 | `RunByline.tsx` | The line under a run's title in `RunDetail`: "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a scheduled run, the link only while the pipeline exists) |
@@ -628,6 +583,20 @@ addresses and what a tab remembers). `App.test.tsx` checks the nav order and the
 Missions route, `features/auth/LoginPage.test.tsx` the landing after sign-in,
 `features/pipelines/OpenInMissionLink.test.tsx` the builder's link and
 `core/hooks/useMediaQuery.test.tsx` the media-query hook.
+For conditions and review loops: `core/api/pipelines.test.ts` (older pipelines and plans read as
+having neither), `stepFlow.test.ts` (the operator registry, which sources a condition may
+use, the words for a condition and a review, which loops the engine follows and how
+many rounds each step may take), `stepFlowProblems.test.ts` and `stepFlowEdits.test.ts`
+(each refusal in plain words; removing a step, renumbering and a new stage keep
+every condition and review pointing where it did), `StepFlowFields.test.tsx` (folded
+until opened, the fields, stale choices kept, problems announced, a review offered
+from the second stage on), `PipelineGraph.test.tsx` and `pipelineGraph.test.ts` (the
+marks, the loop-back rail, legend, labels and the model behind them),
+`features/runs/LiveRunFlow.test.tsx` (skipped steps and their reason, the round
+chip, the reviewer's outcome, "No outputs" when the output steps were skipped, the
+header's "(1 skipped)"), `roundNotes.test.ts`, and the planned steps in
+`GeneratedSteps.test.tsx`; `StepDrawer.test.tsx` and `missionStorage.test.ts` cover
+the mission side.
 For schedules:
 `core/api/schedules.test.ts`, `features/schedules/scheduleDraft.test.ts` (words,
 ordinals, next-run text across zones, drafts and requests),

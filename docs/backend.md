@@ -125,182 +125,12 @@ Tests replace any of these with `app.dependency_overrides`.
 | `User` (`users`) | `username` (unique), `password_hash`, `created_at`, `llm_provider` (null = `LLM_PROVIDER`) | — |
 | `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
-| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
-| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `trigger`, `schedule_id` (FK, **set null** when the schedule is deleted), `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at` | `status` is a `RunStatus`, `trigger` a `RunTrigger` (`manual`, `schedule`, `chat`; `manual` for runs recorded before schedules); `""` error fields mean none; `steps` load ordered by `(stage, step_order)` |
-| `Schedule` (`schedules`) | `user_id` (FK, cascade), `pipeline_id` (FK, **cascade**: deleting a pipeline deletes its schedules), `frequency`, `hour`, `minute`, `weekday`, `day_of_month`, `timezone`, `input_text`, `input_values`, `enabled`, `next_run_at` (UTC, indexed; null while off), `last_error`, `created_at` | `frequency` is a `ScheduleFrequency` (`hourly`, `daily`, `weekdays`, `weekly`, `monthly`); `hour`/`minute` are wall-clock in `timezone` (an IANA name); `weekday` (0 = Monday) only for weekly and `day_of_month` only for monthly, `null` otherwise; `""` `last_error` means the latest time started |
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
+| `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model`, `condition`, `review` | **unique `(pipeline_id, order)`** |
+| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `trigger`, `schedule_id` (FK, **set null** when the schedule is deleted), `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at`, `max_cost_usd`, `max_tokens` | `status` is a `RunStatus`, `trigger` a `RunTrigger` (`manual`, `schedule`, `chat`; `manual` for runs recorded before schedules); `""` error fields mean none; the two limits are `NULL` for no limit; `steps` load ordered by `(stage, step_order)` |
+| `RunStep` (`run_steps`) | `run_id` (FK, cascade), `step_order`, `stage`, `title`, `model`, `status`, `is_output`, `input_used`, `output`, `tool_calls` (`[{"name","status"}]`), `error_code`, `error_detail`, `started_at`, `finished_at`, `input_tokens`, `output_tokens`, `cost_usd`, `rounds`, `verdict` | **unique `(run_id, step_order)`**; `status` is a `StepStatus`; the token columns start at `0` and `cost_usd` is `NULL` until a call with a known cost is added (`NULL` also means unknown); `rounds` is the review round the row is in (1 unless a review loop redid the step: the row then holds its newest round), `verdict` a reviewer's last verdict (`pass` or `revise`, `NULL` for any other step or none) |
 | `RunApproval` (`run_approvals`) | `run_id` (FK, cascade, indexed), `step_order`, `tool_name`, `tool_source` (an integration's name, `MCP` or `AIMIx`), `tool_description`, `arguments` (JSON object, long text values shortened), `arguments_truncated`, `status`, `created_at`, `expires_at`, `decided_at` | `status` is an `ApprovalStatus`; only `pending` changes, by compare-and-set; `Run.pending_approvals` is a read-only view of the pending ones |
-`Integration`
-(`integrations`)
-`user_id`
-(FK,
-cascade),
-`name`,
-`url`,
-`headers_encrypted`
-(one
-sealed
-JSON
-object),
-`header_hints`
-(JSON
-`{"name",
-"hint"}`
-list),
-`enabled`,
-`require_approval`,
-`created_at`
-**unique
-`(user_id,
-name)`**;
-`name`
-matches
-`INTEGRATION_NAME_PATTERN`;
-`""`
-means
-no
-headers;
-`require_approval`
-("Ask
-me
-before
-its
-tools
-act")
-is
-true
-unless
-switched
-off,
-also
-for
-rows
-that
-predate
-it
-⏎
-`Run`
-(`runs`)
-`user_id`
-(FK,
-cascade),
-`pipeline_id`
-(FK,
-**set
-null**
-when
-the
-pipeline
-is
-deleted),
-`pipeline_name`,
-`definition`
-(JSON
-snapshot
-of
-the
-pipeline
-it
-runs),
-`input_text`,
-`input_values`,
-`status`,
-`final_output`,
-`error_code`,
-`error_detail`,
-`created_at`,
-`started_at`,
-`finished_at`,
-`max_cost_usd`,
-`max_tokens`
-`status`
-is
-a
-`RunStatus`;
-`""`
-error
-fields
-mean
-none;
-the
-two
-limits
-are
-`NULL`
-for
-no
-limit;
-`steps`
-load
-ordered
-by
-`(stage,
-step_order)`
-⏎
-`RunStep`
-(`run_steps`)
-`run_id`
-(FK,
-cascade),
-`step_order`,
-`stage`,
-`title`,
-`model`,
-`status`,
-`is_output`,
-`input_used`,
-`output`,
-`tool_calls`
-(`[{"name","status"}]`),
-`error_code`,
-`error_detail`,
-`started_at`,
-`finished_at`,
-`input_tokens`,
-`output_tokens`,
-`cost_usd`
-**unique
-`(run_id,
-step_order)`**;
-`status`
-is
-a
-`StepStatus`;
-the
-token
-columns
-start
-at
-`0`
-and
-`cost_usd`
-is
-`NULL`
-until
-a
-call
-with
-a
-known
-cost
-is
-added
-(`NULL`
-also
-means
-unknown)
-⏎
+| `Integration` (`integrations`) | `user_id` (FK, cascade), `name`, `url`, `headers_encrypted` (one sealed JSON object), `header_hints` (JSON `{"name", "hint"}` list), `enabled`, `require_approval`, `created_at` | **unique `(user_id, name)`**; `name` matches `INTEGRATION_NAME_PATTERN`; `""` means no headers; `require_approval` ("Ask me before its tools act") is true unless switched off, also for rows that predate it |
+| `Schedule` (`schedules`) | `user_id` (FK, cascade), `pipeline_id` (FK, **cascade**: deleting a pipeline deletes its schedules), `frequency`, `hour`, `minute`, `weekday`, `day_of_month`, `timezone`, `input_text`, `input_values`, `enabled`, `next_run_at` (UTC, indexed; null while off), `last_error`, `created_at` | `frequency` is a `ScheduleFrequency` (`hourly`, `daily`, `weekdays`, `weekly`, `monthly`); `hour`/`minute` are wall-clock in `timezone` (an IANA name); `weekday` (0 = Monday) only for weekly and `day_of_month` only for monthly, `null` otherwise; `""` `last_error` means the latest time started |
 
 A step's usage columns are written **once per model call**, by the database
 (`SET x = x + n`, `repositories/runs.add_step_usage`), the moment the call
@@ -313,10 +143,12 @@ they are set when it starts and raised when it resumes.
 
 The run statuses live in one place, `models.py`: `RunStatus` (`queued`,
 `running`, `waiting`, `succeeded`, `failed`, `cancelled`, `interrupted`),
-`StepStatus` (`pending`, `running`, `succeeded`, `failed`, `cancelled`),
-`ApprovalStatus` (`pending`, `approved`, `declined`, `expired`), and the sets
-`ACTIVE_RUN_STATUSES` (queued, running, waiting) and `RESUMABLE_RUN_STATUSES`
-(failed, cancelled, interrupted). They are stored as their lowercase value in a
+`StepStatus` (`pending`, `running`, `succeeded`, `failed`, `cancelled`,
+`skipped`), `ApprovalStatus` (`pending`, `approved`, `declined`, `expired`), and
+the sets `ACTIVE_RUN_STATUSES` (queued, running, waiting),
+`RESUMABLE_RUN_STATUSES` (failed, cancelled, interrupted) and
+`COMPLETED_STEP_STATUSES` (succeeded, skipped: the steps a resume keeps). They
+are stored as their lowercase value in a
 `VARCHAR(16)` and read back as the enum. `waiting` is a running run with a tool
 call waiting for its owner's approval.
 
@@ -327,8 +159,16 @@ existing steps the original all-tools behavior. `Pipeline.inputs` is a JSON
 list of `{"name", "label", "description"}` objects — the named run inputs —
 and `expected_output` a step's deliverable (≤ 500 characters); existing rows
 get `[]` and `""`. The naming rule and limits for inputs are constants in
-`models.py` (`PIPELINE_INPUT_*`, `RESERVED_INPUT_NAME`). `db.Database` owns the engine
-and session factory. SQLite connections are allowed across threads (endpoints
+`models.py` (`PIPELINE_INPUT_*`, `RESERVED_INPUT_NAME`, `FEEDBACK_PLACEHOLDER`).
+`PipelineStep.condition` and `.review` are nullable JSON: `{"source",
+"operator", "value"}` and `{"send_back_to_stage", "max_rounds"}`, `NULL` for the
+plain step (every row that predates them). The rules are in
+`services/multiagent/conditions.py` and `reviews.py` (limits:
+`STEP_CONDITION_VALUE_MAX_LENGTH`, `STEP_REVIEW_MAX_ROUNDS`). `RunStep.rounds`
+(default 1) is the review round the row is in and `RunStep.verdict` a reviewer's
+last verdict (`pass`/`revise`, `NULL` for none): a step a review loop redoes
+updates its row in place, so the loop's position survives a restart in the rows
+themselves. `db.Database` owns the engine and session factory. SQLite connections are allowed across threads (endpoints
 run in a threadpool) and have foreign keys switched on; `sqlite://` uses one
 shared in-memory connection.
 
@@ -345,59 +185,7 @@ shared in-memory connection.
 | `files.py` | `GET`/`POST /files`, `GET`/`DELETE /files/{path}` (download is a `FileResponse`, always an attachment) | `files.py`: `FileOut`, `FileListOut` |
 | `integrations.py` | `GET`/`POST /integrations`, `PATCH`/`DELETE /integrations/{id}`, `POST /integrations/{id}/test` | `integrations.py`: `IntegrationIn`, `IntegrationPatch`, `HeaderIn`, `IntegrationOut` (with `require_approval`), `HeaderOut`, `IntegrationTestOut`, `IntegrationToolOut` |
 | `pipelines.py` | list/create, get/put/patch/delete, `run` (waits for a recorded run; kept for compatibility), `generate`, `revise` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse`, `ReviseRequest` (`PipelineDraftIn`, `DraftStepIn`), `ReviseResponse`, `PipelineChangeOut` |
-|
-`runs.py`
-|
-`POST
-/pipelines/{id}/runs`
-(202),
-`GET
-/runs`
-(paged;
-filters
-`pipeline_id`
-and
-`status`),
-`GET
-/runs/{id}`,
-`POST
-/runs/{id}/cancel`,
-`POST
-/runs/{id}/resume`
-(optional
-body:
-new
-limits),
-`DELETE
-/runs/{id}`
-|
-`runs.py`:
-`RunListQuery`,
-`RunOut`
-(with
-`pending_approvals`),
-`RunSummaryOut`
-(limits
-and
-a
-computed
-`usage`),
-`RunStepOut`
-(token
-and
-cost
-fields),
-`RunDefinitionOut`,
-`RunPageOut`,
-`ResumeRequest`
-(+
-`RunRequest`
-for
-the
-start
-body)
-|
-⏎
+| `runs.py` | `POST /pipelines/{id}/runs` (202), `GET /runs` (paged; filters `pipeline_id` and `status`), `GET /runs/{id}`, `POST /runs/{id}/cancel`, `POST /runs/{id}/resume` (optional body: new limits), `DELETE /runs/{id}` | `runs.py`: `RunListQuery`, `RunOut` (with `pending_approvals`), `RunSummaryOut` (limits and a computed `usage`), `RunStepOut` (token and cost fields), `RunDefinitionOut`, `RunPageOut`, `ResumeRequest` (+ `RunRequest` for the start body) |
 | `schedules.py` | `GET`/`POST /schedules`, `PATCH`/`DELETE /schedules/{id}`, `POST /schedules/{id}/run` (202, a run), `POST /schedules/preview` (declared before the id routes) | `schedules.py`: `ScheduleIn` (`ScheduleTimingIn` + `RunRequest` + `pipeline_id`), `SchedulePatch`, `ScheduleTimingIn`, `ScheduleListQuery`, `ScheduleOut`, `LastRunOut`, `SchedulePreviewOut` |
 | `usage.py` | `GET /usage?days=30` | `usage.py`: `UsageQuery` (`days` 1–366), `UsageReportOut`, `PipelineUsageOut`, `UsageOut`; `BudgetIn` (the optional `max_cost_usd` and `max_tokens` that `RunRequest` and `ResumeRequest` share) |
 | `approvals.py` | `POST /runs/{id}/approvals/{approval_id}/approve`, `POST /runs/{id}/approvals/{approval_id}/decline` (each answers with the run) | `approvals.py`: `RunApprovalOut` (listed in `RunOut.pending_approvals`) |
@@ -409,7 +197,12 @@ empty), `ModelId` (must be in some provider's catalogue), `ProviderName` and
 gets `stage = order`. A pipeline needs at least one step, and step orders must
 be unique. Step `role` is optional (up to 100 characters); `allowed_tools` is
 optional and, when explicit, contains unique, non-blank names. Tool availability
-is checked when the agent runs. `PipelineInputField` validates each named
+is checked when the agent runs. A step's `condition` and `review` are
+`StepConditionIn` (stripped, and without a value its operator ignores) and
+`StepReviewIn`; whether they can work in the pipeline is not a field's business, so
+`endpoints/pipelines._changes` asks `services/pipeline_flow.ensure_valid_flow` before
+anything is saved (create, replace and patch; a patch is checked against what it
+keeps), and the 400 names the step. `PipelineInputField` validates each named
 input through `services/pipeline_inputs.input_name_error`, the rule the planner
 also applies; `RunRequest` only trims `input` and `inputs`, because which one a
 run needs depends on the pipeline. `PipelineDraftIn`, the draft a revision
@@ -422,93 +215,7 @@ may be blank; the revise `instruction` is limited by
 | Module | Functions |
 |---|---|
 | `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename, redeclare the inputs and/or replace every step in one transaction), `delete`. Writes take a `PipelineChanges` value whose `None` fields are kept. |
-|
-`runs.py`
-|
-`create`
-(run
-+
-its
-step
-rows),
-`get_owned`
-(or
-`NotFound`),
-`load`
-(both
-with
-steps
-and
-pending
-approvals),
-`page_for_user`
-(newest
-first,
-summary
-columns
-only,
-total;
-optional
-pipeline
-and
-status
-filters),
-and
-the
-compare-and-set
-writes
-`set_status`,
-`set_step`,
-`end`
-(final
-status
-+
-settling
-running
-steps
-and
-expiring
-pending
-approvals),
-`reopen`
-(resume,
-optionally
-setting
-new
-limits;
-a
-step
-keeps
-its
-usage),
-`add_step_usage`
-(the
-atomic
-per-call
-increment),
-plus
-`delete`
-and
-`interrupt_active`
-(startup
-recovery
-of
-queued,
-running
-and
-waiting
-runs;
-a
-database
-without
-the
-runs
-table
-has
-none)
-|
-
-
+| `runs.py` | `create` (run + its step rows), `get_owned` (or `NotFound`), `load` (both with steps and pending approvals), `page_for_user` (newest first, summary columns only, total; optional pipeline and status filters), and the compare-and-set writes `set_status`, `set_step`, `end` (final status + settling running steps and expiring pending approvals), `reopen` (resume, optionally setting new limits; every step that neither succeeded nor was skipped goes back to `unstarted_step()`, and a step keeps its usage and its review round), `add_step_usage` (the atomic per-call increment), plus `delete` and `interrupt_active` (startup recovery of queued, running and waiting runs; a database without the runs table has none) |
 | `approvals.py` | `ask` (save a pending request and move its run to `waiting` in one transaction; nothing when the run is no longer executing), `get_in_run` (or `NotFound`), `status_of`, `settle` (compare-and-set from `pending`; the run is `running` again once nothing else of it is pending) and `expire_pending` (as runs end) |
 | `bulk.py` | `changed`: the bulk-UPDATE row count the compare-and-set writes share |
 | `usage.py` | `steps_since(session, user, since)`: the usage columns of the user's steps in runs created since a moment, oldest run first — only the user's own runs are ever read. The report's grouping is `services/usage.py`. |
@@ -524,83 +231,31 @@ Each write commits its own transaction.
 
 | Module | Responsibility |
 |---|---|
-| `pipelines.py` | `prepare_run` (no steps → 400, snapshot through `multiagent/mapper.py`, bind the run's inputs — before anything is saved), `run` (in-process and unrecorded, for tests and one-off tools), and `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs). `ask_planner` is the one call-and-parse path that generation and revision share. |
+| `pipelines.py` | `prepare_run` (no steps → 400, snapshot through `multiagent/mapper.py`, the snapshot's conditions and review loops checked again, bind the run's inputs — before anything is saved), `run` (in-process and unrecorded, for tests and one-off tools), and `generate` + `parse_plan` (tool-aware planner that also sanitises inputs and expected outputs, and sets aside every condition and review loop that cannot work: `sanitise_step` reads each step's two fields, `_drop_unusable_flow` applies the save-time checks to the whole plan). `ask_planner` is the one call-and-parse path that generation and revision share. |
+| `pipeline_flow.py` | Whether a pipeline's conditions and review loops can work, as one pure function: `flow_problems(inputs, steps)` lists every `FlowProblem` (step order, field, a plain sentence naming the step). `ensure_valid` raises `ValidationFailed` (400) with them all; `ensure_valid_flow(changes, current)` is the save check (a change that leaves out the steps or the inputs keeps `current`'s) and `ensure_valid_spec` the run-start check. The planner's sanitiser drops what it reports instead of raising. |
 | `runs.py` | `RunService`: `start` (save the run queued with its limits, a limit left unset taking the server's default, and hand it to the executor; a `RunStart` carries the `trigger` and `schedule_id`, and `launcher` marks chat runs `chat`), `run_to_end` / `run_saved_to_end` (start and wait: the compatibility endpoint and the chat tool), `resume` (optionally under new limits; refused with `BudgetExceeded` when the run is still at one), `cancel`, `delete` (409 `Conflict` while active), `answer_approval` (the owner's approve or decline, through `approvals/decisions`), and the job `_execute` (one attempt on the executor's loop, recording `succeeded`, `failed` or `interrupted`; it builds the run's `RunMeter` from the run's limits and what earlier attempts spent, and its `RunControl` carries the run id, so each step's task knows where it runs). `launcher()` binds it to one user for the chat agent; `interrupt_abandoned_runs()` runs at startup. Logs `run.cancelled`, `run.resumed`, `run.interrupted_on_startup` — never inputs or outputs. |
 | `approvals/` | Approval gates, see [architecture.md](architecture.md#approval-gates). `policy.py` (`ApprovalPolicy`, `approval_policy_for`: the one place that says which tool calls ask first), `guard.py` (`guard_tools` applies the policy to an agent's tools: gated behind the gate, or left out where nobody can be asked; `run_gate`), `middleware.py` (`ApprovalMiddleware`, the LangChain `awrap_tool_call` decorator, and the text a declined or expired call gives the agent), `gate.py` (the `ApprovalGate` port, `RunApprovalGate`, `ApprovalLimits`; polls the database between `asyncio.sleep` calls), `decisions.py` (`answer`, `settle`, `ApprovalAnswer`: idempotent answers, a 409 for the other answer or an expired request), `preview.py` (`preview_arguments`). Logs `approval.requested` and `approval.decided` with ids, step, tool and outcome — never the arguments. |
 | `run_executor.py` | `RunExecutor` port (`submit(key, job) -> Future`, `cancel(key)`, `shutdown()`) and `BackgroundRunExecutor`: one asyncio loop on a daemon thread, started by the first job, at most `RUN_MAX_CONCURRENT` jobs at once. |
-|
-`run_recorder.py`
-|
-`RunRecorder`,
-the
-`StepObserver`
-that
-writes
-each
-step
-event
-in
-its
-own
-short
-transaction
-(`STEP_CHANGES`
-registry:
-event
-kind
-→
-expected
-statuses
-+
-columns),
-`record_usage`
-(one
-finished
-model
-call's
-usage,
-added
-to
-its
-step
-at
-once),
-and
-the
-run's
-`begin`
-/
-`end`
-with
-the
-endings
-`succeeded`,
-`failed`,
-`interrupted`,
-`cancelled`.
-Logs
-`run.started`
-and
-`run.finished`
-with
-status
-and
-duration.
-|
-⏎
+| `run_recorder.py` | `RunRecorder`, the `StepObserver` that writes each step event in its own short transaction (`STEP_CHANGES` registry: event kind → expected statuses + columns; only a review loop's `RESTARTED` takes a `succeeded` or `skipped` step back to `running`, in its own row, and `SKIPPED` ends a step that never ran), `record_usage` (one finished model call's usage, added to its step at once), and the run's `begin` / `end` with the endings `succeeded`, `failed`, `interrupted`, `cancelled`. Logs `run.started` and `run.finished` with status and duration. |
 | `schedules/` | Scheduled runs (see [architecture.md](architecture.md#scheduled-runs)). `timing.py`: the pure rules, `Timing`, `FREQUENCIES` (one rule per preset: Strategy + Registry), `checked` (the one validation of a timing), `next_run_after(timing, after)` and `time_zone_error` — `zoneinfo` only, no clock, no database. `service.py`: the use cases behind the endpoints (`ScheduleAccess`, `ScheduleDraft`, `ScheduleEdit`/`TimingEdit`, `ScheduleView`; `create`, `update`, `delete`, `list_views`, `preview`, `run_now`), which check the pipeline's inputs with `prepare_run` before saving. `scheduler.py`: `Scheduler.tick()` / `fire()` (claim, then `RunService.start` with the owner's `ProfileAgents`, recording `last_error`), `SchedulerLoop` (the daemon thread) and `IdleScheduler` (when `SCHEDULER_ENABLED=false`), built by `build_scheduler`. Logs `schedule.created`, `schedule.updated`, `schedule.deleted`, `schedule.run_now`, `schedule.fired` (schedule, run and slot), `schedule.start_failed` (the error code), `schedule.fire_crashed` and `scheduler.started`/`stopped`/`tick_failed` — never inputs or outputs. |
 | `run_budget.py` | A run's spending limits, enforced while it executes. `RunBudget` (cost and token limits, `None` = none; `or_else` fills an unset limit from a fallback), `default_budget(settings)`, `limit_reached` over the `LIMITS` registry (one entry per kind of limit; a rounding slack of 1e-9 USD makes a sum a hair under a limit count as reached), `ensure_room` (resume refuses a run still at a limit), `format_usd` (words every amount in the server's messages) and `RunMeter`: the running total of one execution, shared by its steps under a lock. `RunMeter.for_step(order)` is the `UsageMeter` a step's agent reports to: `before_call` raises `BudgetExceeded` once a limit is reached, `after_call` adds the call to the total and saves it to its step. A call that has finished is never thrown away. |
 | `usage.py` | `total_usage(steps)` (a run's totals from its step rows or schemas) and `usage_report(session, user, days)`: the totals, the run count and the per-pipeline breakdown (costliest first; a deleted pipeline's runs group under their name) of `GET /usage`. |
 | `pipeline_revision.py` | `revise`: applies one instruction to a draft through the planner (`prompts.pipeline_revision_prompt` → `ask_planner`), keeps the draft's name when the planner gives none, and returns a `Revision` (the whole sanitised pipeline and its changes). Saves nothing. |
-| `pipeline_changes.py` | `diff_pipelines`: the pure change list a revision is reviewed with. Steps pair by content, title, prompt, then position (`STEP_MATCHERS`); a stage change is reported only when a step really runs at another point. |
+| `pipeline_changes.py` | `diff_pipelines`: the pure change list a revision is reviewed with. Steps pair by content, title, prompt, then position (`STEP_MATCHERS`); a stage change is reported only when a step really runs at another point; a step's `condition` and `review` are fields of the change like any other. |
 | `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates, and appends each omission a reader reports, such as skipped pages; `extraction_limits(settings)`, the limits for the endpoint and for agents reading workspace files alike; `megabytes()` for limit messages), `readers.py` (the `READERS` registry; plain text, and HTML via `toolbox/html_text.py`; every third-party parser is registered through `guarded`, which re-raises anything it throws as `DocumentUnreadable`), `pdf.py` (pypdf text layer; pages without one are rendered with PDFium through pypdfium2, under one process-wide lock because PDFium is not thread-safe), `images.py` (Pillow with only the PNG, JPEG, WebP, TIFF, BMP and GIF decoders, a pixel cap checked from each frame's header, TIFF pages counted by seeking, transparency onto white, 16-bit gray scaled, EXIF rotation), `office.py` (Word via python-docx, Excel via openpyxl in read-only mode, reading a sheet's real size rather than its declared one, PowerPoint via python-pptx with a `singledispatch` registry per shape kind; all three behind the unpacked-size zip guard), `scans.py` (`PageOcr`: the per-document OCR page cap, a page OCR times out or fails on skipped rather than the document, and the `[Not read: ...]` sentences), `ocr.py` (`TesseractOcr`, the adapter over pytesseract, and `ocr_engine`, which `create_app()` calls once and which returns `None`, logging why, when OCR is off or the binary or a language is missing), and `contracts.py` (`ExtractionLimits`, `ReadContext`, `ReadResult`, `ExtractedDocument`, and the `OcrEngine` port). Stateless: nothing is stored. A new format is one reader and one registry entry. |
-| `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
+| `pipeline_inputs.py` | Named run inputs: `input_name_error` (the naming rule; `input` and `feedback`, the names the engine fills itself, are `RESERVED_NAMES`) and `bind_run_inputs`, which checks a run's text or values against the declared inputs and builds the first stage's input — before any agent starts. |
 | `templates/` | Mission templates (Registry): `contracts.py` (frozen `MissionTemplate` and `TemplateStep`, inputs as the shared `InputField`; templates never name a model), `review.py` (`Review`, the builder of the reviewer step every template ends with), one module per theme (`research.py`, `documents.py`, `data.py`, `marketing.py`, `launch.py`), `registry.py` (`CATALOGUE` in gallery order, `get_template` or `NotFound`) and `use.py` (`use_template`: builds the steps through `pipelines.sanitise_step`, the planner's sanitiser, so each step gets the owner's default model and only the tools they have, then saves through the repository). A new template is one entry in a theme module. |
-| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, the async `StepAgent` protocol, and the observer port: `StepEventKind` (started, succeeded, failed, cancelled), `StepEvent`, `StepObserver`, `SILENT_OBSERVER` and `RunControl` (observer, results already completed, and `meter`: step order → the `UsageMeter` handed to that step's agent). `StepResult.usage` carries each step's total to observers and waiting callers. |
-| `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution; `spec_to_json` / `spec_from_json` store a run's snapshot. |
-| `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step, concurrent nodes within a stage, a barrier/join before the next stage, and result ordering by saved step order. Each node reports its step to the run's observer, and returns a completed step's saved result without running its agent (resume). `output_orders` decides which steps are outputs. The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
+| `multiagent/contracts.py` | Immutable `PipelineSpec` / `StepSpec` / `InputField` snapshots, `RunInputs`, run-result data, the async `StepAgent` protocol, and the observer port: `StepEventKind` (started, restarted, succeeded, failed, cancelled, skipped), `StepEvent` (with the review `round`), `StepObserver`, `SILENT_OBSERVER` and `RunControl` (observer, results already completed, `meter`: step order → the `UsageMeter` handed to that step's agent, and `rounds`: the review round each saved row was last in). `StepSpec` also holds the step's `condition` and `review`; `StepResult` its `rounds`, `skipped` and `verdict`, and `usage`, each step's total for observers and waiting callers. |
+| `multiagent/mapper.py` | Copies loaded ORM pipeline and step fields into graph contracts before concurrent execution; `spec_to_json` / `spec_from_json` store a run's snapshot (a snapshot without `condition` or `review`, as older runs have, means none; malformed values read as none). |
+| `multiagent/conditions.py` | Conditional steps, pure: `StepCondition`, the `CONDITION_OPERATORS` registry (`contains`, `not_contains`, `equals`, `not_equals`, `is_empty`, `not_empty`; both sides trimmed and case-insensitive) and the `CONDITION_SOURCES` registry (`previous_output`, `input:<name>`, `step:<order>`), `condition_holds` (an operator or source it does not know never holds), `shape_problem` / `condition_problem` (why a condition cannot be saved, with the pipeline's `ConditionScope`), `tidy` and `condition_from_data`. A new operator or kind of source is one registry entry. |
+| `multiagent/reviews.py` | Review loops, pure: `Verdict` and the `VERDICTS` registry (the word a reviewer writes and whether it sends the work back), `read_verdict` (the last line holding only `VERDICT: PASS`/`REVISE`, in any case, with Markdown dressing allowed, taken out of the text), `StepReview`, `ReviewSpan` / `review_spans` / `overlapping` (the stages a loop covers; loops may not share one), `review_problem` / `rounds_problem` and `review_from_data`. |
+| `multiagent/state.py` | What the graph carries: `GraphState` (the stage's input, the run's values, the newest result of each step, what each stage was handed, and each loop's `LoopState`: times sent back and the last feedback). |
+| `multiagent/loops.py` | The review loops in the graph: `find_loops` (loops that cannot work or share a stage are ignored and logged, so a run is bounded whatever the data holds), `initial_loops` (a resumed run's loops, read from the rows), `recursion_limit` (grows with the rounds a loop may add), and `add_loop`: a conditional edge from the reviewer's join to either the next stage or a "back" node that starts the target stage over with its original input and the reviewer's feedback. Logs `pipeline.review_sent_back` and `pipeline.review_accepted`. |
+| `multiagent/nodes.py` | The graph's nodes. `StepNode` decides for its step: a result saved for this very round is reused (resume), a condition that does not hold skips it (event `SKIPPED`), otherwise its agent runs (`STARTED`, or `RESTARTED` when the step already finished in an earlier round), a reviewer's verdict is read from its answer, and the step's prompt gets the feedback (`prompts.fill_prompt`). `join_node` merges a stage's outputs, leaving out skipped steps. |
+| `multiagent/graph.py` | LangGraph `StateGraph`: one agent node per saved step (`nodes.py`), concurrent nodes within a stage, a barrier/join before the next stage, the review loops' edges (`loops.py`), and result ordering by saved step order. `output_orders` decides which steps are outputs (a skipped one never counts). The concurrency cap comes from `PIPELINE_MAX_PARALLEL_STEPS`; this module logs `pipeline.run`. |
 | `multiagent/step_agent.py` | User-bound LangGraph step agent: selected model, role, native/MCP tools, final text, and tool call metadata. It wraps its chat model with `llm.usage.metered`, so every model call of the loop is counted (`AgentOutcome.usage` is their sum), priced from the provider's report or the model's catalogue entry (`services/llm.model_info`), and offered to the task's meter first, which may refuse it. It builds the step's approval policy and gate (`approvals/`) and passes the gate's middleware to `create_agent`. Its two optional collaborators, the catalogue entry that prices its calls and the approval gate, travel together as `StepServices`. |
-| `prompts.py` | `step_prompt` (fills `{input}` and `{name}` in one pass), `merge_stage_outputs`, `merge_input_values`, `pipeline_generation_prompt` and `pipeline_revision_prompt` (both built on `PIPELINE_PLANNER_GUIDE`; the revision fences the draft and the instruction as data), `step_agent_system_prompt` (role, expected output, tool guidance). |
+| `prompts.py` | `fill_prompt` (fills `{input}`, `{name}` and, in a review round, `{feedback}` in one pass; `step_prompt` is the same without feedback) over `PromptFills` and `Feedback`, `merge_stage_outputs`, `merge_input_values`, `pipeline_generation_prompt` and `pipeline_revision_prompt` (both built on `PIPELINE_PLANNER_GUIDE`; the revision fences the draft and the instruction as data), `step_agent_system_prompt` (role, expected output, tool guidance, and for a reviewer the verdict rule). |
+| `flow_prompts.py` | The text of the flow features, beside `prompts.py`: what the planner is told about `condition` and `review` (generation and revision), what a reviewer is asked (`REVIEWER_RULE`) and the feedback block the steps it sends work back to receive. |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
 | `agent.py` | Builds and streams the chat-only LangGraph agent. |
 | `agent_runtime.py` | Shared chat/pipeline tool policy (`AgentToolset` carries the `ApprovalPolicy`), limits, and third-party failure translation. |
@@ -690,7 +345,13 @@ Add columns to a table whose rows cascade (`runs`, `pipelines`) in place, with
 in a batch, and with foreign keys on, dropping the old one deletes its children
 (every run step). Revision `d51cc5c2111e` (run usage and limits) does so, and
 `test_usage_migration_keeps_existing_runs_and_steps_and_starts_them_at_zero`
-fails on the batch version.
+fails on the batch version. Revision `bcef76dc923f` (conditions, review loops and
+rounds) does the same for `pipeline_steps.condition` / `.review` and
+`run_steps.rounds` / `.verdict`; its downgrade turns a `skipped` step into a
+`succeeded` one with no output (the older code does not know the status), and
+`tests/flow/test_migration.py` runs both directions on a database that holds
+pipelines, runs, steps and an approval. The `skipped` status needs no migration:
+statuses are plain `VARCHAR(16)` without a CHECK constraint.
 
 ## `llm/` — provider layer
 
@@ -711,6 +372,7 @@ so tests can never reach a real LLM.
 | `fake_provider`, `use_provider(app, provider)` | Override the planner's provider dependency |
 | `use_pipeline_generator(app, generator)` | Override the pipeline step agent dependency |
 | `InlineRunExecutor`, `use_inline_runs(app)` | Runs execute to their end inside the request; the `app` fixture installs it, so API tests see finished runs. `test_runs_service.py` uses the real background executor over a file database |
+| `flow/fakes.py`, `flow/support.py`, `flow/conftest.py` | The kit of the conditional-step and review-loop tests (their own package, `tests/flow/`): `step`, `spec`, `when` and `review_to` build snapshot steps in one line; `ScriptedAgent` answers each role from a script (one answer per run of the step, the last repeating), can fail or hold a chosen run of a step, and reports a usage to its meter; `RecordingObserver`; `run_flow` runs a snapshot in this process. `support.py` saves pipelines (`review_team`: research → writer → reviewer, optionally a publisher) and reads rows; the fixtures run the real background executor over a file database |
 | `usage_fakes.py`: `UsageAgent`, `ModelCall`, `staged_pipeline` | A step agent whose model calls report to the task's meter as the real one does (n calls per role, each in flight while parallel steps run; `EXACT_COST` adds up exactly in binary floating point), and the pipeline and wait helpers the usage tests share |
 | `FakeAgent`, `use_agent(app, agent)` | Override the chat agent dependency |
 | `schedules/support.py`, `schedules/conftest.py` | The schedules tests' kit (their own package, `tests/schedules/`): `Clock`, a clock the test sets (the `clock` fixture installs it as `utcnow`, so every request's "now" is its); fake owner agents `StaticAgents`, `FlakyAgents` (fails like an account without a key) and `BrokenAgents` (hits a bug); `scheduler(app, agents, clock)`, a `Scheduler` over the inline executor; builders (`new_schedule`, `create_schedule`, `body`, `listing`), time helpers (`utc`, `when`, `chain`, `local`) and the `api`, `pipeline` and `stranger` fixtures |
@@ -755,6 +417,11 @@ so tests can never reach a real LLM.
 | `test_run_budget.py` | Limit checks and messages, the shared meter under thread contention (no lost or doubled call), defaults, `ensure_room` |
 | `test_runs_budget.py` | Usage and limits on background runs: per-step recording, a failed or stopped step keeping its spend, the stop at a limit with parallel steps (checked call by call against what the agents reported), token limits, resume under a higher limit and the refusal under the same one, the server default |
 | `test_usage_api.py` | Usage in run payloads, limits on both start routes, resume with a limit, the server default over HTTP, and `GET /usage` (totals, per pipeline, period, ownership, deleted pipelines, validation) |
+| `flow/test_conditions.py` / `flow/test_reviews.py` | The pure rules: every operator and source with odd spacing and case, what makes a condition unusable (and where), every shape of verdict line (spacing, case, Markdown, not last, two, none, near misses), the stages a loop covers and which loops overlap |
+| `flow/test_skipping.py` / `flow/test_loops.py` | The graph over scripted agents: skipped steps (the stage merge, an all-skipped stage, the last stage, never an output), REVISE then PASS, rounds running out, no verdict, feedback reaching every step of the target stage (and `{feedback}` placed by hand), the way back to the first stage, two loops, the longest loop within the step limit, a condition judged again each round, a stop mid-round |
+| `flow/test_loop_runs.py` / `flow/test_loop_resume.py` / `flow/test_skipped_runs.py` | Recorded runs on the real executor: rows in place with rounds and verdict, usage adding up over rounds, a spending limit and an approval inside a round, a stop mid-loop; resume at every position (mid-round, a failed step, between two rounds, a reviewer's round, after a finished or exhausted loop) and a kept skip |
+| `flow/test_recorder_events.py` / `flow/test_snapshots.py` / `flow/test_migration.py` | Which statuses each step event may follow; snapshots with, without and with malformed flow fields, and resuming a run saved before them; the migration up and down on populated data |
+| `flow/test_flow_api.py` / `flow/test_flow_run_api.py` / `flow/test_planner.py` / `flow/test_prompts.py` / `flow/test_revise_flow.py` | The plain 400s of a save (create, replace, patch), runs and the legacy results over HTTP, the planner's sanitiser, the reviewer and feedback prompts, and the revise diff |
 | `test_multiagent_usage.py` | The graph carries each step's usage to the observer and the run result, and hands each step its meter |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_llm_retry.py` | The retry policy: retried and failing statuses, connection errors, timeouts, backoff, `Retry-After`, logging, streams |
