@@ -18,13 +18,15 @@ from sqlalchemy import CursorResult, Select, func, inspect, select, update
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from api.exceptions import NotFound
-from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, RunStep, StepStatus, User
+from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, RunStep, RunTrigger, StepStatus, User
 
 #: What a run summary needs; the long texts (definition, inputs, outputs) stay unloaded.
 SUMMARY_COLUMNS = (
     Run.id,
     Run.pipeline_id,
     Run.pipeline_name,
+    Run.trigger,
+    Run.schedule_id,
     Run.status,
     Run.error_code,
     Run.error_detail,
@@ -58,6 +60,8 @@ class NewRun:
     input_text: str
     input_values: dict[str, str]
     steps: list[dict[str, Any]]
+    trigger: RunTrigger = RunTrigger.MANUAL
+    schedule_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,8 @@ def create(session: Session, user: User, new: NewRun) -> Run:
         definition=new.definition,
         input_text=new.input_text,
         input_values=new.input_values,
+        trigger=new.trigger,
+        schedule_id=new.schedule_id,
         status=RunStatus.QUEUED,
         steps=[RunStep(**_unstarted_step(), **step) for step in new.steps],
     )

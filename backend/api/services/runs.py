@@ -18,7 +18,7 @@ import logging
 from collections.abc import Callable, Mapping
 from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import Literal, cast
 
@@ -30,6 +30,7 @@ from api.models import (
     Pipeline,
     Run,
     RunStep,
+    RunTrigger,
     StepStatus,
     User,
 )
@@ -57,10 +58,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RunStart:
-    """What a run is started with: free text, or a value per named input."""
+    """What a run is started with: free text, or a value per named input; and
+    what started it (``schedule_id`` names the schedule when one did)."""
 
     text: str = ""
     values: Mapping[str, str] = field(default_factory=dict)
+    trigger: RunTrigger = RunTrigger.MANUAL
+    schedule_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,8 @@ def _new_run(pipeline_id: int | None, prepared: PreparedRun, start: RunStart) ->
         definition=spec_to_json(spec),
         input_text=start.text,
         input_values=dict(start.values),
+        trigger=start.trigger,
+        schedule_id=start.schedule_id,
         steps=[
             {
                 "step_order": step.order,
@@ -265,8 +271,11 @@ class RunService:
 def launcher(
     service: RunService, user: User, agents: Callable[[], StepAgent]
 ) -> Callable[[int, RunStart], RunResult]:
-    """``run_saved_to_end`` bound to one user, for the chat agent's run_pipeline tool."""
-    return lambda pipeline_id, start: service.run_saved_to_end(user, pipeline_id, start, agents())
+    """``run_saved_to_end`` bound to one user, for the chat agent's run_pipeline
+    tool; its runs are marked as started from chat."""
+    return lambda pipeline_id, start: service.run_saved_to_end(
+        user, pipeline_id, replace(start, trigger=RunTrigger.CHAT), agents()
+    )
 
 
 def interrupt_abandoned_runs(database: Database) -> int:

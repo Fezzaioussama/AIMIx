@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from api.models import RunStatus, StepStatus
+from api.models import RunStatus, RunTrigger, StepStatus
 from api.schemas.common import UtcDateTime
 from api.schemas.pipelines import PipelineInputField, StepDefinitionOut, ToolCallOut
 
@@ -71,6 +71,9 @@ class RunSummaryOut(_Failure):
     id: int
     pipeline_id: int | None
     pipeline_name: str
+    #: What started it; ``schedule_id`` is null once that schedule is deleted.
+    trigger: RunTrigger
+    schedule_id: int | None
     status: RunStatus
     created_at: UtcDateTime
     started_at: UtcDateTime | None

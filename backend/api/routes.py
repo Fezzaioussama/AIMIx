@@ -21,6 +21,7 @@ from api.endpoints import (
     models,
     pipelines,
     runs,
+    schedules,
     templates,
 )
 
@@ -39,6 +40,7 @@ PROTECTED_ROUTERS = (
     integrations.router,
     files.router,
     runs.router,
+    schedules.router,
 )
 
 

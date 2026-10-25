@@ -32,6 +32,8 @@ INTEGRATION_NAME_MAX_LENGTH = 31
 INTEGRATION_URL_MAX_LENGTH = 2048
 STATUS_MAX_LENGTH = 16
 ERROR_CODE_MAX_LENGTH = 64
+#: Long enough for any IANA time zone name ("America/Argentina/ComodRivadavia").
+TIMEZONE_MAX_LENGTH = 64
 
 
 def _utcnow() -> datetime:
@@ -218,6 +220,15 @@ class StepStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class RunTrigger(str, Enum):
+    """What started a run: its owner (the builder, the Runs screen or the API),
+    one of their schedules, or the chat agent's run_pipeline tool."""
+
+    MANUAL = "manual"
+    SCHEDULE = "schedule"
+    CHAT = "chat"
+
+
 def _status_type(statuses: type[Enum]) -> SQLEnum:
     """Stored as the lowercase value in a plain string column, read back as the enum."""
     return SQLEnum(
@@ -250,6 +261,13 @@ class Run(Base):
     definition: Mapped[dict[str, Any]] = mapped_column(JSON)
     input_text: Mapped[str] = mapped_column(Text, default="")
     input_values: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    #: ``schedule_id`` is the schedule that started it, until that is deleted.
+    trigger: Mapped[RunTrigger] = mapped_column(
+        _status_type(RunTrigger), default=RunTrigger.MANUAL
+    )
+    schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schedules.id", ondelete="SET NULL"), index=True
+    )
     status: Mapped[RunStatus] = mapped_column(_status_type(RunStatus), default=RunStatus.QUEUED)
     final_output: Mapped[str] = mapped_column(Text, default="")
     error_code: Mapped[str] = mapped_column(String(ERROR_CODE_MAX_LENGTH), default="")
@@ -292,3 +310,50 @@ class RunStep(Base):
     finished_at: Mapped[datetime | None]
 
     run: Mapped[Run] = relationship(back_populates="steps")
+
+
+class ScheduleFrequency(str, Enum):
+    """How often a schedule runs; hourly is the most often. What each preset
+    means is in ``services/schedules/timing.FREQUENCIES``."""
+
+    HOURLY = "hourly"
+    DAILY = "daily"
+    WEEKDAYS = "weekdays"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class Schedule(Base):
+    """Starts runs of one of its owner's pipelines on its own, at a preset frequency.
+
+    ``hour`` and ``minute`` are a wall-clock time in ``timezone`` (an IANA
+    name), so a schedule keeps its local time across daylight-saving changes;
+    an hourly one uses the minute only. ``weekday`` (0 = Monday) is set for a
+    weekly schedule and ``day_of_month`` (1-31) for a monthly one.
+    ``input_text`` / ``input_values`` are what every run is started with.
+    ``next_run_at`` (UTC) is None while the schedule is off. ``last_error``
+    says why its latest occurrence could not start; "" means it started.
+    Deleting the pipeline deletes its schedules; their runs stay.
+    """
+
+    __tablename__ = "schedules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    pipeline_id: Mapped[int] = mapped_column(
+        ForeignKey("pipelines.id", ondelete="CASCADE"), index=True
+    )
+    frequency: Mapped[ScheduleFrequency] = mapped_column(_status_type(ScheduleFrequency))
+    hour: Mapped[int] = mapped_column(default=0)
+    minute: Mapped[int] = mapped_column(default=0)
+    weekday: Mapped[int | None]
+    day_of_month: Mapped[int | None]
+    timezone: Mapped[str] = mapped_column(String(TIMEZONE_MAX_LENGTH))
+    input_text: Mapped[str] = mapped_column(Text, default="")
+    input_values: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(index=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    pipeline: Mapped[Pipeline] = relationship()

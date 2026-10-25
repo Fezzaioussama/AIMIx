@@ -67,6 +67,10 @@ TEST_SETTINGS = Settings(
     # No E2B key either: run_python is never offered, so no test can reach E2B.
     e2b_api_key="",
     pipeline_max_parallel_steps=4,
+    # No scheduler thread over the shared in-memory database: test_scheduler.py
+    # drives ticks itself, with its own clock.
+    scheduler_enabled=False,
+    schedules_max_per_user=3,
     # Never the real binary: OCR tests inject a fake engine (or skip without one).
     document_ocr_enabled=False,
     openrouter_api_key="",
