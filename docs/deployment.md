@@ -89,6 +89,7 @@ application files change.
    | `CORS_ALLOWED_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Same origin, so only for completeness. |
    | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`python -m api.cli create-user NAME` in the service shell). Existing accounts are unaffected. |
    | `RAILWAY_RUN_UID` | `0` | Railway mounts volumes as root; the non-root image user could not write the database otherwise. |
+   | `RUN_DEFAULT_MAX_COST_USD` | optional (default empty: no limit) | A spending limit, in US dollars, for every run whose starter sets none: the run stops, failed, once its model calls have cost this much. A user can set a different limit on any run, higher or lower, and raise it to resume a run that stopped; see [Spending limits](#spending-limits-and-usage). |
    | `WORKSPACE_MAX_TOTAL_BYTES` | optional (default `100000000`) | The storage limit of one user's files. Uploads (each capped at `DOCUMENT_MAX_BYTES`, 10 MB) and agent artifacts both count. |
    | `WORKSPACE_UPLOAD_EXTENSIONS` | optional | The file types the Files page accepts (default `.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.yaml,.yml,.html`). Downloads are always attachments, so allowing more types does not let them run in the app. |
 
@@ -164,6 +165,34 @@ registers. Each call is bounded by `SANDBOX_TIMEOUT_SECONDS` of sandbox time;
 set the key only if you accept that cost, and watch the usage in your E2B
 account.
 
+### Spending limits and usage
+
+Every pipeline run records the tokens its model calls used and, where it can be
+known, what they cost; users see it on the Runs screen and under Settings →
+Usage (the last 30 days). Where the cost comes from is in
+[LLM providers](llm-providers.md#usage-and-cost): OpenRouter reports it with each
+answer, TogetherAI is priced from the catalogue, and a model with no known price
+shows its tokens and "Cost unknown for this model".
+
+A run can carry a limit and is stopped *while it runs* once its calls reach it
+(`409 budget_exceeded` over the API; the run ends `failed`, its finished steps
+kept). `RUN_DEFAULT_MAX_COST_USD` is the limit of a run that sets none; it is the
+operator's guard against a runaway agent loop, and the one thing capping what
+users spend when you provide the model key. Users who bring their own key (the
+setup recommended above) spend their own money, so the default is optional.
+Things to know:
+
+- The limit only counts costs the app knows. A model with an unknown cost counts
+  for tokens only, so a cost limit never stops it (a token limit set through the
+  API does).
+- A call in flight when the limit is reached still finishes and is counted, so a
+  run can pass its limit by the calls then running (at most one per parallel
+  step).
+- The usage report counts pipeline runs only, not chat messages.
+- Runs recorded before this feature existed show no usage ("No usage
+  recorded"); the migration (`d51cc5c2111e`) adds its columns in place and keeps
+  every run and step.
+
 ### Limits of this setup
 
 - **One replica.** SQLite on a volume supports a single instance; do not scale
@@ -198,4 +227,5 @@ account.
 | Files vanish after a deploy | No volume at `/data` (files live in `/data/workspace`) | Mount the volume at `/data` |
 | Uploads answer `storage_quota_exceeded` | That user's files reached `WORKSPACE_MAX_TOTAL_BYTES` | They delete files on the Files page, or raise the limit |
 | PDFs show boxes instead of letters; log has `artifacts.pdf_font_unavailable` | No TrueType font at `PDF_FONT_PATH` (image built without `fonts-dejavu-core`, or a custom path) | Build with the repository `Dockerfile`, or point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a font that covers your users' scripts |
+| Runs stop with "Spending limit reached" | The run's limit, or `RUN_DEFAULT_MAX_COST_USD` for a run with none, was reached | Raise the limit when resuming the run (Runs screen, or `POST /api/runs/<id>/resume` with `max_cost_usd`), or raise or unset the variable |
 | Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) | Resume them from the Runs screen; finished steps are kept |

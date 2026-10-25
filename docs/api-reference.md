@@ -12,7 +12,8 @@ interactive explorer at `/api/docs`.
 
 **Errors:** every error body is `{"error": "<code>", "detail": "<message>"}`.
 The code list is in the [README error contract](../README.md#error-contract);
-other codes you may see are `method_not_allowed` (405) and `server_error` (500,
+other codes you may see are `method_not_allowed` (405), `budget_exceeded` (409,
+a run reached its [spending limit](#spending-limits)) and `server_error` (500,
 an unexpected failure). A validation error's `detail` lists each problem as
 `field: message`, e.g. `"steps.0.model: Unknown model 'x'. Choose one of: ..."`.
 
@@ -581,6 +582,10 @@ blank value, or a name the pipeline does not declare is a `400
 validation_error` whose `detail` names the problem; no agent runs. Both
 fields are trimmed.
 
+Either body may also carry `max_cost_usd` and/or `max_tokens`, the run's
+[spending limits](#spending-limits). A run that reaches one ends the request
+with `409 budget_exceeded`.
+
 `200`:
 
 ```json
@@ -655,6 +660,9 @@ The run object:
   "created_at": "2026-10-24T10:00:00Z",
   "started_at": "2026-10-24T10:00:01Z",
   "finished_at": null,
+  "max_cost_usd": 0.5,
+  "max_tokens": null,
+  "usage": { "input_tokens": 1434, "output_tokens": 587, "cost_usd": 0.0127, "cost_complete": true },
   "input": "",
   "inputs": { "article": "Long article text...", "language": "French" },
   "final_output": "",
@@ -664,8 +672,8 @@ The run object:
     "steps": [{ "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" }, "..."]
   },
   "steps": [
-    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z" },
-    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null }
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123 },
+    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004 }
   ]
 }
 ```
@@ -677,6 +685,51 @@ succeeds. `error` (on the run, and on the step that failed) is `null` or
 `provider_timeout`. `pipeline_id` becomes `null` if the pipeline is deleted.
 Timestamps are UTC; `duration = finished_at - started_at` of the latest attempt.
 
+**Usage and cost.** Each step carries what its model calls used: `input_tokens`,
+`output_tokens` and `cost_usd` (USD). They grow with every model call the step's
+agent makes, so a running step shows its spend so far, and a step that failed or
+was stopped keeps what it spent. Resuming never resets them: a step the run does
+again adds its new calls to the earlier ones. The run's `usage` is computed from
+its steps, over every attempt, as
+`{"input_tokens", "output_tokens", "cost_usd", "cost_complete"}`:
+
+- `cost_usd` is the known costs added up, in USD, and `null` when none is
+  known (a model whose price is not known; its tokens are still counted).
+- `cost_complete` is `false` when some tokens came from a model with no known
+  cost, so `cost_usd` is then a floor. A run that has used nothing is complete,
+  with `cost_usd: null`.
+
+Where a call's cost comes from, best first: what the provider reports it
+charged (OpenRouter returns `usage.cost` with every answer), else the model's
+published prices in the catalogue (`llm/catalog.py`), else unknown. See
+[LLM providers](llm-providers.md#usage-and-cost).
+
+#### Spending limits
+
+A run may carry `max_cost_usd` (a number above zero, in USD) and/or
+`max_tokens` (a whole number of at least 1, counting tokens in and out), both
+`null` for no limit. Send them in the body of `POST /pipelines/<id>/runs`; a
+limit left out takes the server default, `RUN_DEFAULT_MAX_COST_USD` for the cost
+(no limit when it is empty). A value that is not a positive finite number is a
+`400 validation_error` and nothing is saved.
+
+The limit is enforced while the run executes, not after: every finished model
+call is added to the run's running total, which parallel steps share, and a
+call is refused once the total has reached a limit. The run then stops as
+`failed` with the error code `budget_exceeded`, and the step that was refused
+fails with it:
+
+```json
+{ "error": { "code": "budget_exceeded", "detail": "This run stopped at $0.52 because it reached its $0.50 limit." } }
+```
+
+Steps that had finished keep their outputs. A call already in flight when the
+limit is reached still finishes and is counted, so the total can pass the limit
+by the calls then in flight (at most one per parallel step). A call that is cut
+off in flight (a parallel step stopped by the failure of another) reports no
+usage, so what the provider may still charge for it is not counted. A cost limit
+cannot stop calls whose cost is unknown; use `max_tokens` for those.
+
 ### `GET /runs`
 
 Your runs, newest first, one page at a time: `?limit=20&offset=0`, optionally
@@ -684,10 +737,11 @@ Your runs, newest first, one page at a time: `?limit=20&offset=0`, optionally
 `offset` ≥ 0; anything else is a `400`. `200`:
 
 ```json
-{ "items": [{ "id": 12, "pipeline_id": 7, "pipeline_name": "Summarise then translate", "status": "succeeded", "error": null, "created_at": "...", "started_at": "...", "finished_at": "..." }], "total": 42 }
+{ "items": [{ "id": 12, "pipeline_id": 7, "pipeline_name": "Summarise then translate", "status": "succeeded", "error": null, "created_at": "...", "started_at": "...", "finished_at": "...", "max_cost_usd": null, "max_tokens": null, "usage": { "input_tokens": 1434, "output_tokens": 587, "cost_usd": 0.0127, "cost_complete": true } }], "total": 42 }
 ```
 
-Summaries carry no inputs, outputs, definition or steps.
+Summaries carry no inputs, outputs, definition or steps; they do carry the run's
+limits and its `usage` total, so a history can show what each run cost.
 
 ### `GET /runs/<id>`
 
@@ -707,6 +761,14 @@ that did not fully succeed, with your current model settings: the steps that
 succeeded keep their outputs and do not run again, the others go back to
 `pending`, and the run executes its own `definition`. Any other run comes back
 unchanged. `200` → the run, `queued` again.
+
+The body is optional: `{"max_cost_usd": 2.0}` and/or `{"max_tokens": 50000}` set
+new [spending limits](#spending-limits); a limit left out stays as the run has
+it. The limits cover the whole run, every attempt together, so a run that
+stopped at its limit needs a higher one: resuming it under a limit it has
+already reached is a `409 budget_exceeded` (`"This run already reached its $0.50
+limit (it used $0.52). Raise the limit to resume it."`) and the run stays as it
+was. An invalid limit is a `400 validation_error`.
 
 ### `DELETE /runs/<id>`
 
@@ -813,6 +875,36 @@ long instruction or a draft that could not be saved for another reason (no
 steps, a repeated `order`, an unknown model, an invalid input name);
 `502 upstream_response_invalid` when the planner's answer holds no usable
 pipeline; `502/503/504` for provider failures, as for generate.
+
+---
+
+## Usage
+
+### `GET /usage`
+
+What your own runs used and cost lately, in all and per pipeline. `?days=30`
+(1–366, default 30) counts the runs created in that many days back from now;
+anything else is a `400 validation_error`. Only your runs are ever counted.
+`200`:
+
+```json
+{
+  "days": 30,
+  "since": "2026-09-24T10:00:00Z",
+  "runs": 12,
+  "usage": { "input_tokens": 100000, "output_tokens": 23456, "cost_usd": 1.234, "cost_complete": true },
+  "pipelines": [
+    { "pipeline_id": 7, "pipeline_name": "Summarise then translate", "runs": 8, "usage": { "input_tokens": 90000, "output_tokens": 20000, "cost_usd": 1.2, "cost_complete": true } },
+    { "pipeline_id": null, "pipeline_name": "Old idea", "runs": 1, "usage": { "input_tokens": 10000, "output_tokens": 3456, "cost_usd": 0.034, "cost_complete": true } }
+  ]
+}
+```
+
+`usage` has the shape of a run's [`usage`](#post-pipelinesidruns). `pipelines`
+lists the costliest first. The runs of a pipeline that was deleted stay in the
+report under the name they had, with `pipeline_id: null` (deleted pipelines of
+the same name are listed together). Chat messages are not counted: only pipeline
+runs.
 
 ---
 

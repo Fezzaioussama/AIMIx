@@ -10,6 +10,7 @@ llm/
   base.py          # ProviderConfig, LLMProvider Protocol, OpenAICompatibleProvider
   agent_models.py  # LangChain model factory registry for LangGraph chat, with retries
   retry.py         # RetryPolicy, Retrier: bounded retries for transient failures
+  usage.py         # TokenUsage, cost sources, UsageCallback, metered: what each model call used and cost
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
   registry.py      # FACTORIES, ALIASES, canonical_name, create_provider
   catalog.py       # ModelInfo, ModelCatalog, OpenRouterModels, TogetherAIModels, CATALOGS
@@ -158,10 +159,64 @@ The default model is the one the user saved for that provider, else
 `llm_default_models[provider]` (env), else the first catalogue entry.
 `available_model_ids()` puts the default first.
 
+## Usage and cost
+
+`llm/usage.py` counts what every model call of a pipeline step used and cost,
+the same way for each provider. LangChain's chat models put the token counts of
+each answer in `AIMessage.usage_metadata`; the pieces are:
+
+- `TokenUsage` — a frozen value object: `input_tokens`, `output_tokens`,
+  `cost_usd` (USD, `None` when unknown) and `cost_complete` (`False` once some
+  tokens went unpriced, which `cost_usd` then leaves out). Two add with `+`.
+- `UsageCallback` — a LangChain callback. `metered(model, callback)` returns a
+  copy of the step's chat model that reports to it (it rides on the model, not
+  on the agent's run config, where a callback never reached the model calls on
+  Python 3.10). It prices each finished call and tells a `UsageMeter` port
+  *before* a call (`before_call`; raising refuses the call, and the exception
+  reaches the agent unchanged) and *after* it (`after_call(usage)`). The
+  budget of a run is one such meter (`api/services/run_budget.py`).
+
+### Where the cost of a call comes from
+
+`COST_SOURCES` is tried in order (a Strategy chain); the first that knows wins:
+
+| Source | When |
+|---|---|
+| What the provider reports it charged | OpenRouter returns `usage.cost` with every answer, "the total amount charged to your account"; `langchain-openrouter` hands it on as `response_metadata["cost"]`. OpenRouter's credits are denominated in US dollars and its API prices are in dollars, so the value is read as USD. Nothing has to be requested: its docs say full usage details are always included, and the older switches for them (`usage: {include: true}`, `stream_options.include_usage`) are deprecated and have no effect. |
+| The model's published price | `ModelInfo.price(input, output)`, from `input_price_per_million` and `output_price_per_million`. TogetherAI reports no cost, so its calls are priced this way. |
+| Unknown | The call's cost is `None`; its tokens are still counted. |
+
+A reported cost that is negative, not finite or not a number is ignored. A
+reported `0` is kept as `0`: a free call is not priced from the catalogue.
+
+### Prices in the catalogue
+
+Prices are filled in only where the provider's own page was read, and each one
+carries a comment naming the page and the date. A model without one has an
+unknown cost on a provider that does not report it; nothing is ever guessed.
+
+| Provider | Model | Input / output per 1M tokens | Source (checked 2026-10-24) |
+|---|---|---|---|
+| TogetherAI | `openai/gpt-oss-120b` | $0.15 / $0.60 | together.ai/models/gpt-oss-120b and together.ai/pricing |
+| OpenRouter | `nvidia/nemotron-3-super-120b-a12b:free` | $0 / $0 | OpenRouter's "Free variant" docs: `:free` models are free |
+
+The other TogetherAI models have no price here: its pricing page listed neither
+Kimi K2 Thinking nor Qwen3 Coder 480B A35B, and showed Llama 4 Maverick only
+under fine-tuning, not as a serverless price. The other OpenRouter models need
+none, because OpenRouter reports what each call cost. A run on a model with an
+unknown cost shows its tokens and "Cost unknown for this model"; only a token
+limit can stop it.
+
+Prices change: when a provider's page does, update the `ModelInfo` and its
+comment together.
+
 ## Recipe: add a model
 
 1. Add a `ModelInfo(...)` attribute to the right class in `llm/catalog.py`,
-   using the exact id the provider expects.
+   using the exact id the provider expects. If you can read its price on the
+   provider's own page and the provider does not report each call's cost, fill
+   `input_price_per_million` and `output_price_per_million` with a comment
+   saying where and when; otherwise leave both out.
 2. Check it: `cd backend && uv run python -m api.cli llm-probe "hi" --model <id>`.
 3. `make check`. The frontend picks it up automatically from `/api/models`.
 
