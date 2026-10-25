@@ -105,3 +105,47 @@ behind a shared queue (the `RunExecutor` port is the seam), scope recovery to
 the worker that owned a run, optionally resume interrupted runs
 automatically, and push progress with server-sent events.
 
+### 8. Scheduled runs: what the first version leaves out
+
+Schedules (`api/services/schedules/`) start runs from a thread inside the API
+process, so they share every limit of entry 6 above: one process, nothing runs
+while it is down. Beyond that:
+
+- **At most once, not at least once.** The scheduler claims an occurrence (moves
+  `next_run_at`) *before* it starts the run, so two processes never start the same
+  one. A process that dies between the claim and the run being saved loses that
+  one occurrence, with no trace on the schedule.
+- **Missed times are not replayed.** After downtime an overdue schedule runs once,
+  not once per missed time, and there is no "catch up" option. A run starts up to
+  `SCHEDULER_TICK_SECONDS` (30 s) after its time.
+- **Runs can overlap.** A schedule starts its next run even if the previous one is
+  still queued or running (an hourly pipeline that takes two hours); only
+  `RUN_MAX_CONCURRENT` bounds them, the rest wait queued.
+- **Presets only.** Hourly, daily, weekdays, weekly (one weekday) and monthly (one
+  day); hourly is the shortest. No cron expressions, "every 15 minutes", several
+  weekdays, end dates or one-off "run at" times.
+- **Failures are only shown, not acted on.** A time that could not start a run
+  (no API key, inputs the pipeline no longer takes) is saved as the schedule's
+  `last_error`, and the next time overwrites it. There is no history of such
+  times, no notification, and no switching off after repeated failures; a
+  scheduled run that starts and then fails is an ordinary failed run in History.
+- **A schedule follows the pipeline, not the other way round.** It always runs the
+  pipeline as last saved, so editing the pipeline's named inputs can make a
+  schedule's saved inputs invalid; it finds out at its next time, not when the
+  pipeline is saved.
+- **No per-schedule history.** The list shows each schedule's last run only;
+  `GET /api/runs` cannot be filtered by schedule, and History just marks the runs
+  a schedule started.
+- **Time zone names** come from the browser's `Intl` list in the form, while the
+  server accepts any name its database knows; a zone the browser lacks is shown in
+  UTC. Daylight-saving rules (a skipped hour runs later, a repeated hour runs once,
+  hourly follows real hours) are documented in
+  [architecture.md](architecture.md#scheduled-runs).
+
+**Fix:** to lose no occurrence, record the claimed occurrence and create the run
+in one transaction (or keep an `occurrences` table and start from it); add an
+"only when the last run is finished" option and a `schedule_id` filter on
+`GET /api/runs`; keep the last few start failures, notify the owner and pause a
+schedule after repeated ones; check a pipeline's schedules when it is saved. Moving
+execution to a worker (entry 6) also moves the scheduler there.
+

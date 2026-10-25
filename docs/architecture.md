@@ -152,7 +152,7 @@ its end (`RunService.run_to_end`), so their runs are recorded too.
 |---|---|
 | React to each step (token and cost tracking, notifications) | Implement `StepObserver.on_step_event(StepEvent)` (`multiagent/contracts.py`). New data goes in a new optional field of `StepEvent` or `StepResult` (an agent fills it through `AgentOutcome`); the graph's control flow does not change. The graph awaits the observer, so it can also hold a step back. |
 | Pause a run (approval gates) | End the run in a new status from the job (`RunService._execute`) and let `resume` continue it; `RunControl.completed` already skips the finished steps. Add the status to `RunStatus` and, if it can continue, to `RESUMABLE_RUN_STATUSES` (`api/models.py`); mirror it in `frontend/src/features/runs/runStatus.ts` and `RUN_STATUS_STYLES`. |
-| Start runs without a request (schedules) | `RunService(database, executor, max_parallel_steps).start(user, pipeline, RunStart(...), agent)`; the app's executor is `app.state.run_executor` (`RunExecutor`: `submit(key, job) -> Future`, `cancel(key)`, `shutdown()`). |
+| Start runs without a request | `RunService(database, executor, max_parallel_steps).start(user, pipeline, RunStart(text, values, trigger, schedule_id), agent)`; the app's executor is `app.state.run_executor` (`RunExecutor`: `submit(key, job) -> Future`, `cancel(key)`, `shutdown()`). Schedules do exactly this, see [Scheduled runs](#scheduled-runs). A new kind of starter adds a member to `RunTrigger` (`api/models.py`) and to `RunTrigger` in `frontend/src/core/api/types.ts`. |
 | Show a run on another screen | `const live = useRun(runId)` then `<LiveRun run={live.run} onStop={live.stop} onResume={live.resume} busy={live.busy} error={live.error} actions={…}>…</LiveRun>` (`features/runs`). |
 
 A pipeline may declare named inputs. `pipeline_inputs.bind_run_inputs` checks
@@ -179,6 +179,94 @@ trace and the run continues. Model, MCP, and timeout failures stop the run:
 it is recorded as `failed` with the error, a parallel step still working is
 cancelled, the steps that succeeded keep their outputs, and the run can be
 resumed.
+
+### Scheduled runs
+
+A schedule starts runs of one pipeline on its own: "every Monday at 09:00, Paris
+time". It is a row of the `schedules` table (owner, pipeline, a preset
+frequency, a wall-clock time and an IANA time zone, the run inputs, `enabled`,
+`next_run_at` in UTC, `last_error`), and a run it starts is marked
+`Run.trigger = schedule` with `Run.schedule_id`, which the history shows.
+Everything runs inside the API process.
+
+```mermaid
+sequenceDiagram
+    participant L as SchedulerLoop<br/>(daemon thread)
+    participant S as schedules/scheduler.Scheduler
+    participant R as repositories/schedules
+    participant T as schedules/timing
+    participant A as ProfileAgents
+    participant V as services/runs.RunService
+    loop every SCHEDULER_TICK_SECONDS (30 s)
+        L->>S: tick()
+        S->>R: due(now): on, and next_run_at <= now
+        loop each due schedule
+            S->>T: next_run_after(timing, now)
+            S->>R: claim(id, seen, following): compare-and-set next_run_at
+            alt this process moved it
+                S->>A: the owner's LLM profile → PipelineAgentGenerator
+                S->>V: start(owner, pipeline, RunStart(trigger=schedule), agent)
+                S->>R: set_last_error(id, "")
+            else another process, or an edit by its owner, got there first
+                S->>S: skip
+            end
+        end
+    end
+```
+
+- **When** (`services/schedules/timing.py`, pure, no clock): each preset is one
+  rule in `FREQUENCIES` (Strategy + Registry): hourly, daily, weekdays, weekly
+  (a weekday) and monthly (a day of the month). A time is read on the zone's
+  wall clock, so "09:00" stays 09:00 across daylight-saving changes. The night
+  the clocks go forward, a time in the skipped hour runs as much later as they
+  jumped (02:30 becomes 03:30); the night they go back, a time that happens twice
+  runs once, the first time; an hourly schedule follows real hours, so it runs
+  both times through a repeated hour and not in a skipped one; a day past the end
+  of a month (the 31st in April) is that month's last day. `checked` is the one
+  place that validates a timing (a zone from `available_timezones()`, the day its
+  preset needs) and clears the fields the preset does not use. The standard
+  library's `zoneinfo` does all of this; no scheduling dependency was added.
+- **Once per occurrence.** `claim` is a compare-and-set that moves `next_run_at`
+  from the time the tick saw to its first time after now, and only the caller
+  whose update applied starts the run. Two processes (or two ticks) that both
+  listed the same due schedule therefore start one run between them, and an edit
+  by the owner that changed the schedule's next time makes the claim fail. A
+  schedule that is overdue after downtime runs **once**, not once per missed
+  time, because the claim jumps to the first time after *now*. The claim comes
+  before the start, so a process that dies in between loses that one occurrence
+  rather than starting it twice.
+- **The same path as a manual run.** `Scheduler._start` loads what the schedule
+  holds at that moment (its inputs may have been edited since the tick began),
+  resolves the owner's LLM profile with `llm_settings.resolve_profile` and builds
+  a `PipelineAgentGenerator` (`ProfileAgents`), then calls `RunService.start`:
+  the inputs are bound by `bind_run_inputs` like any run's, the run is saved
+  queued and handed to the executor, and the scheduler does not wait for it.
+  `ProfileAgents` checks that a key exists first (`provider_config`), so an
+  account with none gets an explanation on the schedule instead of a run that can
+  only fail.
+- **Failures** never stop the loop. A `DomainError` raised while starting (no API
+  key, inputs the pipeline no longer takes, a pipeline without steps) is saved in
+  `schedules.last_error` and logged as `schedule.start_failed`; any other
+  exception is logged with its traceback and recorded as `server_error`. Either
+  way the schedule has already moved to its next time. A start that works clears
+  `last_error`.
+- **Lifecycle.** The app's `lifespan` starts `app.state.scheduler` after
+  `interrupt_abandoned_runs` and stops it before it shuts the run executor down,
+  so no run is submitted to an executor that is stopping. With
+  `SCHEDULER_ENABLED=false` the app holds an `IdleScheduler` (Null Object): the
+  schedules stay saved and none starts. Tests set it false and drive
+  `Scheduler.tick()` with a clock they control and the inline run executor.
+- **Validation at save time** (`schedules/service.py`): the pipeline is the
+  user's, its inputs pass `prepare_run` (the rules a run applies), the timing
+  passes `checked`, and the account has fewer than `SCHEDULES_MAX_PER_USER`.
+  Turning a schedule off always works; turning it on, or changing its inputs,
+  checks them again. While its timing is unchanged, saving keeps the saved
+  `next_run_at`, so an occurrence that is due is not postponed by an edit.
+- **In the UI.** The builder's "Schedule this pipeline" panel creates one; the
+  Runs screen has a Schedules view (`/runs/schedules`). Both show the schedule in
+  plain words, and "next run" comes from `POST /api/schedules/preview`, the same
+  `next_run_after` the scheduler uses, so what the form promises is what the
+  server does, daylight saving included.
 
 ### Built-in tools
 
@@ -441,7 +529,9 @@ server — never a 200 with an error inside.
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Observer + Null Object | `StepObserver` / `SILENT_OBSERVER` in `multiagent/contracts.py`, `services/run_recorder.RunRecorder` | The graph reports step events without knowing who listens; persistence is one listener |
 | Background executor | `api/services/run_executor.py` (`RunExecutor`, `BackgroundRunExecutor`) | Runs leave the request path; bounded concurrency; swappable in tests |
-| Compare-and-set | `api/repositories/runs.py` | Request threads and the executor change a run's status without overwriting each other |
+| Compare-and-set | `api/repositories/runs.py`, `api/repositories/schedules.claim` | Request threads and the executor change a run's status without overwriting each other; two processes never start the same scheduled occurrence |
+| Strategy + Registry | `api/services/schedules/timing.FREQUENCIES`; `frontend/src/features/schedules/scheduleDraft.FREQUENCIES` | A new frequency preset is one entry, never another branch |
+| Null Object | `api/services/schedules/scheduler.IdleScheduler` | `SCHEDULER_ENABLED=false` leaves the lifespan code unchanged |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
 | Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |
 | Builder | `api/services/prompts.py` | Prompt text kept apart from transport |
