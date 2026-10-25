@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MissionMessage } from './missionMessages';
 import { note, you } from './missionMessages';
 import {
+  forgetAllMissions,
   forgetMission,
   MAX_STORED_MESSAGES,
   missionKey,
@@ -193,6 +194,21 @@ describe('mission storage', () => {
     expect(readMission(missionKey()).messages).toEqual([]);
   });
 
+  it('forgets every mission at once, and nothing else the tab keeps', () => {
+    writeMission(missionKey(), { messages: [you('a draft')], draft: PLAN });
+    writeMission(missionKey(7), { messages: [you('hi')], draft: null });
+    writeMission(missionKey(8), { messages: [you('hello')], draft: null });
+    window.sessionStorage.setItem('another.key', 'kept');
+
+    forgetAllMissions();
+
+    for (const key of [missionKey(), missionKey(7), missionKey(8)]) {
+      expect(window.sessionStorage.getItem(key)).toBeNull();
+    }
+    expect(restoreMission()).toEqual({ messages: [], draft: null });
+    expect(window.sessionStorage.getItem('another.key')).toBe('kept');
+  });
+
   it('works without storage: blocked reads and writes only mean nothing is kept', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError');
@@ -207,6 +223,15 @@ describe('mission storage', () => {
     expect(() => writeMission(missionKey(7), { messages: [you('hi')], draft: null })).not.toThrow();
     expect(readMission(missionKey(7))).toEqual({ messages: [], draft: null });
     expect(() => forgetMission(missionKey(7))).not.toThrow();
+  });
+
+  it('forgets quietly when the storage refuses to let go', () => {
+    writeMission(missionKey(7), { messages: [you('hi')], draft: null });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+
+    expect(() => forgetAllMissions()).not.toThrow();
   });
 
   it('says so when the page was left before AIMIx answered', () => {

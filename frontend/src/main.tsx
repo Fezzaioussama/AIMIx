@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
+import { forgetAllMissions } from './features/mission/missionStorage';
 // Self-hosted, not Google Fonts: the app's Content-Security-Policy allows only its own origin.
 import '@fontsource-variable/inter';
 import './styles.css';
@@ -16,7 +17,8 @@ if (!container) throw new Error('Root container #root is missing from index.html
 createRoot(container).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
+      {/* Mission drafts are kept per tab, not per account: they go when the account does. */}
+      <AuthProvider forgetAccountData={forgetAllMissions}>
         <MotionConfig reducedMotion="user">
           <App />
         </MotionConfig>
