@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 import type { AgentTool, PipelineInput, PipelineStep } from '../../core/api/types';
 import { PromptPlaceholders } from './PromptPlaceholders';
 import { StageInput } from './StageInput';
@@ -41,7 +43,7 @@ export function StepEditor({
   );
 }
 
-interface StepCardProps {
+export interface StepCardProps {
   step: PipelineStep;
   inputs: PipelineInput[];
   availableModels: string[];
@@ -51,7 +53,8 @@ interface StepCardProps {
   onRemove: () => void;
 }
 
-function StepCard({
+/** One step's editor: stage, role fields, agent and tool fields, model and prompt. */
+export function StepCard({
   step,
   inputs,
   availableModels,
@@ -113,10 +116,14 @@ function StepCardFields({
   availableModels,
   onChange,
 }: Pick<StepCardProps, 'step' | 'inputs' | 'availableModels' | 'onChange'>) {
+  const id = useId();
   return (
     <>
-      <label className="mb-1 block text-xs text-slate-400">Model</label>
+      <label htmlFor={`${id}-model`} className="mb-1 block text-xs text-slate-400">
+        Model
+      </label>
       <select
+        id={`${id}-model`}
         value={step.model}
         onChange={(event) => onChange({ model: event.target.value })}
         className="mb-2 w-full rounded-md border border-white/10 bg-slate-900 px-2 py-1.5 text-xs text-slate-100 outline-none focus:border-sky-400"
@@ -127,8 +134,11 @@ function StepCardFields({
           </option>
         ))}
       </select>
-      <label className="mb-1 block text-xs text-slate-400">Prompt</label>
+      <label htmlFor={`${id}-prompt`} className="mb-1 block text-xs text-slate-400">
+        Prompt
+      </label>
       <textarea
+        id={`${id}-prompt`}
         value={step.prompt}
         placeholder="Define instructions..."
         onChange={(event) => onChange({ prompt: event.target.value })}

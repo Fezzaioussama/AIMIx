@@ -16,7 +16,7 @@ If you are new to the repository, read these in order:
 | # | Document | You will learn |
 |---|---|---|
 | 1 | [getting-started.md](getting-started.md) | Install, configure, run, and troubleshoot the app locally |
-| 2 | [architecture.md](architecture.md) | The layers, the dependency rules, and three end-to-end request traces |
+| 2 | [architecture.md](architecture.md) | The layers, the dependency rules, and the end-to-end request traces |
 | 3 | [backend.md](backend.md) | Every backend module: what it owns and what it must not do |
 | 4 | [llm-providers.md](llm-providers.md) | The provider layer, the model catalogue, adding a provider or model |
 | 5 | [frontend.md](frontend.md) | The React app: routing, `core/`, features, auth, streaming |
@@ -27,8 +27,11 @@ If you are new to the repository, read these in order:
 
 ## What AIMIx is, in one paragraph
 
-A user signs in and builds a **pipeline** of agent steps, each with a role,
-prompt, model, and tool policy. Stages run in order; steps in one stage run in
+A user signs in and lands on **Missions**: they say what they want done, AIMIx
+builds a team of agents, shows it, runs it and delivers the results, and the user
+changes the team by talking to it. Under the hood the team is a **pipeline** of agent
+steps, each with a role, prompt, model, and tool policy, which the builder edits
+directly. Stages run in order; steps in one stage run in
 parallel, and their text outputs feed the next stage through `{input}`. AIMIx
 can also **generate** a pipeline from a description using the discovered tool
 catalogue. A streaming **chat** agent can call native pipeline functions and

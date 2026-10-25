@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
-  <a href="#three-ways-to-work">Workspaces</a> ·
+  <a href="#ways-to-work">Workspaces</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="docs/README.md">Documentation</a>
 </p>
@@ -46,10 +46,14 @@ interactive docs are at <http://127.0.0.1:8000/api/docs> (not in production).
 Coming from the Django version? `make migrate && make import-django-db` copies your
 accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 
-## Three ways to work
+## Ways to work
+
+Signing in lands on **Missions**; the other workspaces are the same features one
+step closer to the machinery.
 
 | Workspace | Best for | What happens |
 |---|---|---|
+| **Missions** | Getting something done without building anything | Describe what you want in the conversation; AIMIx builds a team of agents and tells you who does what. Change the team by talking to it (you review each change before it applies), press **Run it**, and watch the team work on one screen: the team graph in the middle, the deliverables, the full run and your newest files on the right. Select an agent to edit it in a drawer; reopen any mission later, or hand it to the Pipeline Builder. On a phone the three panes are tabs. |
 | **Chat** | Exploring ideas and invoking saved workflows | A streaming LangGraph agent can inspect or run only the signed-in user's pipelines and configured MCP tools. |
 | **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes (typed, or read from an attached PDF, Word, HTML, CSV or text file) and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. Runs execute in the background: watch each step finish live, stop a run, resume a failed or stopped one where it left off, and find every run again in the run history. |
 | **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes the run's inputs, stages, roles, models, expected outputs, deliverables, and available tools without saving anything until you review it. |
@@ -57,7 +61,8 @@ accounts (same passwords) and pipelines from `backend/db.sqlite3`.
 New users can also start from **Templates**: eight ready-made missions (market
 research, competitor analysis, document digest, meeting actions, data insights,
 SEO brief, content calendar, launch plan) that open in the Pipeline Builder as
-their own pipeline, with parallel research, a writer, and a final reviewer.
+their own pipeline, with parallel research, a writer, and a final reviewer. On the
+Missions screen they are one click away under the examples.
 
 ### Pipeline execution at a glance
 

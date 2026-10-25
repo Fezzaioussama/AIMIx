@@ -4,20 +4,23 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { RequireAuth } from './core/auth/RequireAuth';
 import { useAuth } from './core/auth/AuthContext';
+import { HOME_PATH } from './core/routes';
 import { ActivePill } from './core/ui/ActivePill';
 import { AmbientBackdrop } from './core/ui/AmbientBackdrop';
+import { navIcon } from './core/ui/navIcons';
 import { PageTransition } from './core/ui/PageTransition';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { ChatPage } from './features/chat/ChatPage';
 import { FilesPage } from './features/files/FilesPage';
+import { MissionPage } from './features/mission/MissionPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TemplatesPage } from './features/templates/TemplatesPage';
 
-// The public front page is split out: signed-in users who open /chat never download it.
+// The public front page is split out: signed-in users who open the app never download it.
 const LandingPage = lazy(() =>
   import('./features/landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
@@ -25,6 +28,7 @@ const LandingPage = lazy(() =>
 // `paths` lists every route a section owns (and the routes below them), so
 // Pipelines stays lit on /auto-pipeline and /runs/7.
 const NAV_ITEMS = [
+  { to: HOME_PATH, label: 'Missions', paths: [HOME_PATH] },
   { to: '/chat', label: 'Chat', paths: ['/chat'] },
   {
     to: '/pipeline',
@@ -39,11 +43,12 @@ function ownsPath(paths: readonly string[], pathname: string): boolean {
   return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
-// Tighter on a phone, so four items and the logo fit a 390px bar.
+// On a phone each item is its icon over a small label, so five items and the logo fit a
+// 390px bar (and 360px); from `sm` up it is the plain text row.
 const navLinkClass = (isActive: boolean) =>
   [
-    'relative isolate rounded-lg px-2 py-2 text-sm font-medium transition-colors sm:px-4 sm:text-[0.95rem]',
-    isActive ? 'text-white' : 'text-slate-400 hover:text-slate-50',
+    'relative isolate flex flex-col items-center gap-0.5 rounded-lg px-1.5 py-1.5 text-[10px] leading-none font-medium transition-colors sm:flex-row sm:px-4 sm:py-2 sm:text-[0.95rem] sm:leading-normal',
+    isActive ? 'text-white' : 'text-slate-300 hover:text-slate-50 sm:text-slate-400',
   ].join(' ');
 
 function AppNav() {
@@ -51,11 +56,12 @@ function AppNav() {
   const { pathname } = useLocation();
 
   return (
-    <nav className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center gap-2 border-b border-white/[0.06] bg-slate-950/70 px-4 backdrop-blur-xl sm:gap-8 sm:px-8">
+    <nav className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center gap-2 border-b border-white/[0.06] bg-slate-950/70 px-3 backdrop-blur-xl sm:gap-8 sm:px-8">
       <img src="/logo.png" alt="AIMIx" className="h-8 w-auto sm:h-10" />
-      <div className="flex gap-1 sm:gap-2">
+      <div className="flex gap-0.5 sm:gap-2">
         {NAV_ITEMS.map((item) => {
           const isActive = ownsPath(item.paths, pathname);
+          const Icon = navIcon(item.to);
           return (
             <Link
               key={item.to}
@@ -69,6 +75,7 @@ function AppNav() {
                   className="bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
                 />
               )}
+              <Icon aria-hidden="true" className="size-5 sm:hidden" />
               {item.label}
             </Link>
           );
@@ -123,6 +130,7 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<AppShell />}>
+        <Route path={`${HOME_PATH}/:pipelineId?`} element={<MissionPage />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/pipeline" element={<PipelineBuilderPage />} />
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />

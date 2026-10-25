@@ -12,6 +12,11 @@ export function listPipelines(): Promise<Pipeline[]> {
   return request<Pipeline[]>(API.pipelines).then((pipelines) => pipelines.map(normalizePipeline));
 }
 
+/** One of the signed-in user's pipelines; another user's is a 404 `not_found`. */
+export function getPipeline(pipelineId: number, signal?: AbortSignal): Promise<Pipeline> {
+  return request<Pipeline>(API.pipeline(pipelineId), { signal }).then(normalizePipeline);
+}
+
 export function savePipeline(pipeline: Pipeline): Promise<Pipeline> {
   return request<Pipeline>(pipeline.id === undefined ? API.pipelines : API.pipeline(pipeline.id), {
     method: pipeline.id === undefined ? 'POST' : 'PUT',
@@ -31,14 +36,17 @@ export function runPipeline(
   });
 }
 
+/** Plans a pipeline from a description; nothing is saved. No `plannerModel` means the default. */
 export function generatePipeline(
   description: string,
-  plannerModel: string,
+  plannerModel?: string,
+  signal?: AbortSignal,
 ): Promise<GeneratedPipelineResponse> {
   return request<GeneratedPipelineResponse>(API.generatePipeline, {
     method: 'POST',
-    body: { description, planner_model: plannerModel },
+    body: { description, planner_model: plannerModel || undefined },
     timeoutMs: GENERATION_TIMEOUT_MS,
+    signal,
   }).then((response) => ({
     ...response,
     generated_pipeline: normalizePipeline(response.generated_pipeline),

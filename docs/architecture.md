@@ -531,6 +531,43 @@ sequenceDiagram
    unsaved; the user saves through `POST`/`PUT /api/pipelines/`. A proposal
    belongs to the draft it was made from, so editing the draft sets it aside.
 
+### 5. The mission workspace — one screen over the other flows
+
+`/mission` adds no endpoint and no table. It is the browser composing flows 1, 3
+and 4 (run, generate, revise) and the pipeline save endpoints into one screen, with
+a routing decision on every message (`features/mission/useMission.ts`):
+
+```mermaid
+flowchart TD
+    Say["A message in the conversation<br/>(useMission.send)"] --> Has{"A team<br/>on screen?"}
+    Has -- no --> Gen["useTeamGeneration<br/>POST /pipelines/generate"]
+    Gen --> Draft["Draft team, kept in the tab<br/>(nothing saved yet)"]
+    Has -- yes --> Intent{"'Run it'?<br/>(missionIntent)"}
+    Intent -- yes --> Form["Inputs form in the conversation<br/>(RunInputCard)"]
+    Form --> Save["useMissionTeam.save<br/>POST or PUT /pipelines/"]
+    Save --> Start["POST /pipelines/id/runs"]
+    Start --> Follow["useFollowedRun polls GET /runs/id<br/>team graph, deliverables, run details"]
+    Intent -- no --> Rev["useMissionProposals over useRevisePipeline<br/>POST /pipelines/revise"]
+    Rev -- Apply --> Replace["team replaced; a saved mission is<br/>saved again 1.5 s after its last edit"]
+```
+
+- **A mission is a pipeline.** A new one is a draft held by the page (and its
+  `sessionStorage` entry) until it first runs; the run saves it, then the address
+  becomes `/mission/<id>`. Reopening it is `GET /pipelines/<id>/` plus its newest run
+  (`GET /runs?pipeline_id=<id>&limit=1`), which `useLatestRun` keeps polling while it
+  is active.
+- **One writer for the team.** `useMissionTeam` owns the team on screen and is the
+  only thing that saves it: one request at a time, edits made during a save kept and
+  saved next, and the team object keeps its identity across a save so a revision
+  proposal made for it (which belongs to the draft it was made from) stays valid.
+- **The conversation is client state.** Messages are JSON (`missionMessages.ts`);
+  the live parts of an answer — the open proposal, the run form, the newest run — are
+  not stored in them but read from the hooks, so a message restored in another visit
+  shows its outcome (or "no longer available") rather than a dead button.
+  `sessionStorage` holds it per tab; it is validated on the way back in.
+- **Runs are not tied to the screen.** Leaving it never stops a run (flow 1); the
+  screen only follows the newest run of its pipeline.
+
 ## Error flow
 
 ```

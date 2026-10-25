@@ -94,7 +94,8 @@ function ReviewActions({ hasChanges, applyDisabled, onApply, onDiscard }: Review
   );
 }
 
-function ChangeList({ changes }: { changes: PipelineChange[] }) {
+/** The changes in plain words, each marked added, changed or removed. */
+export function ChangeList({ changes }: { changes: PipelineChange[] }) {
   return (
     <ul className="space-y-2">
       {changes.map((change, index) => {

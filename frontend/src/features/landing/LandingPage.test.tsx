@@ -44,7 +44,7 @@ describe('LandingPage', () => {
     renderLanding();
     expect(screen.queryByRole('link', { name: /get started/i })).toBeNull();
     for (const link of screen.getAllByRole('link', { name: /open the app/i })) {
-      expect(link).toHaveAttribute('href', '/chat');
+      expect(link).toHaveAttribute('href', '/mission');
     }
   });
 
