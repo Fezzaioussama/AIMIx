@@ -35,8 +35,7 @@ def _keep_run_steps() -> None:
         op.execute("PRAGMA foreign_keys=OFF")
 
 
-def upgrade() -> None:
-    _keep_run_steps()
+def _create_schedules() -> None:
     op.create_table(
         "schedules",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -70,6 +69,8 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f("ix_schedules_pipeline_id"), ["pipeline_id"], unique=False)
         batch_op.create_index(batch_op.f("ix_schedules_user_id"), ["user_id"], unique=False)
 
+
+def _mark_runs() -> None:
     # Runs recorded before this revision were started by hand or from chat;
     # they all count as "manual".
     with op.batch_alter_table("runs", schema=None) as batch_op:
@@ -87,6 +88,12 @@ def upgrade() -> None:
             ["id"],
             ondelete="SET NULL",
         )
+
+
+def upgrade() -> None:
+    _keep_run_steps()
+    _create_schedules()
+    _mark_runs()
 
 
 def downgrade() -> None:

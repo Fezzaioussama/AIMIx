@@ -282,12 +282,8 @@ def integration_access(
 Integrations = Annotated[IntegrationAccess, Depends(integration_access)]
 
 
-def current_time() -> datetime:
-    """The request's "now", in UTC; tests fix it."""
-    return utcnow()
-
-
-Now = Annotated[datetime, Depends(current_time)]
+#: The request's "now", in UTC; a test fixes it by overriding ``utcnow``.
+Now = Annotated[datetime, Depends(utcnow)]
 
 
 def schedule_access(

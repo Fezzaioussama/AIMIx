@@ -1,47 +1,18 @@
-"""When a schedule runs next: presets read on a time zone's clock, across
-daylight-saving changes, month ends and weekends (pure, no clock, no database)."""
+"""When a schedule runs next: presets read on a time zone's clock, across daylight-saving
+changes, month ends and weekends (pure, no clock, no database)."""
 
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta, timezone
 from itertools import pairwise
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from api.exceptions import ValidationFailed
 from api.models import ScheduleFrequency as Freq
-from api.services.schedules.timing import (
-    FREQUENCIES,
-    Timing,
-    checked,
-    next_run_after,
-    time_zone_error,
-)
-
-PARIS = "Europe/Paris"
-
-
-def utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
-
-
-def chain(timing: Timing, start: datetime, count: int) -> list[datetime]:
-    """The next ``count`` times, each found after the one before."""
-    found: list[datetime] = []
-    at = start
-    for _ in range(count):
-        at = next_run_after(timing, at)
-        found.append(at)
-    return found
-
-
-def local(moment: datetime, zone: str) -> str:
-    """A UTC instant as that zone's wall clock, with its offset: 2026-03-29 03:30+02:00."""
-    return moment.astimezone(ZoneInfo(zone)).strftime("%Y-%m-%d %H:%M%z")
-
-
-# --- every preset: strictly after, in UTC ----------------------------------------
+from api.services.schedules.timing import FREQUENCIES, Timing, next_run_after
+from tests.schedules.support import PARIS, chain, local, utc
 
 
 def test_every_frequency_has_a_rule() -> None:
@@ -64,9 +35,6 @@ def test_a_fraction_of_a_second_past_a_time_is_past_it() -> None:
     after = datetime(2026, 10, 24, 9, 0, 0, 1, tzinfo=timezone.utc)
 
     assert next_run_after(timing, after) == utc(2026, 10, 25, 9, 0)
-
-
-# --- hourly -----------------------------------------------------------------------
 
 
 def test_hourly_runs_at_its_minute_every_hour() -> None:
@@ -113,9 +81,6 @@ def test_hourly_does_not_run_in_the_hour_the_clocks_skip() -> None:
         "2026-03-29 03:30+0200",
         "2026-03-29 04:30+0200",
     ]
-
-
-# --- daily and weekdays -----------------------------------------------------------
 
 
 def test_daily_runs_today_while_its_time_is_ahead_and_tomorrow_after() -> None:
@@ -191,9 +156,6 @@ def test_weekdays_include_friday_when_its_time_has_not_come() -> None:
     assert next_run_after(timing, utc(2026, 10, 24, 6)) == utc(2026, 10, 26, 9)  # Saturday
 
 
-# --- weekly -----------------------------------------------------------------------
-
-
 def test_weekly_runs_on_its_weekday() -> None:
     monday = Timing(Freq.WEEKLY, "UTC", time(9, 0), weekday=0)
 
@@ -213,9 +175,6 @@ def test_weekly_weekday_is_the_zones_not_utcs() -> None:
 
     # Monday 09:00 in Auckland is still Sunday evening in UTC.
     assert next_run_after(monday, utc(2026, 10, 24, 12)) == utc(2026, 10, 25, 20)
-
-
-# --- monthly ----------------------------------------------------------------------
 
 
 def test_monthly_runs_on_its_day_of_the_month() -> None:
@@ -256,87 +215,39 @@ def test_monthly_waits_a_whole_month_after_a_short_one() -> None:
     assert next_run_after(thirty_first, utc(2026, 4, 30, 9)) == utc(2026, 5, 31, 9)
 
 
-# --- the same rules, over a whole year and several zones ---------------------------
+class Pace(NamedTuple):
+    """How a frequency keeps time: the shortest and longest gap, in hours, between two
+    consecutive times, and how many times to look at."""
 
-#: (frequency, shortest and longest gap between two consecutive times, in hours).
-GAPS = [
-    (Freq.HOURLY, 1, 1),
-    (Freq.DAILY, 23, 25),
-    (Freq.WEEKDAYS, 23, 73),
-    (Freq.WEEKLY, 167, 169),
-    (Freq.MONTHLY, 28 * 24 - 1, 31 * 24 + 1),
+    frequency: Freq
+    shortest: int
+    longest: int
+    count: int
+
+
+PACES = [
+    Pace(Freq.HOURLY, 1, 1, 800),
+    Pace(Freq.DAILY, 23, 25, 60),
+    Pace(Freq.WEEKDAYS, 23, 73, 45),
+    Pace(Freq.WEEKLY, 167, 169, 20),
+    Pace(Freq.MONTHLY, 28 * 24 - 1, 31 * 24 + 1, 14),
 ]
 ZONES = [PARIS, "America/New_York", "Australia/Sydney", "Asia/Kolkata", "UTC"]
-#: Two windows that hold this year's clock changes (New York 8 Mar and 1 Nov,
-#: Paris 29 Mar and 25 Oct, Sydney 4 Oct), and how many times to look at in each.
+#: Two windows that hold this year's clock changes: New York 8 Mar and 1 Nov, Paris 29 Mar
+#: and 25 Oct, Sydney 4 Oct.
 STARTS = [utc(2026, 3, 1), utc(2026, 10, 1)]
-COUNTS = {Freq.HOURLY: 800, Freq.DAILY: 60, Freq.WEEKDAYS: 45, Freq.WEEKLY: 20, Freq.MONTHLY: 14}
 
 
 @pytest.mark.parametrize("start", STARTS)
 @pytest.mark.parametrize("zone", ZONES)
-@pytest.mark.parametrize(("frequency", "shortest", "longest"), GAPS)
+@pytest.mark.parametrize("pace", PACES, ids=lambda pace: pace.frequency.value)
 def test_times_keep_coming_at_a_steady_pace_across_clock_changes(
-    frequency: Freq, shortest: int, longest: int, zone: str, start: datetime
+    pace: Pace, zone: str, start: datetime
 ) -> None:
     # 02:30 is inside a skipped or repeated hour somewhere on this list.
-    timing = Timing(frequency, zone, time(2, 30), weekday=2, day_of_month=29)
+    timing = Timing(pace.frequency, zone, time(2, 30), weekday=2, day_of_month=29)
 
-    times = chain(timing, start, COUNTS[frequency])
+    times = chain(timing, start, pace.count)
 
-    gaps = [(later - earlier) / timedelta(hours=1) for earlier, later in pairwise(times)]
-    assert all(shortest <= gap <= longest for gap in gaps), (frequency, zone, gaps)
-
-
-# --- checking a timing before it is saved ------------------------------------------
-
-
-def test_a_known_time_zone_has_no_error() -> None:
-    assert time_zone_error(PARIS) is None
-    assert time_zone_error("UTC") is None
-    assert time_zone_error("America/Argentina/Buenos_Aires") is None
-
-
-@pytest.mark.parametrize("name", ["", "Mars/Olympus", "../etc/passwd", "/etc/localtime", "paris"])
-def test_anything_else_is_an_unknown_time_zone(name: str) -> None:
-    assert "Unknown time zone" in (time_zone_error(name) or "")
-
-
-def test_an_unknown_time_zone_cannot_be_saved_or_used() -> None:
-    timing = Timing(Freq.DAILY, "Mars/Olympus", time(9, 0))
-
-    with pytest.raises(ValidationFailed, match="Unknown time zone 'Mars/Olympus'"):
-        checked(timing)
-    with pytest.raises(ValidationFailed, match="Unknown time zone"):
-        next_run_after(timing, utc(2026, 10, 24))
-
-
-def test_a_weekly_schedule_needs_its_weekday_and_a_monthly_one_its_day() -> None:
-    with pytest.raises(ValidationFailed, match="day of the week"):
-        checked(Timing(Freq.WEEKLY, "UTC", time(9, 0)))
-    with pytest.raises(ValidationFailed, match="day of the month"):
-        checked(Timing(Freq.MONTHLY, "UTC", time(9, 0)))
-
-
-def test_a_timing_is_saved_without_what_its_frequency_does_not_use() -> None:
-    noisy = {"weekday": 3, "day_of_month": 17}
-
-    assert checked(Timing(Freq.HOURLY, "UTC", time(7, 15), **noisy)) == Timing(
-        Freq.HOURLY, "UTC", time(0, 15)
-    )
-    assert checked(Timing(Freq.DAILY, "UTC", time(7, 15), **noisy)) == Timing(
-        Freq.DAILY, "UTC", time(7, 15)
-    )
-    assert checked(Timing(Freq.WEEKLY, "UTC", time(7, 15), **noisy)) == Timing(
-        Freq.WEEKLY, "UTC", time(7, 15), weekday=3
-    )
-    assert checked(Timing(Freq.MONTHLY, "UTC", time(7, 15), **noisy)) == Timing(
-        Freq.MONTHLY, "UTC", time(7, 15), day_of_month=17
-    )
-
-
-def test_seconds_are_dropped_and_checking_twice_changes_nothing() -> None:
-    once = checked(Timing(Freq.DAILY, PARIS, time(7, 15, 42, 5)))
-
-    assert once.at == time(7, 15)
-    assert checked(once) == once
+    hours = [(later - earlier) / timedelta(hours=1) for earlier, later in pairwise(times)]
+    assert all(pace.shortest <= gap <= pace.longest for gap in hours), (pace, zone, hours)

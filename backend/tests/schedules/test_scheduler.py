@@ -1,6 +1,5 @@
-"""The scheduler: each due occurrence starts exactly one run of its own, the
-same way a manual run starts, and a failure to start is recorded on the
-schedule. Ticks are driven by a test clock and the inline executor."""
+"""The scheduler: each due occurrence starts exactly one run of its own, the same way a
+manual run starts. Ticks are driven by a test clock and the inline executor."""
 
 from __future__ import annotations
 
@@ -11,59 +10,34 @@ from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from api.db import Database
 from api.models import Base, Pipeline, Run, RunStatus, RunTrigger, User
 from api.repositories import pipelines, users
 from api.repositories import schedules as repository
-from api.repositories.pipelines import PipelineChanges
-from api.security import SecretBox, hash_password
-from api.services import llm_settings
-from api.services.catalog import default_model_id
-from api.services.llm_settings import ProviderChoice, SettingsUpdate
-from api.services.multiagent.step_agent import PipelineAgentGenerator
-from api.services.run_recorder import SERVER_ERROR_DETAIL
+from api.security import hash_password
 from api.services.runs import RunService, RunStart
-from api.services.schedules.scheduler import (
-    IdleScheduler,
-    ProfileAgents,
-    Scheduler,
-    SchedulerLoop,
-    build_scheduler,
-)
-from api.services.schedules.service import ScheduleEdit, TimingEdit, update
-from tests.conftest import TEST_SETTINGS, FakeProvider, InlineRunExecutor
-from tests.schedule_support import (
+from api.services.schedules.scheduler import Scheduler
+from api.services.schedules.service import ScheduleDraft, ScheduleEdit, TimingEdit, create, update
+from tests.conftest import FakeProvider, InlineRunExecutor
+from tests.schedules.support import (
+    DAILY_AT_NINE,
     HOURLY_AT_QUARTER_PAST,
     NOW,
-    BrokenAgents,
+    TOMORROW,
+    WAIT_SECONDS,
     Clock,
-    FlakyAgents,
     StaticAgents,
     access,
     at_utc,
     new_schedule,
-    run_service,
+    runs_of,
     scheduler,
     stored,
 )
 from tests.test_agent_tools import one_step
 from tests.test_endpoints import make_pipeline
-
-WAIT_SECONDS = 5.0
-TOMORROW = NOW + timedelta(days=1)  # 12:00 on the 25th, after that day's 09:00 time
-
-
-def runs_of(session: Session) -> list[Run]:
-    session.expire_all()
-    return list(session.query(Run).order_by(Run.id))
-
-
-@pytest.fixture
-def pipeline(session: Session, user: User) -> Pipeline:
-    return make_pipeline(session, user, "Weekly digest")
 
 
 def test_a_due_schedule_starts_a_run_marked_as_its_own(
@@ -93,7 +67,8 @@ def test_the_run_takes_the_named_values_the_schedule_was_saved_with(
     named = pipelines.create_with_steps(
         session, user, one_step("Post", "Write about {topic}", inputs=[topic])
     )
-    new_schedule(session, user, named.id, start=RunStart("", {"topic": "bees"}))
+    draft = ScheduleDraft(named.id, DAILY_AT_NINE, RunStart("", {"topic": "bees"}))
+    create(access(session, user), draft)
     provider = FakeProvider(reply="post")
 
     scheduler(app, StaticAgents(provider), Clock(TOMORROW)).tick()
@@ -153,9 +128,6 @@ def test_every_due_schedule_starts_with_its_own_owners_agent(
     assert sorted(agents.owners) == sorted([user.id, stranger.id])
     owners = {run.schedule_id: run.user_id for run in runs_of(session)}
     assert owners == {mine.id: user.id, other.id: stranger.id}
-
-
-# --- two processes ----------------------------------------------------------------
 
 
 def test_a_process_that_listed_the_occurrence_too_late_starts_nothing(
@@ -260,202 +232,3 @@ def test_a_run_uses_the_inputs_saved_when_it_starts(
     assert scheduler(app, StaticAgents(FakeProvider()), clock).fire(snapshot, clock.now) is True
 
     assert runs_of(session)[0].input_text == "edited"
-
-
-# --- failures ---------------------------------------------------------------------
-
-
-def test_a_run_that_cannot_start_is_recorded_and_the_schedule_moves_on(
-    app: FastAPI, session: Session, user: User, pipeline: Pipeline
-) -> None:
-    schedule = new_schedule(session, user, pipeline.id)
-    clock = Clock(TOMORROW)
-    tick = scheduler(app, FlakyAgents(FakeProvider(), failures=1), clock)
-
-    assert tick.tick() == 0
-
-    row = stored(app, schedule.id)
-    assert row.last_error == "No API key is set for openrouter."
-    assert at_utc(row.next_run_at) == NOW.replace(day=26, hour=9, minute=0)
-    assert runs_of(session) == []
-    # Its next time starts normally, and the error is cleared.
-    clock.advance(days=1)
-    assert tick.tick() == 1
-    assert stored(app, schedule.id).last_error == ""
-    assert len(runs_of(session)) == 1
-
-
-def test_an_account_without_an_api_key_cannot_start_a_scheduled_run(
-    app: FastAPI, session: Session, user: User, pipeline: Pipeline
-) -> None:
-    schedule = new_schedule(session, user, pipeline.id)
-    clock = Clock(TOMORROW)
-    agents = ProfileAgents(app.state.database, SecretBox(TEST_SETTINGS.secret_key))
-
-    assert Scheduler(app.state.database, run_service(app), agents, clock).tick() == 0
-
-    assert "No API key is set for openrouter" in stored(app, schedule.id).last_error
-    assert runs_of(session) == []
-
-
-def test_a_saved_key_gives_the_owner_a_step_agent_of_their_own(
-    app: FastAPI, session: Session, user: User
-) -> None:
-    box = SecretBox(TEST_SETTINGS.secret_key)
-    choice = ProviderChoice("openrouter", default_model_id("openrouter"), "sk-or-test-1234")
-    llm_settings.save(session, user, box, SettingsUpdate("openrouter", [choice]))
-
-    agent = ProfileAgents(app.state.database, box)(session, user)
-
-    assert isinstance(agent, PipelineAgentGenerator)
-
-
-def test_inputs_the_pipeline_no_longer_takes_are_recorded_on_the_schedule(
-    app: FastAPI, session: Session, user: User, pipeline: Pipeline
-) -> None:
-    schedule = new_schedule(session, user, pipeline.id)  # saved with free text
-    topic = {"name": "topic", "label": "", "description": ""}
-    pipelines.replace_steps(session, pipeline, PipelineChanges(inputs=[topic]))
-    provider = FakeProvider()
-
-    scheduler(app, StaticAgents(provider), Clock(TOMORROW)).tick()
-
-    assert "named inputs instead of text" in stored(app, schedule.id).last_error
-    assert provider.calls == []
-    assert runs_of(session) == []
-
-
-def test_a_pipeline_that_lost_its_steps_is_recorded_on_the_schedule(
-    app: FastAPI, session: Session, user: User, pipeline: Pipeline
-) -> None:
-    schedule = new_schedule(session, user, pipeline.id)
-    pipelines.replace_steps(session, pipeline, PipelineChanges(steps=[]))
-
-    scheduler(app, StaticAgents(FakeProvider()), Clock(TOMORROW)).tick()
-
-    assert stored(app, schedule.id).last_error == "This pipeline has no steps to run."
-
-
-def test_a_bug_in_one_schedule_does_not_stop_the_others(
-    app: FastAPI, session: Session, user: User, pipeline: Pipeline
-) -> None:
-    stranger = users.create(session, "stranger", hash_password("x-pass-2891", 1))
-    theirs = make_pipeline(session, stranger, "Theirs")
-    broken = new_schedule(session, user, pipeline.id)
-    fine = new_schedule(session, stranger, theirs.id)
-    agents = BrokenAgents(FakeProvider(), broken={user.id})
-
-    started = scheduler(app, agents, Clock(TOMORROW)).tick()
-
-    assert started == 1
-    assert stored(app, broken.id).last_error == SERVER_ERROR_DETAIL
-    assert stored(app, fine.id).last_error == ""
-    assert [run.schedule_id for run in runs_of(session)] == [fine.id]
-
-
-def test_recording_an_error_for_a_schedule_that_is_gone_changes_nothing(
-    app: FastAPI, session: Session, user: User, pipeline: Pipeline
-) -> None:
-    schedule = new_schedule(session, user, pipeline.id)
-    with app.state.database.session() as db:
-        repository.delete(db, repository.get_owned(db, user, schedule.id))
-
-    with app.state.database.session() as db:
-        repository.set_last_error(db, schedule.id, "ignored")
-        assert repository.get(db, schedule.id) is None
-
-
-# --- the loop and the app ---------------------------------------------------------
-
-
-def test_the_loop_ticks_until_it_is_stopped() -> None:
-    enough = threading.Event()
-    calls: list[int] = []
-
-    def tick() -> None:
-        calls.append(1)
-        if len(calls) == 3:
-            enough.set()
-
-    loop = SchedulerLoop(tick, interval=0.001, grace=WAIT_SECONDS)
-    loop.start()
-    loop.start()  # a second start changes nothing
-    assert enough.wait(WAIT_SECONDS)
-    loop.stop()
-    count = len(calls)
-    loop.stop()  # and neither does a second stop
-
-    assert len(calls) == count  # nothing ticks once stop has returned
-
-
-def test_a_failing_tick_does_not_end_the_loop() -> None:
-    survived = threading.Event()
-    calls: list[int] = []
-
-    def tick() -> None:
-        calls.append(1)
-        if len(calls) == 1:
-            raise RuntimeError("the database is briefly unavailable")
-        survived.set()
-
-    loop = SchedulerLoop(tick, interval=0.001, grace=WAIT_SECONDS)
-    loop.start()
-    try:
-        assert survived.wait(WAIT_SECONDS)
-    finally:
-        loop.stop()
-
-
-def test_a_stopped_loop_can_start_again() -> None:
-    ticked = threading.Event()
-    loop = SchedulerLoop(ticked.set, interval=0.001, grace=WAIT_SECONDS)
-
-    loop.start()
-    assert ticked.wait(WAIT_SECONDS)
-    loop.stop()
-    ticked.clear()
-    loop.start()
-    try:
-        assert ticked.wait(WAIT_SECONDS)
-    finally:
-        loop.stop()
-
-
-def test_the_scheduler_is_built_from_settings(app: FastAPI) -> None:
-    database, executor = app.state.database, app.state.run_executor
-    enabled = TEST_SETTINGS.model_copy(update={"scheduler_enabled": True})
-
-    idle = build_scheduler(database, executor, TEST_SETTINGS)
-    idle.start()
-    idle.stop()
-
-    assert isinstance(idle, IdleScheduler)
-    assert isinstance(build_scheduler(database, executor, enabled), SchedulerLoop)
-
-
-class Recorder:
-    """Stands in for the scheduler and the executor, noting when each starts or stops."""
-
-    def __init__(self, events: list[str]) -> None:
-        self.events = events
-
-    def start(self) -> None:
-        self.events.append("scheduler started")
-
-    def stop(self) -> None:
-        self.events.append("scheduler stopped")
-
-    def shutdown(self) -> None:
-        self.events.append("executor stopped")
-
-
-def test_the_app_starts_the_scheduler_and_stops_it_before_the_executor(app: FastAPI) -> None:
-    events: list[str] = []
-    recorder = Recorder(events)
-    app.state.scheduler = recorder
-    app.state.run_executor = recorder
-
-    with TestClient(app):
-        assert events == ["scheduler started"]
-
-    assert events == ["scheduler started", "scheduler stopped", "executor stopped"]
