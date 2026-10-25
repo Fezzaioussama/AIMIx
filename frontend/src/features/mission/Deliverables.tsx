@@ -13,7 +13,9 @@ interface DeliverablesProps {
 }
 
 function names(steps: RunStep[]): string {
-  return steps.map((step) => `“${stepLabel({ order: step.step_order, title: step.title })}”`).join(', ');
+  return steps
+    .map((step) => `“${stepLabel({ order: step.step_order, title: step.title })}”`)
+    .join(', ');
 }
 
 /** Before a run: what each deliverable will be, as the plan says. */

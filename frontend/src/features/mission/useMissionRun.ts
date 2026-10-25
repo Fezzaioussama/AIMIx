@@ -53,6 +53,18 @@ async function launch(pipeline: Pipeline, draft: RunDraft): Promise<Launch> {
   }
 }
 
+/** AIMIx's answer to "run it": the form for the inputs, unless it cannot run now. */
+function askReply(hasTeam: boolean, runActive: boolean): AimixMessage {
+  if (!hasTeam) return note(NO_TEAM_YET);
+  return runActive ? note(STILL_RUNNING) : inputsRequest();
+}
+
+/** Saves the team when it needs saving, then starts a run of it. */
+async function saveAndLaunch(team: MissionTeam, draft: RunDraft): Promise<Launch> {
+  const saved = await team.save();
+  return saved.pipeline ? launch(saved.pipeline, draft) : { run: null, error: saved.error };
+}
+
 /**
  * Running the mission from the conversation: "Run it" asks for the inputs in a form
  * there; starting saves the team first (a new mission is saved on its first run, edits
@@ -72,23 +84,13 @@ export function useMissionRun(
   const { messages, append, update } = conversation;
   const formId = openInputsId(messages);
 
-  function answer(): AimixMessage {
-    if (team.pipeline === null) return note(NO_TEAM_YET);
-    return followed.active ? note(STILL_RUNNING) : inputsRequest();
-  }
-
   function ask(said = 'Run it') {
     settleProposal();
     if (formId !== null) update(formId, settleInputs('closed'));
     setError('');
-    const reply = answer();
+    const reply = askReply(team.pipeline !== null, followed.active);
     append(you(said), reply);
     setNewFormId(reply.kind === 'inputs' ? reply.id : null);
-  }
-
-  async function saveAndLaunch(): Promise<Launch> {
-    const saved = await team.save();
-    return saved.pipeline ? launch(saved.pipeline, draft) : { run: null, error: saved.error };
   }
 
   async function start(): Promise<boolean> {
@@ -96,7 +98,7 @@ export function useMissionRun(
     if (form === null || starting) return false;
     setStarting(true);
     setError('');
-    const outcome = await saveAndLaunch();
+    const outcome = await saveAndLaunch(team, draft);
     if (!mounted.current) return false;
     setStarting(false);
     if (outcome.run === null) {

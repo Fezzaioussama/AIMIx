@@ -44,7 +44,9 @@ describe('describeTeam', () => {
     const team: Pipeline = {
       name: 'x',
       inputs: [],
-      steps: [{ ...planStep(1, 1, '', true), role: '', expected_output: '', prompt: 'a'.repeat(300) }],
+      steps: [
+        { ...planStep(1, 1, '', true), role: '', expected_output: '', prompt: 'a'.repeat(300) },
+      ],
     };
 
     const { task } = describeTeam(team).agents[0];

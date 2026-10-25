@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { json, makeRun } from '../runs/testData';
 import { note, you, type MissionMessage } from './missionMessages';
+import type { StoredMission } from './missionStorage';
 import { LocationProbe } from './testRender';
 import {
   COMMON_ROUTES,
@@ -22,7 +23,7 @@ import { useMission } from './useMission';
 import { GENERATION_STOPPED } from './useTeamGeneration';
 import { NO_TEAM_YET, STILL_RUNNING } from './useMissionRun';
 
-const NOTHING = { messages: [] as MissionMessage[], draft: null };
+const NOTHING: StoredMission = { messages: [], draft: null };
 
 function wrapper({ children }: { children: ReactNode }) {
   return (
@@ -76,12 +77,16 @@ describe('useMission: describing a mission', () => {
     const { result } = renderMission();
 
     act(() => {
-      result.current.send('Summarise the quarterly numbers for the board every Monday morning please');
+      result.current.send(
+        'Summarise the quarterly numbers for the board every Monday morning please',
+      );
     });
     await waitFor(() => expect(result.current.team.pipeline).not.toBeNull());
 
     // The first eight words of the description.
-    expect(result.current.team.pipeline?.name).toBe('Summarise the quarterly numbers for the board every');
+    expect(result.current.team.pipeline?.name).toBe(
+      'Summarise the quarterly numbers for the board every',
+    );
   });
 
   it('answers a failed plan in plain words and lets the person try again', async () => {
@@ -206,7 +211,9 @@ describe('useMission: asking for changes', () => {
       changes: [{ label: 'Fact check' }],
     });
     await waitFor(() => expect(server.to('PUT', '/api/pipelines/7/')).toHaveLength(1));
-    expect((server.to('PUT', '/api/pipelines/7/')[0].body as { steps: unknown[] }).steps).toHaveLength(3);
+    expect(
+      (server.to('PUT', '/api/pipelines/7/')[0].body as { steps: unknown[] }).steps,
+    ).toHaveLength(3);
     await waitFor(() => expect(result.current.team.unsaved).toBe(false));
   });
 
@@ -238,7 +245,9 @@ describe('useMission: asking for changes', () => {
       result.current.send('Actually make it shorter');
     });
 
-    const proposals = result.current.conversation.messages.filter((m) => m.from === 'aimix' && m.kind === 'proposal');
+    const proposals = result.current.conversation.messages.filter(
+      (m) => m.from === 'aimix' && m.kind === 'proposal',
+    );
     expect(proposals).toHaveLength(2);
     expect(proposals[0]).toMatchObject({ state: 'discarded' });
     expect(proposals[1]).toMatchObject({ state: 'pending' });
@@ -362,7 +371,12 @@ describe('useMission: running', () => {
     const server = routeFetch({
       ...COMMON_ROUTES,
       'PUT /api/pipelines/7/': storeAs(7),
-      'POST /api/pipelines/7/runs': makeRun({ id: 10, pipeline_id: 7, status: 'queued', steps: [] }),
+      'POST /api/pipelines/7/runs': makeRun({
+        id: 10,
+        pipeline_id: 7,
+        status: 'queued',
+        steps: [],
+      }),
     });
     act(() => result.current.team.patchStep(1, { role: 'Lead researcher' }));
     act(() => result.current.run.ask());
@@ -408,7 +422,8 @@ describe('useMission: running', () => {
     const { result } = await newMission();
     const server = routeFetch({
       ...COMMON_ROUTES,
-      'POST /api/pipelines/': () => json({ error: 'validation_error', detail: 'Prompt is empty.' }, 400),
+      'POST /api/pipelines/': () =>
+        json({ error: 'validation_error', detail: 'Prompt is empty.' }, 400),
     });
     act(() => result.current.run.ask());
 
@@ -510,7 +525,10 @@ describe('useMission: templates', () => {
     expect(result.current.team.pipeline).toEqual(SAVED);
     expect(result.current.team.unsaved).toBe(false);
     const { messages } = result.current.conversation;
-    expect(messages[0]).toMatchObject({ from: 'you', text: expect.stringContaining('Document digest') });
+    expect(messages[0]).toMatchObject({
+      from: 'you',
+      text: expect.stringContaining('Document digest'),
+    });
     expect(messages[1]).toMatchObject({ kind: 'team', origin: 'template' });
   });
 

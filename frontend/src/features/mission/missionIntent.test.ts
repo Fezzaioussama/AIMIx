@@ -10,7 +10,7 @@ describe('isRunRequest', () => {
     'run',
     'Go ahead',
     'let’s go',
-    "lets go",
+    'lets go',
     'ok, run it please',
     'Please run it.',
     'start the mission',

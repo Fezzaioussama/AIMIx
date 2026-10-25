@@ -59,7 +59,8 @@ function TeamBody({ mission, selected, onEditStep }: TeamPaneProps) {
   if (team.status === 'loading') {
     return <BusyNotice className="py-16">Loading your mission…</BusyNotice>;
   }
-  if (pipeline === null) return team.error ? <MissionMissing message={team.error} /> : <TeamEmpty />;
+  if (pipeline === null)
+    return team.error ? <MissionMissing message={team.error} /> : <TeamEmpty />;
 
   const stages = new Set(pipeline.steps.map((step) => step.stage)).size;
   // A run's own agents cannot be edited while it works; its snapshot would not change anyway.

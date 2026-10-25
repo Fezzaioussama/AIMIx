@@ -139,8 +139,8 @@ export function MissionStart({ onExample, onTemplate }: MissionStartProps) {
         What do you want to get done?
       </h3>
       <p className="mt-2 text-sm text-slate-300">
-        Describe it in your own words. AIMIx puts together a team of AI agents, shows it to you,
-        and runs it when you’re ready.
+        Describe it in your own words. AIMIx puts together a team of AI agents, shows it to you, and
+        runs it when you’re ready.
       </p>
       <ExampleMissions onPick={onExample} />
       <TemplateStarts onUse={onTemplate} />

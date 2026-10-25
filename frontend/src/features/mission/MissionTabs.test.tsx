@@ -15,7 +15,10 @@ describe('MissionTabs', () => {
     expect(screen.getByRole('tab', { name: 'Team' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Team' })).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('tab', { name: 'Conversation' })).toHaveAttribute('tabindex', '-1');
-    expect(screen.getByRole('tab', { name: 'Team' })).toHaveAttribute('aria-controls', 'mission-team-panel');
+    expect(screen.getByRole('tab', { name: 'Team' })).toHaveAttribute(
+      'aria-controls',
+      'mission-team-panel',
+    );
   });
 
   it('shows the newest run’s status on the Results tab, and only there', () => {

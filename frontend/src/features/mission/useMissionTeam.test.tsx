@@ -26,7 +26,8 @@ describe('useMissionTeam', () => {
 
   it('says plainly that a mission that does not exist was not found', async () => {
     routeFetch({
-      'GET /api/pipelines/7/': () => json({ error: 'not_found', detail: 'Pipeline 7 was not found.' }, 404),
+      'GET /api/pipelines/7/': () =>
+        json({ error: 'not_found', detail: 'Pipeline 7 was not found.' }, 404),
     });
     const { result } = renderHook(() => useMissionTeam(7, null));
 
@@ -38,7 +39,8 @@ describe('useMissionTeam', () => {
 
   it('keeps another reason for a failed load', async () => {
     routeFetch({
-      'GET /api/pipelines/7/': () => json({ error: 'server_error', detail: 'Database is down.' }, 500),
+      'GET /api/pipelines/7/': () =>
+        json({ error: 'server_error', detail: 'Database is down.' }, 500),
     });
     const { result } = renderHook(() => useMissionTeam(7, null));
 
@@ -110,7 +112,8 @@ describe('useMissionTeam', () => {
 
   it('reports why a save failed and stays unsaved', async () => {
     routeFetch({
-      'POST /api/pipelines/': () => json({ error: 'validation_error', detail: 'Prompt is empty.' }, 400),
+      'POST /api/pipelines/': () =>
+        json({ error: 'validation_error', detail: 'Prompt is empty.' }, 400),
     });
     const { result } = renderHook(() => useMissionTeam(undefined, PLAN));
 

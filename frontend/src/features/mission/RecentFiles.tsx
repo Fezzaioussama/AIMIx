@@ -1,12 +1,38 @@
 import { FolderOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import type { WorkspaceFile } from '../../core/api/types';
 import { fileIcon, fileName, folderOf, formatBytes, formatDate } from '../files/fileFormat';
 import { useRecentFiles } from './useRecentFiles';
 
 /** Whether a run is still working, folded into a key that changes when it ends. */
 export function filesRefreshKey(runId: number | null, active: boolean): string {
   return `${runId ?? 'none'}-${active ? 'active' : 'ended'}`;
+}
+
+function FileRows({ files }: { files: WorkspaceFile[] }) {
+  return (
+    <ul className="divide-y divide-white/[0.06] rounded-xl border border-white/10 bg-slate-900/50">
+      {files.map((file) => {
+        const Icon = fileIcon(file.type);
+        const folder = folderOf(file.path);
+        return (
+          <li key={file.path} className="flex items-center gap-3 px-3 py-2.5">
+            <Icon aria-hidden="true" className="size-4 shrink-0 text-sky-300" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-100" title={file.path}>
+                {fileName(file.path)}
+              </p>
+              <p className="text-xs break-words text-slate-400">
+                {folder && `${folder} · `}
+                {formatBytes(file.size)} · {formatDate(file.modified_at)}
+              </p>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /**
@@ -41,28 +67,7 @@ export function RecentFiles({ refreshKey }: { refreshKey: string }) {
           Files your agents save appear here.
         </p>
       )}
-      {files !== null && files.length > 0 && (
-        <ul className="divide-y divide-white/[0.06] rounded-xl border border-white/10 bg-slate-900/50">
-          {files.map((file) => {
-            const Icon = fileIcon(file.type);
-            const folder = folderOf(file.path);
-            return (
-              <li key={file.path} className="flex items-center gap-3 px-3 py-2.5">
-                <Icon aria-hidden="true" className="size-4 shrink-0 text-sky-300" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-100" title={file.path}>
-                    {fileName(file.path)}
-                  </p>
-                  <p className="text-xs break-words text-slate-400">
-                    {folder && `${folder} · `}
-                    {formatBytes(file.size)} · {formatDate(file.modified_at)}
-                  </p>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {files !== null && files.length > 0 && <FileRows files={files} />}
     </section>
   );
 }

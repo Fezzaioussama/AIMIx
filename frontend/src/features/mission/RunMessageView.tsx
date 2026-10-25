@@ -15,7 +15,9 @@ function readyLine(run: Run): string {
 
 function failedLine(run: Run): string {
   const failed = run.steps.find((step) => step.status === 'failed');
-  const what = failed ? `“${stepLabel({ order: failed.step_order, title: failed.title })}”` : 'A step';
+  const what = failed
+    ? `“${stepLabel({ order: failed.step_order, title: failed.title })}”`
+    : 'A step';
   return `The run stopped: ${what} failed. You can resume it under Results.`;
 }
 

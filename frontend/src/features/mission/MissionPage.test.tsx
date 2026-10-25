@@ -35,10 +35,15 @@ describe('the mission workspace: starting', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('opens on what to do, with examples, template quick-starts and recent missions', async () => {
-    routeFetch({ ...COMMON_ROUTES, 'GET /api/pipelines/': [SAVED, { ...SAVED, id: 8, name: 'Launch plan' }] });
+    routeFetch({
+      ...COMMON_ROUTES,
+      'GET /api/pipelines/': [SAVED, { ...SAVED, id: 8, name: 'Launch plan' }],
+    });
     renderMission();
 
-    expect(screen.getByRole('heading', { name: 'What do you want to get done?' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'What do you want to get done?' }),
+    ).toBeInTheDocument();
     for (const example of MISSION_EXAMPLES) {
       expect(screen.getByRole('button', { name: example })).toBeInTheDocument();
     }
@@ -89,7 +94,9 @@ describe('the mission workspace: starting', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Document digest' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not start "Document digest". Try later.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not start "Document digest". Try later.',
+    );
   });
 });
 
@@ -116,7 +123,9 @@ describe('the mission workspace: describing a mission', () => {
 
     planned.resolve(GENERATED);
 
-    expect(await within(log()).findByText(/Here’s the team I put together for “Competitor brief”/)).toBeInTheDocument();
+    expect(
+      await within(log()).findByText(/Here’s the team I put together for “Competitor brief”/),
+    ).toBeInTheDocument();
     expect(within(log()).getByText('Researcher')).toBeInTheDocument();
     expect(within(log()).getByText('Analyst')).toBeInTheDocument();
     expect(within(log()).getByText('Works without tools')).toBeInTheDocument();
@@ -148,7 +157,9 @@ describe('the mission workspace: describing a mission', () => {
 
     await user.click(within(log()).getByRole('button', { name: 'Stop' }));
 
-    expect(await within(log()).findByText(/^Stopped\. Describe your mission again/)).toBeInTheDocument();
+    expect(
+      await within(log()).findByText(/^Stopped\. Describe your mission again/),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Putting your team together…')).not.toBeInTheDocument();
     expect(composer()).toHaveAccessibleName('Describe your mission');
   });
@@ -184,11 +195,15 @@ describe('the mission workspace: describing a mission', () => {
 
     await user.click(screen.getByRole('button', { name: 'New mission' }));
 
-    expect(screen.getByRole('heading', { name: 'What do you want to get done?' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'What do you want to get done?' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Compare my competitors')).not.toBeInTheDocument();
     cleanup();
     renderMission();
-    expect(screen.getByRole('heading', { name: 'What do you want to get done?' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'What do you want to get done?' }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -211,7 +226,9 @@ describe('the mission workspace: asking for changes', () => {
     const server = await openSaved();
 
     await say(user, 'Add an agent that checks the facts');
-    expect(await within(log()).findByText('Here’s what I would change (1 change):')).toBeInTheDocument();
+    expect(
+      await within(log()).findByText('Here’s what I would change (1 change):'),
+    ).toBeInTheDocument();
     expect(within(log()).getByText('Adds the step “Fact check”')).toBeInTheDocument();
     expect(screen.getByText(/2 agents · 2 stages/)).toBeInTheDocument();
 
@@ -248,7 +265,9 @@ describe('the mission workspace: asking for changes', () => {
     await user.click(within(log()).getByText('Preview the new team'));
 
     expect(within(log()).getByRole('list', { name: 'Pipeline diagram' })).toBeInTheDocument();
-    expect(within(log()).getByRole('button', { name: /Fact check, .*, output, Not run/ })).toBeInTheDocument();
+    expect(
+      within(log()).getByRole('button', { name: /Fact check, .*, output, Not run/ }),
+    ).toBeInTheDocument();
   });
 
   it('says plainly when the change could not be worked out', async () => {
@@ -305,7 +324,9 @@ describe('the mission workspace: running', () => {
 
     await user.click(screen.getByRole('button', { name: 'Run it' }));
 
-    expect(await within(log()).findByText(/Here’s what your team needs to start/)).toBeInTheDocument();
+    expect(
+      await within(log()).findByText(/Here’s what your team needs to start/),
+    ).toBeInTheDocument();
     const field = within(log()).getByLabelText(/Your company/);
     expect(field).toHaveFocus();
     expect(within(log()).getByText('Attach a document')).toBeInTheDocument();
@@ -317,7 +338,9 @@ describe('the mission workspace: running', () => {
     await user.click(run);
 
     expect(await within(log()).findByText('Inputs sent.')).toBeInTheDocument();
-    expect(server.to('POST', '/api/pipelines/7/runs')[0].body).toEqual({ inputs: { company: 'Acme' } });
+    expect(server.to('POST', '/api/pipelines/7/runs')[0].body).toEqual({
+      inputs: { company: 'Acme' },
+    });
     expect(composer()).toHaveFocus();
     expect(within(log()).getByText(/Your team is on it/)).toBeInTheDocument();
     // The status and its control are always in reach at the top of the results pane.
@@ -329,7 +352,11 @@ describe('the mission workspace: running', () => {
     expect(team.getByText(/Your team is working/)).toBeInTheDocument();
 
     // One poll later the run is done: its deliverables lead the results.
-    expect(await within(log()).findByText(/1 deliverable is ready under Results/, undefined, { timeout: 4000 })).toBeInTheDocument();
+    expect(
+      await within(log()).findByText(/1 deliverable is ready under Results/, undefined, {
+        timeout: 4000,
+      }),
+    ).toBeInTheDocument();
     const results = screen.getByRole('region', { name: 'Deliverables' });
     expect(within(results).getByText('Comparison table')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stop the run' })).not.toBeInTheDocument();
@@ -343,7 +370,10 @@ describe('the mission workspace: running', () => {
     const server = routeFetch({
       ...COMMON_ROUTES,
       'GET /api/pipelines/7/': { ...SAVED, inputs: [] },
-      'POST /api/pipelines/7/runs': runningRun({ id: 9, definition: { name: 'x', inputs: [], steps: SAVED.steps } }),
+      'POST /api/pipelines/7/runs': runningRun({
+        id: 9,
+        definition: { name: 'x', inputs: [], steps: SAVED.steps },
+      }),
     });
     renderMission('/mission/7');
     await within(log()).findByText(/Here’s your “Competitor brief” team/);
@@ -353,7 +383,9 @@ describe('the mission workspace: running', () => {
     await user.click(within(log()).getByRole('button', { name: 'Run Pipeline' }));
 
     await within(log()).findByText('Inputs sent.');
-    expect(server.to('POST', '/api/pipelines/7/runs')[0].body).toEqual({ input: 'Our coffee grinder' });
+    expect(server.to('POST', '/api/pipelines/7/runs')[0].body).toEqual({
+      input: 'Our coffee grinder',
+    });
   });
 
   it('saves a new mission when it first runs and moves to its own address without starting over', async () => {

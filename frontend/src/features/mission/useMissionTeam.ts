@@ -98,10 +98,7 @@ function useTeamLoader(
 }
 
 /** Saving, one request at a time: two first saves would create two pipelines. */
-function useTeamSaver(
-  current: { readonly current: TeamState },
-  commit: (next: TeamState) => void,
-) {
+function useTeamSaver(current: { readonly current: TeamState }, commit: (next: TeamState) => void) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const mounted = useMountedRef();
@@ -156,31 +153,14 @@ function useAutosave(state: TeamState, save: () => Promise<SaveResult>) {
   }, [save, state]);
 }
 
-/**
- * The mission's team: the pipeline on screen (loaded by id for a saved mission, or
- * the tab's draft for a new one), its edits, and saving. Kept out of the components (§2).
- */
-export function useMissionTeam(routeId: number | undefined, draft: Pipeline | null): MissionTeam {
-  const [state, setState] = useState<TeamState>(() => ({
-    pipeline: routeId === undefined ? draft : null,
-    dirty: false,
-  }));
-  // Async work reads the team here, so it is written together with every change.
-  const current = useRef(state);
-  const commit = useCallback((next: TeamState) => {
-    current.current = next;
-    setState(next);
-  }, []);
-  const loader = useTeamLoader(routeId, current, commit);
-  const saver = useTeamSaver(current, commit);
-  useAutosave(state, saver.save);
-
+/** Changing the team on screen: swapping it whole, or editing one agent or removing it. */
+function useTeamEdits(current: { readonly current: TeamState }, commit: (next: TeamState) => void) {
   const edit = useCallback(
     (change: (pipeline: Pipeline) => Pipeline) => {
       const { pipeline } = current.current;
       if (pipeline !== null) commit({ pipeline: change(pipeline), dirty: true });
     },
-    [commit],
+    [commit, current],
   );
   const adopt = useCallback((pipeline: Pipeline) => commit({ pipeline, dirty: false }), [commit]);
   const replace = useCallback((pipeline: Pipeline) => commit({ pipeline, dirty: true }), [commit]);
@@ -202,18 +182,42 @@ export function useMissionTeam(routeId: number | undefined, draft: Pipeline | nu
       })),
     [edit],
   );
+  return { adopt, replace, patchStep, removeStep };
+}
+
+function statusOf(loading: boolean, saving: boolean): TeamStatus {
+  if (loading) return 'loading';
+  return saving ? 'saving' : 'idle';
+}
+
+/**
+ * The mission's team: the pipeline on screen (loaded by id for a saved mission, or
+ * the tab's draft for a new one), its edits, and saving. Kept out of the components (§2).
+ */
+export function useMissionTeam(routeId: number | undefined, draft: Pipeline | null): MissionTeam {
+  const [state, setState] = useState<TeamState>(() => ({
+    pipeline: routeId === undefined ? draft : null,
+    dirty: false,
+  }));
+  // Async work reads the team here, so it is written together with every change.
+  const current = useRef(state);
+  const commit = useCallback((next: TeamState) => {
+    current.current = next;
+    setState(next);
+  }, []);
+  const loader = useTeamLoader(routeId, current, commit);
+  const saver = useTeamSaver(current, commit);
+  const edits = useTeamEdits(current, commit);
+  useAutosave(state, saver.save);
 
   const { pipeline, dirty } = state;
   return {
     pipeline,
     dirty,
     unsaved: pipeline !== null && (pipeline.id === undefined || dirty),
-    status: loader.loading ? 'loading' : saver.saving ? 'saving' : 'idle',
+    status: statusOf(loader.loading, saver.saving),
     error: saver.error || loader.error,
-    adopt,
-    replace,
-    patchStep,
-    removeStep,
+    ...edits,
     save: saver.save,
   };
 }

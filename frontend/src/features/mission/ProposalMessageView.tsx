@@ -13,24 +13,26 @@ const STOPPED = 'Stopped. Ask again whenever you like.';
 const STALE = 'The team changed after you asked, so I set that proposal aside. Ask again.';
 
 /** How a settled answer reads; a pending one that is no longer live has expired. */
-const SETTLED: Record<Exclude<ProposalState, 'pending'>, (message: ProposalMessage) => ReactNode> =
-  {
-    applied: (message) => (
-      <>
-        <p>Done. I applied {countOf(message.changes.length, 'change')}:</p>
-        <div className="mt-2">
-          <ChangeList changes={message.changes} />
-        </div>
-      </>
-    ),
-    discarded: (message) =>
-      message.changes.length > 0
-        ? 'Discarded. The team stays as it was.'
-        : 'Nothing changed. The team stays as it was.',
-    failed: (message) => message.error,
-    stopped: () => STOPPED,
-    expired: () => 'That proposal is no longer available. Ask again if you still want the change.',
-  };
+const SETTLED: Record<
+  Exclude<ProposalState, 'pending'>,
+  (message: ProposalMessage) => ReactNode
+> = {
+  applied: (message) => (
+    <>
+      <p>Done. I applied {countOf(message.changes.length, 'change')}:</p>
+      <div className="mt-2">
+        <ChangeList changes={message.changes} />
+      </div>
+    </>
+  ),
+  discarded: (message) =>
+    message.changes.length > 0
+      ? 'Discarded. The team stays as it was.'
+      : 'Nothing changed. The team stays as it was.',
+  failed: (message) => message.error,
+  stopped: () => STOPPED,
+  expired: () => 'That proposal is no longer available. Ask again if you still want the change.',
+};
 
 interface ReviewProps {
   proposal: RevisionProposal;

@@ -46,7 +46,9 @@ function taskOf(step: PipelineStep): string {
   if (step.role.trim() && step.title.trim()) return step.title.trim();
   const prompt = step.prompt.trim().replace(/\s+/g, ' ');
   if (!prompt) return 'Works on what the previous agents hand over.';
-  return prompt.length > PROMPT_EXCERPT_CHARS ? `${prompt.slice(0, PROMPT_EXCERPT_CHARS)}…` : prompt;
+  return prompt.length > PROMPT_EXCERPT_CHARS
+    ? `${prompt.slice(0, PROMPT_EXCERPT_CHARS)}…`
+    : prompt;
 }
 
 /** The team as AIMIx describes it: kept pure, so the conversation stores plain data. */

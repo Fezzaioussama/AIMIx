@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
 import { clearTokens, saveTokens } from './core/auth/tokenStorage';
+import { COMMON_ROUTES, SAVED, routeFetch } from './features/mission/testData';
 
 function renderAt(path: string) {
   return render(
@@ -36,6 +37,47 @@ describe('App routing', () => {
 
   it('redirects an unauthenticated visitor away from a protected route', async () => {
     renderAt('/pipeline');
+    expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
+  });
+
+  it('lists Missions first in the app nav, then the rest, all reachable by name', () => {
+    saveTokens({ access: 'token' });
+    renderAt('/chat');
+    const bar = screen.getAllByRole('link').filter((link) => link.closest('nav'));
+    expect(bar.map((link) => link.textContent)).toEqual([
+      'Missions',
+      'Chat',
+      'Pipelines',
+      'Files',
+      'Settings',
+    ]);
+    expect(screen.getByRole('link', { name: 'Missions' })).toHaveAttribute('href', '/mission');
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument();
+  });
+
+  it('serves the mission workspace as the front door, with Missions current', async () => {
+    saveTokens({ access: 'token' });
+    routeFetch(COMMON_ROUTES);
+    renderAt('/mission');
+    expect(screen.getByRole('link', { name: 'Missions' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('heading', { level: 1, name: 'Missions' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'What do you want to get done?' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps Missions current on a saved mission’s address', async () => {
+    saveTokens({ access: 'token' });
+    routeFetch({ ...COMMON_ROUTES, 'GET /api/pipelines/7/': SAVED });
+    renderAt('/mission/7');
+    expect(screen.getByRole('link', { name: 'Missions' })).toHaveAttribute('aria-current', 'page');
+    const log = screen.getByRole('log', { name: 'Conversation with AIMIx' });
+    expect(await within(log).findByText(/Here’s your “Competitor brief” team/)).toBeInTheDocument();
+  });
+
+  it('keeps the mission workspace behind sign-in', async () => {
+    renderAt('/mission');
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 

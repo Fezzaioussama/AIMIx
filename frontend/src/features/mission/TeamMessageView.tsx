@@ -46,7 +46,11 @@ export function TeamMessageView({ message, context }: ViewProps<'team'>) {
       <p className="mt-1 text-slate-300">
         Ask for any change in your own words, or press Run it when you’re ready.
       </p>
-      <button type="button" onClick={() => context.showPane('team')} className={`mt-2 ${ANSWER_ACTION}`}>
+      <button
+        type="button"
+        onClick={() => context.showPane('team')}
+        className={`mt-2 ${ANSWER_ACTION}`}
+      >
         See the team
       </button>
     </Bubble>

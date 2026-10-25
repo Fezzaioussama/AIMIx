@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent, type Ref } from 'react';
 
 import type { RunStatus } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
@@ -13,13 +13,6 @@ const KEY_MOVES: Partial<Record<string, (index: number, count: number) => number
   End: (_index, count) => count - 1,
 };
 
-interface MissionTabsProps {
-  active: PaneId;
-  onChange: (pane: PaneId) => void;
-  /** The newest run's status, shown on the Results tab. */
-  runStatus: RunStatus | null;
-}
-
 /** The status of the newest run, small enough for the Results tab. */
 function TabRunStatus({ status }: { status: RunStatus }) {
   const style = RUN_STATUS_STYLES[status];
@@ -30,6 +23,52 @@ function TabRunStatus({ status }: { status: RunStatus }) {
       <span className="sr-only">{`, run ${style.label.toLowerCase()}`}</span>
     </span>
   );
+}
+
+interface TabProps {
+  pane: PaneId;
+  selected: boolean;
+  /** The newest run's status, shown on the Results tab. */
+  runStatus: RunStatus | null;
+  buttonRef: Ref<HTMLButtonElement>;
+  onSelect: () => void;
+  onKeyDown: (event: KeyboardEvent) => void;
+}
+
+function Tab({ pane, selected, runStatus, buttonRef, onSelect, onKeyDown }: TabProps) {
+  const ids = paneIds(pane);
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      role="tab"
+      id={ids.tab}
+      aria-controls={ids.panel}
+      aria-selected={selected}
+      tabIndex={selected ? 0 : -1}
+      onClick={onSelect}
+      onKeyDown={onKeyDown}
+      className={`relative isolate flex min-w-0 flex-1 flex-col items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 ${
+        selected ? 'text-white' : 'text-slate-300 hover:text-white'
+      }`}
+    >
+      {selected && (
+        <ActivePill
+          layoutId="mission-tabs"
+          className="bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+        />
+      )}
+      {PANE_LABELS[pane]}
+      {pane === 'results' && runStatus !== null && <TabRunStatus status={runStatus} />}
+    </button>
+  );
+}
+
+interface MissionTabsProps {
+  active: PaneId;
+  onChange: (pane: PaneId) => void;
+  /** The newest run's status, shown on the Results tab. */
+  runStatus: RunStatus | null;
 }
 
 /**
@@ -54,38 +93,19 @@ export function MissionTabs({ active, onChange, runStatus }: MissionTabsProps) {
       aria-label="Mission"
       className="flex shrink-0 gap-1 border-b border-white/[0.06] bg-slate-950/60 p-2"
     >
-      {PANE_ORDER.map((pane, index) => {
-        const selected = pane === active;
-        const ids = paneIds(pane);
-        return (
-          <button
-            key={pane}
-            ref={(node) => {
-              tabs.current[pane] = node;
-            }}
-            type="button"
-            role="tab"
-            id={ids.tab}
-            aria-controls={ids.panel}
-            aria-selected={selected}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(pane)}
-            onKeyDown={(event) => move(event, index)}
-            className={`relative isolate flex min-w-0 flex-1 flex-col items-center justify-center rounded-lg px-2 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 ${
-              selected ? 'text-white' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            {selected && (
-              <ActivePill
-                layoutId="mission-tabs"
-                className="bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
-              />
-            )}
-            {PANE_LABELS[pane]}
-            {pane === 'results' && runStatus !== null && <TabRunStatus status={runStatus} />}
-          </button>
-        );
-      })}
+      {PANE_ORDER.map((pane, index) => (
+        <Tab
+          key={pane}
+          pane={pane}
+          selected={pane === active}
+          runStatus={runStatus}
+          buttonRef={(node) => {
+            tabs.current[pane] = node;
+          }}
+          onSelect={() => onChange(pane)}
+          onKeyDown={(event) => move(event, index)}
+        />
+      ))}
     </div>
   );
 }

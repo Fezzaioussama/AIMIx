@@ -97,7 +97,8 @@ export function finishedRun(overrides: Partial<Run> = {}): Run {
   });
 }
 
-type Reply = unknown;
+/** What a route answers with: JSON, or a ready `Response`. */
+type Reply = object | string | number | boolean | null;
 type Routes = Record<string, Reply | ((init: RequestInit | undefined) => Reply | Promise<Reply>)>;
 
 export interface RecordedCall {
@@ -126,7 +127,8 @@ export function routeFetch(routes: Routes) {
     const path = `${url.pathname}${url.search}`;
     calls.push({ method, path, body: bodyOf(init) });
     const key = [`${method} ${path}`, `${method} ${url.pathname}`].find((entry) => entry in routes);
-    if (key === undefined) return json({ error: 'not_found', detail: `No route: ${method} ${path}` }, 404);
+    if (key === undefined)
+      return json({ error: 'not_found', detail: `No route: ${method} ${path}` }, 404);
     const reply = routes[key];
     const value = typeof reply === 'function' ? await reply(init) : reply;
     return value instanceof Response ? value : json(value);
