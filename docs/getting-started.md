@@ -4,7 +4,7 @@
 
 | Tool | Version | Why |
 |---|---|---|
-| Python | 3.10+ (pinned in `.python-version`) | Backend |
+| Python | 3.10+ (`.python-version` pins 3.12, as CI and the image use; `uv` fetches it) | Backend |
 | [uv](https://docs.astral.sh/uv/) | recent | Python venv + dependency manager (`uv.lock`) |
 | Node.js + npm | Node 20+ (tested on 24) | Frontend (Vite, React 19) |
 | make | any | All commands are wrapped in the root `Makefile` |

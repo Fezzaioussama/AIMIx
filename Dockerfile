@@ -12,8 +12,8 @@ COPY frontend/ ./
 RUN npm run build
 
 # --- 2. Backend runtime ------------------------------------------------------
-# Python 3.10, as in .python-version.
-FROM python:3.10-slim AS runtime
+# Python 3.12, as in .python-version.
+FROM python:3.12-slim-trixie AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
 # DejaVu Sans is embedded in the PDFs agents save, so non-Latin text prints
 # (PDF_FONT_PATH). Tesseract reads scanned PDFs and images (OCR); English and
