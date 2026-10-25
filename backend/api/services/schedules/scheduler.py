@@ -165,11 +165,15 @@ class SchedulerLoop:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        """Start ticking; the first tick comes one interval later."""
+        """Start ticking; the first tick comes one interval later. Every start
+        has a stop signal of its own, so a thread that outlived a ``stop`` (a
+        slow tick) is never brought back by the next ``start``."""
         if self._thread is not None:
             return
-        self._stopping.clear()
-        self._thread = threading.Thread(target=self._serve, name="aimix-scheduler", daemon=True)
+        self._stopping = threading.Event()
+        self._thread = threading.Thread(
+            target=self._serve, args=(self._stopping,), name="aimix-scheduler", daemon=True
+        )
         self._thread.start()
         logger.info("scheduler.started tick_s=%.1f", self._interval)
 
@@ -182,8 +186,8 @@ class SchedulerLoop:
         thread.join(self._grace)
         logger.info("scheduler.stopped")
 
-    def _serve(self) -> None:
-        while not self._stopping.wait(self._interval):
+    def _serve(self, stopping: threading.Event) -> None:
+        while not stopping.wait(self._interval):
             try:
                 self._tick()
             except Exception:

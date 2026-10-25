@@ -182,5 +182,8 @@ def checked(timing: Timing) -> Timing:
 def next_run_after(timing: Timing, after: datetime) -> datetime:
     """The first time ``timing`` comes round strictly after ``after`` (an aware
     datetime), as a UTC instant."""
+    if after.tzinfo is None:
+        # A naive time would be read as this server's local time: refuse it.
+        raise ValueError("next_run_after needs a timezone-aware datetime.")
     moment = after.astimezone(timezone.utc)
     return FREQUENCIES[timing.frequency].next_after(timing, _zone(timing.timezone), moment)

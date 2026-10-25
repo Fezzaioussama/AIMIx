@@ -66,6 +66,35 @@ def test_a_stopped_loop_can_start_again() -> None:
         loop.stop()
 
 
+def test_restarting_while_a_slow_tick_is_still_running_leaves_one_loop() -> None:
+    first_tick_running, release = threading.Event(), threading.Event()
+    enough = threading.Event()
+    ticking: list[int] = []
+
+    def tick() -> None:
+        ticking.append(threading.get_ident())
+        if len(ticking) == 1:
+            first_tick_running.set()
+            release.wait(WAIT_SECONDS)  # a tick that outlives stop()'s grace
+        elif len(ticking) >= 6:
+            enough.set()
+
+    loop = SchedulerLoop(tick, interval=0.001, grace=0.01)
+    loop.start()
+    assert first_tick_running.wait(WAIT_SECONDS)
+    loop.stop()  # gives up waiting for the slow tick after its grace
+    loop.start()  # a new thread, which must not revive the old one
+    release.set()
+    try:
+        assert enough.wait(WAIT_SECONDS)
+    finally:
+        loop.stop()
+
+    # After the first (slow) tick, every tick came from the same, new thread.
+    assert len(set(ticking[1:])) == 1
+    assert ticking[1] != ticking[0]
+
+
 def test_the_scheduler_is_built_from_settings(app: FastAPI) -> None:
     database, executor = app.state.database, app.state.run_executor
     enabled = TEST_SETTINGS.model_copy(update={"scheduler_enabled": True})

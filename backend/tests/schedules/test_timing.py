@@ -29,6 +29,13 @@ def test_the_next_time_is_strictly_after_and_in_utc() -> None:
     assert next_run_after(timing, paris).tzinfo == timezone.utc
 
 
+def test_a_time_without_a_time_zone_is_refused_rather_than_guessed() -> None:
+    timing = Timing(Freq.DAILY, "UTC", time(9, 0))
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        next_run_after(timing, datetime(2026, 10, 24, 8, 0))
+
+
 def test_a_fraction_of_a_second_past_a_time_is_past_it() -> None:
     timing = Timing(Freq.DAILY, "UTC", time(9, 0))
 
