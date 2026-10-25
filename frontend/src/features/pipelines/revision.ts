@@ -29,7 +29,7 @@ const FIELD_WORDS: Record<string, string> = {
 };
 
 /** "a", "a and b", "a, b and c". */
-function joinWords(words: string[]): string {
+export function joinWords(words: string[]): string {
   if (words.length < 2) return words.join('');
   return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
 }
