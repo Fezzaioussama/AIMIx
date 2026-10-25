@@ -76,6 +76,8 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     # Proxies in front of the app that each append to X-Forwarded-For; the client
     # is the entry this many from the right. 0 trusts no header: the socket peer.
     trusted_proxy_hops: int = Field(0, ge=0, validation_alias="TRUSTED_PROXY_HOPS")
+    # Largest body other than a multipart upload (JSON), counted as it arrives.
+    request_max_json_bytes: int = Field(5_000_000, ge=1, validation_alias="REQUEST_MAX_JSON_BYTES")
 
     jwt_access_minutes: float = Field(60, gt=0, validation_alias="JWT_ACCESS_MINUTES")
     jwt_refresh_days: float = Field(1, gt=0, validation_alias="JWT_REFRESH_DAYS")
