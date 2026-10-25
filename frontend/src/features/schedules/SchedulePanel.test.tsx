@@ -31,7 +31,7 @@ function renderPanel(props: Partial<SchedulePanelProps> = {}) {
 
 const toggle = () => screen.getByRole('button', { name: 'Schedule this pipeline' });
 const submit = () => screen.getByRole('button', { name: 'Schedule it' });
-const textBox = () => screen.getByRole('textbox', { name: 'Run input' });
+const textBox = () => screen.getByRole('textbox', { name: 'Input for each scheduled run' });
 
 async function openPanel() {
   await userEvent.click(toggle());

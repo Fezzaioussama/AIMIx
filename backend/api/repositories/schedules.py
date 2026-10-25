@@ -22,7 +22,7 @@ from api.models import Run, Schedule, ScheduleFrequency, User
 @dataclass(frozen=True)
 class ScheduleFields:
     """Everything a write sets: the timing, the run inputs, whether it is on,
-    and its next run (None while it is off)."""
+    its next run (None while it is off) and what ``last_error`` says."""
 
     frequency: ScheduleFrequency
     hour: int
@@ -34,6 +34,7 @@ class ScheduleFields:
     input_values: dict[str, str]
     enabled: bool
     next_run_at: datetime | None
+    last_error: str = ""
 
 
 def _owned_by(user: User) -> Select[tuple[Schedule]]:

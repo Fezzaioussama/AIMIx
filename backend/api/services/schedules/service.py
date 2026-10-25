@@ -9,7 +9,7 @@ that saves is one whose runs can start.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time
 
 from sqlalchemy.orm import Session
@@ -151,6 +151,16 @@ def _next_run(row: Schedule, timing: Timing, enabled: bool, now: datetime) -> da
     return next_run_after(timing, now)
 
 
+def _error_after(row: Schedule, edit: ScheduleEdit, timing: Timing, enabled: bool) -> str:
+    """What ``last_error`` says once this edit is saved. An edit that changes what the
+    schedule runs or when (or turns it on) starts a new configuration, which has not
+    failed yet, so the old reason goes; any other edit keeps it."""
+    reconfigured = (
+        edit.start is not None or timing != timing_of(row) or (enabled and not row.enabled)
+    )
+    return "" if reconfigured else row.last_error
+
+
 def _last_run(run: Run | None) -> LastRunView | None:
     return None if run is None else LastRunView(run.id, run.status, run.created_at)
 
@@ -216,15 +226,18 @@ def update(access: ScheduleAccess, schedule_id: int, edit: ScheduleEdit) -> Sche
 
     The inputs are checked again when they change or the schedule is turned
     on; turning it off always works. Its next run is worked out again when
-    its timing changes or it is turned on."""
+    its timing changes or it is turned on, and the reason its last time could
+    not start goes when the edit gives it something new to try."""
     row = repository.get_owned(access.session, access.user, schedule_id)
     timing = checked(edit.timing.applied_to(timing_of(row)))
     start = edit.start or RunStart(row.input_text, row.input_values)
     enabled = row.enabled if edit.enabled is None else edit.enabled
     if enabled and (edit.start is not None or not row.enabled):
         _check_inputs(access, row.pipeline_id, start)
-    next_run = _next_run(row, timing, enabled, access.now)
-    repository.save(access.session, row, _fields(timing, start, enabled, next_run))
+    fields = _fields(timing, start, enabled, _next_run(row, timing, enabled, access.now))
+    repository.save(
+        access.session, row, replace(fields, last_error=_error_after(row, edit, timing, enabled))
+    )
     logger.info(
         "schedule.updated user_id=%s schedule_id=%s enabled=%s", access.user.id, row.id, enabled
     )

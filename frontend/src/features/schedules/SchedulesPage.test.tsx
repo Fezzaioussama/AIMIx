@@ -181,7 +181,9 @@ describe('SchedulesPage', () => {
     expect(within(form).getByLabelText('Day of the week')).toHaveValue('0');
     expect(within(form).getByLabelText('Time')).toHaveValue('09:00');
     expect(within(form).getByLabelText('Time zone')).toHaveValue('Europe/Paris');
-    expect(within(form).getByRole('textbox', { name: 'Run input' })).toHaveValue(SCHEDULE.input);
+    expect(within(form).getByRole('textbox', { name: 'Input for each scheduled run' })).toHaveValue(
+      SCHEDULE.input,
+    );
 
     const time = within(form).getByLabelText('Time');
     await userEvent.clear(time);

@@ -35,6 +35,12 @@ export function SchedulesPage() {
           Pipelines that start on their own. Switch a schedule off to pause it, or run it now to see
           what it does. Each run it starts shows up in History marked as scheduled.
         </RunsHeader>
+        {/* Above the list, so an outcome (a refusal above all) is never below the fold. */}
+        {notice && (
+          <div className="mb-6 -mt-3">
+            <NoticeLine notice={notice} />
+          </div>
+        )}
         {status === 'loading' && <BusyNotice className="mt-12">Loading your schedules…</BusyNotice>}
         {schedules?.length === 0 && <EmptyState />}
         {schedules && schedules.length > 0 && (
@@ -44,11 +50,6 @@ export function SchedulesPage() {
             actions={actions}
             onStarted={(run: Run) => navigate(`/runs/${run.id}`)}
           />
-        )}
-        {notice && (
-          <div className="mt-4">
-            <NoticeLine notice={notice} />
-          </div>
         )}
       </div>
     </div>

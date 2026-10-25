@@ -868,7 +868,7 @@ A schedule object:
 | `enabled` | Whether it runs. Off, it keeps its settings and `next_run_at` is `null` |
 | `next_run_at` | The next time it starts, in UTC |
 | `last_run` | The newest run it started (by itself or by [run now](#post-schedulesidrun)); `null` before the first, or when those runs were deleted |
-| `last_error` | Why its latest time could not start a run (for example no API key); `null` when it started. The schedule has already moved to its next time |
+| `last_error` | Why its latest time could not start a run (for example no API key); `null` when it started. The schedule has already moved to its next time. An edit that changes what it runs or when, or turns it on, clears it (it has not failed yet); turning it off keeps it |
 
 A time is read on the zone's wall clock, so `09:00` stays 09:00 across
 daylight-saving changes. When the clocks go forward, a time in the skipped hour

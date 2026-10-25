@@ -525,6 +525,41 @@ def test_what_went_wrong_at_a_scheduled_time_is_listed(
     assert listing(api)[0]["last_error"] == "No API key is set for openrouter."
 
 
+@pytest.mark.parametrize(
+    "change",
+    [{"input": "a new brief"}, {"time": "20:00"}, {"timezone": "Asia/Tokyo"}, {"enabled": True}],
+)
+def test_an_edit_that_changes_what_a_schedule_runs_clears_why_it_last_failed(
+    app: FastAPI, api: TestClient, pipeline: Pipeline, change: dict[str, Any]
+) -> None:
+    schedule = create(api, pipeline)
+    url = f"/api/schedules/{schedule['id']}"
+    with app.state.database.session() as db:
+        repository.set_last_error(db, schedule["id"], "No API key is set for openrouter.")
+    # Turning it off is not a fix, so the reason stays (and a turn-on below starts from off).
+    assert api.patch(url, json={"enabled": False}).json()["last_error"] == (
+        "No API key is set for openrouter."
+    )
+
+    fixed = api.patch(url, json=change).json()
+    again = api.patch(url, json=change).json()
+
+    assert fixed["last_error"] is None
+    assert again == fixed
+
+
+def test_an_edit_that_changes_nothing_keeps_why_it_last_failed(
+    app: FastAPI, api: TestClient, pipeline: Pipeline
+) -> None:
+    schedule = create(api, pipeline)
+    with app.state.database.session() as db:
+        repository.set_last_error(db, schedule["id"], "No API key is set for openrouter.")
+
+    same = api.patch(f"/api/schedules/{schedule['id']}", json={"time": "09:00"}).json()
+
+    assert same["last_error"] == "No API key is set for openrouter."
+
+
 def test_the_time_a_schedule_is_created_at_is_the_requests_now(
     api: TestClient, pipeline: Pipeline, clock: Clock
 ) -> None:

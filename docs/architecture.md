@@ -249,7 +249,8 @@ sequenceDiagram
   `schedules.last_error` and logged as `schedule.start_failed`; any other
   exception is logged with its traceback and recorded as `server_error`. Either
   way the schedule has already moved to its next time. A start that works clears
-  `last_error`.
+  `last_error`, and so does an edit by the owner that changes what the schedule
+  runs or when (or turns it on): that new configuration has not failed yet.
 - **Lifecycle.** The app's `lifespan` starts `app.state.scheduler` after
   `interrupt_abandoned_runs` and stops it before it shuts the run executor down,
   so no run is submitted to an executor that is stopping. With

@@ -70,7 +70,16 @@ interface NamedInputFieldsProps {
  * What a run is given: one free-text field (with "Attach a document") for a pipeline without
  * named inputs, else one labelled field per input. The schedule form asks the same way.
  */
-export function RunInputFields({ inputs, draft, disabled, onDraftChange }: NamedInputFieldsProps) {
+export function RunInputFields({
+  inputs,
+  draft,
+  disabled,
+  onDraftChange,
+  label = 'Run input',
+}: NamedInputFieldsProps & {
+  /** The free-text field's accessible name, for a page that holds more than one run form. */
+  label?: string;
+}) {
   if (inputs.length > 0) {
     return (
       <NamedInputFields
@@ -86,7 +95,7 @@ export function RunInputFields({ inputs, draft, disabled, onDraftChange }: Named
       <textarea
         value={draft.text}
         disabled={disabled}
-        aria-label="Run input"
+        aria-label={label}
         placeholder="Enter your initial input here..."
         onChange={(event) => onDraftChange({ ...draft, text: event.target.value })}
         className={`h-28 ${fieldClass}`}

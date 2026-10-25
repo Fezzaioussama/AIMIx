@@ -15,6 +15,12 @@ import {
 } from './scheduleDraft';
 import { useSchedulePreview } from './useSchedulePreview';
 
+/**
+ * The free-text field's name. The builder page also holds the run card's "Run input", so
+ * the two must not read alike to assistive technology.
+ */
+export const INPUT_LABEL = 'Input for each scheduled run';
+
 interface ScheduleFormProps {
   /** Makes each field's id unique on the page. */
   idBase: string;
@@ -70,6 +76,7 @@ export function ScheduleForm({
           draft={draft.run}
           disabled={busy}
           onDraftChange={(run) => setDraft({ ...draft, run })}
+          label={INPUT_LABEL}
         />
       </fieldset>
       {tried && problem && (

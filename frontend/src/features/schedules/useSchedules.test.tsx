@@ -1,10 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from '../../core/api/endpoints';
 import { makeRun } from '../runs/testData';
 import { NAMED_SCHEDULE, SCHEDULE, refusal, serve } from './testData';
-import { useSchedules } from './useSchedules';
+import { ACTIVE_REFRESH_MS, IDLE_REFRESH_MS, useSchedules } from './useSchedules';
 
 async function loaded(table: Parameters<typeof serve>[0]) {
   const calls = serve({ [`GET ${API.schedules}`]: [SCHEDULE, NAMED_SCHEDULE], ...table });
@@ -156,6 +156,115 @@ describe('useSchedules', () => {
     act(() => result.current.actions.dismiss());
 
     expect(result.current.notice).toBeNull();
+  });
+
+  describe('keeping the list current', () => {
+    const LIST = `GET ${API.schedules}`;
+    const running = {
+      ...SCHEDULE,
+      last_run: { id: 12, status: 'running' as const, created_at: '2026-10-25T08:00:00Z' },
+    };
+    const finished = {
+      ...running,
+      last_run: { ...running.last_run, status: 'succeeded' as const },
+    };
+
+    async function advance(ms: number) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    async function startLoaded(answers: unknown[][]) {
+      const calls = serve({ [LIST]: () => answers.shift() ?? answers.at(-1) });
+      const hook = renderHook(() => useSchedules());
+      await advance(0);
+      return { calls, ...hook };
+    }
+
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('fetches again every few seconds while a last run is active, then slowly', async () => {
+      const { calls, result } = await startLoaded([[running], [running], [finished]]);
+      expect(result.current.schedules?.[0].last_run?.status).toBe('running');
+
+      await advance(ACTIVE_REFRESH_MS);
+      expect(calls).toHaveLength(2);
+      await advance(ACTIVE_REFRESH_MS);
+      expect(calls).toHaveLength(3);
+      expect(result.current.schedules?.[0].last_run?.status).toBe('succeeded');
+
+      // Nothing is active now: the next look is the slow one.
+      await advance(IDLE_REFRESH_MS - ACTIVE_REFRESH_MS * 2);
+      expect(calls).toHaveLength(3);
+      await advance(ACTIVE_REFRESH_MS * 2);
+      expect(calls).toHaveLength(4);
+    });
+
+    it('shows a schedule that fired while the page was open', async () => {
+      const { result } = await startLoaded([[SCHEDULE], [running]]);
+      expect(result.current.schedules?.[0].last_run).toBeNull();
+
+      await advance(IDLE_REFRESH_MS);
+
+      expect(result.current.schedules?.[0].last_run?.id).toBe(12);
+    });
+
+    it('waits while a change is saved, so an older refresh never undoes it', async () => {
+      const off = { ...running, enabled: false, next_run_at: null };
+      let release: () => void = () => {};
+      const held = new Promise<unknown>((resolve) => {
+        release = () => resolve(off);
+      });
+      const calls = serve({
+        [LIST]: () => [running],
+        [`PATCH ${API.schedule(SCHEDULE.id)}`]: () => held,
+      });
+      const { result } = renderHook(() => useSchedules());
+      await advance(0);
+
+      let saving: Promise<boolean> = Promise.resolve(true);
+      act(() => {
+        saving = result.current.actions.setEnabled(running, false);
+      });
+      await advance(ACTIVE_REFRESH_MS * 4);
+      expect(calls.filter((call) => call.method === 'GET')).toHaveLength(1);
+
+      await act(async () => {
+        release();
+        await saving;
+      });
+      expect(result.current.schedules?.[0].enabled).toBe(false);
+      await advance(ACTIVE_REFRESH_MS);
+      expect(calls.filter((call) => call.method === 'GET')).toHaveLength(2);
+    });
+
+    it('drops a refresh in flight when the screen goes away, and stops asking', async () => {
+      const { calls, unmount } = await startLoaded([[running]]);
+      await advance(ACTIVE_REFRESH_MS);
+      expect(calls).toHaveLength(2);
+
+      unmount();
+      await advance(IDLE_REFRESH_MS * 2);
+
+      expect(calls).toHaveLength(2);
+    });
+
+    it('tries again after a refresh fails, and keeps what it has meanwhile', async () => {
+      const answers: unknown[] = [[running], refusal('Down.', 500, 'server_error'), [finished]];
+      const calls = serve({ [LIST]: () => answers.shift() });
+      const { result } = renderHook(() => useSchedules());
+      await advance(0);
+
+      await advance(ACTIVE_REFRESH_MS);
+      expect(result.current.schedules?.[0].last_run?.status).toBe('running');
+      expect(result.current.notice).toBeNull();
+      await advance(ACTIVE_REFRESH_MS);
+
+      expect(calls).toHaveLength(3);
+      expect(result.current.schedules?.[0].last_run?.status).toBe('succeeded');
+    });
   });
 
   it('cancels the load when the screen goes away', () => {

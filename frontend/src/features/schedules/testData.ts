@@ -57,7 +57,10 @@ export function callOf([path, init]: Parameters<typeof fetch>): Call {
   };
 }
 
-/** What answers a call: a body, a ready `Response`, or a function of the call making either. */
+/**
+ * What answers a call: a body, a ready `Response`, or a function of the call making either
+ * (or a promise of either, to hold a request open).
+ */
 type Answer = unknown;
 
 /**
@@ -72,7 +75,9 @@ export function serve(table: Record<string, Answer>): Call[] {
     const answer =
       table[`${call.method} ${call.path}`] ?? table[`${call.method} ${call.path.split('?')[0]}`];
     if (answer === undefined) return json({ error: 'not_found', detail: 'Not found.' }, 404);
-    const value = typeof answer === 'function' ? (answer as (call: Call) => unknown)(call) : answer;
+    const value = await (typeof answer === 'function'
+      ? (answer as (call: Call) => unknown)(call)
+      : answer);
     return value instanceof Response ? value : json(value);
   });
   return calls;

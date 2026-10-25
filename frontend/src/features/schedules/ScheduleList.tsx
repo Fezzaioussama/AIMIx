@@ -46,7 +46,11 @@ export function ScheduleList({ schedules, busy, actions, onStarted }: ScheduleLi
   return (
     <ul className="grid gap-4 lg:grid-cols-2">
       {schedules.map((schedule, index) => (
-        <li key={schedule.id} className="min-w-0">
+        // The form takes the whole row, as wide as the builder's, instead of half of it.
+        <li
+          key={schedule.id}
+          className={`min-w-0 ${editing === schedule.id ? 'lg:col-span-2' : ''}`}
+        >
           {editing === schedule.id ? (
             <SpotlightCard variant="highlighted" className="p-5">
               <h3 className="mb-4 text-lg font-semibold break-words">

@@ -7,7 +7,13 @@ import {
   updateSchedule,
 } from '../../core/api/schedules';
 import type { Run, Schedule, SchedulePatch } from '../../core/api/types';
+import { isActive } from '../runs/runStatus';
 import { errorText, useSubmission, type Submission } from '../settings/useSubmission';
+
+/** While a listed schedule's last run is active, the list is fetched again this often. */
+export const ACTIVE_REFRESH_MS = 5000;
+/** Otherwise, this often, so a schedule that fires while the page is open shows up. */
+export const IDLE_REFRESH_MS = 30_000;
 
 /** The account's schedules, loaded once; a failure goes to the notice. */
 function useScheduleList({ setNotice, setStatus }: Submission) {
@@ -33,6 +39,42 @@ function useScheduleList({ setNotice, setStatus }: Submission) {
 }
 
 /**
+ * Keeps the list current: fetched again every `ACTIVE_REFRESH_MS` while a last run is queued
+ * or running, else every `IDLE_REFRESH_MS`. Paused while a change is being saved, so a
+ * refresh that began before it can never put the old state back; a failed refresh is
+ * simply tried again.
+ */
+function useScheduleRefresh(
+  schedules: Schedule[] | null,
+  idle: boolean,
+  setSchedules: (loaded: Schedule[]) => void,
+) {
+  const anyActive = (schedules ?? []).some(
+    (schedule) => schedule.last_run !== null && isActive(schedule.last_run.status),
+  );
+  const loaded = schedules !== null;
+
+  useEffect(() => {
+    if (!loaded || !idle) return;
+    const controller = new AbortController();
+    const timer = setInterval(
+      () => {
+        listSchedules(undefined, controller.signal)
+          .then((fresh) => {
+            if (!controller.signal.aborted) setSchedules(fresh);
+          })
+          .catch(() => undefined);
+      },
+      anyActive ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS,
+    );
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [loaded, idle, anyActive, setSchedules]);
+}
+
+/**
  * State and transport for the Schedules list, kept out of the components (AGENTS.md §2):
  * the account's schedules, and switching one on or off, changing, deleting or starting it.
  * Each says how it went in `notice`.
@@ -41,6 +83,7 @@ export function useSchedules() {
   const submission = useSubmission('loading');
   const { status, notice, setNotice, submit } = submission;
   const [schedules, setSchedules] = useScheduleList(submission);
+  useScheduleRefresh(schedules, status === 'idle', setSchedules);
 
   const replace = useCallback(
     (saved: Schedule) =>
