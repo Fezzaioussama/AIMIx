@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+
 import type { Schedule } from '../../core/api/types';
 
 /** Shared by the schedule tests: a weekly schedule of a pipeline without named inputs. */
@@ -40,11 +42,43 @@ export function json(body: unknown, status = 200): Response {
   });
 }
 
-/** What a fetch stand-in sees of a call: its path, method and parsed body. */
-export function callOf([path, init]: Parameters<typeof fetch>) {
+/** What a fetch stand-in saw of a call: its path (with any query), method and parsed body. */
+export interface Call {
+  path: string;
+  method: string;
+  body: unknown;
+}
+
+export function callOf([path, init]: Parameters<typeof fetch>): Call {
   return {
     path: String(path),
     method: init?.method ?? 'GET',
     body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
   };
+}
+
+/** What answers a call: a body, a ready `Response`, or a function of the call making either. */
+type Answer = unknown;
+
+/**
+ * A fetch stand-in answering each "METHOD /path" from `table` (the query is ignored when no
+ * entry names it). Anything else is a 404. Returns the calls it saw, in order.
+ */
+export function serve(table: Record<string, Answer>): Call[] {
+  const calls: Call[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const call = callOf([input, init]);
+    calls.push(call);
+    const answer =
+      table[`${call.method} ${call.path}`] ?? table[`${call.method} ${call.path.split('?')[0]}`];
+    if (answer === undefined) return json({ error: 'not_found', detail: 'Not found.' }, 404);
+    const value = typeof answer === 'function' ? (answer as (call: Call) => unknown)(call) : answer;
+    return value instanceof Response ? value : json(value);
+  });
+  return calls;
+}
+
+/** A refusal in the API's error shape. */
+export function refusal(detail: string, status = 400, error = 'validation_error'): Response {
+  return json({ error, detail }, status);
 }

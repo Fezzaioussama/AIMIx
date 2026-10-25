@@ -28,8 +28,13 @@ export function useSchedulePreview(timing: ScheduleTiming | null) {
     if (timing === null) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
+      // An answer that arrives after its request was dropped must not replace a newer one.
       previewSchedule(timing, controller.signal)
-        .then((preview) => setAnswer({ key, nextRunAt: preview.next_run_at, error: '' }))
+        .then((preview) => {
+          if (!controller.signal.aborted) {
+            setAnswer({ key, nextRunAt: preview.next_run_at, error: '' });
+          }
+        })
         .catch((cause: unknown) => {
           if (controller.signal.aborted) return;
           const error = errorMessage(cause, 'Could not work out the next run.');

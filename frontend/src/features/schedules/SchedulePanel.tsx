@@ -39,8 +39,9 @@ function PipelineSchedulePanel({
 }: SchedulePanelProps) {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const { busy, error, created, create } = useCreateSchedule(pipeline.id, pipeline.inputs);
-  const initial = useMemo(() => emptyScheduleDraft(), []);
+  // The body is built the first time the panel opens and kept after, so a page that never
+  // opens it asks the server nothing (the form previews the next run as it is filled in).
+  const [built, setBuilt] = useState(false);
 
   return (
     <section
@@ -53,45 +54,60 @@ function PipelineSchedulePanel({
         icon={<CalendarClock aria-hidden="true" className="size-4 shrink-0 text-sky-300" />}
         title="Schedule this pipeline"
         open={open}
-        onToggle={() => setOpen(!open)}
+        onToggle={() => {
+          setOpen(!open);
+          setBuilt(true);
+        }}
       />
       <Foldable id={`${id}-body`} open={open}>
-        {pipeline.id === undefined ? (
-          <p className="text-sm text-slate-300">
-            Save this pipeline first, then you can schedule it.
-          </p>
-        ) : (
-          <>
-            <p className="mb-4 text-sm text-slate-300">
-              Run this pipeline on its own, as often as you like. Each run uses the pipeline as last
-              saved, and shows up in{' '}
-              <Link to="/runs" className={LINK}>
-                Runs
-              </Link>{' '}
-              marked as scheduled.
-            </p>
-            {/* A new form after each schedule, so pressing the button twice never saves it twice. */}
-            <ScheduleForm
-              key={created?.id ?? 'new'}
-              idBase={`${id}-form`}
-              label="New schedule"
-              inputs={pipeline.inputs}
-              initial={initial}
-              submitLabel="Schedule it"
-              busy={busy}
-              blocked={dirty ? 'Save your changes first: a schedule runs the saved version.' : ''}
-              onSubmit={(draft) => void create(draft)}
-            />
-            <Outcome created={created} error={error} />
-            <p className="mt-4 text-sm">
-              <Link to={SCHEDULES_PATH} className={LINK}>
-                See all your schedules
-              </Link>
-            </p>
-          </>
-        )}
+        {built && <PanelBody id={id} pipeline={pipeline} dirty={dirty} />}
       </Foldable>
     </section>
+  );
+}
+
+function PanelBody({
+  id,
+  pipeline,
+  dirty,
+}: { id: string } & Pick<SchedulePanelProps, 'pipeline' | 'dirty'>) {
+  const { busy, error, created, create } = useCreateSchedule(pipeline.id, pipeline.inputs);
+  const initial = useMemo(() => emptyScheduleDraft(), []);
+
+  if (pipeline.id === undefined) {
+    return (
+      <p className="text-sm text-slate-300">Save this pipeline first, then you can schedule it.</p>
+    );
+  }
+  return (
+    <>
+      <p className="mb-4 text-sm text-slate-300">
+        Run this pipeline on its own, as often as you like. Each run uses the pipeline as last
+        saved, and shows up in{' '}
+        <Link to="/runs" className={LINK}>
+          Runs
+        </Link>{' '}
+        marked as scheduled.
+      </p>
+      {/* A new form after each schedule, so pressing the button twice never saves it twice. */}
+      <ScheduleForm
+        key={created?.id ?? 'new'}
+        idBase={`${id}-form`}
+        label="New schedule"
+        inputs={pipeline.inputs}
+        initial={initial}
+        submitLabel="Schedule it"
+        busy={busy}
+        blocked={dirty ? 'Save your changes first: a schedule runs the saved version.' : ''}
+        onSubmit={(draft) => void create(draft)}
+      />
+      <Outcome created={created} error={error} />
+      <p className="mt-4 text-sm">
+        <Link to={SCHEDULES_PATH} className={LINK}>
+          See all your schedules
+        </Link>
+      </p>
+    </>
   );
 }
 
