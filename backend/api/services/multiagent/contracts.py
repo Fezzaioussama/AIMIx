@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Protocol
 
 from api.exceptions import DomainError
-from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.agent_types import AgentOutcome, AgentTask, RunStepRef, ToolCallTrace
 
 
 @dataclass(frozen=True)
@@ -138,3 +138,9 @@ class RunControl:
     #: Results of steps that already succeeded, by step order (a resumed run).
     #: They are reused as they are; their agents do not run again.
     completed: Mapping[int, StepResult] = field(default_factory=dict)
+    #: The recorded run being executed; None for a run nobody records.
+    run_id: int | None = None
+
+    def step_ref(self, order: int) -> RunStepRef | None:
+        """Where a step's task runs, for tools that must ask the run's owner first."""
+        return None if self.run_id is None else RunStepRef(self.run_id, order)

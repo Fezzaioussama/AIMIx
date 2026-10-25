@@ -33,7 +33,9 @@ def list_runs(
     user: CurrentUser, session: DbSession, query: Annotated[RunListQuery, Query()]
 ) -> RunPageOut:
     page = repository.page_for_user(
-        session, user, repository.RunQuery(query.limit, query.offset, query.pipeline_id)
+        session,
+        user,
+        repository.RunQuery(query.limit, query.offset, query.pipeline_id, query.status),
     )
     return RunPageOut(
         items=[RunSummaryOut.model_validate(run) for run in page.items], total=page.total

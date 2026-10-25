@@ -25,6 +25,9 @@ from api.services.agent_runtime import (
 )
 from api.services.agent_tools import native_tools
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.approvals.gate import ApprovalGate
+from api.services.approvals.guard import guard_tools, run_gate
+from api.services.approvals.policy import approval_policy_for
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model
 from api.services.prompts import step_agent_system_prompt
@@ -59,22 +62,35 @@ def _tool_trace(messages: list[BaseMessage]) -> list[ToolCallTrace]:
 class LangGraphStepAgent:
     """Run one role-scoped agent with its selected model and tools."""
 
-    def __init__(self, model: BaseChatModel, toolset: AgentToolset, limits: AgentLimits) -> None:
+    def __init__(
+        self,
+        model: BaseChatModel,
+        toolset: AgentToolset,
+        limits: AgentLimits,
+        gate: ApprovalGate | None = None,
+    ) -> None:
+        """``gate`` holds the tools that must ask the run's owner first; without
+        one those tools are not offered."""
         self._model = model
         self._toolset = toolset
         self._limits = limits
+        self._gate = gate
 
     async def reply(self, task: AgentTask) -> AgentOutcome:
         started = monotonic()
         try:
             with anyio.fail_after(self._limits.timeout_seconds):
-                tools = await resolve_tools(
+                resolved = await resolve_tools(
                     self._toolset, task.allowed_tools, self._limits.mcp_timeout_seconds
                 )
+                guarded = guard_tools(self._toolset, resolved, self._gate)
+                tools = guarded.tools
                 system_prompt = step_agent_system_prompt(
                     task.role, has_tools=bool(tools), expected_output=task.expected_output
                 )
-                graph = create_agent(self._model, tools, system_prompt=system_prompt)
+                graph = create_agent(
+                    self._model, tools, system_prompt=system_prompt, middleware=guarded.middleware
+                )
                 state = await graph.ainvoke(
                     {"messages": [{"role": "user", "content": task.prompt}]},
                     config={"recursion_limit": self._limits.recursion_limit},
@@ -117,11 +133,13 @@ class PipelineAgentGenerator:
             AgentToolset(
                 mcp_connections_for(self._database, self._user, settings),
                 native_tools(self._database, self._user, settings),
+                approval_policy_for(self._database, self._user, settings),
             ),
             AgentLimits(
                 settings.agent_timeout_seconds,
                 settings.agent_recursion_limit,
                 settings.mcp_timeout_seconds,
             ),
+            run_gate(self._database, task.run_step, settings),
         )
         return await agent.reply(task)

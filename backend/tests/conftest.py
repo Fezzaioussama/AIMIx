@@ -53,6 +53,13 @@ TEST_SETTINGS = Settings(
     agent_recursion_limit=9,
     mcp_timeout_seconds=1.0,
     mcp_servers={},
+    # Approval gates: off for operator tools, so tools faked as MCP tools act at
+    # once; the approval tests turn it on. Waits stay short and never real.
+    mcp_require_approval=False,
+    agent_approval_tools=[],
+    approval_timeout_seconds=0.5,
+    approval_poll_seconds=0.01,
+    approval_arguments_max_chars=200,
     integrations_max_per_user=3,
     integrations_allow_private_network=False,
     agent_builtin_tools=["web_search", "fetch_url", "calculator", "current_datetime"],

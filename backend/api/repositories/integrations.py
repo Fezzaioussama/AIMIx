@@ -31,6 +31,7 @@ class IntegrationChanges:
     url: str | None = None
     enabled: bool | None = None
     headers: StoredHeaders | None = None
+    require_approval: bool | None = None
 
 
 def _owned_by(user: User) -> Select[tuple[Integration]]:
@@ -74,6 +75,8 @@ def _apply(integration: Integration, changes: IntegrationChanges) -> None:
         integration.url = changes.url
     if changes.enabled is not None:
         integration.enabled = changes.enabled
+    if changes.require_approval is not None:
+        integration.require_approval = changes.require_approval
     if changes.headers is not None:
         integration.headers_encrypted = changes.headers.ciphertext
         integration.header_hints = changes.headers.hints
@@ -82,7 +85,13 @@ def _apply(integration: Integration, changes: IntegrationChanges) -> None:
 def create(session: Session, user: User, changes: IntegrationChanges) -> Integration:
     """A new integration for ``user``; whatever ``changes`` leaves out starts empty."""
     integration = Integration(
-        user_id=user.id, name="", url="", headers_encrypted="", header_hints=[], enabled=True
+        user_id=user.id,
+        name="",
+        url="",
+        headers_encrypted="",
+        header_hints=[],
+        enabled=True,
+        require_approval=True,
     )
     _apply(integration, changes)
     session.add(integration)

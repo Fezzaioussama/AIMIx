@@ -94,6 +94,8 @@ class IntegrationIn(BaseModel):
     name: IntegrationName
     url: IntegrationUrl
     enabled: bool = True
+    #: In a run, its tools wait for your OK before they act.
+    require_approval: bool = True
     headers: list[HeaderIn] = Field(default_factory=list, max_length=INTEGRATION_MAX_HEADERS)
 
     @field_validator("headers")
@@ -115,6 +117,7 @@ class IntegrationPatch(BaseModel):
     name: IntegrationName | None = None
     url: IntegrationUrl | None = None
     enabled: bool | None = None
+    require_approval: bool | None = None
     headers: list[HeaderIn] | None = Field(None, max_length=INTEGRATION_MAX_HEADERS)
 
     @field_validator("headers")
@@ -139,6 +142,7 @@ class IntegrationOut(BaseModel):
     name: str
     url: str
     enabled: bool
+    require_approval: bool
     headers: list[HeaderOut]
     created_at: UtcDateTime
 

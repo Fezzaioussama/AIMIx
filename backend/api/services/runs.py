@@ -8,7 +8,8 @@ plain Python values — no web-framework objects (§2).
 Life of a run: ``queued`` → ``running`` → ``succeeded`` | ``failed`` |
 ``cancelled`` (stopped by its owner) | ``interrupted`` (the process stopped).
 The last three can be resumed: the run continues from its own snapshot,
-reusing the steps that succeeded.
+reusing the steps that succeeded. While a tool call waits for the owner's
+approval, a running run is ``waiting`` (``services/approvals``).
 """
 
 from __future__ import annotations
@@ -37,6 +38,8 @@ from api.repositories import pipelines as pipeline_repository
 from api.repositories import runs as repository
 from api.services import run_recorder
 from api.services.agent_types import ToolCallTrace
+from api.services.approvals import decisions as approvals
+from api.services.approvals.decisions import ApprovalAnswer
 from api.services.multiagent.contracts import (
     PipelineSpec,
     RunControl,
@@ -220,6 +223,13 @@ class RunService:
                 raise Conflict("This run is still in progress. Stop it before deleting it.")
             repository.delete(session, run)
 
+    def answer_approval(self, user: User, given: ApprovalAnswer) -> Run:
+        """Approve or decline a tool call the run is waiting on (approval gates);
+        the run's step goes on as soon as its gate reads the answer."""
+        with self._database.session() as session:
+            approvals.answer(session, user, given)
+        return self._load(given.run_id)
+
     def _submit(self, run_id: int, agent: StepAgent) -> Future[RunOutcome]:
         return self._executor.submit(run_id, partial(self._execute, run_id, agent))
 
@@ -239,7 +249,7 @@ class RunService:
         runner = GraphPipelineRunner(self._max_parallel_steps)
         try:
             plan = _plan(run)
-            control = RunControl(observer=recorder, completed=plan.completed)
+            control = RunControl(observer=recorder, completed=plan.completed, run_id=run_id)
             result = await runner.arun(plan.spec, agent, plan.inputs, control)
         except asyncio.CancelledError:
             recorder.end(run_recorder.interrupted())

@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 SERVER_ERROR_CODE = "server_error"
 SERVER_ERROR_DETAIL = "An unexpected error occurred."
 
-_RUNNING = frozenset({RunStatus.RUNNING})
+#: Where the executor's job ends a run from: running, or waiting for an approval.
+_RUNNING = frozenset({RunStatus.RUNNING, RunStatus.WAITING})
 
 
 def utcnow() -> datetime:
