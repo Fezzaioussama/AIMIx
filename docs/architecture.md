@@ -101,8 +101,9 @@ sequenceDiagram
     X->>G: arun(snapshot, agent, inputs, RunControl(observer, completed))
     loop each stage, its steps concurrently (PIPELINE_MAX_PARALLEL_STEPS)
         G->>O: STARTED → step row "running" (own short transaction)
-        G->>A: execute(task): model, role, tools (agent_runtime; MCP_SERVERS + enabled integrations via mcp_connections_for, a failing integration skipped)
-        A-->>G: final text and tool name/status trace, or DomainError
+        G->>A: execute(task): model, role, tools (agent_runtime; MCP_SERVERS + enabled integrations via mcp_connections_for, a failing integration skipped), and the step's usage meter
+        Note over A,O: every model call: the run's meter checks its limit first (refused: budget_exceeded), then adds the call's tokens and cost to the step row
+        A-->>G: final text, tool name/status trace and usage, or DomainError
         G->>O: SUCCEEDED / FAILED / CANCELLED → step row
         G->>G: join the stage; merge outputs in saved order
     end
@@ -122,6 +123,27 @@ never overwrite each other. The executor's job owns `queued → running →
 succeeded | failed`; the step events come from the graph through the
 `StepObserver` port (`RunRecorder` writes each in its own transaction,
 synchronously on the run's loop, so a run's events stay in order).
+
+**Usage, cost and limits.** Each step's agent wraps its chat model with
+`llm.usage.metered`, so a LangChain callback hears every model call of its
+tool loop: it reads the answer's token counts and prices the call (what the
+provider reports it charged, else the model's catalogue price, else unknown;
+see [LLM providers](llm-providers.md#usage-and-cost)). The callback reports to
+the `UsageMeter` the graph put in the step's `AgentTask`, which is a
+`run_budget.RunMeter` shared by every step of the execution. Before a call the
+meter checks the run's limits against the running total (kept under a lock, so
+parallel steps never lose or double an update) and refuses with
+`BudgetExceeded` once one is reached; after a call it adds the usage to the total
+and `RunRecorder.record_usage` adds it to the step's row at once
+(`SET x = x + n`, one short transaction on the run's loop). A refused call fails
+its step and so the run: `failed` with `budget_exceeded`, finished steps kept,
+the parallel sibling cancelled like for any failure. A call in flight when the
+limit is reached still finishes and is counted, so a run may pass its limit by
+the calls then running. The totals shown to users (`RunOut.usage`, `GET /usage`)
+are computed from the step rows, never stored. A resume gets the run's earlier
+spending as its starting total and may raise the limits
+(`POST /runs/<id>/resume` with a body); under a limit it has already reached it
+is refused (`409 budget_exceeded`).
 
 **Stop** (`POST /runs/<id>/cancel`): the request writes `cancelled` (from
 `queued` or `running`) and marks running steps `cancelled`, then asks the
@@ -150,7 +172,8 @@ its end (`RunService.run_to_end`), so their runs are recorded too.
 
 | Need | Hook |
 |---|---|
-| React to each step (token and cost tracking, notifications) | Implement `StepObserver.on_step_event(StepEvent)` (`multiagent/contracts.py`). New data goes in a new optional field of `StepEvent` or `StepResult` (an agent fills it through `AgentOutcome`); the graph's control flow does not change. The graph awaits the observer, so it can also hold a step back. |
+| React to each step (notifications, exports) | Implement `StepObserver.on_step_event(StepEvent)` (`multiagent/contracts.py`). New data goes in a new optional field of `StepEvent` or `StepResult` (an agent fills it through `AgentOutcome`); the graph's control flow does not change. The graph awaits the observer, so it can also hold a step back. `StepResult.usage` already carries each step's tokens and cost. |
+| Count or cap what model calls use | Implement `llm.usage.UsageMeter` (`before_call()` may raise to refuse a call; `after_call(usage)`) and hand it to the steps through `RunControl.meter` (step order → meter). `run_budget.RunMeter` is the run's budget; a new limit kind is one entry in `run_budget.LIMITS`, a new way to learn a call's cost one entry in `llm.usage.COST_SOURCES`. |
 | Pause a run (approval gates) | End the run in a new status from the job (`RunService._execute`) and let `resume` continue it; `RunControl.completed` already skips the finished steps. Add the status to `RunStatus` and, if it can continue, to `RESUMABLE_RUN_STATUSES` (`api/models.py`); mirror it in `frontend/src/features/runs/runStatus.ts` and `RUN_STATUS_STYLES`. |
 | Start runs without a request (schedules) | `RunService(database, executor, max_parallel_steps).start(user, pipeline, RunStart(...), agent)`; the app's executor is `app.state.run_executor` (`RunExecutor`: `submit(key, job) -> Future`, `cancel(key)`, `shutdown()`). |
 | Show a run on another screen | `const live = useRun(runId)` then `<LiveRun run={live.run} onStop={live.stop} onResume={live.resume} busy={live.busy} error={live.error} actions={…}>…</LiveRun>` (`features/runs`). |
@@ -441,6 +464,8 @@ server — never a 200 with an error inside.
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Observer + Null Object | `StepObserver` / `SILENT_OBSERVER` in `multiagent/contracts.py`, `services/run_recorder.RunRecorder` | The graph reports step events without knowing who listens; persistence is one listener |
 | Background executor | `api/services/run_executor.py` (`RunExecutor`, `BackgroundRunExecutor`) | Runs leave the request path; bounded concurrency; swappable in tests |
+| Observer port + Null Object | `llm/usage.UsageMeter` / `UNMETERED`, `UsageCallback` | The model layer reports each call's usage without knowing who counts it; a run's budget is one listener |
+| Strategy chain + Registry | `llm/usage.COST_SOURCES`, `api/services/run_budget.LIMITS` | Where a call's cost comes from (reported, catalogue, unknown) and which kinds of limit exist, each one entry |
 | Compare-and-set | `api/repositories/runs.py` | Request threads and the executor change a run's status without overwriting each other |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
 | Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |

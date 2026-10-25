@@ -16,6 +16,7 @@ frontend/src/
     hooks/          # useModels.ts, useAgentTools.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts
     markdown/       # renderMarkdown.ts
     time.ts         # elapsedMs, formatDuration, formatDateTime
+    usageFormat.ts  # formatCost, formatTokens, parseCost, describeCost: tokens and costs in words
     ui/             # shared presentational components and motion (no data access)
       reactbits/    # effects adapted from React Bits, with its LICENSE.md
   features/
@@ -25,7 +26,7 @@ frontend/src/
     files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat, saveBlob
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, LiveRun, useRun and the run history
-    settings/       # SettingsPage: LLM providers and Integrations (users' MCP servers)
+    settings/       # SettingsPage: LLM providers, Integrations (users' MCP servers) and Usage
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -61,7 +62,7 @@ resolves the session before the first render without a redirect flash.
 | File | Contents |
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
-| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, and runs (`Run`, `RunStep` — a `StepResult` plus status, error and times — `RunSummary`, `RunPage`, `RunStatus`, `RunStepStatus`). |
+| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, and runs (`Run`, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary`, `RunPage`, `RunStatus`, `RunStepStatus`), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`). |
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request` and `requestBlob` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
@@ -73,7 +74,8 @@ resolves the session before the first render without a redirect flash.
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 | `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
-| `runs.ts` | `startRun`, `listRuns` (page, optional pipeline), `getRun`, `cancelRun`, `resumeRun`, `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
+| `runs.ts` | `startRun` (its body may carry `max_cost_usd` / `max_tokens`), `listRuns` (page, optional pipeline), `getRun`, `cancelRun`, `resumeRun` (optionally with new limits), `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
+| `usage.ts` | `fetchUsage(days, signal)`: what the account's runs of the last days used and cost (`GET /usage`) |
 | `errorMessage.ts` | `errorMessage(cause, fallback)`: a caught value as words for the person (an `ApiError`'s message, else the fallback) |
 
 ### What `client.ts` does for every call
@@ -151,6 +153,7 @@ Components here render and animate; they never fetch or touch storage.
 | `PageTransition.tsx` | Enter-only fade/slide keyed by the route |
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
 | `BusyNotice.tsx`, `Spinner.tsx` | Loading line with shimmer text; the spinner (`decorative` hides it inside a labelled control) |
+| `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
 (MIT + Commons Clause — keep `LICENSE.md` next to them): `Aurora` (WebGL2
@@ -205,7 +208,9 @@ Rules for motion:
 |---|---|
 | `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results. It follows the open pipeline's newest run (`features/runs/useFollowedRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`FollowedRunBar`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
 | `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, Excel, PowerPoint, image, HTML, CSV or text file (the picker's `accept` and the helper text both come from `DOCUMENT_FORMATS`), the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
-| `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none |
+| `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none, then the optional cost limit |
+| `CostLimitField.tsx` | The "Stop if it costs more than $…" field of the run form: optional, labelled, with its hint or problem under it as a polite live region. The draft keeps it as typed text (`RunDraft.maxCost`); `costLimitProblem` flags text that is not an amount above zero and `isRunReady` then blocks the run, because running without the cap the person asked for would be worse than not running. `runRequest` sends it as `max_cost_usd` |
+| `StepHeading.tsx` | The title row of a step's card: name, position, model, Output badge and, for a followed run's step, what its model calls cost (`CostText`; a pending step shows nothing) |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, replacing the whole draft (`replace`, for an accepted revision), saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
 | `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps, `replace` (an accepted revision) and saving the proposed workflow (later saves update it) |
@@ -275,16 +280,19 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 
 | File | Role |
 |---|---|
-| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume, adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued or running and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
+| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume(budget?), adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued or running and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
 | `useLatestRun.ts` | The builder's follower: loads the pipeline's newest run when it opens (`GET /runs?pipeline_id=…&limit=1`) and `follow(run)` switches to a run started here |
 | `useFollowedRun.ts`, `FollowedRunBar.tsx` | What the builder needs from that run: whether one is active, the run the diagram may show (`shown`, only a run of exactly the version on screen) and its duration; and its status bar with Stop, Resume and "Open in Runs" |
 | `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
 | `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, any `children` (e.g. its inputs), then the results. Pair it with `useRun` |
-| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, Stop / Resume and extra `actions`, an `aria-live` line, and why the run stopped (the failed step and its error, "You stopped this run", "The server restarted…") |
+| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, the running cost (`RunCost`), Stop / Resume (`ResumeControl`) and extra `actions`, an `aria-live` line, and why the run stopped (the failed step and its error, "Spending limit reached." with the server's message, "You stopped this run", "The server restarted…") |
+| `RunCost.tsx` | The run's cost in the status bar: `$0.0123` (its token counts a hover away, and read out), "$0.0123 or more" when part of it is unpriced, "Cost unknown for this model" when none is, next to "of $0.50 limit" when the run has a limit; nothing before an active run has used anything (or "Limit $0.50" if it has one), and "No usage recorded" for a finished run with none |
+| `ResumeControl.tsx` | The Resume button. A run that stopped at its spending limit cannot resume under it, so it shows "Raise the limit to $[ ] Resume" instead, prefilled with double the old limit, saying what the run has used so far and refusing an amount at or below that; the token variant appears when it was a token limit. `onResume(budget?)` carries the new limit |
+| `runBudget.ts` | `limitReached(run)` (which limit a run is at; mirrors the server's rule, rounding slack included), `limitParts`, `suggestedLimit`, `limitBudget` and `limitProblem` for the resume form, and `BUDGET_ERROR_CODE` |
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Done, Failed, Stopped, Interrupted) and colours |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive`, `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
-| `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
+| `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 
 ### `features/settings`
 
@@ -295,7 +303,14 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
   from the form once saved; the API never sends a key back.
 - `SettingsPage` renders the provider picker and one `ProviderCard` (key
   status, password field, "Remove saved key", default-model select) each,
-  then the Integrations section.
+  then the Integrations section and the Usage section.
+- `UsageSection` (Settings → Usage) shows the last `USAGE_DAYS` (30) days from
+  `useUsage()` (`GET /api/usage`, cancelled on unmount): runs, cost (with the
+  token split in its tooltip) and tokens, then a list of pipelines with their
+  runs, tokens and cost, costliest first (a deleted pipeline is marked). It says
+  so when there were no runs, and that the real cost is higher when some model
+  has no known cost. A load failure is an alert; the section never blocks the
+  rest of the page.
 - `useSubmission()` is the busy flag, notice and `submit(task, done, failed)`
   both sections share; `NoticeLine` shows the notice (`status`, or `alert` for
   an error).
@@ -390,7 +405,18 @@ runs: `core/api/runs.test.ts`, `features/runs/useRun.test.tsx` (polling with
 fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx`,
 `LiveRun.test.tsx` (live statuses, Stop/Resume, failure explanation) and
 `RunsPage.test.tsx` (list, deep link, delete with confirmation);
-`features/runs/testData.ts` builds the runs they share.
+`features/runs/testData.ts` builds the runs they share (`runStep(order, status,
+output, used)` and `makeRun` default to nothing used; `usageOf(in, out, cost)`
+builds a usage). Tokens and cost: `core/usageFormat.test.ts` (formatting,
+parsing what a person types, the words for each kind of cost),
+`core/ui/CostText.test.tsx`, `core/api/usage.test.ts`,
+`features/runs/LiveRunUsage.test.tsx` (the running total, per-step cost, unknown
+and partial costs, the stop at a limit), `runBudget.test.ts`,
+`ResumeControl.test.tsx` (raise the limit and resume), `useRunResume.test.tsx`,
+`RunHistoryUsage.test.tsx`, `features/pipelines/RunCostLimit.test.tsx` (the run
+form's limit field and its draft rules) and
+`features/settings/UsageSection.test.tsx` (the section, and `useUsage`
+cancelling on unmount).
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.
