@@ -246,8 +246,17 @@ focus to that pane's heading.
 - **Results.** The deliverables first (the newest run's output steps as `OutputCard`s,
   or what to expect before a run), then "Run details" — `LiveRun` embedded as it is,
   so anything added to it appears here: open while the run works or stopped short,
-  folded once it is done — then the newest workspace files with a link to Files. The
-  pane's header keeps the run's status and Stop / Resume within reach.
+  folded once it is done (a fold or unfold by the person holds while the run stays in
+  the same status) — then the newest workspace files with a link to Files. The pane's
+  header keeps the run's status and Stop / Resume within reach.
+
+**Layout rule.** The screen is exactly the window's height and each pane scrolls inside
+itself, so nothing may make the page scroll. The grid has one bounded row
+(`xl:grid-rows-[minmax(0,1fr)]`; without it the row grows with the tallest pane), every
+scrolling area is `relative` (visually hidden `sr-only` text is absolutely positioned and
+would otherwise escape it and stretch the page), each pane `overflow-clip`s what
+decoration spills past its edge (the sparks around "Run it"), and the root clips what is
+left. A new scrolling area inside a pane needs `relative` too.
 
 **Saving.** A mission is a pipeline. A new mission is a draft in the tab until it
 first runs: starting a run saves it (named from the plan, else from the first words
