@@ -144,8 +144,26 @@ The backend start target applies pending database migrations before launching th
 
 ## Try each feature
 
-1. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and configured MCP tools.
-2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
+Signing in lands on **Missions**, the front door. The other screens are the same
+features one step closer to the machinery.
+
+1. **Missions** (`/mission`) — say what you want done, e.g. "Research the three main
+   competitors of my product and write a one-page comparison". AIMIx puts a team of
+   agents together and tells you in plain words who does what, which tools each one
+   uses and what you will need to provide; nothing is saved yet. Ask for changes in
+   your own words ("add an agent that checks the facts"), read the proposed changes
+   and **Apply** or **Discard** them. Press **Run it** (or type "run it"), fill in
+   what the team needs (you can attach a document) and the run starts; the first run
+   saves the mission. The team in the middle shows each agent waiting, running or
+   done and opens a side drawer to edit its role, prompt, model and tools; **Results**
+   leads with the deliverables, folds the full run details away once the run is done
+   and lists your newest files. Reopen a mission at `/mission/<id>` or with **Open in
+   mission view** on the builder, and hand it to the advanced mode with **Open in
+   builder**. Under 1280px wide the three panes become tabs. The conversation is kept
+   for the browser tab only; the team and its runs are saved on the server. Template
+   quick-starts sit under the examples on the empty screen.
+2. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and configured MCP tools.
+3. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage. Give each step a role, prompt, model, and tool
    access; mark deliverables as **Output**. Write prompts using `{input}`,
    **Save**, then **Run** with an input. The run executes in the background:
@@ -156,19 +174,19 @@ The backend start target applies pending database migrations before launching th
    its latest run. To change a
    pipeline in a sentence, open **Ask AIMIx to change this pipeline** (e.g.
    "add an SEO agent that works alongside the marketing agent"), review the
-   proposed changes and **Apply** them; nothing is saved until you save.
-3. **Auto Pipeline** (`/auto-pipeline`) — describe a workflow in plain language;
+   proposed changes and **Apply** them; nothing is saved until you save. A saved
+   pipeline has **Open in mission view** to see it as a mission.
+4. **Auto Pipeline** (`/auto-pipeline`) — describe a workflow in plain language;
    name the deliverables you want. The planner sees the available tools and
    proposes a role and tool list for each step. Review the generated stages and
    tool choices, refine them in a sentence if needed, then save and open the
    builder.
-4. **Templates** (`/templates`) — pick one of eight ready-made missions (market
+5. **Templates** (`/templates`) — pick one of eight ready-made missions (market
    research, competitor analysis, document digest, meeting actions, data
    insights, SEO brief, content calendar, launch plan). It opens in the builder
    as your own pipeline, on your default model and with only the tools you
    have; fill in its inputs and run it.
-5. tool choices, then save and open the builder.
-4. **Runs** (`/runs`, the **Runs** tab next to the pipeline screens) — every
+6. **Runs** (`/runs`, the **Runs** tab next to the pipeline screens) — every
    run, newest first, with its status, start and duration. Open one to follow
    it live, resume it where it stopped (finished steps are kept), or delete it.
 

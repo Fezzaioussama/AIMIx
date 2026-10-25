@@ -13,8 +13,9 @@ frontend/src/
   core/             # cross-feature, the only layer that talks to the backend
     api/            # client.ts, endpoints.ts, types.ts, one module per resource
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
-    hooks/          # useModels.ts, useAgentTools.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts
+    hooks/          # useModels.ts, useAgentTools.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts
     markdown/       # renderMarkdown.ts
+    routes.ts       # HOME_PATH (where sign-in lands) and missionPath(id)
     time.ts         # elapsedMs, formatDuration, formatDateTime
     ui/             # shared presentational components and motion (no data access)
       reactbits/    # effects adapted from React Bits, with its LICENSE.md
@@ -23,6 +24,7 @@ frontend/src/
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
     files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat, saveBlob
+    mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, LiveRun, useRun and the run history
     settings/       # SettingsPage: LLM providers and Integrations (users' MCP servers)
@@ -36,6 +38,7 @@ frontend/src/
 | `/` | `LandingPage` (lazy-loaded) | public |
 | `/login` | `LoginPage` | public |
 | `/register` | `RegisterPage` | public |
+| `/mission`, `/mission/:pipelineId` | `MissionPage` (one route, `/mission/:pipelineId?`) | guarded |
 | `/chat` | `ChatPage` | guarded |
 | `/pipeline` | `PipelineBuilderPage` | guarded |
 | `/auto-pipeline` | `AutoPipelinePage` | guarded |
@@ -48,11 +51,19 @@ frontend/src/
 Guarded routes render inside `AppShell`: a static `AmbientBackdrop`, the fixed
 top nav (its highlight slides between items; "Pipelines" covers the pipeline
 screens, the template gallery and the run history, including the routes below
-them such as `/runs/7`) and the `RequireAuth` outlet, which `PageTransition`
-eases in when the first path segment changes (so `/runs` → `/runs/7` keeps the
-page mounted). The nav holds Chat, Pipelines, Files and Settings. Below the `sm`
-breakpoint its items are tighter and "Log out" is an icon (still named "Log out"),
-so the bar fits a 390px phone; add an item only after checking that width.
+them such as `/runs/7`; "Missions" covers `/mission` and `/mission/7`) and the
+`RequireAuth` outlet, which `PageTransition` eases in when the first path segment
+changes (so `/runs` → `/runs/7` and `/mission` → `/mission/7` keep the page
+mounted). `/mission` is the front door: signing in (`LoginPage`) and "Open the
+app" on the landing page both go to `HOME_PATH` from `core/routes.ts`.
+
+**The nav** holds Missions (first), Chat, Pipelines, Files and Settings. From `sm`
+up it is a row of text. Below `sm` every item is its icon over a 10px label (the
+icon comes from `core/ui/navIcons.ts`, by route, so `NAV_ITEMS` stays plain data;
+an item without an icon gets a generic one) and "Log out" is an icon, still named
+"Log out": five items, the logo and the exit fit 390px and 360px phones. Every item
+keeps its visible text as its accessible name. A sixth item must be checked at
+360px before it is added.
 `RequireAuth` checks `hasSession()` from storage directly, so a page reload
 resolves the session before the first render without a redirect flash.
 
@@ -68,7 +79,7 @@ resolves the session before the first render without a redirect flash.
 | `chat.ts` | `streamChatReply` |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
-| `pipelines.ts` | `listPipelines`, `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal) |
+| `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal) |
 | `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
@@ -123,6 +134,15 @@ updates state. `useLatest(value)` is a ref that always holds the latest value,
 for async work that must read it when it finishes. `useAttachDocument` and
 `useRevisePipeline` use both.
 
+## `core/hooks/useMediaQuery.ts` and `useMountedRef.ts`
+
+`useMediaQuery(query)` is whether a CSS media query matches, kept current as the
+window changes (`useSyncExternalStore`); it is `false` where the browser cannot
+answer (jsdom), so tests render the narrow layout unless they stub `matchMedia`.
+`useMountedRef()` is a ref that is true while the component is mounted, for the
+answer of a request that cannot be cancelled (a save), which is then dropped
+instead of updating state after the screen is gone.
+
 ## `core/hooks/useNow.ts` and `core/time.ts`
 
 `useNow(ticking)` returns the current time, refreshed every second
@@ -150,6 +170,7 @@ Components here render and animate; they never fetch or touch storage.
 | `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers. In a group that moves while it stays on screen (the run tabs under a live status bar), give each item's pill its own `layoutDependency` (its key): it then glides only when the selection changes |
 | `PageTransition.tsx` | Enter-only fade/slide keyed by the route |
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
+| `navIcons.ts` | `navIcon(route)`: the top bar's icon per section, used on a phone above each label |
 | `BusyNotice.tsx`, `Spinner.tsx` | Loading line with shimmer text; the spinner (`decorative` hides it inside a labelled control) |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
@@ -188,6 +209,83 @@ Rules for motion:
 
 ## Features
 
+### `features/mission`
+
+The mission workspace at `/mission` (a new mission) and `/mission/<pipeline id>`
+(reopen one) is the front door: a person says what they want done, AIMIx builds a
+team of agents, shows it, runs it and delivers the results, and the person changes
+the team by talking to it. It adds no backend of its own: it composes generation
+(`POST /api/pipelines/generate`), revision (`/revise`), saving and background runs,
+on one screen.
+
+**The screen.** Three panes side by side from `xl` (1280px); below that they are
+tabs (Conversation, Team, Results — ARIA tabs, arrow keys, Home and End), and the
+Results tab carries the newest run's status ("Running"). All three panes stay
+mounted, so a half-written message and scroll positions survive a switch of tab;
+a link in the conversation ("See the team") brings its pane forward and moves
+focus to that pane's heading.
+
+- **Conversation** (an ARIA `log`, so AIMIx's answers are announced). Empty, it asks
+  "What do you want to get done?" with four example missions, the template
+  quick-starts (one click makes the person's own saved pipeline from a template) and
+  the newest saved missions. The first message *describes* the mission: a team is
+  generated and, in plain words, AIMIx lists each agent, what it delivers, its tools
+  and what the person provides. Every later message is a *change request*: AIMIx
+  answers with the changes in words (`describeChange`), a preview, and inline Apply
+  and Discard. **Run it** — the button under the box, or the phrase typed (`isRunRequest`
+  takes whole phrases only, so "run the research in parallel" is still a change) —
+  puts the run's inputs in the conversation (`RunInputCard`, "Attach a document"
+  included) and starts the run. Nothing is sent while AIMIx is working (Stop cancels
+  it), and the box says why.
+- **Team.** The pipeline graph, live while a run works (a run of exactly this team,
+  as in the builder). Selecting an agent opens a drawer over the results with the
+  builder's own step editor (`StepCard`: role, task, tools, model, prompt); it is a
+  non-modal dialog (focus moves in, Escape closes and hands focus back) and agents
+  cannot be edited while a run works. "Open in builder" saves and opens the pipeline
+  in the advanced mode, which links back with "Open in mission view".
+- **Results.** The deliverables first (the newest run's output steps as `OutputCard`s,
+  or what to expect before a run), then "Run details" — `LiveRun` embedded as it is,
+  so anything added to it appears here: open while the run works or stopped short,
+  folded once it is done — then the newest workspace files with a link to Files. The
+  pane's header keeps the run's status and Stop / Resume within reach.
+
+**Saving.** A mission is a pipeline. A new mission is a draft in the tab until it
+first runs: starting a run saves it (named from the plan, else from the first words
+of the description) and moves the address to `/mission/<id>` without rebuilding the
+screen (router state `{ adopted }`, see `useWorkspaceIdentity`); opening it in the
+builder saves it too. Edits to a saved mission — the drawer, an applied change — are
+saved `AUTOSAVE_DELAY_MS` (1.5 s) after the last one, and always before a run; one
+save runs at a time. A failed save shows on the team pane and waits for the next edit.
+
+**What is kept, and where.** The server keeps the team and its runs: reopening
+`/mission/<id>` loads the pipeline and its newest run (`useLatestRun`). The
+*conversation* is client state in this version: JSON in `sessionStorage`, one entry per
+mission (`aimix.mission.v1.<pipeline id>`, or `….new` for a draft, which also keeps
+the draft team), at most 200 messages, every access in try/catch. It lasts for the tab:
+another tab or browser starts that mission's conversation again from a greeting with
+its team. A proposal that was waiting when the page was left shows as no longer
+available, and a message left unanswered is said to be. Keeping conversations on the
+server would need a table and endpoints; that is not part of this version.
+
+| File | Role |
+|---|---|
+| `MissionPage.tsx`, `useWorkspaceIdentity.ts`, `missionAddress.ts` | The route: reads the id, redirects an address that is not one, and rebuilds the workspace when another mission is opened (not for a new mission's own first save) |
+| `MissionWorkspace.tsx`, `usePanes.ts`, `missionPanes.ts`, `PaneHeader.tsx`, `MissionTabs.tsx` | The three panes and the phone tabs; which pane is in front and where focus goes; the pane title bar (screen readers only on a phone unless it has controls) |
+| `useMission.ts` | The workspace's state, composed from the hooks below; routes what the person sends (describe, run it, or a change); opens the mission in the builder |
+| `useMissionTeam.ts` | The team on screen: loads a saved mission by id, edits (swap, patch or remove an agent), one-at-a-time saving, autosave. Saving keeps the team's identity, so a proposal made for it stays valid |
+| `useTeamGeneration.ts` | Description → team over `POST /api/pipelines/generate`: cancellable, plain words for failures, nothing saved |
+| `useMissionProposals.ts` | Change requests over `useRevisePipeline`: each gets an answer in the conversation that shows the live proposal and keeps its outcome (applied, discarded, failed, stopped, expired) |
+| `useMissionRun.ts` | "Run it": the inputs form in the conversation, saving then starting a run, following it (`useFollowedRun`) |
+| `useMissionConversation.ts`, `missionMessages.ts`, `missionStorage.ts` | The conversation as plain JSON data (notes, team descriptions, proposals, forms, runs), its `sessionStorage` copy and the validation of what is read back |
+| `missionIntent.ts`, `teamBrief.ts` | Pure: which phrases mean "run it"; a team as words (agents, tasks, tools, what to provide) |
+| `ConversationPane.tsx`, `MissionComposer.tsx`, `MissionStart.tsx`, `useRecentMissions.ts` | The conversation pane: the log, the message box (Enter sends, Shift + Enter adds a line), the empty state with examples, templates and recent missions |
+| `MessageItem.tsx`, `TeamMessageView.tsx`, `ProposalMessageView.tsx`, `InputsMessageView.tsx`, `RunMessageView.tsx`, `Bubble.tsx`, `messageContext.ts` | One view per kind of answer, in a registry (a new kind is a new entry); the context carries the live proposal, form and run each one needs |
+| `TeamPane.tsx`, `StepDrawer.tsx`, `useStepDrawer.ts` | The team pane and the agent drawer; the hook follows the team (a removed agent closes it) and gives focus back |
+| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables, the folded live run, the newest files (reloaded when a run ends) |
+
+`testData.ts` (fixtures and `routeFetch`, a fetch stand-in that answers
+`"METHOD /api/path"`) and `testRender.tsx` serve the tests.
+
 ### `features/chat`
 
 - `useChatStream()` owns the transcript (`messages`), `isLoading`, and `send()`.
@@ -210,14 +308,14 @@ Rules for motion:
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
 | `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps, `replace` (an accepted revision) and saving the proposed workflow (later saves update it) |
 | `RevisePanel.tsx` | "Ask AIMIx to change this pipeline": a foldable panel (open by default on the auto page) with the change box, clickable example instructions, a busy line with Stop, and the review. Ctrl/⌘ + Enter asks. Apply hands the revision to `onApply` (the page replaces its draft and leaves it unsaved); it never saves. Props: `pipeline`, `onApply`, optional `plannerModel`, `disabled`, `defaultOpen`, `headingLevel`. Mounted under the builder's title and under the auto page's diagram |
-| `RevisionReview.tsx` | A proposal: the change list in plain words (added / changed / removed marks), a `PipelineGraph` preview, Apply and Discard; "Nothing to change" when the planner changed nothing |
+| `RevisionReview.tsx` | A proposal: the change list in plain words (added / changed / removed marks), a `PipelineGraph` preview, Apply and Discard; "Nothing to change" when the planner changed nothing. `ChangeList` is exported: the mission conversation shows the same list |
 | `useRevisePipeline.ts` | `useRevisePipeline(pipeline)` → `{ proposal, stale, busy, error, propose, cancel, discard }` over `POST /api/pipelines/revise`. The proposal keeps the draft's id (so a save updates it) and only applies to the draft it was made from: an edit sets it aside (`stale`), and an answer for a draft edited meanwhile is dropped. Aborts on unmount and on `cancel` |
 | `useRevisePanel.ts` | The panel's own state over `useRevisePipeline` (typed instruction, applied flag, `edit` / `pick` / `ask` / `apply` / `discard`) and `panelStatus`, the text of its live status line |
 | `revision.ts` | `describeChange` (a change as a sentence), `adoptRevision`, the example instructions and the instruction length limit (mirrors the backend's) |
 | `buttonStyles.ts` | Primary and secondary in-card button looks for actions beside a page's GlowButton |
 | `PipelineInputsEditor.tsx` | The named run inputs (name, label, description), shared by both screens; names are typed as snake_case and problems show before saving |
 | `pipelineInputs.ts` | Pure helpers for named inputs and attached documents (`appendDocument`, `documentSummary`): the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, and `runRequest`, which sends only declared inputs |
-| `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model and prompt |
+| `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model and prompt. `StepCard` (one step's editor) is exported: the mission screen's drawer uses it |
 | `PromptPlaceholders.tsx` | Under a prompt: `{input}` and the declared `{name}` placeholders, plus a warning for a placeholder nothing fills |
 | `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise); the checklist groups tools by source, so an integration's tools sit under its name |
 | `StepRoleFields.tsx` | A step's title, its Intermediate / Output toggle and its expected output, shared by both editors |
@@ -232,6 +330,7 @@ Rules for motion:
 | `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
 | `stages.ts` | `groupByStage`, `nextStage`, `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
+| `OpenInMissionLink.tsx` | On the builder's title, for a saved pipeline: "Open in mission view" (`/mission/<id>`); with unsaved edits it asks to save first instead |
 | `PipelineNav.tsx` | Switch between Pipeline, Auto Pipeline, Templates and Runs |
 | `modelLabel.ts` | Human-friendly label for a model id |
 
@@ -350,7 +449,8 @@ canvas, because the headline sits on top of it.
 
 `LoginPage` and `RegisterPage` share the `AuthCard` (glass `SpotlightCard`,
 `BlurText` title, `GlowButton` submit) inside `AuthLayout` (full-screen
-`Aurora` plus the hero with `RotatingText`) and call `useAuth()`.
+`Aurora` plus the hero with `RotatingText`) and call `useAuth()`. A successful sign-in
+goes to `HOME_PATH`, the mission workspace.
 
 ## Conventions (from AGENTS.md §8)
 
@@ -390,7 +490,19 @@ runs: `core/api/runs.test.ts`, `features/runs/useRun.test.tsx` (polling with
 fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx`,
 `LiveRun.test.tsx` (live statuses, Stop/Resume, failure explanation) and
 `RunsPage.test.tsx` (list, deep link, delete with confirmation);
-`features/runs/testData.ts` builds the runs they share.
+`features/runs/testData.ts` builds the runs they share. The mission workspace is
+covered by `features/mission/`: the pure modules (`missionIntent.test.ts`,
+`teamBrief.test.ts`, `missionStorage.test.ts`), the hooks (`useMissionTeam.test.tsx`:
+loading, one save at a time, autosave, identity kept; `useMission.test.tsx`: describe →
+reply, revise → apply or discard, saving then starting a run, reopening a mission,
+templates, "Open in builder"), the components (`MissionTabs.test.tsx`,
+`StepDrawer.test.tsx`, `RunDetails.test.tsx`) and the whole screen
+(`MissionPage.test.tsx`: starting, describing, change requests, running;
+`MissionPanes.test.tsx`: tabs and focus, the wide layout, the drawer, the results pane,
+addresses and what a tab remembers). `App.test.tsx` checks the nav order and the
+Missions route, `features/auth/LoginPage.test.tsx` the landing after sign-in,
+`features/pipelines/OpenInMissionLink.test.tsx` the builder's link and
+`core/hooks/useMediaQuery.test.tsx` the media-query hook.
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.
