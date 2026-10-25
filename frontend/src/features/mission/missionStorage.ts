@@ -4,6 +4,7 @@ import {
   NOTE_TONES,
   PROPOSAL_STATES,
   TEAM_ORIGINS,
+  restoredMessages,
   type AimixMessage,
   type MissionMessage,
 } from './missionMessages';
@@ -37,6 +38,12 @@ export function readMission(key: string): StoredMission {
   } catch {
     return EMPTY;
   }
+}
+
+/** A mission as it was left in this tab, ready to continue (see `restoredMessages`). */
+export function restoreMission(pipelineId?: number): StoredMission {
+  const stored = readMission(missionKey(pipelineId));
+  return { ...stored, messages: restoredMessages(stored.messages) };
 }
 
 export function writeMission(key: string, mission: StoredMission): void {

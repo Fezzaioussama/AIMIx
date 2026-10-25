@@ -11,6 +11,9 @@ export const DEFAULT_MISSION_NAME = 'My mission';
 
 export type TeamStatus = 'idle' | 'loading' | 'saving';
 
+/** A saved mission's edits are saved this long after the last one. */
+export const AUTOSAVE_DELAY_MS = 1500;
+
 /** A save's outcome: the stored team, or why it could not be saved. */
 export type SaveResult = { pipeline: Pipeline; error: '' } | { pipeline: null; error: string };
 
@@ -48,12 +51,18 @@ function named(pipeline: Pipeline): Pipeline {
   return pipeline.name.trim() ? pipeline : { ...pipeline, name: DEFAULT_MISSION_NAME };
 }
 
-/** The stored team, unless it was edited while saving: those edits stay, under its id. */
+/**
+ * The team once `saved` is stored. A first save gives the team its id (`stored`). Saving
+ * again changes nothing on screen, so the team keeps its identity: a proposal made for
+ * it stays valid (useRevisePipeline compares the draft by identity). Edits made while
+ * saving stay, under the id, and are saved next.
+ */
 function afterSave(latest: TeamState, saved: Pipeline, stored: Pipeline): TeamState {
-  if (latest.pipeline === null || latest.pipeline === saved) {
-    return { pipeline: stored, dirty: false };
+  if (latest.pipeline === null) return { pipeline: stored, dirty: false };
+  if (latest.pipeline !== saved) {
+    return { pipeline: { ...latest.pipeline, id: stored.id }, dirty: true };
   }
-  return { pipeline: { ...latest.pipeline, id: stored.id }, dirty: true };
+  return { pipeline: saved.id === undefined ? stored : saved, dirty: false };
 }
 
 /** Loads a saved mission's team when the workspace opens on its address. */
@@ -135,6 +144,19 @@ function useTeamSaver(
 }
 
 /**
+ * Saves edits to a mission that already exists a moment after the last one, so what the
+ * conversation says and what reopens later agree. A new mission is saved when it first
+ * runs. A failed save is not retried until the next edit.
+ */
+function useAutosave(state: TeamState, save: () => Promise<SaveResult>) {
+  useEffect(() => {
+    if (!state.dirty || state.pipeline?.id === undefined) return;
+    const timer = setTimeout(() => void save(), AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [save, state]);
+}
+
+/**
  * The mission's team: the pipeline on screen (loaded by id for a saved mission, or
  * the tab's draft for a new one), its edits, and saving. Kept out of the components (§2).
  */
@@ -151,6 +173,7 @@ export function useMissionTeam(routeId: number | undefined, draft: Pipeline | nu
   }, []);
   const loader = useTeamLoader(routeId, current, commit);
   const saver = useTeamSaver(current, commit);
+  useAutosave(state, saver.save);
 
   const edit = useCallback(
     (change: (pipeline: Pipeline) => Pipeline) => {

@@ -41,6 +41,7 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
   {
     title: 'Workspace',
     links: [
+      { label: 'Missions', href: '/mission' },
       { label: 'Chat', href: '/chat' },
       { label: 'Pipelines', href: '/pipeline' },
       { label: 'Auto pipeline', href: '/auto-pipeline' },

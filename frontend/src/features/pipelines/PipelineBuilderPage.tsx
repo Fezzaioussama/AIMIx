@@ -8,6 +8,7 @@ import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { FollowedRunBar } from '../runs/FollowedRunBar';
 import { useFollowedRun } from '../runs/useFollowedRun';
+import { OpenInMissionLink } from './OpenInMissionLink';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
@@ -143,6 +144,9 @@ export function PipelineBuilderPage() {
                 <h1 className="text-2xl font-bold tracking-tight">
                   {pipeline.name || 'New Pipeline'}
                 </h1>
+                <div className="mt-3">
+                  <OpenInMissionLink pipelineId={pipeline.id} dirty={dirty} />
+                </div>
               </div>
               <p className="text-sm text-slate-400">
                 <CountUp to={stageCount} duration={0.6} className="font-semibold text-slate-200" />{' '}

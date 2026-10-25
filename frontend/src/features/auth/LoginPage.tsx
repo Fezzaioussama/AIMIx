@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { AuthCard, AuthField } from './AuthCard';
 import { useAuth } from '../../core/auth/AuthContext';
+import { HOME_PATH } from '../../core/routes';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -19,7 +20,7 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(username, password);
-      navigate('/chat', { replace: true });
+      navigate(HOME_PATH, { replace: true });
     } catch (cause) {
       setErrorMessage(
         cause instanceof Error

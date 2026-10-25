@@ -1,4 +1,5 @@
 import { useAuth } from '../../core/auth/AuthContext';
+import { HOME_PATH } from '../../core/routes';
 
 export interface Cta {
   label: string;
@@ -16,7 +17,7 @@ const VISITOR: LandingCtas = {
 };
 
 const MEMBER: LandingCtas = {
-  primary: { label: 'Open the app', to: '/chat' },
+  primary: { label: 'Open the app', to: HOME_PATH },
   secondary: { label: 'Build a pipeline', to: '/pipeline' },
 };
 
