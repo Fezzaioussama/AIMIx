@@ -257,6 +257,10 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
+    #: The run's spending limits, set when it starts and raised when it resumes;
+    #: None is no limit. What it spent is the sum of its steps' usage.
+    max_cost_usd: Mapped[float | None]
+    max_tokens: Mapped[int | None]
 
     steps: Mapped[list[RunStep]] = relationship(
         back_populates="run",
@@ -269,7 +273,8 @@ class RunStep(Base):
     """One step of a run: the input it used, what it produced and how it went.
 
     ``tool_calls`` lists ``{"name", "status"}`` per tool call — never the
-    arguments or results.
+    arguments or results. The token and cost columns grow with each model call
+    the step's agent makes, over every attempt: resuming a run never resets them.
     """
 
     __tablename__ = "run_steps"
@@ -290,5 +295,9 @@ class RunStep(Base):
     error_detail: Mapped[str] = mapped_column(Text, default="")
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+    #: USD, the calls whose cost is known added up; None when none is.
+    cost_usd: Mapped[float | None]
 
     run: Mapped[Run] = relationship(back_populates="steps")

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
 from api.exceptions import DomainError
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from llm.usage import NO_USAGE, UNMETERED, TokenUsage, UsageMeter
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ class StepResult:
     output: str
     is_output: bool = False
     tool_calls: list[ToolCallTrace] = field(default_factory=list)
+    #: What the step's model calls used (``AgentOutcome.usage``).
+    usage: TokenUsage = NO_USAGE
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,11 @@ class _SilentObserver:
 SILENT_OBSERVER: StepObserver = _SilentObserver()
 
 
+def unmetered(step_order: int) -> UsageMeter:
+    """No step's model calls are counted (the default ``RunControl.meter``)."""
+    return UNMETERED
+
+
 @dataclass(frozen=True)
 class RunControl:
     """How a run reports progress, and what an earlier attempt already finished."""
@@ -138,3 +146,6 @@ class RunControl:
     #: Results of steps that already succeeded, by step order (a resumed run).
     #: They are reused as they are; their agents do not run again.
     completed: Mapping[int, StepResult] = field(default_factory=dict)
+    #: Each step's usage meter, by step order: hears the step's model calls and
+    #: may refuse one (``run_budget.RunMeter.for_step``).
+    meter: Callable[[int], UsageMeter] = unmetered

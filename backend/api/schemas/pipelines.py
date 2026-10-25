@@ -24,6 +24,7 @@ from api.models import (
     STEP_TITLE_MAX_LENGTH,
 )
 from api.schemas.common import ModelId, NonBlank, UtcDateTime
+from api.schemas.usage import BudgetIn
 from api.services.pipeline_changes import ChangeKind, ChangeTarget
 from api.services.pipeline_inputs import input_name_error
 
@@ -152,12 +153,13 @@ class PipelineOut(BaseModel):
 Trimmed = Annotated[str, StringConstraints(strip_whitespace=True)]
 
 
-class RunRequest(BaseModel):
+class RunRequest(BudgetIn):
     """Contract for POST /api/pipelines/<id>/run.
 
     ``input`` is the free text a pipeline without named inputs runs on;
     ``inputs`` holds a value for each input a pipeline declares. Which one is
-    required depends on the pipeline, so the service checks them.
+    required depends on the pipeline, so the service checks them. The optional
+    spending limits (``BudgetIn``) stop the run once reached.
     """
 
     input: Trimmed = ""

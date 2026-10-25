@@ -59,6 +59,13 @@ class Conflict(DomainError):
     status_code = 409
 
 
+class BudgetExceeded(DomainError):
+    """A run reached its spending limit: it stops, or cannot resume under that limit."""
+
+    code = "budget_exceeded"
+    status_code = 409
+
+
 class ProviderNotConfigured(DomainError):
     code = "provider_not_configured"
     status_code = 503

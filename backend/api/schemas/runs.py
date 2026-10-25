@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from api.models import RunStatus, StepStatus
 from api.schemas.common import UtcDateTime
 from api.schemas.pipelines import PipelineInputField, StepDefinitionOut, ToolCallOut
+from api.schemas.usage import BudgetIn, UsageOut
+from api.services.usage import total_usage
 
 #: Runs per history page: the default, and the most one request may ask for.
 RUN_PAGE_DEFAULT_LIMIT = 20
@@ -43,7 +47,18 @@ class _Failure(BaseModel):
         return RunErrorOut(code=self.error_code, detail=self.error_detail)
 
 
-class RunStepOut(_Failure):
+class _StepUsage(BaseModel):
+    """What a step's model calls used, over every attempt."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    #: USD; null when the cost of its model is unknown.
+    cost_usd: float | None = None
+
+
+class RunStepOut(_Failure, _StepUsage):
     step_order: int
     stage: int
     title: str
@@ -75,6 +90,17 @@ class RunSummaryOut(_Failure):
     created_at: UtcDateTime
     started_at: UtcDateTime | None
     finished_at: UtcDateTime | None
+    #: Spending limits; null is no limit.
+    max_cost_usd: float | None = None
+    max_tokens: int | None = None
+    #: Read to add up the run's usage; a summary does not list its steps.
+    steps: Sequence[_StepUsage] = Field(default=(), exclude=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def usage(self) -> UsageOut:
+        """What the run's model calls used and cost so far, over every attempt."""
+        return UsageOut.model_validate(total_usage(self.steps))
 
 
 class RunOut(RunSummaryOut):
@@ -91,3 +117,8 @@ class RunPageOut(BaseModel):
     items: list[RunSummaryOut]
     #: How many runs match in all, for paging.
     total: int
+
+
+class ResumeRequest(BudgetIn):
+    """Optional body of POST /api/runs/<id>/resume: new spending limits; a limit
+    left out stays as it was."""

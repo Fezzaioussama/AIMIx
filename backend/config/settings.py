@@ -254,6 +254,11 @@ class Settings(BaseSettings):
     run_shutdown_grace_seconds: float = Field(
         5.0, gt=0, validation_alias="RUN_SHUTDOWN_GRACE_SECONDS"
     )
+    # A run stops once its model calls cost this much (USD), unless the person
+    # starting it sets their own limit. Empty (None): no limit.
+    run_default_max_cost_usd: float | None = Field(
+        None, gt=0, allow_inf_nan=False, validation_alias="RUN_DEFAULT_MAX_COST_USD"
+    )
     openrouter_api_key: str = Field(
         "", validation_alias=_env("OPEN_ROUTER_KEY", "OPENROUTER_API_KEY")
     )
@@ -304,6 +309,12 @@ class Settings(BaseSettings):
     @classmethod
     def _upper(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("run_default_max_cost_usd", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: object) -> object:
+        """``RUN_DEFAULT_MAX_COST_USD=`` (empty) means no limit."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("workspace_dir", mode="after")
     @classmethod

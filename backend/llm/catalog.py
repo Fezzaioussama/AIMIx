@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+#: Catalogue prices are per million tokens, as providers publish them.
+TOKENS_PER_PRICE_UNIT = 1_000_000
+
 
 @dataclass(frozen=True)
 class ModelInfo:
@@ -21,6 +24,22 @@ class ModelInfo:
     fast: bool = False
     free: bool = False
     description: str = ""
+    #: USD per million input / output tokens, filled only where the provider's
+    #: own page was checked (the comment on each says where and when); None is
+    #: unknown. Used only when a provider does not report a call's cost
+    #: (llm/usage.py). Never guess one: an unknown price shows as unknown.
+    input_price_per_million: float | None = None
+    output_price_per_million: float | None = None
+
+    def price(self, input_tokens: int, output_tokens: int) -> float | None:
+        """USD for that many tokens at the published prices; None when one is unknown."""
+        if self.input_price_per_million is None or self.output_price_per_million is None:
+            return None
+        cost = (
+            input_tokens * self.input_price_per_million
+            + output_tokens * self.output_price_per_million
+        )
+        return cost / TOKENS_PER_PRICE_UNIT
 
 
 class ModelCatalog:
@@ -52,7 +71,11 @@ class ModelCatalog:
 
 
 class TogetherAIModels(ModelCatalog):
-    """TogetherAI hosted models."""
+    """TogetherAI hosted models.
+
+    TogetherAI does not report what a call cost, so a call is priced from the
+    prices below; a model without them has an unknown cost (its tokens still count).
+    """
 
     Kimi_K2_Thinking = ModelInfo(
         provider="togetherai",
@@ -72,6 +95,9 @@ class TogetherAIModels(ModelCatalog):
         supports_tools=True,
         supports_reasoning=True,
         description="Open-weight GPT-style 120B model.",
+        # together.ai/models/gpt-oss-120b and together.ai/pricing, checked 2026-10-24.
+        input_price_per_million=0.15,
+        output_price_per_million=0.60,
     )
     Llama4_Maverick_17B_128E = ModelInfo(
         provider="togetherai",
@@ -82,7 +108,11 @@ class TogetherAIModels(ModelCatalog):
 
 
 class OpenRouterModels(ModelCatalog):
-    """Models reachable through OpenRouter."""
+    """Models reachable through OpenRouter.
+
+    OpenRouter reports what each call cost (``usage.cost``), so these need no
+    prices; a price here is only a fallback for an answer without one.
+    """
 
     Qwen3_Coder_480B_A35B = ModelInfo(
         provider="openrouter",
@@ -154,6 +184,10 @@ class OpenRouterModels(ModelCatalog):
         free=True,
         supports_reasoning=True,
         description="Free NVIDIA Nemotron model.",
+        # ":free" variants cost nothing: openrouter.ai/docs/guides/routing/
+        # model-variants/free, checked 2026-10-24.
+        input_price_per_million=0.0,
+        output_price_per_million=0.0,
     )
 
 

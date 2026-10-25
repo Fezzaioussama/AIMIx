@@ -107,6 +107,6 @@ def run_pipeline(pipeline_id: int, body: RunRequest, context: PipelineRun) -> Ru
     """Kept for API compatibility: a recorded run, waited for to its end.
     New clients start one with ``POST /pipelines/{id}/runs`` and poll it."""
     pipeline = repository.get_owned(context.session, context.user, pipeline_id)
-    start = RunStart(body.input, body.inputs)
+    start = RunStart(body.input, body.inputs, body.budget)
     result = context.runs.run_to_end(context.user, pipeline, start, context.agents())
     return RunResponse.model_validate(asdict(result))

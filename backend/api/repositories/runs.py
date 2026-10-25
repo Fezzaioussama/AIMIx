@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, load_only, selectinload
 
 from api.exceptions import NotFound
 from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, RunStep, StepStatus, User
+from llm.usage import TokenUsage
 
 #: What a run summary needs; the long texts (definition, inputs, outputs) stay unloaded.
 SUMMARY_COLUMNS = (
@@ -31,7 +32,11 @@ SUMMARY_COLUMNS = (
     Run.created_at,
     Run.started_at,
     Run.finished_at,
+    Run.max_cost_usd,
+    Run.max_tokens,
 )
+#: What a summary reads of each step: its usage, which adds up to the run's.
+STEP_USAGE_COLUMNS = (RunStep.input_tokens, RunStep.output_tokens, RunStep.cost_usd)
 
 
 def _unstarted_step() -> dict[str, Any]:
@@ -58,6 +63,9 @@ class NewRun:
     input_text: str
     input_values: dict[str, str]
     steps: list[dict[str, Any]]
+    #: Spending limits; None is no limit.
+    max_cost_usd: float | None = None
+    max_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +117,8 @@ def create(session: Session, user: User, new: NewRun) -> Run:
         input_text=new.input_text,
         input_values=new.input_values,
         status=RunStatus.QUEUED,
+        max_cost_usd=new.max_cost_usd,
+        max_tokens=new.max_tokens,
         steps=[RunStep(**_unstarted_step(), **step) for step in new.steps],
     )
     session.add(run)
@@ -139,6 +149,7 @@ def page_for_user(session: Session, user: User, query: RunQuery) -> RunPage:
         select(Run)
         .where(*filters)
         .options(load_only(*SUMMARY_COLUMNS))
+        .options(selectinload(Run.steps).load_only(*STEP_USAGE_COLUMNS))
         .order_by(Run.created_at.desc(), Run.id.desc())
         .limit(query.limit)
         .offset(query.offset)
@@ -200,9 +211,15 @@ def end(session: Session, run_id: int, ending: RunEnding, now: datetime) -> bool
     return ended == 1
 
 
-def reopen(session: Session, run_id: int, resumable: Collection[RunStatus]) -> bool:
-    """Queue a stopped run again (compare-and-set from ``resumable``) and reset
-    every step that did not succeed, in one transaction."""
+def reopen(
+    session: Session,
+    run_id: int,
+    resumable: Collection[RunStatus],
+    values: Mapping[str, Any] | None = None,
+) -> bool:
+    """Queue a stopped run again (compare-and-set from ``resumable``), setting
+    ``values`` too (a new spending limit), and reset every step that did not
+    succeed, in one transaction. A step keeps its usage: that was spent."""
     reopened = _changed(
         session,
         update(Run)
@@ -213,6 +230,7 @@ def reopen(session: Session, run_id: int, resumable: Collection[RunStatus]) -> b
             error_code="",
             error_detail="",
             finished_at=None,
+            **(values or {}),
         ),
     )
     if reopened:
@@ -224,6 +242,25 @@ def reopen(session: Session, run_id: int, resumable: Collection[RunStatus]) -> b
         )
     session.commit()
     return reopened == 1
+
+
+def add_step_usage(session: Session, run_id: int, step_order: int, usage: TokenUsage) -> None:
+    """Add one model call's tokens and cost to its step. The database adds them
+    (``SET x = x + n``), so parallel writers never lose or double an update; an
+    unknown cost leaves the step's cost as it was."""
+    values: dict[str, Any] = {
+        "input_tokens": RunStep.input_tokens + usage.input_tokens,
+        "output_tokens": RunStep.output_tokens + usage.output_tokens,
+    }
+    if usage.cost_usd is not None:
+        values["cost_usd"] = func.coalesce(RunStep.cost_usd, 0.0) + usage.cost_usd
+    _changed(
+        session,
+        update(RunStep)
+        .where(RunStep.run_id == run_id, RunStep.step_order == step_order)
+        .values(**values),
+    )
+    session.commit()
 
 
 def delete(session: Session, run: Run) -> None:

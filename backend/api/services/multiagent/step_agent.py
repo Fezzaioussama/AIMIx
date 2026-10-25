@@ -26,11 +26,17 @@ from api.services.agent_runtime import (
 from api.services.agent_tools import native_tools
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
 from api.services.integrations.connections import mcp_connections_for
-from api.services.llm import LLMProfile, get_agent_model
+from api.services.llm import LLMProfile, get_agent_model, model_info
 from api.services.prompts import step_agent_system_prompt
 from config.settings import Settings, get_settings
+from llm.catalog import ModelInfo
+from llm.usage import UsageCallback, metered
 
 logger = logging.getLogger(__name__)
+
+
+def _unlisted(model_id: str) -> ModelInfo | None:
+    return None
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,9 @@ class StepAgentDependencies:
 
     model_factory: Callable[[str], BaseChatModel]
     settings: Settings
+    #: A model's catalogue entry, whose prices price its calls when the
+    #: provider reports no cost; by default no model has one.
+    model_info: Callable[[str], ModelInfo | None] = _unlisted
 
 
 def _tool_trace(messages: list[BaseMessage]) -> list[ToolCallTrace]:
@@ -59,13 +68,22 @@ def _tool_trace(messages: list[BaseMessage]) -> list[ToolCallTrace]:
 class LangGraphStepAgent:
     """Run one role-scoped agent with its selected model and tools."""
 
-    def __init__(self, model: BaseChatModel, toolset: AgentToolset, limits: AgentLimits) -> None:
+    def __init__(
+        self,
+        model: BaseChatModel,
+        toolset: AgentToolset,
+        limits: AgentLimits,
+        info: ModelInfo | None = None,
+    ) -> None:
         self._model = model
         self._toolset = toolset
         self._limits = limits
+        self._info = info
 
     async def reply(self, task: AgentTask) -> AgentOutcome:
         started = monotonic()
+        # Counts every model call of this step, and lets the task's meter refuse one.
+        usage = UsageCallback(self._info, task.meter)
         try:
             with anyio.fail_after(self._limits.timeout_seconds):
                 tools = await resolve_tools(
@@ -74,7 +92,8 @@ class LangGraphStepAgent:
                 system_prompt = step_agent_system_prompt(
                     task.role, has_tools=bool(tools), expected_output=task.expected_output
                 )
-                graph = create_agent(self._model, tools, system_prompt=system_prompt)
+                model = metered(self._model, usage)
+                graph = create_agent(model, tools, system_prompt=system_prompt)
                 state = await graph.ainvoke(
                     {"messages": [{"role": "user", "content": task.prompt}]},
                     config={"recursion_limit": self._limits.recursion_limit},
@@ -91,7 +110,7 @@ class LangGraphStepAgent:
             len(tools),
             (monotonic() - started) * 1000,
         )
-        return AgentOutcome(message.text, _tool_trace(messages))
+        return AgentOutcome(message.text, _tool_trace(messages), usage.total)
 
 
 class PipelineAgentGenerator:
@@ -107,7 +126,7 @@ class PipelineAgentGenerator:
         self._database = database
         self._user = user
         self._dependencies = dependencies or StepAgentDependencies(
-            partial(get_agent_model, profile), get_settings()
+            partial(get_agent_model, profile), get_settings(), partial(model_info, profile)
         )
 
     async def execute(self, task: AgentTask) -> AgentOutcome:
@@ -123,5 +142,6 @@ class PipelineAgentGenerator:
                 settings.agent_recursion_limit,
                 settings.mcp_timeout_seconds,
             ),
+            self._dependencies.model_info(task.model),
         )
         return await agent.reply(task)
