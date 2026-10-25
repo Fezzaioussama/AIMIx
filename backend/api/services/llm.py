@@ -17,6 +17,7 @@ from config.settings import Settings, get_settings
 from llm import exceptions as llm_exceptions
 from llm.agent_models import create_agent_model
 from llm.base import LLMProvider, ProviderConfig
+from llm.catalog import CATALOGS, ModelInfo
 from llm.registry import create_provider
 from llm.retry import RetryPolicy
 
@@ -80,3 +81,9 @@ def get_agent_model(profile: LLMProfile, model_id: str | None = None) -> BaseCha
         return create_agent_model(profile.provider, provider_config(profile, model_id))
     except llm_exceptions.ProviderNotConfigured as cause:
         raise ProviderNotConfigured(str(cause)) from cause
+
+
+def model_info(profile: LLMProfile, model_id: str) -> ModelInfo | None:
+    """The catalogue entry of a model of the profile's provider (its prices)."""
+    catalog = CATALOGS.get(profile.provider)
+    return catalog.by_id(model_id) if catalog else None

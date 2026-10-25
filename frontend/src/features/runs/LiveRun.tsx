@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import type { Run } from '../../core/api/types';
+import type { Run, RunBudget } from '../../core/api/types';
 import { elapsedMs } from '../../core/time';
 import { PipelineRunView } from '../pipelines/PipelineRunView';
 import { LiveRunHeader } from './LiveRunHeader';
@@ -10,7 +10,8 @@ export interface LiveRunProps {
   /** The run to show, e.g. `useRun(id).run`; pass each new poll. */
   run: Run;
   onStop?: () => void;
-  onResume?: () => void;
+  /** Continue the run; one that stopped at its spending limit passes a higher limit. */
+  onResume?: (budget?: RunBudget) => void;
   /** A stop or resume is in flight. */
   busy?: boolean;
   /** Why the last fetch, stop or resume failed. */

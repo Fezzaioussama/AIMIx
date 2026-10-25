@@ -104,6 +104,7 @@ async def _run_step(step: StepSpec, task: AgentTask, stage_input: str, nodes: _N
         input_used=stage_input,
         output=outcome.output,
         tool_calls=outcome.tool_calls,
+        usage=outcome.usage,
     )
     await notify(StepEvent(StepEventKind.SUCCEEDED, step, stage_input, result=result))
     return result
@@ -124,6 +125,7 @@ def _agent_node(
             role=step.role,
             allowed_tools=list(step.allowed_tools) if step.allowed_tools is not None else None,
             expected_output=step.expected_output,
+            meter=nodes.control.meter(step.order),
         )
         return {"results": {step.order: await _run_step(step, task, stage_input, nodes)}}
 

@@ -58,7 +58,7 @@ export function RunDetail({ live, onDelete, deleting }: RunDetailProps) {
       <LiveRun
         run={run}
         onStop={() => void live.stop()}
-        onResume={() => void live.resume()}
+        onResume={(budget) => void live.resume(budget)}
         busy={live.busy}
         error={live.error}
         actions={

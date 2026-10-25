@@ -21,6 +21,7 @@ from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, StepStatus
 from api.repositories import runs as repository
 from api.repositories.runs import RunEnding, StepChange
 from api.services.multiagent.contracts import StepEvent, StepEventKind
+from llm.usage import TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,12 @@ class RunRecorder:
         change = StepChange(event.step.order, expected, columns(event, utcnow()))
         with self._database.session() as session:
             repository.set_step(session, self._run_id, change)
+
+    def record_usage(self, step_order: int, usage: TokenUsage) -> None:
+        """Add one finished model call's usage to its step, at once: the run's
+        running total shows while it executes, and is kept if it then fails."""
+        with self._database.session() as session:
+            repository.add_step_usage(session, self._run_id, step_order, usage)
 
     def end(self, ending: RunEnding) -> bool:
         """Record how the run ended; False when someone else ended it first."""

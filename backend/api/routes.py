@@ -22,6 +22,7 @@ from api.endpoints import (
     pipelines,
     runs,
     templates,
+    usage,
 )
 
 API_PREFIX = "/api"
@@ -39,6 +40,7 @@ PROTECTED_ROUTERS = (
     integrations.router,
     files.router,
     runs.router,
+    usage.router,
 )
 
 

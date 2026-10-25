@@ -9,6 +9,9 @@ Life of a run: ``queued`` → ``running`` → ``succeeded`` | ``failed`` |
 ``cancelled`` (stopped by its owner) | ``interrupted`` (the process stopped).
 The last three can be resumed: the run continues from its own snapshot,
 reusing the steps that succeeded.
+
+A run may carry spending limits (``run_budget``): one it does not set takes
+the server's default, and resuming may raise them.
 """
 
 from __future__ import annotations
@@ -18,9 +21,11 @@ import logging
 from collections.abc import Callable, Mapping
 from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from typing import Literal, cast
+
+from sqlalchemy.orm import Session
 
 from api.db import Database
 from api.exceptions import Conflict, DomainError, NotFound
@@ -49,18 +54,31 @@ from api.services.multiagent.graph import GraphPipelineRunner, output_orders
 from api.services.multiagent.mapper import spec_from_json, spec_to_json
 from api.services.pipeline_inputs import bind_run_inputs
 from api.services.pipelines import PreparedRun, prepare_run
+from api.services.run_budget import (
+    NO_BUDGET,
+    RunBudget,
+    RunMeter,
+    default_budget,
+    ensure_room,
+    run_budget,
+)
 from api.services.run_executor import RunExecutor
 from api.services.run_recorder import RunRecorder
+from api.services.usage import step_usage, total_usage
+from config.settings import get_settings
+from llm.usage import TokenUsage
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class RunStart:
-    """What a run is started with: free text, or a value per named input."""
+    """What a run is started with: free text, or a value per named input, and
+    its spending limits (a limit left unset takes the server's default)."""
 
     text: str = ""
     values: Mapping[str, str] = field(default_factory=dict)
+    budget: RunBudget = NO_BUDGET
 
 
 @dataclass(frozen=True)
@@ -84,6 +102,9 @@ class _Plan:
     spec: PipelineSpec
     inputs: RunInputs
     completed: dict[int, StepResult]
+    #: The run's limits, and what its earlier attempts already spent.
+    budget: RunBudget
+    spent: TokenUsage
 
 
 def _new_run(pipeline_id: int | None, prepared: PreparedRun, start: RunStart) -> repository.NewRun:
@@ -105,6 +126,8 @@ def _new_run(pipeline_id: int | None, prepared: PreparedRun, start: RunStart) ->
             }
             for step in spec.steps
         ],
+        max_cost_usd=start.budget.max_cost_usd,
+        max_tokens=start.budget.max_tokens,
     )
 
 
@@ -123,12 +146,13 @@ def _saved_result(step: RunStep) -> StepResult:
         output=step.output,
         is_output=step.is_output,
         tool_calls=calls,
+        usage=step_usage(step),
     )
 
 
 def _plan(run: Run) -> _Plan:
     """What an execution needs: the run's own snapshot, its inputs bound again,
-    and the steps an earlier attempt finished."""
+    the steps an earlier attempt finished, and its limits and spending so far."""
     spec = spec_from_json(run.pipeline_id, run.definition)
     inputs = bind_run_inputs(spec.inputs, run.input_text, run.input_values)
     done = {
@@ -136,25 +160,46 @@ def _plan(run: Run) -> _Plan:
         for step in run.steps
         if step.status == StepStatus.SUCCEEDED
     }
-    return _Plan(spec, inputs, done)
+    return _Plan(spec, inputs, done, run_budget(run), total_usage(run.steps))
+
+
+def _reopen(session: Session, run: Run, budget: RunBudget) -> bool:
+    """Queue a resumable run again under ``budget``'s limits (the run's own where
+    it sets none); False for a run that is not resumable."""
+    if run.status not in RESUMABLE_RUN_STATUSES:
+        return False
+    limits = budget.or_else(run_budget(run))
+    ensure_room(limits, total_usage(run.steps))
+    return repository.reopen(session, run.id, RESUMABLE_RUN_STATUSES, asdict(limits))
 
 
 class RunService:
     """Start, stop, resume and delete runs; executions go to the executor."""
 
-    def __init__(self, database: Database, executor: RunExecutor, max_parallel_steps: int) -> None:
+    def __init__(
+        self,
+        database: Database,
+        executor: RunExecutor,
+        max_parallel_steps: int,
+        default_limits: RunBudget | None = None,
+    ) -> None:
         self._database = database
         self._executor = executor
         self._max_parallel_steps = max_parallel_steps
+        #: The limits of a run that sets none; None reads RUN_DEFAULT_MAX_COST_USD.
+        self._default_limits = (
+            default_limits if default_limits is not None else default_budget(get_settings())
+        )
 
     def start(
         self, user: User, pipeline: Pipeline, start: RunStart, agent: StepAgent
     ) -> StartedRun:
         """Check the inputs (nothing is saved when they are wrong), save the
-        run queued, and hand it to the executor."""
+        run queued with its limits, and hand it to the executor."""
         prepared = prepare_run(pipeline, start.text, start.values)
+        limited = replace(start, budget=start.budget.or_else(self._default_limits))
         with self._database.session() as session:
-            run = repository.create(session, user, _new_run(pipeline.id, prepared, start))
+            run = repository.create(session, user, _new_run(pipeline.id, prepared, limited))
         finished = self._submit(run.id, agent)
         return StartedRun(self._load(run.id), finished)
 
@@ -180,12 +225,16 @@ class RunService:
             pipeline = pipeline_repository.get_owned(session, user, pipeline_id)
         return self.run_to_end(user, pipeline, start, agent)
 
-    def resume(self, user: User, run_id: int, agent: StepAgent) -> Run:
+    def resume(
+        self, user: User, run_id: int, agent: StepAgent, budget: RunBudget = NO_BUDGET
+    ) -> Run:
         """Continue a failed, stopped or interrupted run from its first
-        unfinished stage. Any other run is returned unchanged."""
+        unfinished stage, with ``budget``'s limits in place of the run's own
+        (one left unset stays). Any other run is returned unchanged; a run that
+        would still be over a limit is refused with ``BudgetExceeded``."""
         with self._database.session() as session:
             run = repository.get_owned(session, user, run_id)
-            if not repository.reopen(session, run.id, RESUMABLE_RUN_STATUSES):
+            if not _reopen(session, run, budget):
                 return run
         logger.info(
             "run.resumed run_id=%s pipeline_id=%s reused_steps=%d",
@@ -239,7 +288,8 @@ class RunService:
         runner = GraphPipelineRunner(self._max_parallel_steps)
         try:
             plan = _plan(run)
-            control = RunControl(observer=recorder, completed=plan.completed)
+            meter = RunMeter(plan.budget, plan.spent, recorder.record_usage)
+            control = RunControl(observer=recorder, completed=plan.completed, meter=meter.for_step)
             result = await runner.arun(plan.spec, agent, plan.inputs, control)
         except asyncio.CancelledError:
             recorder.end(run_recorder.interrupted())

@@ -110,6 +110,71 @@ def test_input_output_migration_keeps_pipelines_and_their_steps(tmp_path: Path) 
     assert tuple(step) == ("Writer", "")
 
 
+def run_tables(url: str) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
+    """Every run and every run step of the database, as plain rows."""
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        saved_runs = connection.execute(text("SELECT * FROM runs ORDER BY id")).all()
+        saved_steps = connection.execute(text("SELECT * FROM run_steps ORDER BY id")).all()
+    engine.dispose()
+    return [tuple(row) for row in saved_runs], [tuple(row) for row in saved_steps]
+
+
+def test_usage_migration_keeps_existing_runs_and_steps_and_starts_them_at_zero(
+    tmp_path: Path,
+) -> None:
+    # Rebuilding `runs` on SQLite would cascade-delete its steps (foreign keys are
+    # on while migrating); the columns must be added, and dropped, in place.
+    url = f"sqlite:///{tmp_path / 'before_usage.sqlite3'}"
+    config = migration_config(url)
+    command.upgrade(config, "d7613f758b22")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (id, username, password_hash, created_at) "
+                "VALUES (1, 'owner', 'hash', CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO runs (id, user_id, pipeline_name, definition, input_text, "
+                "input_values, status, final_output, error_code, error_detail, created_at) "
+                "VALUES (1, 1, 'Old run', '{}', 'seed', '{}', 'succeeded', 'done', '', '', "
+                "CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO run_steps (id, run_id, step_order, stage, title, model, status, "
+                "is_output, input_used, output, tool_calls, error_code, error_detail) "
+                "VALUES (1, 1, 1, 1, 'Step', 'vendor/m', 'succeeded', 1, 'seed', 'done', '[]', "
+                "'', '')"
+            )
+        )
+    engine.dispose()
+    runs_before, steps_before = run_tables(url)
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(url)
+    with engine.connect() as connection:
+        step = connection.execute(
+            text("SELECT input_tokens, output_tokens, cost_usd, output FROM run_steps WHERE id = 1")
+        ).one()
+        run = connection.execute(
+            text("SELECT max_cost_usd, max_tokens, final_output FROM runs WHERE id = 1")
+        ).one()
+    engine.dispose()
+    assert tuple(step) == (0, 0, None, "done")
+    assert tuple(run) == (None, None, "done")
+
+    command.downgrade(config, "d7613f758b22")
+
+    # Back where it was, with nothing lost on the way.
+    assert run_tables(url) == (runs_before, steps_before)
+
+
 def legacy_database(path: Path, *, with_stage_columns: bool = True) -> Path:
     """A minimal copy of the Django schema, holding one account and pipeline."""
     extra = ", stage integer, title varchar(100), is_output bool" if with_stage_columns else ""

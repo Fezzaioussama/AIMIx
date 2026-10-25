@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../core/api/client';
 import { errorMessage } from '../../core/api/errorMessage';
 import { cancelRun, getRun, resumeRun } from '../../core/api/runs';
-import type { Run } from '../../core/api/types';
+import type { Run, RunBudget } from '../../core/api/types';
 import { isActive } from './runStatus';
 
 /** How often a queued or running run is fetched again. */
@@ -17,7 +17,8 @@ export interface LiveRunState {
   /** A stop or resume is in flight. */
   busy: boolean;
   stop: () => Promise<void>;
-  resume: () => Promise<void>;
+  /** Continue a stopped run, under new spending limits when given. */
+  resume: (budget?: RunBudget) => Promise<void>;
   /** Show a run already in hand (one just started) without waiting for a fetch. */
   adopt: (run: Run) => void;
 }
@@ -95,7 +96,10 @@ export function useRun(runId: number | null): LiveRunState {
   );
 
   const stop = useCallback(() => act(cancelRun, 'Could not stop this run.'), [act]);
-  const resume = useCallback(() => act(resumeRun, 'Could not resume this run.'), [act]);
+  const resume = useCallback(
+    (budget?: RunBudget) => act((id) => resumeRun(id, budget), 'Could not resume this run.'),
+    [act],
+  );
   const adopt = useCallback((next: Run) => setRun(next), []);
   const error = failure !== null && failure.runId === runId ? failure.message : '';
 

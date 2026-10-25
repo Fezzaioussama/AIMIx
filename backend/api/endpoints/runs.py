@@ -12,7 +12,8 @@ from api.deps import CurrentUser, DbSession, PipelineRun, Runs
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import runs as repository
 from api.schemas.pipelines import RunRequest
-from api.schemas.runs import RunListQuery, RunOut, RunPageOut, RunSummaryOut
+from api.schemas.runs import ResumeRequest, RunListQuery, RunOut, RunPageOut, RunSummaryOut
+from api.services.run_budget import NO_BUDGET
 from api.services.runs import RunStart
 
 router = APIRouter(tags=["runs"])
@@ -23,7 +24,7 @@ def start_run(pipeline_id: int, body: RunRequest, context: PipelineRun) -> RunOu
     """Queue a run of a saved pipeline; poll ``GET /runs/{id}`` to follow it."""
     pipeline = pipeline_repository.get_owned(context.session, context.user, pipeline_id)
     started = context.runs.start(
-        context.user, pipeline, RunStart(body.input, body.inputs), context.agents()
+        context.user, pipeline, RunStart(body.input, body.inputs, body.budget), context.agents()
     )
     return RunOut.model_validate(started.run)
 
@@ -51,8 +52,12 @@ def cancel_run(run_id: int, user: CurrentUser, runs: Runs) -> RunOut:
 
 
 @router.post("/runs/{run_id}/resume")
-def resume_run(run_id: int, context: PipelineRun) -> RunOut:
-    return RunOut.model_validate(context.runs.resume(context.user, run_id, context.agents()))
+def resume_run(run_id: int, context: PipelineRun, body: ResumeRequest | None = None) -> RunOut:
+    """Continue a stopped run; an optional body sets new spending limits."""
+    budget = body.budget if body is not None else NO_BUDGET
+    return RunOut.model_validate(
+        context.runs.resume(context.user, run_id, context.agents(), budget)
+    )
 
 
 @router.delete("/runs/{run_id}", status_code=204)

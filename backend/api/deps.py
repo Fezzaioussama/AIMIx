@@ -30,6 +30,7 @@ from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, enforce
+from api.services.run_budget import default_budget
 from api.services.run_executor import RunExecutor
 from api.services.runs import RunService, launcher
 from api.services.templates.use import StepDefaults
@@ -200,7 +201,12 @@ Executor = Annotated[RunExecutor, Depends(run_executor)]
 
 
 def run_service(request: Request, executor: Executor, settings: AppSettings) -> RunService:
-    return RunService(request.app.state.database, executor, settings.pipeline_max_parallel_steps)
+    return RunService(
+        request.app.state.database,
+        executor,
+        settings.pipeline_max_parallel_steps,
+        default_budget(settings),
+    )
 
 
 Runs = Annotated[RunService, Depends(run_service)]

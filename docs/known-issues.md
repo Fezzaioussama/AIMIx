@@ -105,3 +105,31 @@ behind a shared queue (the `RunExecutor` port is the seam), scope recovery to
 the worker that owned a run, optionally resume interrupted runs
 automatically, and push progress with server-sent events.
 
+### 7. A run's spending limit is checked between model calls
+
+A limit stops a run by refusing its *next* model call once the total has
+reached it (`api/services/run_budget.py`); a call cannot be priced before it is
+made. So:
+
+- A call in flight when the limit is reached still finishes and is counted: a
+  run can pass its limit by one call per parallel step, and a single call that
+  costs more than the whole limit is not prevented.
+- A call cut off in flight (a parallel step stopped because another failed, or
+  a run stopped by its owner) reports no usage, so what the provider may charge
+  for it is not counted.
+- A cost limit cannot stop calls whose cost is unknown (a model with no known
+  price). Only a token limit can, and the app offers a cost limit; a token limit
+  is set through the API.
+- A step's `cost_usd` adds up the calls whose cost is known. If a provider
+  reports it on only some calls, the step shows a floor and nothing marks it
+  incomplete: a run's `cost_complete` turns `false` only when a step used
+  tokens and has no cost at all.
+- Usage covers pipeline runs, not chat messages, and the chat agent's
+  `run_pipeline` tool starts runs under the server default limit only.
+
+**Fix:** refuse a call that cannot fit the remaining budget, from an estimate of
+its prompt size and the model's maximum output (a pre-flight check in
+`RunMeter.check`); keep a `cost_complete` column on `run_steps` so a partial
+cost is visible; count chat usage through the same `UsageCallback` where
+`services/agent.py` builds its model; give the chat tool an optional limit.
+

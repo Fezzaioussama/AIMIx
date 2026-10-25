@@ -12,7 +12,7 @@ export function FollowedRunBar({ followed }: { followed: FollowedRun }) {
     <LiveRunHeader
       run={run}
       onStop={() => void followed.stop()}
-      onResume={() => void followed.resume()}
+      onResume={(budget) => void followed.resume(budget)}
       busy={followed.busy}
       error={followed.error}
       actions={

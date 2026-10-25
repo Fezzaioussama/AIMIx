@@ -21,6 +21,25 @@ describe('runs API', () => {
     expect(init?.body).toBe('{"inputs":{"topic":"bees"}}');
   });
 
+  it('starts a run with a spending limit, which the server enforces', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ id: 1 }));
+
+    await startRun(3, { input: 'seed', max_cost_usd: 0.5 });
+
+    expect(fetchMock.mock.calls[0][1]?.body).toBe('{"input":"seed","max_cost_usd":0.5}');
+  });
+
+  it('resumes a run with new limits, or with none to keep its own', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => ok({ id: 7 }));
+
+    await resumeRun(7);
+    await resumeRun(7, { max_cost_usd: 2 });
+
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
+    expect(fetchMock.mock.calls[1][0]).toBe(API.resumeRun(7));
+    expect(fetchMock.mock.calls[1][1]?.body).toBe('{"max_cost_usd":2}');
+  });
+
   it('pages the history and filters it by pipeline', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => ok());
 
