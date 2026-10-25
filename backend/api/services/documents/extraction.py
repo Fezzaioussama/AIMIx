@@ -20,6 +20,7 @@ from api.services.documents.contracts import (
     ReadContext,
     ReadResult,
 )
+from api.services.documents.gate import extraction_slot
 from api.services.documents.readers import READERS, Reader
 from config.settings import Settings
 
@@ -42,10 +43,14 @@ def extraction_limits(settings: Settings) -> ExtractionLimits:
         max_chars=settings.document_max_chars,
         max_pages=settings.document_max_pages,
         max_unpacked_bytes=settings.document_max_unpacked_bytes,
+        max_xml_part_bytes=settings.document_max_xml_part_bytes,
         max_image_pixels=settings.document_max_image_pixels,
         max_spreadsheet_rows=settings.document_max_spreadsheet_rows,
         max_ocr_pages=settings.document_ocr_max_pages,
+        ocr_max_seconds=settings.document_ocr_max_seconds,
         ocr_dpi=settings.document_ocr_dpi,
+        max_concurrent=settings.document_max_concurrent_extractions,
+        wait_seconds=settings.document_extraction_wait_seconds,
     )
 
 
@@ -91,7 +96,9 @@ def extract_document(
     """The text of ``data``, chosen by the extension of ``filename``.
 
     ``ocr`` reads scanned pages and images; without it they are skipped, and said so.
-    Raises UnsupportedDocument, DocumentTooLarge or DocumentUnreadable.
+    Raises UnsupportedDocument, DocumentTooLarge or DocumentUnreadable, and
+    DocumentReadersBusy when the process is already reading as many documents as
+    it may and none finishes in time.
     """
     name = PurePath(filename.replace("\\", "/")).name or "document"
     suffix = PurePath(name).suffix.lower()
@@ -101,8 +108,9 @@ def extract_document(
     if len(data) > limits.max_bytes:
         raise DocumentTooLarge(f"The file is larger than the {megabytes(limits.max_bytes)} limit.")
 
-    started = time.monotonic()
-    result = reader(data, ReadContext(limits, ocr))
+    with extraction_slot(limits.max_concurrent, limits.wait_seconds):
+        started = time.monotonic()
+        result = reader(data, ReadContext(limits, ocr))
     text, truncated = _finish(result, limits.max_chars)
     logger.info(
         "documents.extracted format=%s bytes=%d chars=%d truncated=%s ocr_pages=%d duration_ms=%d",

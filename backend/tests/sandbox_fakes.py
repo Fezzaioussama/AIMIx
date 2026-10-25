@@ -110,7 +110,8 @@ class Opener:
 
 def run_python(root: Path, opener: Opener, limits: SandboxLimits = LIMITS) -> BaseTool:
     """The run_python tool over ``opener``, a workspace at ``root`` and the frozen clock."""
-    workspace = LocalWorkspace(WorkspaceStorage(root, QUOTA_BYTES), WORKSPACE_LIMITS, RENDER)
+    storage = WorkspaceStorage(root, QUOTA_BYTES, max_files=1_000)
+    workspace = LocalWorkspace(storage, WORKSPACE_LIMITS, RENDER)
     return run_python_tool(CodeRunner(opener, workspace, limits, lambda: NOW))
 
 

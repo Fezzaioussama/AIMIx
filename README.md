@@ -40,7 +40,8 @@ make migrate                        # create the database (backend/aimix.sqlite3
 make run-aimix                      # backend :8000, frontend :4200
 ```
 
-Register in the app, or run `make create-user USERNAME=alice`. The API's
+Run `make create-user USERNAME=alice` (or set `ALLOW_PUBLIC_REGISTRATION=True` in
+`backend/.env` and register in the app). The API's
 interactive docs are at <http://127.0.0.1:8000/api/docs> (not in production).
 
 Coming from the Django version? `make migrate && make import-django-db` copies your
@@ -301,7 +302,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `SECRET_KEY` | In production | Signs the JWTs; production refuses to start without it |
+| `SECRET_KEY` | In production | Signs the JWTs; production refuses to start without one of at least 32 characters |
 | `APP_ENV` | No | `local` (default) or `production` |
 | `DATABASE_URL` | No | SQLAlchemy URL (default `backend/aimix.sqlite3`) |
 | `LLM_PROVIDER` | No | `openrouter` (default) or `togetherai` |
@@ -328,7 +329,8 @@ own API key on the **Settings** page, where keys are stored encrypted (with
 
 Settings are one typed class in `backend/config/settings.py`. The old `DJANGO_*`
 variable names are still accepted. With `APP_ENV=production` the app refuses to
-start with `DEBUG=True`, a missing `SECRET_KEY`, or empty `ALLOWED_HOSTS`.
+start with `DEBUG=True`, a missing or short `SECRET_KEY`, empty `ALLOWED_HOSTS`,
+or `PASSWORD_HASH_ITERATIONS` under 600,000.
 
 ## Extending
 

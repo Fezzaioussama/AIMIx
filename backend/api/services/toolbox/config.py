@@ -36,6 +36,7 @@ class ToolboxConfig:
     sandbox_max_files: int
     sandbox_max_stream_chars: int
     workspace_max_total_bytes: int
+    workspace_max_files: int
     #: What reading a PDF or Word file from the workspace may cost.
     document_limits: ExtractionLimits
     pdf_font_path: Path
@@ -65,6 +66,7 @@ def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> Too
         sandbox_max_files=settings.sandbox_max_files,
         sandbox_max_stream_chars=settings.sandbox_max_stream_chars,
         workspace_max_total_bytes=settings.workspace_max_total_bytes,
+        workspace_max_files=settings.workspace_max_files,
         document_limits=extraction_limits(settings),
         pdf_font_path=settings.pdf_font_path,
         pdf_bold_font_path=settings.pdf_bold_font_path,

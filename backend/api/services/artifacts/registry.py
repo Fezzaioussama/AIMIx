@@ -1,9 +1,10 @@
 """Artifact formats by extension (§5 O / §7 Strategy + Registry).
 
 A new format is one renderer and one entry here, never another ``if``. Text
-formats are saved as the agent wrote them; ``.docx`` and ``.pdf`` take Markdown
-and lay it out. python-docx and ReportLab are third-party code fed model output,
-so a failure inside them is re-raised as our own error (the §8 adapter case).
+formats are saved as the agent wrote them, except that a ``.csv`` cell a
+spreadsheet would run as a formula is made text; ``.docx`` and ``.pdf`` take
+Markdown and lay it out. python-docx and ReportLab are third-party code fed model
+output, so a failure inside them is re-raised as our own error (the §8 adapter case).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import logging
 
 from api.exceptions import UnsupportedFileType, ValidationFailed
 from api.services.artifacts.contracts import Renderer, RenderOptions
+from api.services.artifacts.csv_writer import render_csv
 from api.services.artifacts.docx_writer import render_docx
 from api.services.artifacts.pdf_writer import render_pdf
 
@@ -26,7 +28,7 @@ RENDERERS: dict[str, Renderer] = {
     ".txt": _utf8,
     ".md": _utf8,
     ".json": _utf8,
-    ".csv": _utf8,
+    ".csv": render_csv,
     ".html": _utf8,
     ".docx": render_docx,
     ".pdf": render_pdf,

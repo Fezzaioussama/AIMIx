@@ -51,9 +51,11 @@ def guarded(kind: str, read: Reader) -> Reader:
 
 
 def _decode(data: bytes) -> str:
-    """Text from bytes: UTF-16 by its BOM, else UTF-8, else Windows-1252."""
+    """Text from bytes: UTF-16 by its BOM, else UTF-8, else Windows-1252. A damaged
+    UTF-16 file (an odd byte at the end, half a surrogate pair) keeps its readable
+    text, with U+FFFD where it is damaged, as Windows-1252 does for stray bytes."""
     if data.startswith(_UTF16_BOMS):
-        return data.decode("utf-16")
+        return data.decode("utf-16", errors="replace")
     if b"\x00" in data[:_BINARY_SNIFF_BYTES]:
         raise DocumentUnreadable("This file looks binary, not text.")
     try:

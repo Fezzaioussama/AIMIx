@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -19,7 +20,9 @@ from api.services.run_policy import warn_about_unbounded_spending
 from api.services.runs import interrupt_abandoned_runs
 from api.services.schedules.scheduler import build_scheduler
 from config.logging_setup import configure_logging
-from config.settings import get_settings
+from config.settings import LOCAL_SECRET_KEY, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -37,6 +40,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
+    if settings.secret_key == LOCAL_SECRET_KEY:
+        logger.warning(
+            "settings.local_secret_key SECRET_KEY is unset: sessions and saved keys use "
+            "a public development key. Set SECRET_KEY for anything but local development."
+        )
     warn_about_unbounded_spending(settings)
     # Interactive API docs are a public surface, so they exist only outside production.
     docs = settings.app_env != "production"

@@ -4,6 +4,7 @@ renderer run. The helpers here are shared with test_document_images.py."""
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from io import BytesIO
 
@@ -126,6 +127,40 @@ def test_ocr_stops_at_its_page_limit_and_names_the_pages_it_skipped() -> None:
         "Recognised text 2\n\n[Not read: pages 3-5 (OCR reads at most 2 pages per document).]"
     )
     assert result.truncated is True
+
+
+class SlowOcr(FakeOcr):
+    """Takes a little real time per page, like Tesseract, only much less."""
+
+    def read(self, image: Image.Image) -> str:
+        time.sleep(0.02)
+        return super().read(image)
+
+
+def test_ocr_stops_at_its_time_limit_and_names_the_pages_it_skipped() -> None:
+    ocr = SlowOcr()
+    limits = replace(ROOMY, ocr_max_seconds=0.01)
+
+    result = extract_document("scan.pdf", scanned_pdf(4), limits, ocr)
+
+    assert len(ocr.images) == 1
+    assert result.text == (
+        "Recognised text 1\n\n[Not read: pages 2-4 (OCR spends at most 0.01 seconds per document).]"
+    )
+    assert result.truncated is True
+
+
+def test_a_page_that_waits_too_long_for_the_pdf_renderer_is_skipped() -> None:
+    ocr = FakeOcr()
+    limits = replace(LIMITS, wait_seconds=0.01)
+
+    with pdf._PDFIUM:  # another document's page is being rendered
+        result = extract_document("mixed.pdf", mixed_pdf(), limits, ocr)
+
+    assert ocr.images == []
+    assert result.text == (
+        "Typed first page\n\nTyped last page\n\n[Not read: page 2 (OCR took too long).]"
+    )
 
 
 def test_a_page_ocr_gives_up_on_is_skipped_and_named() -> None:

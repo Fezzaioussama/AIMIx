@@ -1,7 +1,9 @@
-"""What a deployment relies on: the public health probe and serving the built app."""
+"""What a deployment relies on: the public health probe, serving the built app, and
+an image and CI built only from pinned, reviewed inputs."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -13,6 +15,13 @@ from config.settings import pin_settings
 from tests.conftest import TEST_SETTINGS
 
 INDEX_HTML = '<!doctype html><div id="root"></div>'
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PINNED_IMAGE = re.compile(r"[\w./-]+:[\w.-]+@sha256:[0-9a-f]{64}")
+PINNED_ACTION = re.compile(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}")
+
+
+def repo_text(*parts: str) -> str:
+    return REPO_ROOT.joinpath(*parts).read_text()
 
 
 @pytest.fixture
@@ -82,6 +91,16 @@ def test_files_outside_the_build_are_not_served(site: TestClient) -> None:
     assert "outside the build" not in response.text
 
 
+@pytest.mark.parametrize(
+    "path", ["/%00", "/assets/%00.js", "/" + "a" * 5_000], ids=["nul", "nul-asset", "too-long"]
+)
+def test_a_path_no_file_system_accepts_gets_the_app_shell(site: TestClient, path: str) -> None:
+    """A NUL byte or an over-long name used to crash the lookup (500)."""
+    response = site.get(path)
+    assert response.status_code == 200
+    assert response.text == INDEX_HTML
+
+
 def test_a_missing_build_fails_at_startup(tmp_path: Path) -> None:
     pin_settings(TEST_SETTINGS.model_copy(update={"frontend_dist_dir": str(tmp_path)}))
     try:
@@ -89,3 +108,43 @@ def test_a_missing_build_fails_at_startup(tmp_path: Path) -> None:
             create_app()
     finally:
         pin_settings(TEST_SETTINGS)
+
+
+def test_base_images_are_pinned_by_digest() -> None:
+    """A tag that moves upstream must not change the image without a pull request."""
+    dockerfile = repo_text("Dockerfile")
+    stages = set(re.findall(r"^FROM \S+ AS (\S+)$", dockerfile, re.MULTILINE))
+    sources = re.findall(r"^FROM (\S+)", dockerfile, re.MULTILINE)
+    sources += re.findall(r"COPY --from=(\S+)", dockerfile)
+    images = [source for source in sources if source not in stages]
+
+    assert len(images) >= 3
+    for image in images:
+        assert PINNED_IMAGE.fullmatch(image), image
+
+
+def test_workflow_actions_are_pinned_to_a_commit() -> None:
+    workflows = sorted((REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+    actions = [
+        action for path in workflows for action in re.findall(r"uses:\s*(\S+)", path.read_text())
+    ]
+
+    assert actions
+    for action in actions:
+        assert PINNED_ACTION.fullmatch(action), action
+
+
+def test_the_image_runs_the_python_ci_uses() -> None:
+    version = repo_text(".python-version").strip()
+    assert re.search(rf"^FROM python:{re.escape(version)}-", repo_text("Dockerfile"), re.MULTILINE)
+
+
+def test_users_files_and_secrets_stay_out_of_the_image() -> None:
+    rules = [
+        line
+        for line in repo_text(".dockerignore").splitlines()
+        if line and not line.startswith("#")
+    ]
+    # Everything is left out first, so a new local folder never reaches the image.
+    assert rules[0] == "*"
+    assert {"backend/workspace/", "**/.env", "**/*.sqlite3", "backend/tests/"} <= set(rules)
