@@ -116,7 +116,7 @@ export function TeamPane(props: TeamPaneProps) {
           </button>
         )}
       </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+      <div className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
         <TeamBody {...props} />
       </div>
     </>

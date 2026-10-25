@@ -34,7 +34,9 @@ interface PaneProps {
 
 /**
  * One pane. All three stay mounted, so a typed message or a scroll position survives a
- * switch of tab; a narrow screen only hides the ones not in front.
+ * switch of tab; a narrow screen only hides the ones not in front. It clips (without
+ * becoming scrollable) what decoration spills past its edge, e.g. the sparks around a
+ * button, which would otherwise make the page taller.
  */
 function Pane({ pane, active, wide, children }: PaneProps) {
   const ids = paneIds(pane);
@@ -43,7 +45,7 @@ function Pane({ pane, active, wide, children }: PaneProps) {
       id={ids.panel}
       role={wide ? undefined : 'tabpanel'}
       aria-labelledby={wide ? ids.heading : ids.tab}
-      className={`min-h-0 min-w-0 flex-1 flex-col xl:flex ${active ? 'flex' : 'hidden'} ${PANE_STYLES[pane]}`}
+      className={`min-h-0 min-w-0 flex-1 flex-col overflow-clip xl:flex ${active ? 'flex' : 'hidden'} ${PANE_STYLES[pane]}`}
     >
       {children}
     </section>
@@ -120,8 +122,12 @@ export function MissionWorkspace({ routeId, onStartOver }: MissionWorkspaceProps
   // An applied change can renumber the agents: the drawer must not point at another one.
   useEffect(() => dismiss(), [applied, dismiss]);
 
+  // The screen is exactly as tall as the window: each pane scrolls inside itself, and
+  // nothing may make the page scroll. Hidden text (`sr-only` is absolutely positioned)
+  // is contained by the scrolling areas, decoration is clipped by the panes, and the
+  // root clips what is left.
   return (
-    <div className="flex h-[calc(100dvh-60px)] min-h-0 flex-col text-slate-50">
+    <div className="flex h-[calc(100dvh-60px)] min-h-0 flex-col overflow-clip text-slate-50">
       <h1 className="sr-only">Missions</h1>
       {!wide && (
         <MissionTabs
@@ -130,7 +136,9 @@ export function MissionWorkspace({ routeId, onStartOver }: MissionWorkspaceProps
           runStatus={mission.followed.run?.status ?? null}
         />
       )}
-      <div className="relative flex min-h-0 flex-1 xl:grid xl:grid-cols-[24rem_minmax(0,1fr)_26rem]">
+      {/* One row as tall as the screen: without it the row grows with the tallest pane's
+          content and the page scrolls, instead of each pane scrolling inside itself. */}
+      <div className="relative flex min-h-0 flex-1 xl:grid xl:grid-cols-[24rem_minmax(0,1fr)_26rem] xl:grid-rows-[minmax(0,1fr)]">
         <Pane pane="chat" active={panes.active === 'chat'} wide={wide}>
           <ConversationPane mission={mission} showPane={panes.show} onStartOver={onStartOver} />
         </Pane>

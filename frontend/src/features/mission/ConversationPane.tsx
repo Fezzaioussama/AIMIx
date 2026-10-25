@@ -17,7 +17,7 @@ interface ConversationPaneProps {
 }
 
 const LOG_CLASS =
-  'min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-400/60 sm:px-5';
+  'relative min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-400/60 sm:px-5';
 
 /** Why the message box cannot send right now, when it cannot. */
 function composerHint(mission: Mission): string {

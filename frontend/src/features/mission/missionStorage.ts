@@ -1,13 +1,6 @@
 import type { Pipeline } from '../../core/api/types';
-import {
-  INPUTS_STATES,
-  NOTE_TONES,
-  PROPOSAL_STATES,
-  TEAM_ORIGINS,
-  restoredMessages,
-  type AimixMessage,
-  type MissionMessage,
-} from './missionMessages';
+import { restoredMessages, type MissionMessage } from './missionMessages';
+import { isMessage, isPipeline, isRecord } from './missionShape';
 
 /**
  * What a mission keeps for this browser tab (sessionStorage): its conversation and,
@@ -61,49 +54,6 @@ export function forgetMission(key: string): void {
   } catch {
     // Nothing could be kept, so there is nothing to forget.
   }
-}
-
-type Fields = Record<string, unknown>;
-
-function isRecord(value: unknown): value is Fields {
-  return typeof value === 'object' && value !== null;
-}
-
-function oneOf(values: readonly string[], value: unknown): boolean {
-  return typeof value === 'string' && values.includes(value);
-}
-
-/** The fields each kind of answer needs to be drawn; anything else is left out. */
-const AIMIX_FIELDS: Record<AimixMessage['kind'], (message: Fields) => boolean> = {
-  note: (message) => typeof message.text === 'string' && oneOf(NOTE_TONES, message.tone),
-  team: (message) =>
-    oneOf(TEAM_ORIGINS, message.origin) &&
-    isRecord(message.brief) &&
-    Array.isArray(message.brief.agents) &&
-    Array.isArray(message.brief.provides),
-  proposal: (message) =>
-    oneOf(PROPOSAL_STATES, message.state) &&
-    Array.isArray(message.changes) &&
-    typeof message.error === 'string',
-  inputs: (message) => oneOf(INPUTS_STATES, message.state),
-  run: (message) => typeof message.runId === 'number',
-};
-
-function isMessage(value: unknown): value is MissionMessage {
-  if (!isRecord(value) || typeof value.id !== 'string') return false;
-  if (value.from === 'you') return typeof value.text === 'string';
-  if (value.from !== 'aimix' || typeof value.kind !== 'string') return false;
-  if (!Object.hasOwn(AIMIX_FIELDS, value.kind)) return false;
-  return AIMIX_FIELDS[value.kind as AimixMessage['kind']](value);
-}
-
-function isPipeline(value: unknown): value is Pipeline {
-  return (
-    isRecord(value) &&
-    typeof value.name === 'string' &&
-    Array.isArray(value.inputs) &&
-    Array.isArray(value.steps)
-  );
 }
 
 function parseMission(value: unknown): StoredMission {

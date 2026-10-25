@@ -68,7 +68,7 @@ function DrawerBody({
   onRemove,
 }: DrawerBodyProps) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+    <div className="relative min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
       <p className="mb-3 text-xs text-slate-400">
         Changes are saved for you a moment after you make them.
       </p>

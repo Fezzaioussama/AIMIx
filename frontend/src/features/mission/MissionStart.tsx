@@ -133,7 +133,7 @@ interface MissionStartProps {
 /** The empty workspace: what to do, examples, template quick-starts and recent missions. */
 export function MissionStart({ onExample, onTemplate }: MissionStartProps) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-5">
+    <div className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-5">
       <p className="text-xs font-semibold tracking-widest text-sky-300 uppercase">New mission</p>
       <h3 className="mt-1 text-2xl font-bold tracking-tight text-white">
         What do you want to get done?

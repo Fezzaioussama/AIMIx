@@ -57,7 +57,7 @@ export function ResultsPane({ mission }: { mission: Mission }) {
       <PaneHeader pane="results" icon={ListChecks}>
         {run !== null && <RunStatusControls run={run} followed={followed} />}
       </PaneHeader>
-      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-5">
+      <div className="relative min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-5">
         <Deliverables run={run} team={team.pipeline} />
         {run !== null && <RunDetails key={run.id} run={run} followed={followed} />}
         <RecentFiles

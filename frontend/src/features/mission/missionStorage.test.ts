@@ -67,6 +67,65 @@ describe('mission storage', () => {
     expect(stored.draft).toBeNull();
   });
 
+  it('drops an answer whose inner parts are not what the screen draws', () => {
+    const brief = describeTeam(PLAN);
+    const damaged: unknown[] = [
+      // an agent without its tools, as an older version might have written it
+      {
+        id: 'a',
+        from: 'aimix',
+        kind: 'team',
+        origin: 'generated',
+        brief: { ...brief, agents: [{ order: 1, name: 'x' }] },
+      },
+      {
+        id: 'b',
+        from: 'aimix',
+        kind: 'team',
+        origin: 'generated',
+        brief: { ...brief, stages: 'two' },
+      },
+      {
+        id: 'c',
+        from: 'aimix',
+        kind: 'team',
+        origin: 'generated',
+        brief: { ...brief, provides: [1] },
+      },
+      // a change without its fields
+      {
+        id: 'd',
+        from: 'aimix',
+        kind: 'proposal',
+        state: 'applied',
+        changes: [{ label: 'x' }],
+        error: '',
+      },
+      { id: 'e', from: 'aimix', kind: 'note', text: 'kept', tone: 'info' },
+    ];
+    window.sessionStorage.setItem(
+      missionKey(7),
+      JSON.stringify({ messages: damaged, draft: null }),
+    );
+
+    expect(readMission(missionKey(7)).messages.map((message) => message.id)).toEqual(['e']);
+  });
+
+  it('keeps a draft team only when its steps and inputs are whole', () => {
+    const broken = { ...PLAN, steps: [{ ...PLAN.steps[0], prompt: undefined }] };
+    window.sessionStorage.setItem(missionKey(), JSON.stringify({ messages: [], draft: broken }));
+    expect(readMission(missionKey()).draft).toBeNull();
+
+    window.sessionStorage.setItem(
+      missionKey(),
+      JSON.stringify({ messages: [], draft: { ...PLAN, inputs: [{ name: 'x' }] } }),
+    );
+    expect(readMission(missionKey()).draft).toBeNull();
+
+    writeMission(missionKey(), { messages: [], draft: PLAN });
+    expect(readMission(missionKey()).draft).toEqual(PLAN);
+  });
+
   it('starts empty when the stored text is not JSON', () => {
     window.sessionStorage.setItem(missionKey(7), '{not json');
 
