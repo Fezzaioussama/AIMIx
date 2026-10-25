@@ -25,7 +25,7 @@ from api.services.catalog import (
     resolve_provider,
 )
 from api.services.errors import as_domain_error
-from api.services.llm import LLMProfile, has_environment_key
+from api.services.llm import LLMProfile, environment_key, has_environment_key
 from llm import exceptions as llm_exceptions
 
 logger = logging.getLogger(__name__)
@@ -89,9 +89,11 @@ def _reveal(box: SecretBox, saved: ProviderSetting | None) -> str:
 
 
 def environment_profile() -> LLMProfile:
-    """The deployment-wide profile, for callers without a user (the CLI)."""
+    """The deployment-wide profile, for callers without a user (the CLI). It carries
+    the backend/.env key itself: an operator at a shell is not an account opening
+    the app, so ALLOW_SERVER_LLM_KEY does not apply."""
     provider = resolve_provider()
-    return LLMProfile(provider, default_model_id(provider))
+    return LLMProfile(provider, default_model_id(provider), api_key=environment_key(provider))
 
 
 def resolve_profile(session: Session, user: User, box: SecretBox) -> LLMProfile:

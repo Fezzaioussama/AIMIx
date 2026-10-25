@@ -283,6 +283,9 @@ class Settings(BaseSettings):
     # this late.
     scheduler_tick_seconds: float = Field(30.0, gt=0, validation_alias="SCHEDULER_TICK_SECONDS")
     schedules_max_per_user: int = Field(20, ge=0, validation_alias="SCHEDULES_MAX_PER_USER")
+    # Off: a request needs its user's own key (Settings page). On: an account with
+    # no saved key spends the keys below, so only for an instance you trust everyone on.
+    allow_server_llm_key: bool = Field(False, validation_alias="ALLOW_SERVER_LLM_KEY")
     openrouter_api_key: str = Field(
         "", validation_alias=_env("OPEN_ROUTER_KEY", "OPENROUTER_API_KEY")
     )

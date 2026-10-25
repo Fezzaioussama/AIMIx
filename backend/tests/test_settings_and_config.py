@@ -70,6 +70,11 @@ def test_placeholder_credentials_are_treated_as_unset(placeholder: str) -> None:
     assert settings(TAVILY_API_KEY=placeholder).tavily_api_key == ""
 
 
+def test_the_environment_llm_key_is_not_shared_with_accounts_unless_allowed() -> None:
+    assert settings().allow_server_llm_key is False
+    assert settings(ALLOW_SERVER_LLM_KEY="true").allow_server_llm_key is True
+
+
 def test_builtin_agent_tools_are_a_comma_list() -> None:
     chosen = settings(AGENT_BUILTIN_TOOLS="calculator, current_datetime")
     assert chosen.agent_builtin_tools == ["calculator", "current_datetime"]

@@ -16,6 +16,7 @@ from api.models import ProviderSetting, User
 from api.repositories import users
 from api.security import SecretBox, hash_password
 from api.services import llm as llm_service
+from api.services import llm_settings
 from config.settings import pin_settings
 from llm.base import ProviderConfig
 from tests.conftest import TEST_SETTINGS, FakeProvider, bearer
@@ -40,12 +41,22 @@ def provider_entry(body: dict[str, Any], name: str) -> dict[str, Any]:
     return next(entry for entry in body["providers"] if entry["name"] == name)
 
 
-@pytest.fixture
-def environment_key() -> Iterator[None]:
-    """An OpenRouter key in backend/.env, as an operator would configure it."""
-    pin_settings(TEST_SETTINGS.model_copy(update={"openrouter_api_key": "env-key"}))
+def pinned_environment(**update: Any) -> Iterator[None]:
+    pin_settings(TEST_SETTINGS.model_copy(update={"openrouter_api_key": "env-key", **update}))
     yield
     pin_settings(TEST_SETTINGS)
+
+
+@pytest.fixture
+def environment_key() -> Iterator[None]:
+    """An OpenRouter key in backend/.env that accounts may NOT use (the default)."""
+    yield from pinned_environment()
+
+
+@pytest.fixture
+def shared_environment_key() -> Iterator[None]:
+    """The same key, with the operator opting in to sharing it (ALLOW_SERVER_LLM_KEY)."""
+    yield from pinned_environment(allow_server_llm_key=True)
 
 
 def test_a_new_user_sees_the_environment_defaults(
@@ -60,8 +71,8 @@ def test_a_new_user_sees_the_environment_defaults(
     assert entry["models"][0] == default_model
 
 
-@pytest.mark.usefixtures("environment_key")
-def test_a_key_in_the_environment_is_reported_without_being_revealed(
+@pytest.mark.usefixtures("shared_environment_key")
+def test_a_shared_key_in_the_environment_is_reported_without_being_revealed(
     auth_client: TestClient,
 ) -> None:
     response = auth_client.get(SETTINGS_URL)
@@ -206,3 +217,59 @@ def test_without_any_key_the_error_points_to_the_settings_page(
     assert response.status_code == 503
     assert response.json()["error"] == "provider_not_configured"
     assert "Settings page" in response.json()["detail"]
+
+
+@pytest.mark.usefixtures("environment_key")
+def test_a_key_in_the_environment_is_not_offered_to_accounts_by_default(
+    auth_client: TestClient,
+) -> None:
+    entry = provider_entry(auth_client.get(SETTINGS_URL).json(), "openrouter")
+    assert entry["key_source"] == "none"
+
+    response = auth_client.post("/api/pipelines/generate", json={"description": "a thing"})
+
+    assert response.status_code == 503
+    assert response.json()["error"] == "provider_not_configured"
+    assert "Settings page" in response.json()["detail"]
+
+
+@pytest.mark.usefixtures("shared_environment_key")
+def test_the_environment_key_serves_accounts_only_when_the_operator_allows_it(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built: list[ProviderConfig] = []
+    plan = json.dumps({"name": "P", "steps": [{"order": 1, "prompt": "p", "model": "m"}]})
+
+    def capture(name: str, config: ProviderConfig) -> FakeProvider:
+        built.append(config)
+        return FakeProvider(reply=plan)
+
+    monkeypatch.setattr(llm_service, "create_provider", capture)
+
+    response = auth_client.post("/api/pipelines/generate", json={"description": "a thing"})
+
+    assert response.status_code == 200
+    assert [config.api_key for config in built] == ["env-key"]
+
+
+@pytest.mark.usefixtures("shared_environment_key")
+def test_a_saved_key_still_wins_over_the_shared_one(
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built: list[ProviderConfig] = []
+
+    def capture(name: str, config: ProviderConfig) -> FakeProvider:
+        built.append(config)
+        return FakeProvider(reply=json.dumps({"name": "P", "steps": []}))
+
+    monkeypatch.setattr(llm_service, "create_provider", capture)
+    save(auth_client, api_key=OPENROUTER_KEY)
+
+    auth_client.post("/api/pipelines/generate", json={"description": "a thing"})
+
+    assert [config.api_key for config in built] == [OPENROUTER_KEY]
+
+
+@pytest.mark.usefixtures("environment_key")
+def test_the_cli_probe_uses_the_environment_key_whatever_accounts_may_do() -> None:
+    assert llm_settings.environment_profile().api_key == "env-key"
