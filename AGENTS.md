@@ -154,10 +154,15 @@ and `services → llm`. `llm/` never imports `api/` or `config/` — it receives
 - Split strategies (in order of preference): extract a service/use-case module, extract a
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
-**Files already over budget (technical debt).** None — every file is currently within the
-700-line cap. The largest files are `backend/tests/test_endpoints.py` (289) and
-`backend/api/services/pipelines.py` (214). When a file first crosses a budget, list it here
-with its line count so the next change knows not to grow it.
+**Files already over budget (technical debt).** None — no file in `backend/` or
+`frontend/src/` exceeds the 700-line cap. Seven source files are past the 300-line target
+and should be split before they grow: `frontend/src/core/api/types.ts` (489),
+`backend/api/models.py` (458), `backend/config/settings.py` (409),
+`backend/api/services/runs.py` (374), `backend/api/services/prompts.py` (351),
+`backend/api/repositories/runs.py` (312) and `backend/api/deps.py` (302). The largest files
+overall are tests, the biggest being `frontend/src/features/mission/useMission.test.tsx`
+(561). When a file first crosses a budget, list it here with its line count so the next
+change knows not to grow it.
 
 ---
 
