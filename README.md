@@ -305,8 +305,9 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `APP_ENV` | No | `local` (default) or `production` |
 | `DATABASE_URL` | No | SQLAlchemy URL (default `backend/aimix.sqlite3`) |
 | `LLM_PROVIDER` | No | `openrouter` (default) or `togetherai` |
-| `OPEN_ROUTER_KEY` | For OpenRouter, unless saved in Settings | Provider API key |
-| `TOGAI_API_KEY` | For TogetherAI, unless saved in Settings | Provider API key |
+| `ALLOW_SERVER_LLM_KEY` | No | `false` (default): accounts need their own key from Settings; `true`: accounts without one spend the keys below |
+| `OPEN_ROUTER_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
+| `TOGAI_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 | `RUN_MAX_CONCURRENT` | No | Pipeline runs executing at once; the rest wait queued (default 4) |
@@ -321,8 +322,8 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | No | Maximum tool description length in the catalogue and planner prompt (default 300) |
 
 See [`backend/.env.example`](backend/.env.example) for the full list. The
-provider, API keys and default model are server-wide defaults: each user can
-override them on the **Settings** page, where keys are stored encrypted (with
+provider and default model are server-wide defaults and each user brings their
+own API key on the **Settings** page, where keys are stored encrypted (with
 `SECRET_KEY`) and never shown again.
 
 Settings are one typed class in `backend/config/settings.py`. The old `DJANGO_*`

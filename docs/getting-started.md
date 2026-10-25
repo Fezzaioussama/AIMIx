@@ -35,12 +35,14 @@ such as `your_api_key_here` or `change-me` are treated as **unset** by
 `config/settings.py`, so a half-filled `.env` fails fast
 with `provider_not_configured` instead of a confusing upstream 401.
 
-Prefer not to keep the key in `.env`? Leave it unset, sign in, and open
+A key in `.env` is **not used by accounts** unless you also set
+`ALLOW_SERVER_LLM_KEY=True` (only for an instance whose users you all trust to
+spend it); `make run-llm` always uses it. Otherwise sign in and open
 **Settings** in the top bar: pick the provider, paste your API key and choose a
 default model. It is stored encrypted for your account only and used from your
-next request, with no restart. Anything you leave unset there falls back to
-`backend/.env`. Saved keys are encrypted with `SECRET_KEY`, so changing it
-means entering them again.
+next request, with no restart. The provider and model you leave unset there fall
+back to `backend/.env`. Saved keys are encrypted with `SECRET_KEY`, so changing
+it means entering them again.
 
 The full variable list, with comments, is `backend/.env.example`. An existing
 `.env` from the Django version keeps working: `DJANGO_SECRET_KEY`,

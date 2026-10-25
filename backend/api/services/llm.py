@@ -38,8 +38,19 @@ class LLMProfile:
         return available_model_ids(self.provider, self.default_model)
 
 
+def environment_key(provider: str) -> str:
+    """The key in backend/.env, whatever ALLOW_SERVER_LLM_KEY says (the CLI probe's)."""
+    return get_settings().llm_api_keys.get(provider, "")
+
+
+def server_key(provider: str) -> str:
+    """The key an account with none of its own may use: the environment's, but only
+    when the operator opted in, so a key in backend/.env never opens the app to all."""
+    return environment_key(provider) if get_settings().allow_server_llm_key else ""
+
+
 def has_environment_key(provider: str) -> bool:
-    return bool(get_settings().llm_api_keys.get(provider))
+    return bool(server_key(provider))
 
 
 def _retry_policy(settings: Settings) -> RetryPolicy:
@@ -52,7 +63,7 @@ def _retry_policy(settings: Settings) -> RetryPolicy:
 
 def provider_config(profile: LLMProfile, model_id: str | None = None) -> ProviderConfig:
     settings = get_settings()
-    api_key = profile.api_key or settings.llm_api_keys.get(profile.provider, "")
+    api_key = profile.api_key or server_key(profile.provider)
     if not api_key:
         raise ProviderNotConfigured(
             f"No API key is set for {profile.provider}. Add one on the Settings page."

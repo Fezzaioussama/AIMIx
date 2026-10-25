@@ -62,14 +62,16 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `scheduler_enabled` / `scheduler_tick_seconds` / `schedules_max_per_user` | `SCHEDULER_ENABLED` / `SCHEDULER_TICK_SECONDS` / `SCHEDULES_MAX_PER_USER` | Whether this process starts scheduled runs (`true`; `false` keeps schedules saved but starts none) / how often it looks for due schedules, so a run starts at most this late (30 seconds, above 0) / how many schedules one account may have (20; `0` stops new ones) |
 | document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES`, `DOCUMENT_MAX_SPREADSHEET_ROWS`, `DOCUMENT_MAX_IMAGE_PIXELS` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages, slides or TIFF pages read (300), what a `.docx`, `.xlsx` or `.pptx` may unpack to (50 MB), workbook rows read across all sheets (5,000; reading also stops past `DOCUMENT_MAX_CHARS` cells) and an image's pixels, checked before decoding (40 million). `DOCUMENT_MAX_BYTES` caps every upload, a run document or a file for the Files page, so `max_request_bytes` (`DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead) is the one request-size bound. The same limits apply when an agent reads a PDF or Word file from its workspace |
 | document OCR | `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_LANGUAGES`, `DOCUMENT_OCR_MAX_PAGES`, `DOCUMENT_OCR_TIMEOUT_SECONDS`, `DOCUMENT_OCR_DPI` | Tesseract OCR for images and PDF pages without a text layer: on (`true`), languages `eng+fra` (Tesseract codes joined by `+`, validated), at most 30 pages per document, 15 seconds per page, PDF pages rendered at 300 dpi |
+| `allow_server_llm_key` | `ALLOW_SERVER_LLM_KEY` | Whether an account with no saved key may spend the two keys below (`false`). Off, they serve only the `llm-probe` command and every request needs the user's own key, else `provider_not_configured`. `api/services/llm.py` (`server_key`) is the one gate |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
 | `openrouter_base_url` / `togetherai_base_url` | `OPENROUTER_BASE_URL` / `TOGETHERAI_BASE_URL` | Optional proxy/gateway override |
 | `openrouter_default_model` / `togetherai_default_model` | `OPENROUTER_DEFAULT_MODEL` / `TOGETHERAI_DEFAULT_MODEL` | Default model id |
 
 `llm_api_keys`, `llm_base_urls` and `llm_default_models` expose the provider
 settings as dicts keyed by provider name. The provider, keys and default models
-are server-wide defaults: each user can override them on the Settings page
-(`services/llm_settings.py`). `config/logging_setup.py` configures
+are server-wide defaults: each user sets them on the Settings page
+(`services/llm_settings.py`). The provider and model fall back to the server's;
+the key does so only with `ALLOW_SERVER_LLM_KEY=true`. `config/logging_setup.py` configures
 logging once, from the app factory.
 
 ## `api/` — the HTTP application

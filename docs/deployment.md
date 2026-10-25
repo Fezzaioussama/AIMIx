@@ -101,8 +101,11 @@ application files change.
 ### Do not put LLM keys in Railway variables
 
 If you set `ALLOW_PUBLIC_REGISTRATION=true`, registration is open. A server-wide
-`OPEN_ROUTER_KEY` or `TOGAI_API_KEY` would let **anyone who registers** spend it. Leave them unset: each user saves their
-own key on the Settings page, encrypted with `SECRET_KEY`.
+`OPEN_ROUTER_KEY` or `TOGAI_API_KEY` is never used for accounts unless you also
+set `ALLOW_SERVER_LLM_KEY=true`, which would let **anyone who registers** spend
+it. Leave both unset: each user saves their own key on the Settings page,
+encrypted with `SECRET_KEY`, and a request without one fails with
+`provider_not_configured`.
 
 ### Users' integrations (their own MCP servers)
 

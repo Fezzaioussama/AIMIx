@@ -96,7 +96,8 @@ catalogue is rejected by that provider when the step runs.
 ## LLM settings
 
 Per account. What you save here overrides `backend/.env` for your requests
-only; anything you leave unset falls back to it. Keys are stored encrypted
+only; the provider and model you leave unset fall back to it, the key only when
+the operator set `ALLOW_SERVER_LLM_KEY=true`. Keys are stored encrypted
 (Fernet, keyed from `SECRET_KEY`) and are **never returned** — only their last
 four characters.
 
@@ -114,8 +115,9 @@ four characters.
 }
 ```
 
-`key_source` is `saved` (yours), `environment` (the server's `backend/.env`) or
-`none`. `models` is that provider's catalogue, its default first.
+`key_source` is `saved` (yours), `environment` (the server's `backend/.env`,
+reported only with `ALLOW_SERVER_LLM_KEY=true`) or `none`. With `none`, requests
+that call a model fail with `503 provider_not_configured`. `models` is that provider's catalogue, its default first.
 
 ### `PUT /llm-settings`
 
@@ -133,7 +135,7 @@ one containing spaces. Saving the same body twice leaves the same state.
 ### `DELETE /llm-settings/keys/<provider>`
 
 Forgets your saved key for that provider, which then falls back to the
-server's key, if any. Idempotent. `200` returns the same shape as `GET`.
+server's key only with `ALLOW_SERVER_LLM_KEY=true`. Idempotent. `200` returns the same shape as `GET`.
 
 ---
 
