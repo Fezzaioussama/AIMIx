@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 
 import type { RunSummary } from '../../core/api/types';
 import { elapsedMs, formatDateTime, formatDuration } from '../../core/time';
+import { CostText } from '../../core/ui/CostText';
+import { describeCost } from '../../core/usageFormat';
 import { RunStatusBadge } from './RunStatusBadge';
 import { isActive } from './runStatus';
 
@@ -67,6 +69,7 @@ export function RunHistoryList({
 }
 
 function RunLink({ run, selected }: { run: RunSummary; selected: boolean }) {
+  const cost = describeCost(run.usage);
   return (
     <Link
       to={`/runs/${run.id}`}
@@ -81,9 +84,17 @@ function RunLink({ run, selected }: { run: RunSummary; selected: boolean }) {
         <span className="truncate text-sm font-medium text-slate-100">{run.pipeline_name}</span>
         <RunStatusBadge status={run.status} />
       </span>
-      <span className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-400">
+      <span className="mt-1 flex flex-wrap items-center justify-between gap-x-2 text-xs text-slate-400">
         <span>{formatDateTime(run.started_at ?? run.created_at)}</span>
-        <span className="tabular-nums">{durationText(run)}</span>
+        <span className="tabular-nums">
+          {durationText(run)}
+          {cost && (
+            <>
+              {' · '}
+              <CostText view={cost} compact />
+            </>
+          )}
+        </span>
       </span>
     </Link>
   );

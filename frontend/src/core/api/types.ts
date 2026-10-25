@@ -49,10 +49,31 @@ export interface Pipeline {
   steps: PipelineStep[];
 }
 
+/**
+ * Spending limits of a run, set when it starts or raised when it resumes. A limit
+ * left out keeps its default (the server's, or the run's own on resume).
+ */
+export interface RunBudget {
+  /** Stop once the model calls have cost this much, in USD. */
+  max_cost_usd?: number;
+  /** Stop once the model calls have used this many tokens, in and out. */
+  max_tokens?: number;
+}
+
 /** Body of a run: free text, or a value for each input the pipeline declares. */
-export interface PipelineRunRequest {
+export interface PipelineRunRequest extends RunBudget {
   input?: string;
   inputs?: Record<string, string>;
+}
+
+/** Tokens and cost of model calls: a run's, a pipeline's or a period's. */
+export interface Usage {
+  input_tokens: number;
+  output_tokens: number;
+  /** USD, the known costs added up; null when none is known. */
+  cost_usd: number | null;
+  /** False when some tokens came from a model whose cost is unknown. */
+  cost_complete: boolean;
 }
 
 /** A document read into text, ready to become a run input (POST /api/documents/extract). */
@@ -127,6 +148,11 @@ export interface RunStep extends StepResult {
   error: RunError | null;
   started_at: string | null;
   finished_at: string | null;
+  /** What its model calls used, over every attempt (a failed step keeps what it spent). */
+  input_tokens: number;
+  output_tokens: number;
+  /** USD; null when the cost of its model is unknown. */
+  cost_usd: number | null;
 }
 
 /** A run in the history list (GET /api/runs): no inputs, outputs or steps. */
@@ -140,6 +166,11 @@ export interface RunSummary {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  /** The run's spending limits; null is no limit. */
+  max_cost_usd: number | null;
+  max_tokens: number | null;
+  /** What its model calls used and cost so far, over every attempt. */
+  usage: Usage;
 }
 
 /** A whole run (GET /api/runs/<id>), polled while it is active. */
@@ -158,6 +189,25 @@ export interface RunPage {
   items: RunSummary[];
   /** How many runs match in all. */
   total: number;
+}
+
+/** What one pipeline's runs used; a deleted pipeline keeps its last name. */
+export interface PipelineUsage {
+  /** null once the pipeline was deleted. */
+  pipeline_id: number | null;
+  pipeline_name: string;
+  runs: number;
+  usage: Usage;
+}
+
+/** GET /api/usage: what the account's runs of the last `days` days used. */
+export interface UsageReport {
+  days: number;
+  since: string;
+  runs: number;
+  usage: Usage;
+  /** Costliest first. */
+  pipelines: PipelineUsage[];
 }
 
 export interface GeneratedPipelineResponse {

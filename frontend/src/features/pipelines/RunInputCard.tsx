@@ -4,7 +4,14 @@ import type { PipelineInput } from '../../core/api/types';
 import { GlowButton } from '../../core/ui/GlowButton';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { AttachDocument } from './AttachDocument';
-import { appendDocument, inputLabel, isRunReady, type RunDraft } from './pipelineInputs';
+import { CostLimitField } from './CostLimitField';
+import {
+  appendDocument,
+  costLimitProblem,
+  inputLabel,
+  isRunReady,
+  type RunDraft,
+} from './pipelineInputs';
 
 const fieldClass =
   'w-full resize-y rounded-xl border border-white/10 bg-slate-950/60 p-4 text-sm transition-[border-color,box-shadow] outline-none focus:border-sky-400/60 focus:shadow-[0_0_0_4px_rgba(56,189,248,0.1)]';
@@ -62,6 +69,12 @@ export function RunInputCard({
           onDraftChange={onDraftChange}
         />
       )}
+      <CostLimitField
+        value={draft.maxCost ?? ''}
+        disabled={isRunning}
+        problem={costLimitProblem(draft)}
+        onChange={(maxCost) => onDraftChange({ ...draft, maxCost })}
+      />
       <GlowButton
         size="lg"
         onClick={onRun}

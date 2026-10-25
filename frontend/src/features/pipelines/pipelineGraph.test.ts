@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { buildGraph, liveNodeStatus } from './pipelineGraph';
 
+/** A followed run's step that has used no tokens. */
+const UNUSED = { input_tokens: 0, output_tokens: 0, cost_usd: null };
+
 function step(order: number, stage: number, isOutput = false): PipelineStep {
   return {
     order,
@@ -74,6 +77,7 @@ describe('buildGraph', () => {
     const live: RunStep[] = [
       {
         ...result(1, 1, false),
+        ...UNUSED,
         status: 'succeeded',
         error: null,
         started_at: null,
@@ -81,6 +85,7 @@ describe('buildGraph', () => {
       },
       {
         ...result(2, 1, false),
+        ...UNUSED,
         status: 'failed',
         error: null,
         started_at: null,
@@ -88,6 +93,7 @@ describe('buildGraph', () => {
       },
       {
         ...result(3, 2, true),
+        ...UNUSED,
         status: 'pending',
         error: null,
         started_at: null,
@@ -110,7 +116,13 @@ describe('buildGraph', () => {
 
 describe('liveNodeStatus', () => {
   it('maps a run step to how the diagram shows it', () => {
-    const base = { ...result(1, 1, false), error: null, started_at: null, finished_at: null };
+    const base = {
+      ...result(1, 1, false),
+      ...UNUSED,
+      error: null,
+      started_at: null,
+      finished_at: null,
+    };
     expect(liveNodeStatus({ ...base, status: 'running' }, true)).toBe('running');
     expect(liveNodeStatus({ ...base, status: 'cancelled' }, false)).toBe('stopped');
     expect(liveNodeStatus({ ...base, status: 'pending' }, true)).toBe('waiting');

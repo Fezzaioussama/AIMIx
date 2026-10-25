@@ -10,6 +10,7 @@ import { IntegrationsSection } from './IntegrationsSection';
 import { NoticeLine } from './NoticeLine';
 import { ProviderCard } from './ProviderCard';
 import { providerLabel } from './providerLabel';
+import { UsageSection } from './UsageSection';
 import { useLLMSettings } from './useLLMSettings';
 
 interface ProviderPickerProps {
@@ -118,6 +119,7 @@ export function SettingsPage() {
         )}
         {!settings && notice && <NoticeLine notice={notice} />}
         <IntegrationsSection />
+        <UsageSection />
       </div>
     </div>
   );

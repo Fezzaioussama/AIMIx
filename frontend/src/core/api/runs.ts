@@ -1,6 +1,6 @@
 import { API } from './endpoints';
 import { request } from './client';
-import type { PipelineRunRequest, Run, RunPage } from './types';
+import type { PipelineRunRequest, Run, RunBudget, RunPage } from './types';
 
 /** One page of the history, newest first, optionally of one pipeline. */
 export interface RunListQuery {
@@ -32,9 +32,12 @@ export function cancelRun(runId: number): Promise<Run> {
   return request<Run>(API.cancelRun(runId), { method: 'POST' });
 }
 
-/** Continue a failed, stopped or interrupted run; any other comes back unchanged. */
-export function resumeRun(runId: number): Promise<Run> {
-  return request<Run>(API.resumeRun(runId), { method: 'POST' });
+/**
+ * Continue a failed, stopped or interrupted run; any other comes back unchanged. A
+ * `budget` sets new spending limits (a run that stopped at its limit needs a higher one).
+ */
+export function resumeRun(runId: number, budget?: RunBudget): Promise<Run> {
+  return request<Run>(API.resumeRun(runId), { method: 'POST', body: budget });
 }
 
 /** Only a finished run can be deleted (a running one is a 409 `conflict`). */

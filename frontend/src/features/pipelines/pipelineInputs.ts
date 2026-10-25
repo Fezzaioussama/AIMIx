@@ -1,4 +1,5 @@
 import type { ExtractedDocument, PipelineInput, PipelineRunRequest } from '../../core/api/types';
+import { parseCost } from '../../core/usageFormat';
 
 /**
  * Named run inputs. The naming rule mirrors `input_name_error` in
@@ -11,10 +12,12 @@ const NAME_MAX_LENGTH = 40;
 export const STAGE_INPUT = 'input';
 const PLACEHOLDER = /\{([a-z][a-z0-9_]*)\}/g;
 
-/** What the run form holds: free text, or a value per named input. */
+/** What the run form holds: free text, or a value per named input, and an optional cost limit. */
 export interface RunDraft {
   text: string;
   values: Record<string, string>;
+  /** "Stop if it costs more than $…" as typed; empty or missing means no limit of its own. */
+  maxCost?: string;
 }
 
 export const EMPTY_RUN_DRAFT: RunDraft = { text: '', values: {} };
@@ -61,16 +64,31 @@ export function unknownPlaceholders(prompt: string, inputs: PipelineInput[]): st
   return [...new Set(used)].filter((name) => !known.has(name));
 }
 
+/**
+ * Why the typed cost limit cannot be used, or null when it is empty (no limit) or fine.
+ * A limit that is typed but unusable must stop the run from starting: running
+ * without the cap the person asked for would be worse than not running.
+ */
+export function costLimitProblem(draft: RunDraft): string | null {
+  const typed = draft.maxCost ?? '';
+  if (typed.trim() === '' || parseCost(typed) !== null) return null;
+  return 'Enter an amount above zero, like 0.50, or leave it empty.';
+}
+
 export function isRunReady(inputs: PipelineInput[], draft: RunDraft): boolean {
+  if (costLimitProblem(draft) !== null) return false;
   if (inputs.length === 0) return draft.text.trim() !== '';
   return inputs.every((field) => (draft.values[field.name] ?? '').trim() !== '');
 }
 
-/** The run body: the text, or a value for each declared input and nothing else. */
+/** The run body: the text, or a value for each declared input, and the cost limit if one is set. */
 export function runRequest(inputs: PipelineInput[], draft: RunDraft): PipelineRunRequest {
-  if (inputs.length === 0) return { input: draft.text };
+  const limit = parseCost(draft.maxCost ?? '');
+  const budget = limit === null ? {} : { max_cost_usd: limit };
+  if (inputs.length === 0) return { input: draft.text, ...budget };
   return {
     inputs: Object.fromEntries(inputs.map((field) => [field.name, draft.values[field.name] ?? ''])),
+    ...budget,
   };
 }
 
