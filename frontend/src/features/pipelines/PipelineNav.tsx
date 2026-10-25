@@ -26,7 +26,7 @@ function WaitingBadge({ count }: { count: number }) {
       >
         {count}
       </span>
-      <span className="sr-only"> ({count} waiting for you)</span>
+      <span className="sr-only">, {count} waiting for you</span>
     </>
   );
 }

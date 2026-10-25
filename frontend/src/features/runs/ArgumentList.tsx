@@ -6,21 +6,24 @@ export function ArgumentList({ rows }: { rows: ArgumentRow[] }) {
     return <p className="mt-3 text-sm text-slate-400">It uses nothing else.</p>;
   }
   return (
-    <dl
+    <div
+      role="group"
       aria-label="What the action will use"
-      className="mt-3 space-y-2 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5"
+      className="mt-3 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2.5"
     >
-      {rows.map((row) => (
-        <div key={row.key}>
-          <dt className="text-xs font-semibold tracking-wide break-all text-slate-400 uppercase">
-            {row.key}
-          </dt>
-          <dd className="mt-0.5 text-sm text-slate-100">
-            {row.folded ? <FoldedValue row={row} /> : <Value text={row.text} />}
-          </dd>
-        </div>
-      ))}
-    </dl>
+      <dl className="space-y-2">
+        {rows.map((row) => (
+          <div key={row.key}>
+            <dt className="text-xs font-semibold tracking-wide break-all text-slate-400 uppercase">
+              {row.key}
+            </dt>
+            <dd className="mt-0.5 text-sm text-slate-100">
+              {row.folded ? <FoldedValue row={row} /> : <Value text={row.text} />}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
