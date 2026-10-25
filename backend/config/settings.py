@@ -80,6 +80,12 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     auth_rate_limit_window_seconds: int = Field(
         60, ge=1, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
     )
+    # Per account and route, for requests that make the server spend: model calls,
+    # outbound calls, document parsing (api.deps.user_rate_limit).
+    user_rate_limit_requests: int = Field(30, ge=1, validation_alias="USER_RATE_LIMIT_REQUESTS")
+    user_rate_limit_window_seconds: int = Field(
+        60, ge=1, validation_alias="USER_RATE_LIMIT_WINDOW_SECONDS"
+    )
 
     @field_validator("log_level", mode="after")
     @classmethod

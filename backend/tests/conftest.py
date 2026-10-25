@@ -42,6 +42,8 @@ TEST_SETTINGS = Settings(
     # Hashing is the slowest part of auth-heavy tests.
     password_hash_iterations=1,
     allow_public_registration=True,
+    # High enough that no test trips it by accident; the rate-limit tests lower it.
+    user_rate_limit_requests=10_000,
     log_level="WARNING",
     llm_provider="openrouter",
     llm_timeout_seconds=1.0,

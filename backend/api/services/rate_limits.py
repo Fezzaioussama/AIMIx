@@ -1,4 +1,5 @@
-"""Authentication rate-limit policy without retaining raw client addresses."""
+"""Rate-limit policy (per client for auth, per account for costly actions)
+without retaining raw client addresses."""
 
 from __future__ import annotations
 
@@ -19,6 +20,8 @@ class RateLimitRequest:
     action: str
     limit: int
     window_seconds: int
+    #: What the refused caller reads.
+    message: str = "Too many authentication requests. Try again later."
 
 
 def enforce(session: Session, secret_key: str, request: RateLimitRequest) -> None:
@@ -26,4 +29,4 @@ def enforce(session: Session, secret_key: str, request: RateLimitRequest) -> Non
     attempt = RateLimitAttempt(digest, request.action, request.limit, request.window_seconds)
     retry_after = consume(session, attempt, datetime.now(timezone.utc))
     if retry_after is not None:
-        raise Throttled("Too many authentication requests. Try again later.", retry_after)
+        raise Throttled(request.message, retry_after)

@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from api.deps import app_settings
+from api.deps import app_settings, user_rate_limit
 from api.models import Pipeline, PipelineStep, User
 from api.repositories import users
 from api.security import hash_password
@@ -158,6 +158,32 @@ def test_authentication_requests_are_rate_limited_across_attempts(
     assert blocked.status_code == 429
     assert blocked.json()["error"] == "throttled"
     assert int(blocked.headers["retry-after"]) > 0
+
+
+def test_costly_routes_are_rate_limited_per_account_and_route_template(
+    app: FastAPI, client: TestClient, user: User, session: Session
+) -> None:
+    from tests.conftest import TEST_SETTINGS
+
+    def probe(item: int) -> dict[str, int]:
+        return {"item": item}
+
+    app.add_api_route("/api/probe/{item}", probe, dependencies=[Depends(user_rate_limit)])
+    app.router.routes.insert(0, app.router.routes.pop())  # ahead of the catch-alls
+    limited = TEST_SETTINGS.model_copy(update={"user_rate_limit_requests": 2})
+    app.dependency_overrides[app_settings] = lambda: limited
+    other = users.create(session, "other-user", hash_password("pw-other-123", iterations=1))
+
+    # Different ids in the URL share one counter: the route template's.
+    assert client.get("/api/probe/1", headers=bearer(user)).status_code == 200
+    assert client.get("/api/probe/2", headers=bearer(user)).status_code == 200
+    blocked = client.get("/api/probe/3", headers=bearer(user))
+
+    assert blocked.status_code == 429
+    assert blocked.json() == {"error": "throttled", "detail": "Too many requests. Try again later."}
+    assert int(blocked.headers["retry-after"]) > 0
+    # Another account has its own counter.
+    assert client.get("/api/probe/1", headers=bearer(other)).status_code == 200
 
 
 def test_a_refresh_token_is_not_an_access_token(

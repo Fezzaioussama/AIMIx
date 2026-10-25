@@ -126,6 +126,26 @@ def current_user(
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
+def user_rate_limit(
+    request: Request, user: CurrentUser, session: DbSession, settings: AppSettings
+) -> None:
+    """One counter per account and route (its path template, so ids in the URL
+    share it), for routes that make the server spend: add it to a route's
+    ``dependencies``."""
+    route = request.scope.get("route")
+    enforce(
+        session,
+        settings.secret_key,
+        RateLimitRequest(
+            f"user:{user.id}",
+            getattr(route, "path", request.url.path),
+            settings.user_rate_limit_requests,
+            settings.user_rate_limit_window_seconds,
+            "Too many requests. Try again later.",
+        ),
+    )
+
+
 def user_files(user: CurrentUser, settings: AppSettings) -> WorkspaceStorage:
     """The signed-in user's private directory, the one their agents use too."""
     directory = user_workspace_dir(settings.workspace_dir, user.id)
