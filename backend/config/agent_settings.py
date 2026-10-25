@@ -34,6 +34,13 @@ class AgentSettings(BaseModel):
     )
     mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
+    # One HTTP response from a user's MCP server (a JSON answer or an event
+    # stream) is cut off past this many bytes, so it cannot fill the memory.
+    mcp_max_response_bytes: int = Field(10_000_000, ge=1, validation_alias="MCP_MAX_RESPONSE_BYTES")
+    # The text of one MCP tool result the model receives is cut here.
+    mcp_tool_result_max_chars: int = Field(
+        50_000, ge=1, validation_alias="MCP_TOOL_RESULT_MAX_CHARS"
+    )
     # --- Approval gates (api/services/approvals) ------------------------------
     # Tools of MCP_SERVERS wait for the run owner's OK before they act.
     mcp_require_approval: bool = Field(True, validation_alias="MCP_REQUIRE_APPROVAL")
@@ -79,6 +86,8 @@ class AgentSettings(BaseModel):
         False, validation_alias="AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS"
     )
     web_timeout_seconds: float = Field(15.0, gt=0, validation_alias="WEB_TIMEOUT_SECONDS")
+    # The whole of one fetch_url call, every redirect and the download included.
+    web_fetch_max_seconds: float = Field(30.0, gt=0, validation_alias="WEB_FETCH_MAX_SECONDS")
     web_fetch_max_bytes: int = Field(2_000_000, ge=1, validation_alias="WEB_FETCH_MAX_BYTES")
     web_fetch_max_chars: int = Field(20_000, ge=1, validation_alias="WEB_FETCH_MAX_CHARS")
     web_search_max_results: int = Field(5, ge=1, le=20, validation_alias="WEB_SEARCH_MAX_RESULTS")
@@ -112,6 +121,10 @@ class AgentSettings(BaseModel):
     # Output one call may stream back before it is stopped; bounds server memory.
     sandbox_max_stream_chars: int = Field(
         5_000_000, ge=1, validation_alias="SANDBOX_MAX_STREAM_CHARS"
+    )
+    # run_python calls one account may make per hour: each spends E2B_API_KEY.
+    sandbox_max_calls_per_hour: int = Field(
+        120, ge=1, validation_alias="SANDBOX_MAX_CALLS_PER_HOUR"
     )
 
     @field_validator("workspace_dir", mode="after")

@@ -16,8 +16,8 @@ from api.services.addresses import Resolver
 PUBLIC_ADDRESS = "93.184.215.14"
 TOOL_DESCRIPTION = "Does a thing."
 
-#: A host's addresses, or the OSError its lookup raises.
-DnsAnswer = list[str] | OSError
+#: A host's addresses, or the error its lookup raises (OSError, UnicodeError).
+DnsAnswer = list[str] | Exception
 
 
 def _is_ip(host: str) -> bool:
@@ -34,7 +34,7 @@ def resolver(table: dict[str, DnsAnswer]) -> Resolver:
 
     async def resolve(host: str) -> list[str]:
         answer = table.get(host, [host] if _is_ip(host) else [PUBLIC_ADDRESS])
-        if isinstance(answer, OSError):
+        if isinstance(answer, Exception):
             raise answer
         return answer
 
@@ -53,16 +53,25 @@ class FakeServers:
     """Replaces ``MultiServerMCPClient``: each server name answers from ``behaviour``.
 
     ``seen`` keeps every connection a client was built with, so tests can check
-    the URL, headers and HTTP client factory that would have been used.
+    the URL, headers and HTTP client factory that would have been used, and
+    ``interceptors`` the tool-call interceptors each server's client got.
     """
 
     def __init__(self, behaviour: dict[str, ServerBehaviour]) -> None:
         self.behaviour = behaviour
         self.seen: dict[str, Any] = {}
+        self.interceptors: dict[str, list[Any] | None] = {}
 
-    def __call__(self, connections: dict[str, Any], *, tool_name_prefix: bool) -> _FakeClient:
+    def __call__(
+        self,
+        connections: dict[str, Any],
+        *,
+        tool_name_prefix: bool,
+        tool_interceptors: list[Any] | None = None,
+    ) -> _FakeClient:
         assert tool_name_prefix is True
         self.seen.update(connections)
+        self.interceptors.update(dict.fromkeys(connections, tool_interceptors))
         return _FakeClient(self.behaviour, list(connections))
 
 

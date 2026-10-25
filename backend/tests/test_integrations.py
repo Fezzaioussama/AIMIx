@@ -18,11 +18,13 @@ from sqlalchemy.orm import Session
 
 from api.deps import host_resolver
 from api.models import Integration, User
+from api.repositories import integrations as repository
 from api.repositories import users
+from api.repositories.integrations import IntegrationChanges
 from api.security import SecretBox, hash_password
 from config.settings import HttpMCPServer, pin_settings
 from tests.conftest import TEST_SETTINGS, bearer
-from tests.mcp_fakes import DnsAnswer, resolver
+from tests.mcp_fakes import PUBLIC_ADDRESS, DnsAnswer, resolver
 
 URL = "/api/integrations"
 SERVER = "https://crm.example/mcp"
@@ -232,6 +234,28 @@ def test_each_user_has_a_limited_number_of_integrations(auth_client: TestClient)
     assert "up to 3 integrations" in response.json()["detail"]
 
 
+def test_the_limit_holds_against_a_request_that_saves_one_meanwhile(
+    app: FastAPI, auth_client: TestClient, session: Session, user: User
+) -> None:
+    for name in ("one", "two"):
+        assert create(auth_client, name=name).status_code == 201
+
+    async def racing(host: str) -> list[str]:
+        # Another request saves the third integration while this one looks up its host.
+        with app.state.database.session() as other:
+            owner = other.get(User, user.id)
+            assert owner is not None
+            repository.create(other, owner, IntegrationChanges("three", SERVER))
+        return [PUBLIC_ADDRESS]
+
+    app.dependency_overrides[host_resolver] = lambda: racing
+    response = create(auth_client, name="four")
+
+    assert response.status_code == 400
+    assert "up to 3 integrations" in response.json()["detail"]
+    assert repository.count(session, user) == 3
+
+
 @pytest.mark.parametrize(
     "addresses",
     [
@@ -246,6 +270,10 @@ def test_each_user_has_a_limited_number_of_integrations(auth_client: TestClient)
         ["::ffff:127.0.0.1"],
         ["fe80::1%2"],
         ["fd00:ec2::254"],
+        ["64:ff9b::a9fe:a9fe"],
+        ["fec0::1"],
+        ["::7f00:1"],
+        ["ff02::1"],
         ["93.184.215.14", "10.0.0.5"],
     ],
 )
@@ -270,6 +298,16 @@ def test_an_unknown_host_is_refused(auth_client: TestClient, dns: dict[str, DnsA
     response = create(auth_client, url="https://nowhere.example/mcp")
     assert response.status_code == 400
     assert response.json()["detail"].startswith("Could not resolve nowhere.example.")
+
+
+def test_a_host_name_no_resolver_accepts_is_refused_not_a_crash(
+    auth_client: TestClient, dns: dict[str, DnsAnswer]
+) -> None:
+    host = "a" * 64 + ".example"  # one label over 63 characters fails IDNA encoding
+    dns[host] = UnicodeError("encoding with 'idna' codec failed")
+    response = create(auth_client, url=f"https://{host}/mcp")
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith(f"Could not resolve {host}.")
 
 
 def test_plain_http_is_refused_outside_local_development(auth_client: TestClient) -> None:

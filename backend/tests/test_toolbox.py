@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import pytest
@@ -32,10 +33,10 @@ from api.services.toolbox.html_text import html_to_text
 from api.services.toolbox.registry import toolbox_tools
 from api.services.toolbox.tools import calculator_tool, current_datetime_tool
 from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
-from tests.conftest import TEST_SETTINGS, tool_call
+from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE, tool_call
 from tests.test_documents import make_docx, make_pdf
 
-CONFIG = toolbox_config(TEST_SETTINGS)
+CONFIG = toolbox_config(TEST_SETTINGS, UNUSED_WORKSPACE)
 DOCUMENT_LIMITS = ExtractionLimits(
     max_bytes=100_000,
     max_chars=10_000,
@@ -91,6 +92,16 @@ def test_calculator_evaluates_arithmetic(expression: str, expected: float) -> No
 def test_calculator_rejects_unsafe_or_unbounded_input(expression: str) -> None:
     with pytest.raises(ToolException):
         evaluate(expression)
+
+
+@pytest.mark.parametrize("expression", ["round(5, -10**9)", "round(5, -10**7)", "round(5, 2.5)"])
+def test_calculator_refuses_a_rounding_that_would_freeze_the_server(expression: str) -> None:
+    # round(5, -n) computes 10**n in one GIL-holding call: 10**7 alone takes seconds.
+    started = perf_counter()
+    with pytest.raises(ToolException, match="round"):
+        evaluate(expression)
+    assert perf_counter() - started < 0.5
+    assert evaluate("round(123456, -3)") == 123000
 
 
 def test_a_tool_error_reaches_the_model_instead_of_aborting() -> None:

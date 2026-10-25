@@ -40,3 +40,17 @@ def test_renaming_onto_a_name_taken_in_the_meantime_is_the_same_refusal(
         repository.update(session, other, IntegrationChanges(name="crm"))
 
     assert repository.count(session, user) == 2
+
+
+def test_the_integration_limit_holds_when_others_were_saved_in_the_meantime(
+    session: Session, user: User
+) -> None:
+    repository.create(session, user, named("one"), limit=2)
+    repository.create(session, user, named("two"), limit=2)
+
+    # As if this request had counted before the other two were saved.
+    with pytest.raises(ValidationFailed, match="up to 2 integrations"):
+        repository.create(session, user, named("three"), limit=2)
+
+    assert repository.count(session, user) == 2
+    assert not repository.name_taken(session, user, "three")

@@ -5,11 +5,10 @@ run a command on this server. The URL must use https; plain http is accepted
 only when APP_ENV=local. Credentials belong in headers, never in the URL.
 
 Every address the host resolves to must be public (``api.services.addresses``):
-checked when the integration is saved, and again right before every request
-to it (``connections.GuardedClientFactory``). The HTTP client resolves the
-name once more when it connects, so a DNS server that answers differently
-within those milliseconds (DNS rebinding) remains possible; that window is the
-same one ``fetch_url`` accepts.
+checked when the integration is saved, and again by every connection to it,
+which then goes to one of exactly the addresses it checked
+(``connections.GuardedClientFactory``), so a DNS server that changes its
+answer (DNS rebinding) cannot redirect it.
 
 Local development reaches a server on 127.0.0.1 by setting both APP_ENV=local
 and INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true; production refuses to start with
@@ -47,6 +46,8 @@ class IntegrationRules:
     max_per_user: int
     timeout_seconds: float
     description_max_chars: int
+    #: One HTTP response from a user's server stops past this (MCP_MAX_RESPONSE_BYTES).
+    max_response_bytes: int
 
 
 def rules_from(settings: Settings, resolver: Resolver = resolve_host) -> IntegrationRules:
@@ -61,6 +62,7 @@ def rules_from(settings: Settings, resolver: Resolver = resolve_host) -> Integra
         max_per_user=settings.integrations_max_per_user,
         timeout_seconds=settings.mcp_timeout_seconds,
         description_max_chars=settings.agent_tool_description_max_chars,
+        max_response_bytes=settings.mcp_max_response_bytes,
     )
 
 

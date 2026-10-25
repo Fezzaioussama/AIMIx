@@ -16,7 +16,7 @@ from api.services.files.storage import WorkspaceStorage
 from api.services.toolbox.code_runner import CodeRunner
 from api.services.toolbox.config import ToolboxConfig
 from api.services.toolbox.e2b_sandbox import E2BSandboxOpener
-from api.services.toolbox.sandbox import SandboxLimits
+from api.services.toolbox.sandbox import SandboxLimits, SandboxOpener, metered
 from api.services.toolbox.tools import (
     CALCULATOR,
     CURRENT_DATETIME,
@@ -83,9 +83,11 @@ def _code_runner(workspace: LocalWorkspace, config: ToolboxConfig) -> CodeRunner
         max_file_bytes=config.workspace_max_file_bytes,
         max_output_chars=config.sandbox_max_output_chars,
     )
-    opener = E2BSandboxOpener(
+    opener: SandboxOpener = E2BSandboxOpener(
         config.sandbox_api_key, config.sandbox_timeout_seconds, config.sandbox_max_stream_chars
     )
+    if config.sandbox_quota is not None:
+        opener = metered(opener, config.sandbox_quota)
     return CodeRunner(opener, workspace, limits)
 
 

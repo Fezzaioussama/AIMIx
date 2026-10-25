@@ -176,14 +176,25 @@ off: in a run, each of the integration's tool calls then waits for your
 offered** the tools of an integration that asks first; switch `require_approval`
 off to use an integration's tools in chat.
 
-**Address rules** (checked when you save, before a test, and again before
-every request agents send): the URL must start with `https` (plain `http` only
-when `APP_ENV=local`), may not contain a user name or password, and its host
-must resolve only to public addresses — never loopback, private, link-local
-(such as the cloud metadata address `169.254.169.254`), shared or reserved
-ones. Local development can reach a server on `127.0.0.1` with
+**Address rules** (checked when you save, before a test, and again on every
+connection agents open, which goes to one of exactly the addresses checked):
+the URL must start with `https` (plain `http` only when `APP_ENV=local`), may
+not contain a user name or password, and its host must resolve only to public
+addresses — never loopback, private, link-local (such as the cloud metadata
+address `169.254.169.254`), shared, reserved, multicast or site-local ones; an
+IPv6 address that carries an IPv4 one (NAT64, 6to4) is judged by that IPv4
+address. Local development can reach a server on `127.0.0.1` with
 `APP_ENV=local` and `INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true`. A refused
-address is a `400 validation_error` naming the host.
+address, or a host name that cannot be resolved, is a `400 validation_error`
+naming the host. One response from your server is cut off past
+`MCP_MAX_RESPONSE_BYTES`, and a tool result's text past
+`MCP_TOOL_RESULT_MAX_CHARS`.
+
+**Rate limit:** creating, updating and testing an integration make the server
+reach out, so each of these routes, like `GET /agent-tools`, allows
+`USER_RATE_LIMIT_REQUESTS` (30) calls per account every
+`USER_RATE_LIMIT_WINDOW_SECONDS` (60); past that it answers `429 throttled`
+with `Retry-After`.
 
 ### `GET /integrations`
 
@@ -203,8 +214,9 @@ not be the name of one of the operator's `MCP_SERVERS`. `enabled` and
 unique ignoring case, and `Host`, `Content-Length`, `Transfer-Encoding`,
 `Connection`, `Keep-Alive`, `Upgrade`, `TE`, `Trailer`, `Mcp-Session-Id` and
 `Mcp-Protocol-Version` are set automatically. Values may not contain control
-characters. You can have up to `INTEGRATIONS_MAX_PER_USER` (10) integrations.
-Any rule broken is a `400 validation_error`.
+characters. You can have up to `INTEGRATIONS_MAX_PER_USER` (10) integrations;
+the limit holds for requests sent at the same time too. Any rule broken is a
+`400 validation_error`.
 
 ### `PATCH /integrations/<id>`
 
@@ -242,7 +254,8 @@ Descriptions are cut to `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. Failures:
 |---|---|---|
 | 400 | `validation_error` | The address is no longer allowed (for example its host now resolves to a private address), the name is now used by an operator server, or the header values can no longer be read because `SECRET_KEY` changed (enter them again) |
 | 404 | `not_found` | Not yours, or no such integration |
-| 502 | `tool_unavailable` | `detail` says why in plain words: `Could not connect to crm: it refused the sign-in (HTTP 401), so check the headers.`, `… nothing was found at that URL (HTTP 404).`, `… it did not answer within the time limit.`, `… the connection to it failed.`, `… it answered with an MCP error.` |
+| 429 | `throttled` | More than `USER_RATE_LIMIT_REQUESTS` tests in the window (see the rate limit above) |
+| 502 | `tool_unavailable` | `detail` says why in plain words: `Could not connect to crm: it refused the sign-in (HTTP 401), so check the headers.`, `… nothing was found at that URL (HTTP 404).`, `… it did not answer within the time limit.`, `… the connection to it failed.`, `… it answered with an MCP error.`, `… it sent an answer larger than the size limit.` |
 
 Every integration route answers `404` for another account's integration.
 
@@ -279,6 +292,9 @@ with the integration's name as `source` (e.g. `"crm"`) and as their name prefix.
 Use the exact `name` values in a step's `allowed_tools`.
 Descriptions may be shortened by `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. If a
 configured MCP server is unavailable, discovery returns `502 tool_unavailable`.
+Listing connects to every MCP server you can reach, so it is rate-limited like
+the integration routes (`429 throttled` past `USER_RATE_LIMIT_REQUESTS` per
+`USER_RATE_LIMIT_WINDOW_SECONDS`).
 An integration that cannot be reached, or whose address is no longer allowed,
 is left out instead (the server logs `integration.discovery_skipped`), so the
 list still loads; so is an integration tool whose name another tool already
@@ -315,9 +331,13 @@ data-exfiltration risk.
 same rules, copied to `/home/user/inputs/`). Each call runs in a fresh E2B
 sandbox without internet access. Files the code writes to `/home/user/outputs/`
 and the PNG charts it displays are saved to `sandbox/<UTC time>/outputs/` and
-`sandbox/<UTC time>/charts/` in the workspace, never overwriting. It counts as
+`sandbox/<UTC time>/charts/` in the workspace, never overwriting; a `.csv` gets
+the same formula treatment as `save_artifact` (one with nothing to change keeps
+its bytes). It counts as
 a workspace reader for the rule above, but only when it is offered. A failure in the code, a timeout or an unavailable sandbox is an `error`
-tool call that the agent can react to.
+tool call that the agent can react to. Each account may make
+`SANDBOX_MAX_CALLS_PER_HOUR` calls an hour; past that a call is an `error` tool
+call and starts no sandbox.
 
 ---
 

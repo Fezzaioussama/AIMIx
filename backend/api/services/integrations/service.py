@@ -4,16 +4,21 @@ A user connects remote MCP servers — a CRM, a database, company tools, an
 automation hub — and their tools join the operator's MCP_SERVERS for that
 user's agents only. Rules live in ``rules.py``, header values in
 ``headers.py``, and how agents connect in ``connections.py``.
+
+Saving and testing reach the network (a DNS lookup, a connection test of up to
+MCP_TIMEOUT_SECONDS), so those use cases are async: the lookup and the probe
+are awaited on the event loop, and only the short database work runs in a
+worker thread, so slow servers cannot use up the request threadpool.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from time import monotonic
 
+from anyio import to_thread
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.sessions import Connection
 from sqlalchemy.orm import Session
@@ -123,28 +128,37 @@ def _check_name(access: IntegrationAccess, name: str, ignore_id: int | None = No
         raise repository.name_taken_error(name)
 
 
-def _check_address(access: IntegrationAccess, url: str) -> None:
+async def _check_address(access: IntegrationAccess, url: str) -> None:
     rules = access.rules
-    asyncio.run(ensure_reachable(url, rules.addresses, rules.timeout_seconds))
+    await ensure_reachable(url, rules.addresses, rules.timeout_seconds)
 
 
-def create(access: IntegrationAccess, draft: IntegrationDraft) -> IntegrationView:
+def _check_new(access: IntegrationAccess, name: str) -> None:
+    """Refuse early, before any lookup; ``repository.create`` has the last word."""
     limit = access.rules.max_per_user
     if repository.count(access.session, access.user) >= limit:
-        raise ValidationFailed(f"You can connect up to {limit} integrations. Delete one first.")
-    _check_name(access, draft.name)
-    _check_address(access, draft.url)
+        raise repository.over_quota_error(limit)
+    _check_name(access, name)
+
+
+def _insert(access: IntegrationAccess, draft: IntegrationDraft) -> Integration:
     headers = seal(access.box, merge(draft.headers, {}))
     changes = IntegrationChanges(
         draft.name, draft.url, draft.enabled, headers, require_approval=draft.require_approval
     )
-    row = repository.create(access.session, access.user, changes)
+    return repository.create(access.session, access.user, changes, access.rules.max_per_user)
+
+
+async def create(access: IntegrationAccess, draft: IntegrationDraft) -> IntegrationView:
+    await to_thread.run_sync(_check_new, access, draft.name)
+    await _check_address(access, draft.url)
+    row = await to_thread.run_sync(_insert, access, draft)
     # Counts only: neither header values nor their hints reach the logs (§6).
     logger.info(
         "integration.created user_id=%s integration_id=%s headers=%d",
         access.user.id,
         row.id,
-        len(headers.hints),
+        len(row.header_hints),
     )
     return _view(row)
 
@@ -172,15 +186,26 @@ def _new_headers(
     return seal(access.box, merge(edit.headers, saved))
 
 
-def update(
-    access: IntegrationAccess, integration_id: int, edit: IntegrationEdit
-) -> IntegrationView:
-    """Apply an edit. Sending the same edit twice leaves the same state."""
+def _editable(access: IntegrationAccess, integration_id: int, edit: IntegrationEdit) -> Integration:
     row = repository.get_owned(access.session, access.user, integration_id)
     if edit.name is not None and edit.name != row.name:
         _check_name(access, edit.name, row.id)
+    return row
+
+
+async def update(
+    access: IntegrationAccess, integration_id: int, edit: IntegrationEdit
+) -> IntegrationView:
+    """Apply an edit. Sending the same edit twice leaves the same state."""
+    row = await to_thread.run_sync(_editable, access, integration_id, edit)
     if edit.url is not None:
-        _check_address(access, edit.url)
+        await _check_address(access, edit.url)
+    return await to_thread.run_sync(_apply_edit, access, row, edit)
+
+
+def _apply_edit(
+    access: IntegrationAccess, row: Integration, edit: IntegrationEdit
+) -> IntegrationView:
     headers = _new_headers(access, row, edit)
     changes = IntegrationChanges(
         edit.name, edit.url, edit.enabled, headers, require_approval=edit.require_approval
@@ -216,13 +241,17 @@ async def _probe(
     return await load_server_tools(row.name, connection, rules.timeout_seconds)
 
 
-def test_connection(access: IntegrationAccess, integration_id: int) -> list[ToolView]:
-    """Connect within MCP_TIMEOUT_SECONDS and list the tools agents would get."""
+def _testable(access: IntegrationAccess, integration_id: int) -> tuple[Integration, Connection]:
     row = repository.get_owned(access.session, access.user, integration_id)
-    connection = _connection(access, row)
+    return row, _connection(access, row)
+
+
+async def test_connection(access: IntegrationAccess, integration_id: int) -> list[ToolView]:
+    """Connect within MCP_TIMEOUT_SECONDS and list the tools agents would get."""
+    row, connection = await to_thread.run_sync(_testable, access, integration_id)
     started = monotonic()
     try:
-        tools = asyncio.run(_probe(row, connection, access.rules))
+        tools = await _probe(row, connection, access.rules)
     except ToolUnavailable as cause:
         logger.warning(
             "integration.test_failed user_id=%s integration_id=%s error=%s",

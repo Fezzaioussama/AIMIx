@@ -2,22 +2,31 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import Any
 
 from langchain.tools import tool
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, ToolException
 
 from api.db import Database
+from api.exceptions import Throttled
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services.files.storage import user_workspace_dir
 from api.services.multiagent.contracts import RunResult
+from api.services.rate_limits import RateLimitRequest, enforce
 from api.services.runs import RunStart
-from api.services.toolbox.config import toolbox_config
+from api.services.toolbox.config import SandboxQuota, toolbox_config
 from api.services.toolbox.registry import toolbox_tools
 from config.settings import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+
+#: The rate-limit bucket run_python calls count against, one per account.
+SANDBOX_ACTION = "tool:run_python"
+SANDBOX_WINDOW_SECONDS = 3600
 
 #: Runs one of the signed-in user's saved pipelines to its end, recorded in
 #: their run history (``services/runs.launcher``).
@@ -70,13 +79,37 @@ def read_only_tools(database: Database, user: User) -> list[BaseTool]:
     return [list_pipelines, inspect_pipeline]
 
 
+def sandbox_quota(database: Database, user: User, settings: Settings) -> SandboxQuota:
+    """Spends one of ``user``'s SANDBOX_MAX_CALLS_PER_HOUR run_python calls: each
+    one spends the server's E2B_API_KEY, so no account may use it unboundedly."""
+    limit = settings.sandbox_max_calls_per_hour
+    request = RateLimitRequest(
+        f"user:{user.id}",
+        SANDBOX_ACTION,
+        limit,
+        SANDBOX_WINDOW_SECONDS,
+        f"run_python is limited to {limit} calls an hour per account. Try again later.",
+    )
+
+    def spend() -> None:
+        with database.session() as session:
+            try:
+                enforce(session, settings.secret_key, request)
+            except Throttled as cause:
+                logger.warning("sandbox.quota_exhausted user_id=%s", user.id)
+                raise ToolException(str(cause)) from cause
+
+    return spend
+
+
 def native_tools(database: Database, user: User, settings: Settings) -> list[BaseTool]:
     """Every in-process tool an agent may use: pipeline inspection plus the
     built-in toolbox (web search, page fetch, calculator, clock)."""
     workspace = user_workspace_dir(settings.workspace_dir, user.id)
+    quota = sandbox_quota(database, user, settings)
     return [
         *read_only_tools(database, user),
-        *toolbox_tools(toolbox_config(settings, workspace)),
+        *toolbox_tools(toolbox_config(settings, workspace, quota)),
     ]
 
 
