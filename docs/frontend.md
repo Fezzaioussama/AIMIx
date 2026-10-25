@@ -39,7 +39,7 @@ settings/ # SettingsPage: LLM providers, Integrations (users' MCP servers) and U
 |---|---|---|
 | `/` | `LandingPage` (lazy-loaded) | public |
 | `/login` | `LoginPage` | public |
-| `/register` | `RegisterPage` | public |
+| `/register` | `RegisterPage` (creates the account, signs the person in and goes to `/mission`; if only that sign-in fails it goes to `/login`) | public |
 | `/mission`, `/mission/:pipelineId` | `MissionPage` (one route, `/mission/:pipelineId?`) | guarded |
 | `/chat` | `ChatPage` | guarded |
 | `/pipeline` | `PipelineBuilderPage` | guarded |

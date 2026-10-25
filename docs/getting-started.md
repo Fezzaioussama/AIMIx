@@ -144,7 +144,7 @@ accounts, so running it twice is harmless. `db.sqlite3` is only read.
 make run-aimix        # backend :8000 and frontend :4200 in parallel
 ```
 
-Open <http://localhost:4200>, register an account, sign in.
+Open <http://localhost:4200> and register an account: you are signed in at once and land on Missions.
 
 - The Vite dev server **proxies `/api` to `http://127.0.0.1:8000`**
   (`frontend/vite.config.ts`), so the browser sees one origin and no CORS setup

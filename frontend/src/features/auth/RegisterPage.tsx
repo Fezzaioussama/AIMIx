@@ -4,15 +4,28 @@ import { useNavigate } from 'react-router-dom';
 
 import { AuthCard, AuthField } from './AuthCard';
 import { useAuth } from '../../core/auth/AuthContext';
+import { HOME_PATH } from '../../core/routes';
 
 export function RegisterPage() {
-  const { register } = useAuth();
+  const { register, login } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /** Creates the account and signs the person straight in, so nobody types their password twice. */
+  async function createAccount() {
+    await register(username, password);
+    try {
+      await login(username, password);
+      navigate(HOME_PATH, { replace: true });
+    } catch {
+      // The account exists; only signing in right after failed. Signing in by hand works.
+      navigate('/login', { replace: true });
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,8 +38,7 @@ export function RegisterPage() {
 
     setIsSubmitting(true);
     try {
-      await register(username, password);
-      navigate('/login', { replace: true });
+      await createAccount();
     } catch (cause) {
       setErrorMessage(
         cause instanceof Error ? cause.message : 'Registration failed. Please try again.',
