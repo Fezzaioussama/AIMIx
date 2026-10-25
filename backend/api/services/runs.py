@@ -32,6 +32,7 @@ from api.db import Database
 from api.exceptions import Conflict, DomainError, NotFound
 from api.models import (
     ACTIVE_RUN_STATUSES,
+    COMPLETED_STEP_STATUSES,
     RESUMABLE_RUN_STATUSES,
     ApprovalStatus,
     Pipeline,
@@ -57,6 +58,7 @@ from api.services.multiagent.contracts import (
 )
 from api.services.multiagent.graph import GraphPipelineRunner, output_orders
 from api.services.multiagent.mapper import spec_from_json, spec_to_json
+from api.services.multiagent.reviews import Verdict
 from api.services.pipeline_inputs import bind_run_inputs
 from api.services.pipelines import PreparedRun, prepare_run
 from api.services.run_budget import (
@@ -110,6 +112,8 @@ class _Plan:
     spec: PipelineSpec
     inputs: RunInputs
     completed: dict[int, StepResult]
+    #: The review round each step's row was last in, by step order.
+    rounds: dict[int, int]
     #: The run's limits, and what its earlier attempts already spent.
     budget: RunBudget
     spent: TokenUsage
@@ -141,8 +145,15 @@ def _new_run(pipeline_id: int | None, prepared: PreparedRun, start: RunStart) ->
     )
 
 
+def _verdict(text: str | None) -> Verdict | None:
+    try:
+        return None if text is None else Verdict(text)
+    except ValueError:
+        return None
+
+
 def _saved_result(step: RunStep) -> StepResult:
-    """A succeeded step as the graph reported it, rebuilt from its row."""
+    """A succeeded or skipped step as the graph reported it, rebuilt from its row."""
     calls = [
         ToolCallTrace(call["name"], cast(Literal["success", "error"], call["status"]))
         for call in step.tool_calls
@@ -157,20 +168,25 @@ def _saved_result(step: RunStep) -> StepResult:
         is_output=step.is_output,
         tool_calls=calls,
         usage=step_usage(step),
+        rounds=step.rounds,
+        skipped=step.status == StepStatus.SKIPPED,
+        verdict=_verdict(step.verdict),
     )
 
 
 def _plan(run: Run) -> _Plan:
     """What an execution needs: the run's own snapshot, its inputs bound again,
-    the steps an earlier attempt finished, and its limits and spending so far."""
+    the steps an earlier attempt finished (and the review round each row was
+    in), and its limits and spending so far."""
     spec = spec_from_json(run.pipeline_id, run.definition)
     inputs = bind_run_inputs(spec.inputs, run.input_text, run.input_values)
     done = {
         step.step_order: _saved_result(step)
         for step in run.steps
-        if step.status == StepStatus.SUCCEEDED
+        if step.status in COMPLETED_STEP_STATUSES
     }
-    return _Plan(spec, inputs, done, run_budget(run), total_usage(run.steps))
+    rounds = {step.step_order: step.rounds for step in run.steps}
+    return _Plan(spec, inputs, done, rounds, run_budget(run), total_usage(run.steps))
 
 
 def _reopen(session: Session, run: Run, budget: RunBudget) -> bool:
@@ -250,7 +266,7 @@ class RunService:
             "run.resumed run_id=%s pipeline_id=%s reused_steps=%d",
             run.id,
             run.pipeline_id,
-            sum(step.status == StepStatus.SUCCEEDED for step in run.steps),
+            sum(step.status in COMPLETED_STEP_STATUSES for step in run.steps),
         )
         self._submit(run.id, agent)
         return self._load(run.id)
@@ -314,6 +330,7 @@ class RunService:
                 completed=plan.completed,
                 meter=meter.for_step,
                 run_id=run_id,
+                rounds=plan.rounds,
             )
             result = await runner.arun(plan.spec, agent, plan.inputs, control)
         except asyncio.CancelledError:

@@ -11,6 +11,7 @@ from api.schemas.approvals import RunApprovalOut
 from api.schemas.common import UtcDateTime
 from api.schemas.pipelines import PipelineInputField, StepDefinitionOut, ToolCallOut
 from api.schemas.usage import BudgetIn, UsageOut
+from api.services.multiagent.reviews import Verdict
 from api.services.usage import total_usage
 
 #: Runs per history page: the default, and the most one request may ask for.
@@ -73,6 +74,11 @@ class RunStepOut(_Failure, _StepUsage):
     tool_calls: list[ToolCallOut]
     started_at: UtcDateTime | None
     finished_at: UtcDateTime | None
+    #: The review round it is in: above 1 when a review loop sent the work back
+    #: and the step ran again (this row then holds the newest round).
+    rounds: int = 1
+    #: What a reviewer's last answer decided; null for any other step, and when it gave none.
+    verdict: Verdict | None = None
 
 
 class RunDefinitionOut(BaseModel):

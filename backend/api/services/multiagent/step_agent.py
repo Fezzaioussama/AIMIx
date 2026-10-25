@@ -112,7 +112,10 @@ class LangGraphStepAgent:
                 guarded = guard_tools(self._toolset, resolved, self._gate)
                 tools = guarded.tools
                 system_prompt = step_agent_system_prompt(
-                    task.role, has_tools=bool(tools), expected_output=task.expected_output
+                    task.role,
+                    has_tools=bool(tools),
+                    expected_output=task.expected_output,
+                    reviewer=task.reviewer,
                 )
                 model = metered(self._model, usage)
                 graph = create_agent(

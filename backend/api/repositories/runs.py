@@ -18,7 +18,16 @@ from sqlalchemy import Select, func, inspect, select, update
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from api.exceptions import NotFound
-from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, RunStep, RunTrigger, StepStatus, User
+from api.models import (
+    ACTIVE_RUN_STATUSES,
+    COMPLETED_STEP_STATUSES,
+    Run,
+    RunStatus,
+    RunStep,
+    RunTrigger,
+    StepStatus,
+    User,
+)
 from api.repositories.approvals import expire_pending
 from api.repositories.bulk import changed as _changed
 from llm.usage import TokenUsage
@@ -43,8 +52,10 @@ SUMMARY_COLUMNS = (
 STEP_USAGE_COLUMNS = (RunStep.input_tokens, RunStep.output_tokens, RunStep.cost_usd)
 
 
-def _unstarted_step() -> dict[str, Any]:
-    """How a step looks before it runs, and again when a resumed run will redo it."""
+def unstarted_step() -> dict[str, Any]:
+    """How a step looks before it runs, and again when a resumed run or a review
+    loop will redo it. What it used (tokens and cost) and the round it is in are
+    not part of it: they carry over."""
     return {
         "status": StepStatus.PENDING,
         "input_used": "",
@@ -52,6 +63,7 @@ def _unstarted_step() -> dict[str, Any]:
         "tool_calls": [],
         "error_code": "",
         "error_detail": "",
+        "verdict": None,
         "started_at": None,
         "finished_at": None,
     }
@@ -128,7 +140,7 @@ def create(session: Session, user: User, new: NewRun) -> Run:
         status=RunStatus.QUEUED,
         max_cost_usd=new.max_cost_usd,
         max_tokens=new.max_tokens,
-        steps=[RunStep(**_unstarted_step(), **step) for step in new.steps],
+        steps=[RunStep(**unstarted_step(), **step) for step in new.steps],
     )
     session.add(run)
     session.commit()
@@ -225,8 +237,9 @@ def reopen(
     values: Mapping[str, Any] | None = None,
 ) -> bool:
     """Queue a stopped run again (compare-and-set from ``resumable``), setting
-    ``values`` too (a new spending limit), and reset every step that did not
-    succeed, in one transaction. A step keeps its usage: that was spent."""
+    ``values`` too (a new spending limit), and reset every step that neither
+    succeeded nor was skipped, in one transaction. A step keeps its usage (that
+    was spent) and the review round it was in."""
     reopened = _changed(
         session,
         update(Run)
@@ -244,8 +257,8 @@ def reopen(
         _changed(
             session,
             update(RunStep)
-            .where(RunStep.run_id == run_id, RunStep.status != StepStatus.SUCCEEDED)
-            .values(**_unstarted_step()),
+            .where(RunStep.run_id == run_id, RunStep.status.notin_(COMPLETED_STEP_STATUSES))
+            .values(**unstarted_step()),
         )
     session.commit()
     return reopened == 1

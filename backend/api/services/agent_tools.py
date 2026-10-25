@@ -40,6 +40,8 @@ def _pipeline_details(pipeline: Pipeline) -> dict[str, Any]:
                 "allowed_tools": step.allowed_tools,
                 "is_output": step.is_output,
                 "expected_output": step.expected_output,
+                "condition": step.condition,
+                "review": step.review,
             }
             for step in pipeline.steps
         ],
