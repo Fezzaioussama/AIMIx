@@ -1,0 +1,47 @@
+# Dependency updates (docs/deployment.md, "Dependency updates and audits").
+# Weekly, one pull request per ecosystem for the minor and patch updates; each
+# major update comes on its own. Every pull request runs CI, the audit included.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        update-types: [minor, patch]
+
+  # The base images in the Dockerfile: new digests for the pinned tags, and new
+  # uv releases. Python and Node change version by hand, with .python-version
+  # and CI's node-version.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker-images:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+        # Held below 2.1 in pyproject.toml until the code moves to 2.1's typing;
+        # its update comes on its own, so it cannot hold up the others.
+        exclude-patterns: [sqlalchemy]

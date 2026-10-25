@@ -1,27 +1,47 @@
-# Keep the build context small, and secrets and local state out of the image.
+# The build context is only what the Dockerfile copies, so secrets and local
+# state (users' files, databases, logs, tool output) never reach the image.
+# Everything is left out, the build inputs are let back in, then local state is
+# carved back out of them. The last rule that matches a path wins.
+*
+!backend/
+!frontend/
+!pyproject.toml
+!uv.lock
+!.python-version
+!docker-entrypoint.sh
 
 # Secrets — backend/.env holds real API keys and must never be baked in.
 **/.env
 **/.env.*
 !**/.env.example
-.claude/
+**/.claude/
+**/*.pem
+**/*.key
+
+# Users' files: in a development checkout, uploads and agent artifacts land in
+# backend/workspace (AGENT_WORKSPACE_DIR).
+backend/workspace/
 
 # Local state and build output
+**/*.sqlite
 **/*.sqlite3
 **/*.sqlite3-*
 **/*.db
+**/*.log
+backend/logs/
 **/__pycache__/
 **/*.py[cod]
-.venv/
+**/.venv/
 **/node_modules/
 frontend/dist/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
+frontend/.vite/
+frontend/coverage/
+**/*.tsbuildinfo
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.vscode/
+**/.idea/
 
 # Not needed at run time
-.git/
-.github/
-docs/
 backend/tests/
-**/*.log
