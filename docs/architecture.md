@@ -374,7 +374,10 @@ sequenceDiagram
 when its tool is not configured, so `web_search` appears only when
 `TAVILY_API_KEY` is set. `tools.py` adapts the helpers into LangChain tools with
 `handle_tool_error`; `web.py` is the httpx gateway (Tavily search, page fetch);
-`calculator.py` evaluates arithmetic over a whitelisted AST, never `eval`;
+`calculator.py` evaluates arithmetic over a whitelisted AST, never `eval`, and
+refuses arguments whose cost grows with their value (`**` past 4096 result bits,
+`round` past 1235 digits), since one huge integer operation holds the GIL and
+would stall every request;
 `html_text.py` reduces HTML to readable text; `workspace.py` lists, searches and
 reads (text and CSV as written, PDF and Word through the run-document readers)
 and saves new artifacts in the user's folder, `AGENT_WORKSPACE_DIR/user-<id>`

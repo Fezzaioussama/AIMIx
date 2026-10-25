@@ -1,4 +1,11 @@
-"""Exact arithmetic for agents, evaluated over a whitelisted AST — never ``eval``."""
+"""Exact arithmetic for agents, evaluated over a whitelisted AST — never ``eval``.
+
+Every operation must stay cheap whatever its arguments, because CPython runs a
+huge integer operation in one call that holds the GIL: no timeout interrupts
+it, and the whole server stalls. ``**`` and ``round`` therefore refuse
+arguments whose cost grows with their value; the other operations only ever
+see integers of bounded size, and the float functions overflow at once.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +21,8 @@ Number = int | float
 MAX_EXPRESSION_LENGTH = 200
 #: Integer results stay far below Python's 4300-digit str() limit.
 MAX_RESULT_BITS = 4096
+#: ``round(x, n)`` computes 10**|n|: enough digits for any allowed integer, no more.
+MAX_ROUND_DIGITS = math.ceil(MAX_RESULT_BITS * math.log10(2)) + 1
 
 
 def _power(base: Number, exponent: Number) -> Number:
@@ -26,6 +35,18 @@ def _power(base: Number, exponent: Number) -> Number:
     ):
         raise ValueError("the result is too large")
     return base**exponent
+
+
+def _round(number: Number, ndigits: Number | None = None) -> Number:
+    """``round`` with a bounded, integer ``ndigits``: round(5, -10**9) would
+    compute 10**(10**9) and freeze the server."""
+    if ndigits is None:
+        return round(number)
+    if not isinstance(ndigits, int):
+        raise ValueError("round() takes a whole number of digits")
+    if abs(ndigits) > MAX_ROUND_DIGITS:
+        raise ValueError(f"round() takes at most {MAX_ROUND_DIGITS} digits")
+    return round(number, ndigits)
 
 
 _BINARY: dict[type[ast.operator], Callable[[Number, Number], Number]] = {
@@ -43,7 +64,7 @@ _UNARY: dict[type[ast.unaryop], Callable[[Number], Number]] = {
 }
 _FUNCTIONS: dict[str, Callable[..., Number]] = {
     "abs": abs,
-    "round": round,
+    "round": _round,
     "sqrt": math.sqrt,
     "exp": math.exp,
     "log": math.log,
