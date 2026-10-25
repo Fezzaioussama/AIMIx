@@ -46,7 +46,9 @@ message that says so.
 | `DOCUMENT_OCR_ENABLED` | `true` | `false` turns OCR off |
 | `DOCUMENT_OCR_LANGUAGES` | `eng+fra` | Tesseract codes joined by `+` |
 | `DOCUMENT_OCR_MAX_PAGES` | `30` | Pages one document may send to OCR |
+| `DOCUMENT_OCR_MAX_SECONDS` | `120` | All the OCR of one document; no page starts after it |
 | `DOCUMENT_OCR_TIMEOUT_SECONDS` | `15` | Per page; a slower page is skipped |
+| `DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` | `2` | Documents read at once; another waits `DOCUMENT_EXTRACTION_WAIT_SECONDS` (`30`), then gets 503 |
 | `DOCUMENT_OCR_DPI` | `300` | Resolution a PDF page is rendered at for OCR |
 | `DOCUMENT_MAX_IMAGE_PIXELS` | `40000000` | Larger images are refused before decoding |
 
