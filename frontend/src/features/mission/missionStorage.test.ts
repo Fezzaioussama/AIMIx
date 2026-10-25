@@ -1,0 +1,124 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { MissionMessage } from './missionMessages';
+import { note, you } from './missionMessages';
+import {
+  forgetMission,
+  MAX_STORED_MESSAGES,
+  missionKey,
+  readMission,
+  restoreMission,
+  writeMission,
+} from './missionStorage';
+import { PLAN } from './testData';
+import { describeTeam } from './teamBrief';
+
+describe('mission storage', () => {
+  beforeEach(() => window.sessionStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps a mission per pipeline, and one for a mission never saved', () => {
+    expect(missionKey(7)).not.toBe(missionKey());
+    writeMission(missionKey(7), { messages: [you('hello')], draft: null });
+    writeMission(missionKey(), { messages: [], draft: PLAN });
+
+    expect(readMission(missionKey(7)).messages).toHaveLength(1);
+    expect(readMission(missionKey(7)).draft).toBeNull();
+    expect(readMission(missionKey()).draft).toEqual(PLAN);
+    expect(readMission(missionKey(8))).toEqual({ messages: [], draft: null });
+  });
+
+  it('round-trips every kind of message', () => {
+    const messages: MissionMessage[] = [
+      you('Compare my competitors'),
+      note('Something went wrong', 'error'),
+      { id: 't', from: 'aimix', kind: 'team', origin: 'generated', brief: describeTeam(PLAN) },
+      { id: 'p', from: 'aimix', kind: 'proposal', state: 'applied', changes: [], error: '' },
+      { id: 'i', from: 'aimix', kind: 'inputs', state: 'open' },
+      { id: 'r', from: 'aimix', kind: 'run', runId: 4 },
+    ];
+
+    writeMission(missionKey(7), { messages, draft: null });
+
+    expect(readMission(missionKey(7)).messages).toEqual(messages);
+  });
+
+  it('drops what it cannot trust instead of failing', () => {
+    window.sessionStorage.setItem(
+      missionKey(7),
+      JSON.stringify({
+        messages: [
+          you('kept'),
+          { id: 'x', from: 'aimix', kind: 'unknown' },
+          { id: 'y', from: 'aimix', kind: 'run', runId: 'four' },
+          { id: 'z', from: 'aimix', kind: 'proposal', state: 'bogus', changes: [], error: '' },
+          { from: 'you', text: 'no id' },
+          'junk',
+          null,
+        ],
+        draft: { name: 3 },
+      }),
+    );
+
+    const stored = readMission(missionKey(7));
+
+    expect(stored.messages.map((message) => message.id)).toEqual([expect.any(String)]);
+    expect(stored.messages[0]).toMatchObject({ from: 'you', text: 'kept' });
+    expect(stored.draft).toBeNull();
+  });
+
+  it('starts empty when the stored text is not JSON', () => {
+    window.sessionStorage.setItem(missionKey(7), '{not json');
+
+    expect(readMission(missionKey(7))).toEqual({ messages: [], draft: null });
+  });
+
+  it('keeps only the newest messages', () => {
+    const many = Array.from({ length: MAX_STORED_MESSAGES + 25 }, (_, index) => you(`m${index}`));
+
+    writeMission(missionKey(7), { messages: many, draft: null });
+
+    const kept = readMission(missionKey(7)).messages;
+    expect(kept).toHaveLength(MAX_STORED_MESSAGES);
+    expect(kept[kept.length - 1]).toMatchObject({ text: `m${many.length - 1}` });
+  });
+
+  it('forgets a mission', () => {
+    writeMission(missionKey(), { messages: [you('hi')], draft: null });
+
+    forgetMission(missionKey());
+
+    expect(readMission(missionKey()).messages).toEqual([]);
+  });
+
+  it('works without storage: blocked reads and writes only mean nothing is kept', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError');
+    });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('blocked', 'SecurityError');
+    });
+
+    expect(() => writeMission(missionKey(7), { messages: [you('hi')], draft: null })).not.toThrow();
+    expect(readMission(missionKey(7))).toEqual({ messages: [], draft: null });
+    expect(() => forgetMission(missionKey(7))).not.toThrow();
+  });
+
+  it('says so when the page was left before AIMIx answered', () => {
+    writeMission(missionKey(7), { messages: [you('Make it shorter')], draft: null });
+
+    const { messages } = restoreMission(7);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({ from: 'aimix', kind: 'note' });
+  });
+
+  it('adds nothing when AIMIx had the last word', () => {
+    writeMission(missionKey(7), { messages: [you('hi'), note('hello')], draft: null });
+
+    expect(restoreMission(7).messages).toHaveLength(2);
+  });
+});
