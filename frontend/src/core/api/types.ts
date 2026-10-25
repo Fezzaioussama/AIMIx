@@ -7,6 +7,37 @@ export interface AuthTokens {
   access: string;
 }
 
+/** How a condition compares text (trimmed, ignoring case); the words are in features/pipelines/stepFlow. */
+export type ConditionOperator =
+  | 'contains'
+  | 'not_contains'
+  | 'equals'
+  | 'not_equals'
+  | 'is_empty'
+  | 'not_empty';
+
+/**
+ * "Run this step only if ...": the step is skipped when it does not hold. `source` is what
+ * it looks at: "previous_output" (the step's `{input}`), "input:<name>" (a named input) or
+ * "step:<order>" (the result of a step in an earlier stage). `value` is what it compares
+ * with; operators that take none (`is_empty`, `not_empty`) ignore it.
+ */
+export interface StepCondition {
+  source: string;
+  operator: ConditionOperator;
+  value: string;
+}
+
+/**
+ * Makes a step a reviewer that can send the work back for fixes: the stages from
+ * `send_back_to_stage` (an earlier stage) up to the reviewer's run again, at most
+ * `max_rounds` (1 to 5) times, so those stages run at most `1 + max_rounds` times.
+ */
+export interface StepReview {
+  send_back_to_stage: number;
+  max_rounds: number;
+}
+
 export interface PipelineStep {
   id?: number;
   order: number;
@@ -24,6 +55,10 @@ export interface PipelineStep {
   role: string;
   /** null grants all configured tools; an empty list grants none. */
   allowed_tools: string[] | null;
+  /** The step runs only while this holds; null always runs it. */
+  condition: StepCondition | null;
+  /** Makes the step a reviewer that can send the work back; null for any other step. */
+  review: StepReview | null;
 }
 
 export interface AgentTool {
@@ -138,8 +173,17 @@ export type RunStatus =
   | 'cancelled'
   | 'interrupted';
 
-/** Where one step of a run is. */
-export type RunStepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+/**
+ * Where one step of a run is. `skipped`: its condition did not hold, so it did not run; it is
+ * final, like `succeeded`, and a resumed run keeps it.
+ */
+export type RunStepStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped';
 
 export interface RunError {
   code: string;
@@ -157,6 +201,13 @@ export interface RunStep extends StepResult {
   output_tokens: number;
   /** USD; null when the cost of its model is unknown. */
   cost_usd: number | null;
+  /**
+   * The review round its row is in: 1, or more when a review loop sent the work back and
+   * the step ran again (the row then holds the newest round).
+   */
+  rounds: number;
+  /** What a reviewer's last answer decided; null for any other step, and when it gave none. */
+  verdict: 'pass' | 'revise' | null;
 }
 
 /** Where a tool call that asks the run's owner first is. Only `pending` changes. */

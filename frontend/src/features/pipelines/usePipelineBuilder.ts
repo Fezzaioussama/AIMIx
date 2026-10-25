@@ -5,6 +5,7 @@ import { startRun } from '../../core/api/runs';
 import type { Pipeline, PipelineInput, PipelineStep, Run } from '../../core/api/types';
 import { runRequest, type RunDraft } from './pipelineInputs';
 import { insertStep, nextStage } from './stages';
+import { withoutStep } from './stepFlowEdits';
 
 function emptyPipeline(defaultModel: string): Pipeline {
   return {
@@ -21,6 +22,8 @@ function emptyPipeline(defaultModel: string): Pipeline {
         model: defaultModel,
         role: '',
         allowed_tools: null,
+        condition: null,
+        review: null,
       },
     ],
   };
@@ -115,9 +118,7 @@ export function usePipelineBuilder(defaultModel: string, initialId?: number) {
       markChanged();
       setPipeline((current) => ({
         ...current,
-        steps: current.steps
-          .filter((_, i) => i !== index)
-          .map((step, i) => ({ ...step, order: i + 1 })),
+        steps: withoutStep(current.steps, current.steps[index].order),
       }));
     },
     [markChanged],

@@ -5,6 +5,7 @@ import { errorMessage } from '../../core/api/errorMessage';
 import { getPipeline, savePipeline } from '../../core/api/pipelines';
 import type { Pipeline, PipelineStep } from '../../core/api/types';
 import { useMountedRef } from '../../core/hooks/useMountedRef';
+import { withoutStep } from '../pipelines/stepFlowEdits';
 
 /** The name a mission is saved under when nothing else named it. */
 export const DEFAULT_MISSION_NAME = 'My mission';
@@ -174,12 +175,7 @@ function useTeamEdits(current: { readonly current: TeamState }, commit: (next: T
   );
   const removeStep = useCallback(
     (order: number) =>
-      edit((pipeline) => ({
-        ...pipeline,
-        steps: pipeline.steps
-          .filter((step) => step.order !== order)
-          .map((step, index) => ({ ...step, order: index + 1 })),
-      })),
+      edit((pipeline) => ({ ...pipeline, steps: withoutStep(pipeline.steps, order) })),
     [edit],
   );
   return { adopt, replace, patchStep, removeStep };

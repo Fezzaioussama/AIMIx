@@ -13,6 +13,8 @@ const workflow: PipelineStep[] = [1, 2, 3].map((order) => ({
   model: 'vendor/model',
   role: '',
   allowed_tools: null,
+  condition: null,
+  review: null,
 }));
 
 describe('insertStep', () => {

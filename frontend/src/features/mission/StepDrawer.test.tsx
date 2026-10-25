@@ -12,6 +12,7 @@ function drawer(overrides: Partial<Parameters<typeof StepDrawer>[0]> = {}) {
   const view = render(
     <StepDrawer
       step={researcher}
+      steps={PLAN.steps}
       inputs={PLAN.inputs}
       models={['vendor/fast', 'vendor/smart']}
       tools={TOOLS}
@@ -80,6 +81,7 @@ describe('StepDrawer', () => {
     rerender(
       <StepDrawer
         step={researcher}
+        steps={PLAN.steps}
         inputs={PLAN.inputs}
         models={['vendor/fast']}
         tools={TOOLS}
@@ -106,6 +108,7 @@ describe('StepDrawer', () => {
     rerender(
       <StepDrawer
         step={analyst}
+        steps={PLAN.steps}
         inputs={PLAN.inputs}
         models={['vendor/fast']}
         tools={TOOLS}

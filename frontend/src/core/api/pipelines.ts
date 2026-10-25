@@ -57,10 +57,10 @@ export function revisePipeline(
 }
 
 /**
- * Older saved pipelines and generated plans omit the newer agent and I/O fields, and a
- * planner may leave a step without a prompt.
+ * Older saved pipelines and generated plans omit the newer agent, I/O and flow fields, and
+ * a planner may leave a step without a prompt.
  */
-function normalizePipeline(pipeline: Pipeline): Pipeline {
+export function normalizePipeline(pipeline: Pipeline): Pipeline {
   return {
     ...pipeline,
     inputs: pipeline.inputs ?? [],
@@ -70,6 +70,8 @@ function normalizePipeline(pipeline: Pipeline): Pipeline {
       role: step.role ?? '',
       allowed_tools: step.allowed_tools ?? null,
       expected_output: step.expected_output ?? '',
+      condition: step.condition ?? null,
+      review: step.review ?? null,
     })),
   };
 }

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
@@ -7,6 +7,7 @@ import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { OutputCard } from './OutputCard';
 import { PipelineGraph } from './PipelineGraph';
+import { RunFlowContext } from './RunFlowContext';
 import { RunResults } from './RunResults';
 import { StepHeading } from './StepHeading';
 import type { OutputTarget } from './pipelineGraph';
@@ -56,42 +57,46 @@ export function PipelineRunView({
 }: PipelineRunViewProps) {
   const view = useRunView({ finished, liveSteps, runKey, isRunning });
   const hasResults = liveSteps ? liveSteps.length > 0 : view.results.length > 0 && !isRunning;
+  // The cards of the run's steps read the pipeline it ran (conditions, review rounds).
+  const flow = useMemo(() => ({ steps, inputs: inputs ?? [] }), [steps, inputs]);
 
   return (
-    <section>
-      {diagram && (
-        <PipelineGraph
-          steps={steps}
-          inputs={inputs}
-          results={view.results}
-          liveSteps={liveSteps}
-          isRunning={isRunning}
-          input={input}
-          selected={view.focus}
-          onSelect={view.select}
-          onEditStep={onEditStep}
-          onAddParallel={onAddParallel}
-          onAddAfter={onAddAfter}
-        />
-      )}
+    <RunFlowContext value={flow}>
+      <section>
+        {diagram && (
+          <PipelineGraph
+            steps={steps}
+            inputs={inputs}
+            results={view.results}
+            liveSteps={liveSteps}
+            isRunning={isRunning}
+            input={input}
+            selected={view.focus}
+            onSelect={view.select}
+            onEditStep={onEditStep}
+            onAddParallel={onAddParallel}
+            onAddAfter={onAddAfter}
+          />
+        )}
 
-      {children}
+        {children}
 
-      {isRunning && !liveSteps && (
-        <BusyNotice className="mt-8">
-          Running the pipeline — parallel steps run at the same time…
-        </BusyNotice>
-      )}
+        {isRunning && !liveSteps && (
+          <BusyNotice className="mt-8">
+            Running the pipeline — parallel steps run at the same time…
+          </BusyNotice>
+        )}
 
-      {hasResults && (
-        <ResultsArea
-          view={view}
-          allSteps={liveSteps ?? view.results}
-          isRunning={isRunning}
-          elapsedMs={elapsedMs}
-        />
-      )}
-    </section>
+        {hasResults && (
+          <ResultsArea
+            view={view}
+            allSteps={liveSteps ?? view.results}
+            isRunning={isRunning}
+            elapsedMs={elapsedMs}
+          />
+        )}
+      </section>
+    </RunFlowContext>
   );
 }
 

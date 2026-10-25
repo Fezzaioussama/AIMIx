@@ -1,3 +1,4 @@
+import { normalizePipeline } from '../../core/api/pipelines';
 import type { Pipeline } from '../../core/api/types';
 import { restoredMessages, type MissionMessage } from './missionMessages';
 import { isMessage, isPipeline, isRecord } from './missionShape';
@@ -60,6 +61,7 @@ function parseMission(value: unknown): StoredMission {
   if (!isRecord(value)) return EMPTY;
   return {
     messages: Array.isArray(value.messages) ? value.messages.filter(isMessage) : [],
-    draft: isPipeline(value.draft) ? value.draft : null,
+    // A draft kept by an older version lacks the fields added since: give it their defaults.
+    draft: isPipeline(value.draft) ? normalizePipeline(value.draft) : null,
   };
 }

@@ -1,5 +1,6 @@
 import type { Pipeline, Run, RunStep } from '../../core/api/types';
 import { OutputCard } from '../pipelines/OutputCard';
+import { RunFlowContext } from '../pipelines/RunFlowContext';
 import { stepLabel } from '../pipelines/stages';
 import { StepHeading } from '../pipelines/StepHeading';
 import { isActive } from '../runs/runStatus';
@@ -43,17 +44,21 @@ function Planned({ team }: { team: Pipeline }) {
 
 /** The run's output steps: each as a card once it is ready, the rest named. */
 function Ready({ run }: { run: Run }) {
-  const outputs = run.steps.filter((step) => step.is_output);
+  // A step that was skipped is not a deliverable, and is not waited for.
+  const outputs = run.steps.filter((step) => step.is_output && step.status !== 'skipped');
   const ready = outputs
     .filter((step) => step.status === 'succeeded')
     .sort((a, b) => a.stage - b.stage || a.step_order - b.step_order);
   const waiting = outputs.filter((step) => step.status !== 'succeeded');
 
+  const flow = { steps: run.definition.steps, inputs: run.definition.inputs };
   return (
-    <>
+    <RunFlowContext value={flow}>
       {ready.length === 0 && (
         <p className="text-sm text-slate-300">
-          Each deliverable appears here as soon as its agent has finished.
+          {outputs.length === 0 && !isActive(run.status)
+            ? 'No deliverable was made: the steps that make them did not run.'
+            : 'Each deliverable appears here as soon as its agent has finished.'}
         </p>
       )}
       <div className="space-y-4">
@@ -71,7 +76,7 @@ function Ready({ run }: { run: Run }) {
           {isActive(run.status) ? 'Still working on' : 'Not finished'}: {names(waiting)}.
         </p>
       )}
-    </>
+    </RunFlowContext>
   );
 }
 

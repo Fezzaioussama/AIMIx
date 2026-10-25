@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { buildGraph, liveNodeStatus } from './pipelineGraph';
 
-/** A followed run's step that has used no tokens. */
-const UNUSED = { input_tokens: 0, output_tokens: 0, cost_usd: null };
+/** A followed run's step that has used no tokens, and went through no review round. */
+const UNUSED = { input_tokens: 0, output_tokens: 0, cost_usd: null, rounds: 1, verdict: null };
 
 function step(order: number, stage: number, isOutput = false): PipelineStep {
   return {
@@ -17,6 +17,8 @@ function step(order: number, stage: number, isOutput = false): PipelineStep {
     model: 'v/m',
     role: '',
     allowed_tools: null,
+    condition: null,
+    review: null,
   };
 }
 

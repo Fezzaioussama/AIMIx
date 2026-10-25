@@ -8,8 +8,14 @@ import { parseCost } from '../../core/usageFormat';
  */
 const NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 const NAME_MAX_LENGTH = 40;
-/** `{input}` is each stage's input, so no named input may take that name. */
+/** `{input}` is each stage's input, and `{feedback}` a reviewer's feedback (see below). */
 export const STAGE_INPUT = 'input';
+export const REVIEW_FEEDBACK = 'feedback';
+/** The names the engine fills itself, so no named input may take them, with why. */
+const RESERVED_NAMES: Record<string, string> = {
+  [STAGE_INPUT]: '"input" is reserved for the stage input.',
+  [REVIEW_FEEDBACK]: '"feedback" is reserved for a reviewer’s feedback.',
+};
 const PLACEHOLDER = /\{([a-z][a-z0-9_]*)\}/g;
 
 /** What the run form holds: free text, or a value per named input, and an optional cost limit. */
@@ -34,7 +40,7 @@ export function toInputName(raw: string): string {
 /** Why an input's name cannot be saved, or null when it can. */
 export function inputNameProblem(name: string, inputs: PipelineInput[]): string | null {
   if (!NAME_PATTERN.test(name)) return 'Start with a letter; use only a–z, 0–9 and _.';
-  if (name === STAGE_INPUT) return '"input" is reserved for the stage input.';
+  if (Object.hasOwn(RESERVED_NAMES, name)) return RESERVED_NAMES[name];
   const uses = inputs.filter((field) => field.name === name).length;
   if (uses > 1) return 'Another input has this name.';
   return null;
@@ -57,9 +63,9 @@ export function inputsSummary(inputs: PipelineInput[], text: string): string {
   return inputs.length > 0 ? inputs.map(inputLabel).join(' · ') : text || 'Your text';
 }
 
-/** Placeholders in a prompt that neither `{input}` nor a declared input fills. */
+/** Placeholders in a prompt that neither `{input}`, `{feedback}` nor a declared input fills. */
 export function unknownPlaceholders(prompt: string, inputs: PipelineInput[]): string[] {
-  const known = new Set([STAGE_INPUT, ...inputs.map((field) => field.name)]);
+  const known = new Set([...Object.keys(RESERVED_NAMES), ...inputs.map((field) => field.name)]);
   const used = [...prompt.matchAll(PLACEHOLDER)].map((match) => match[1]);
   return [...new Set(used)].filter((name) => !known.has(name));
 }
