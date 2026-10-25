@@ -14,9 +14,10 @@ function SectionIntro() {
       </h2>
       <p className="mt-2 mb-6 text-sm text-slate-400">
         Connect a service that gives you an MCP server URL, such as your CRM, a database, your
-        company&apos;s tools or an automation hub. Its tools become available to your agents in chat
-        and pipelines. Only your account can use the integrations you add here. In a run, its tools
-        ask for your OK before they act, unless you switch that off for an integration.
+        company&apos;s tools or an automation hub. Its tools become available to your agents. Only
+        your account can use the integrations you add here. In a pipeline run, its tools ask for
+        your OK before they act. Chat cannot ask, so it only uses the tools of an integration you
+        switch that off for.
       </p>
     </>
   );

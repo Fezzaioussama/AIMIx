@@ -101,17 +101,18 @@ sequenceDiagram
     X->>G: arun(snapshot, agent, inputs, RunControl(observer, completed))
     loop each stage, its steps concurrently (PIPELINE_MAX_PARALLEL_STEPS)
         G->>O: STARTED → step row "running" (own short transaction)
-        G->>A: execute(task): model, role, tools (agent_runtime; MCP_SERVERS + enabled integrations via mcp_connections_for, a failing integration skipped)
+        G->>A: execute(task + run_step): model, role, tools (agent_runtime; MCP_SERVERS + enabled integrations via mcp_connections_for, a failing integration skipped)
+        Note over A: a tool that must ask first waits for the owner (run "waiting", see Approval gates)
         A-->>G: final text and tool name/status trace, or DomainError
         G->>O: SUCCEEDED / FAILED / CANCELLED → step row
         G->>G: join the stage; merge outputs in saved order
     end
     X->>O: end(): succeeded, or failed (code + detail) — compare-and-set
-    loop every RUN_POLL_INTERVAL_MS (1.5 s) while queued or running
+    loop every RUN_POLL_INTERVAL_MS (1.5 s) while queued, running or waiting
         UI->>C: getRun(id)
         C->>E: GET /runs/<id>
-        E->>D: get_owned(user, id) with steps (another user's is 404)
-        E-->>UI: RunOut: status, every step so far, outputs as soon as saved
+        E->>D: get_owned(user, id) with steps and pending approvals (another user's is 404)
+        E-->>UI: RunOut: status, every step so far, outputs as soon as saved, pending_approvals
     end
 ```
 
@@ -124,16 +125,18 @@ succeeded | failed`; the step events come from the graph through the
 synchronously on the run's loop, so a run's events stay in order).
 
 **Stop** (`POST /runs/<id>/cancel`): the request writes `cancelled` (from
-`queued` or `running`) and marks running steps `cancelled`, then asks the
-executor to cancel the task. LangGraph cancels the in-flight agents, whose
-model calls are cut at once; a run still waiting for a slot simply never
-starts. Stopping a finished run changes nothing.
+`queued`, `running` or `waiting`), marks running steps `cancelled` and expires
+the approvals still pending, then asks the executor to cancel the task.
+LangGraph cancels the in-flight agents, whose model calls are cut at once (an
+agent waiting at an approval gate is cut the same way); a run still waiting for
+a slot simply never starts. Stopping a finished run changes nothing.
 
 **Interrupted.** On shutdown (FastAPI lifespan) the executor cancels its jobs;
 a cancelled job records `interrupted`, unless its owner stopped it first (then
 it stays `cancelled`). On startup, `interrupt_abandoned_runs` marks anything a
-previous process left `queued` or `running` (a crash, a hard kill) as
-`interrupted`. Both can be resumed.
+previous process left `queued`, `running` or `waiting` (a crash, a hard kill)
+as `interrupted`, and its pending approvals as `expired`. Both can be resumed;
+a resumed run asks again.
 
 **Resume** (`POST /runs/<id>/resume`, from `failed`, `cancelled` or
 `interrupted`): the run is queued again with the requester's current model and
@@ -151,9 +154,10 @@ its end (`RunService.run_to_end`), so their runs are recorded too.
 | Need | Hook |
 |---|---|
 | React to each step (token and cost tracking, notifications) | Implement `StepObserver.on_step_event(StepEvent)` (`multiagent/contracts.py`). New data goes in a new optional field of `StepEvent` or `StepResult` (an agent fills it through `AgentOutcome`); the graph's control flow does not change. The graph awaits the observer, so it can also hold a step back. |
-| Pause a run (approval gates) | End the run in a new status from the job (`RunService._execute`) and let `resume` continue it; `RunControl.completed` already skips the finished steps. Add the status to `RunStatus` and, if it can continue, to `RESUMABLE_RUN_STATUSES` (`api/models.py`); mirror it in `frontend/src/features/runs/runStatus.ts` and `RUN_STATUS_STYLES`. |
+| Hold a tool call for a person (approval gates, built) | A tool asks first when `ApprovalPolicy.asks(name, source)` says so (`approvals/policy.py`: `MCP_REQUIRE_APPROVAL`, each integration's switch, `AGENT_APPROVAL_TOOLS`). To gate something else, add the source or tool name to the policy; the guard and the middleware need no change. See [Approval gates](#approval-gates). |
+| Pause a run another way | End the run in a new status from the job (`RunService._execute`) and let `resume` continue it; `RunControl.completed` already skips the finished steps. Add the status to `RunStatus` and, if it can continue, to `RESUMABLE_RUN_STATUSES` (`api/models.py`); mirror it in `frontend/src/features/runs/runStatus.ts` and `RUN_STATUS_STYLES`. |
 | Start runs without a request (schedules) | `RunService(database, executor, max_parallel_steps).start(user, pipeline, RunStart(...), agent)`; the app's executor is `app.state.run_executor` (`RunExecutor`: `submit(key, job) -> Future`, `cancel(key)`, `shutdown()`). |
-| Show a run on another screen | `const live = useRun(runId)` then `<LiveRun run={live.run} onStop={live.stop} onResume={live.resume} busy={live.busy} error={live.error} actions={…}>…</LiveRun>` (`features/runs`). |
+| Show a run on another screen | `const live = useRun(runId)` then `<LiveRun run={live.run} onStop={live.stop} onResume={live.resume} onApprove={live.approve} onDecline={live.decline} busy={live.busy} error={live.error} actions={…}>…</LiveRun>` (`features/runs`). Without `onApprove` and `onDecline` a waiting run's requests are shown but cannot be answered on that screen. |
 
 A pipeline may declare named inputs. `pipeline_inputs.bind_run_inputs` checks
 the request against them before the graph starts: the first stage receives
@@ -269,6 +273,10 @@ both into an `MCPConnections(operator, user)` value; the chat agent
 catalogue (`tool_catalog.py`, behind `GET /agent-tools` and the planner) all
 call it, so they always agree on what a user can reach.
 
+Whether those tools may act without asking is a separate question, answered per
+source by the [approval policy](#approval-gates): an operator server asks while
+`MCP_REQUIRE_APPROVAL` is on, an integration while its own switch is on.
+
 `mcp_discovery.discover_tools` loads the tools, every name prefixed with its
 server's name:
 
@@ -317,7 +325,91 @@ tool policy and error mapping in `agent_runtime.py`.
 
 A run's durable state is its database rows (one per step), not a LangGraph
 checkpoint: progress is saved step by step, and resuming re-enters the graph
-with the saved results. Tool actions still run without an approval step.
+with the saved results. A tool that can act on an outside system waits for the
+owner's OK first (next section).
+
+### Approval gates
+
+A tool from an MCP server can change something outside AIMIx (send an email,
+update a CRM). Inside a run, such a call stops at a **gate** until the run's
+owner approves or declines it. `api/services/approvals/` holds the parts:
+
+| Module | Role |
+|---|---|
+| `policy.py` | `approval_policy_for(database, user, settings)` is the one place that decides which tool calls ask first; it returns an immutable `ApprovalPolicy` (Value Object) that travels with the tools (`AgentToolset.approvals`). |
+| `guard.py` | `guard_tools(toolset, tools, gate)` applies the policy to an agent's resolved tools, for chat and step agents alike, and `run_gate` builds a step's gate. |
+| `middleware.py` | `ApprovalMiddleware`, a LangChain agent middleware (Decorator) whose `awrap_tool_call` holds each call of a gated tool at the gate, and runs the tool itself only once it is approved. |
+| `gate.py` | The `ApprovalGate` port and `RunApprovalGate`, which records the request and waits for the answer in the database. |
+| `decisions.py` | `answer()`, the owner's approve or decline, and `settle()`, the one compare-and-set that ends a request. |
+| `preview.py` | `preview_arguments`: the call's arguments as JSON the owner reads, within `APPROVAL_ARGUMENTS_MAX_CHARS`. |
+
+**Which calls ask first.** A tool asks when its *source* asks, or when its name
+is in `AGENT_APPROVAL_TOOLS` (meant for built-in tools such as `save_artifact`;
+default none). Sources, as `tool_catalog.source_of` names them: every tool of
+the operator's `MCP_SERVERS` while `MCP_REQUIRE_APPROVAL` is on (the default),
+and every tool of one of the user's integrations whose "Ask me before its tools
+act" switch is on (`Integration.require_approval`, on by default, also for
+integrations saved before it existed). The policy is read for each step's
+agent, so a switch changed in Settings applies from the next step.
+
+```mermaid
+sequenceDiagram
+    participant A as step agent (LangChain)
+    participant M as ApprovalMiddleware
+    participant G as RunApprovalGate
+    participant D as database (run_approvals, runs)
+    participant U as the owner (UI)
+    A->>M: tool call crm_send_email(args)
+    M->>G: ask(ToolRequest)
+    G->>D: approval "pending" and run "running" → "waiting" (one transaction)
+    loop every APPROVAL_POLL_SECONDS (1 s), asyncio.sleep in between
+        U->>D: GET /runs/<id> lists pending_approvals
+        G->>D: read the approval's status
+    end
+    U->>D: POST /runs/<id>/approvals/<id>/approve (or decline)
+    D-->>G: "approved" (or "declined"); the run is "running" again
+    G-->>M: APPROVED
+    M->>A: the tool runs and its result goes back to the agent
+    Note over M,A: declined or expired: no tool call, the agent gets an error result and goes on
+```
+
+**The wait.** The gate polls the database instead of holding an in-memory
+event, so an answer reaches it whichever thread (or process) took the request,
+and `asyncio.sleep` keeps the run's event loop free for other runs. The step
+stays `running`; the run shows `waiting` for as long as any of its approvals is
+pending (`repositories/approvals`: recording a request moves it there, settling
+the last pending one moves it back), and `waiting` counts as active everywhere
+`queued` and `running` do (`ACTIVE_RUN_STATUSES`: stop, no delete, restart
+recovery, polling). Several steps may ask at once, each with its own request.
+
+**How a request ends**, always one compare-and-set from `pending`, so the
+owner, the timeout and a stopped run never overwrite one another:
+
+| Outcome | When | What the agent gets |
+|---|---|---|
+| `approved` | The owner approves in time | The tool's own result |
+| `declined` | The owner declines | An error result: "The user declined this action. Do not repeat it: continue without it…" |
+| `expired` | Nobody answers within `APPROVAL_TIMEOUT_SECONDS` (default 1800), or the run is stopped, the step fails or times out, the server shuts down or restarts | An error result (a stopped run's agent is cancelled instead) |
+
+The step's trace shows a declined or expired call as `error`. An answer after
+the time is up expires the request instead (`409 conflict`); the same answer
+twice changes nothing. The wait counts toward the step's
+`AGENT_TIMEOUT_SECONDS`, so a request never waits longer than that either. A
+request is never recorded for a run that is no longer executing.
+
+**Where nobody can be asked.** The chat has no run to pause, so the tools that
+ask first are not offered to the chat agent (it can still start a pipeline
+run, whose steps ask). The same goes for a step outside a recorded run
+(`pipelines.run`, used by tools and tests). `POST /pipelines/<id>/run` and the
+chat's `run_pipeline` tool wait for a run's end, so a run of theirs that asks
+keeps them waiting until it is answered (or expires); the owner answers it from
+the Runs page.
+
+**What is stored and logged.** One `run_approvals` row per request: the run,
+step, tool name, source, description, the arguments (JSON, long text values
+shortened), status, and `created_at`, `expires_at` and `decided_at`. Arguments
+are for the owner's eyes only: `approval.requested` and `approval.decided` log
+ids, step, tool name and outcome, never the arguments.
 
 ### 2. Stream chat — `POST /api/chat`
 
@@ -331,7 +423,9 @@ with the saved results. Tool actions still run without an approval step.
    from every server in `MCP_SERVERS` and the user's enabled integrations. Graph execution runs in one producer
    task, which sends assistant text through a queue. Model and MCP calls have
    timeouts; tool results stay out of the text stream. Shared tool policy and
-   error mapping live in `services/agent_runtime`.
+   error mapping live in `services/agent_runtime`. A chat has no run to pause,
+   so tools that must ask the owner first (see [Approval gates](#approval-gates))
+   are not offered to it.
 4. `stream_reply` **pulls the first chunk eagerly**. If agent setup or a tool
    fails before text appears, a `DomainError` is raised while the response is
    still uncommitted, so the client gets a real 5xx error body.
@@ -441,7 +535,10 @@ server — never a 200 with an error inside.
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Observer + Null Object | `StepObserver` / `SILENT_OBSERVER` in `multiagent/contracts.py`, `services/run_recorder.RunRecorder` | The graph reports step events without knowing who listens; persistence is one listener |
 | Background executor | `api/services/run_executor.py` (`RunExecutor`, `BackgroundRunExecutor`) | Runs leave the request path; bounded concurrency; swappable in tests |
-| Compare-and-set | `api/repositories/runs.py` | Request threads and the executor change a run's status without overwriting each other |
+| Compare-and-set | `api/repositories/runs.py`, `api/repositories/approvals.py` | Request threads and the executor change a run's status, and the owner, the timeout and a stopped run settle an approval, without overwriting each other |
+| Decorator (middleware) | `api/services/approvals/middleware.ApprovalMiddleware` | A gated tool keeps its own checks and result format; the gate wraps each call |
+| Port + Adapter | `approvals/gate.ApprovalGate`, `RunApprovalGate` | The middleware asks a port; the database-backed gate is one implementation, a scripted one serves tests |
+| Value Object | `approvals/policy.ApprovalPolicy` | Which tools ask first, resolved once and passed with the tools |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
 | Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |
 | Builder | `api/services/prompts.py` | Prompt text kept apart from transport |

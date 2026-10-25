@@ -11,17 +11,6 @@ Delete an entry when you fix it.
 add `limit`/`offset` query parameters in the repository and endpoint (and update
 the client) if lists grow large.
 
-### 4. Tool actions have no approval flow
-
-Runs are recorded step by step and can be stopped and resumed, but a step's
-agent calls its tools (web fetch, workspace writes, MCP tools) without asking
-anyone first.
-
-**Fix:** an explicit approval gate for actions that require review: pause the
-run before such a step (a new resumable status, see "Extension points" in
-[architecture.md](architecture.md#extension-points)) and resume it once
-approved.
-
 ### 5. Document inputs are read in the request thread
 
 `POST /documents/extract` parses, renders and OCRs in the request's worker
@@ -89,6 +78,37 @@ back to Helvetica: Western European text only.
 **Fix:** point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a family that covers the
 scripts you need (for example Noto), add an italic font setting, and enable
 ReportLab's optional shaping extras for right-to-left text.
+
+### 8. Approval gates: what they leave out
+
+Tools of MCP servers and integrations (and the built-in tools in
+`AGENT_APPROVAL_TOOLS`) wait for the run owner's OK inside a pipeline run
+([architecture.md](architecture.md#approval-gates)). Limits of the first version:
+
+- **Chat cannot ask.** The tools that ask first are not offered to the chat agent,
+  so with the defaults (`MCP_REQUIRE_APPROVAL=true`, integrations asking) chat has
+  no MCP tools until the operator or the user switches approval off.
+- **Every call asks, or none does.** There is no "always allow this tool" or
+  "allow for this run"; the choice is per source (the operator's servers, one
+  integration) and a step that makes ten calls asks ten times.
+- **Built-in tools do not ask by default.** `web_search`, `fetch_url`,
+  `save_artifact`, `run_python` and the workspace tools act unattended unless
+  `AGENT_APPROVAL_TOOLS` names them.
+- **A step cannot be approved ahead of time**, and the builder does not mark
+  which tools will ask. The wait counts toward the step's `AGENT_TIMEOUT_SECONDS`,
+  and a restart expires the requests (a resumed run asks again).
+- **Waiting is polled.** A run reads the database about once a second
+  (`APPROVAL_POLL_SECONDS`) and the page polls the run every 1.5 s, so an answer
+  takes up to a second or two to show. There is no notification outside the Runs
+  tab's count, and no email or push.
+- **The compatibility endpoint blocks.** `POST /pipelines/<id>/run` and chat's
+  `run_pipeline` wait for a run's end, so one that asks keeps its caller waiting
+  until the owner answers on the Runs page (or the request expires).
+
+**Fix options:** per-tool "always allow" rules saved with the integration; a
+`requires_approval` flag in `GET /agent-tools` so the builder can show which
+tools will ask; pausing the step's timeout clock while it waits; push or email
+notifications for waiting runs; letting chat ask inline.
 
 ### 6. Runs execute inside the API process
 

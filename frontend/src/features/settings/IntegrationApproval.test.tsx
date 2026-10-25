@@ -33,7 +33,9 @@ describe('an integration asks before its tools act', () => {
 
     const asks = within(card).getByRole('switch', { name: 'Ask me before its tools act' });
     expect(asks).toBeChecked();
-    expect(asks).toHaveAccessibleDescription('In a run, each action waits for your OK first.');
+    expect(asks).toHaveAccessibleDescription(
+      'In a run, each action waits for your OK first. Chat cannot use its tools.',
+    );
   });
 
   it('switches off, saving only that field, and says what it now means', async () => {
@@ -47,7 +49,9 @@ describe('an integration asks before its tools act', () => {
     expect(await screen.findByText('crm will act without asking you first.')).toBeInTheDocument();
     const asks = screen.getByRole('switch', { name: 'Ask me before its tools act' });
     expect(asks).not.toBeChecked();
-    expect(asks).toHaveAccessibleDescription('Its tools act without asking you first.');
+    expect(asks).toHaveAccessibleDescription(
+      'Its tools act without asking you first, in runs and in chat.',
+    );
   });
 
   it('switches back on', async () => {

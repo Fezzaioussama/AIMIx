@@ -61,7 +61,7 @@ resolves the session before the first render without a redirect flash.
 | File | Contents |
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
-| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, and runs (`Run`, `RunStep` — a `StepResult` plus status, error and times — `RunSummary`, `RunPage`, `RunStatus`, `RunStepStatus`). |
+| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, and runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error and times — `RunSummary`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, `RunApproval`, `ApprovalStatus`). |
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request` and `requestBlob` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
@@ -73,7 +73,8 @@ resolves the session before the first render without a redirect flash.
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 | `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
-| `runs.ts` | `startRun`, `listRuns` (page, optional pipeline), `getRun`, `cancelRun`, `resumeRun`, `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
+| `runs.ts` | `startRun`, `listRuns` (page, optional pipeline and status), `countWaitingRuns` (`listRuns` for `status=waiting`, one run: its `total`), `getRun`, `cancelRun`, `resumeRun`, `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
+| `approvals.ts` | `approveToolCall(runId, approvalId)` and `declineToolCall(...)`: answer a tool call a run waits on; each gives back the updated run, and a clash or an expired request is a 409 `conflict` |
 | `errorMessage.ts` | `errorMessage(cause, fallback)`: a caught value as words for the person (an `ApiError`'s message, else the fallback) |
 
 ### What `client.ts` does for every call
@@ -232,7 +233,7 @@ Rules for motion:
 | `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
 | `stages.ts` | `groupByStage`, `nextStage`, `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
-| `PipelineNav.tsx` | Switch between Pipeline, Auto Pipeline, Templates and Runs |
+| `PipelineNav.tsx` | Switch between Pipeline, Auto Pipeline, Templates and Runs; the Runs tab carries an amber count (and the same in words for screen readers) while runs wait for the person to approve an action (`useWaitingRuns`) |
 | `modelLabel.ts` | Human-friendly label for a model id |
 
 ### `features/templates`
@@ -275,15 +276,17 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 
 | File | Role |
 |---|---|
-| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume, adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued or running and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
+| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume, approve, decline, adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued, running or waiting for an approval and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `approve(approvalId)` and `decline(approvalId)` answer a request and show the run as it comes back; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
 | `useLatestRun.ts` | The builder's follower: loads the pipeline's newest run when it opens (`GET /runs?pipeline_id=…&limit=1`) and `follow(run)` switches to a run started here |
-| `useFollowedRun.ts`, `FollowedRunBar.tsx` | What the builder needs from that run: whether one is active, the run the diagram may show (`shown`, only a run of exactly the version on screen) and its duration; and its status bar with Stop, Resume and "Open in Runs" |
+| `useFollowedRun.ts`, `FollowedRunBar.tsx` | What the builder needs from that run: whether one is active, the run the diagram may show (`shown`, only a run of exactly the version on screen) and its duration; and its status bar with Stop, Resume and "Open in Runs", and a card for each action the run waits on, so it can be answered there |
 | `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
-| `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, any `children` (e.g. its inputs), then the results. Pair it with `useRun` |
-| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, Stop / Resume and extra `actions`, an `aria-live` line, and why the run stopped (the failed step and its error, "You stopped this run", "The server restarted…") |
-| `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Done, Failed, Stopped, Interrupted) and colours |
+| `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume onApprove onDecline busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, the cards of the actions it waits on, any `children` (e.g. its inputs), then the results. Pair it with `useRun` (`onApprove={live.approve}`, `onDecline={live.decline}`); without both, requests are shown but not answerable on that screen |
+| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, Stop / Resume and extra `actions`, an `aria-live` line, and why the run stopped or waits (the failed step and its error, "You stopped this run", "The server restarted…", "This run is waiting for you…") |
+| `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under its status bar (a polite `aria-live` count), each as an `ApprovalCard`: "Needs your OK", `Allow “Send email”?`, which step and agent role asks and from which integration, the tool's description, what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), the time left (ticking, `useNow`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "No answer counts as a decline". `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`) |
+| `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. `PipelineNav` shows it as a badge on the Runs tab, with the same count in words for screen readers |
+| `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
-| `runStatus.ts` | `isActive`, `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
+| `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 
 ### `features/settings`
@@ -305,11 +308,12 @@ Integrations (the user's own MCP servers):
 | File | Role |
 |---|---|
 | `IntegrationsSection.tsx` | Heading, a plain-words explanation, the list, "+ Add an integration" and the section's notice |
-| `IntegrationCard.tsx` | One server: name, host, an on/off `role="switch"`, header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline confirmation that takes focus ("Keep it") and gives it back |
+| `IntegrationCard.tsx` | One server: name, host, an on/off `role="switch"`, an "Ask me before its tools act" switch (on by default; says in words that chat cannot use the tools of an integration that asks), header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline confirmation that takes focus ("Keep it") and gives it back |
+| `SwitchButton.tsx` | The `role="switch"` button both switches of a card share |
 | `ConnectionTestResult.tsx` | An always-present `aria-live` region: "Connecting…", the tools found (name and description), or why the test failed |
 | `IntegrationForm.tsx`, `HeaderRows.tsx` | Add or edit: name (typed as snake_case), server URL, and header rows whose values are password fields; a saved value shows only as "Saved value ending in …", and is kept when its field is left empty |
 | `integrationDraft.ts` | Pure helpers: the form draft, `draftProblem` (mirrors the backend rules: name pattern, URL, header names and values; every value again when the address changes), `toCreate`, `toPatch` (only what changed; a kept header is sent without its value) |
-| `useIntegrations.ts` | Loads the list, creates, updates, switches on/off and deletes through `useSubmission`, and keeps each connection test's result while the page is open (tests still running are cancelled on unmount) |
+| `useIntegrations.ts` | Loads the list, creates, updates, switches on/off (`setEnabled`, and `setRequireApproval` for "Ask me before its tools act") and deletes through `useSubmission`, and keeps each connection test's result while the page is open (tests still running are cancelled on unmount) |
 | `actionButton.ts` | The small secondary button styles the section uses (the page keeps one `GlowButton`) |
 
 ### `features/landing`
@@ -390,7 +394,16 @@ runs: `core/api/runs.test.ts`, `features/runs/useRun.test.tsx` (polling with
 fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx`,
 `LiveRun.test.tsx` (live statuses, Stop/Resume, failure explanation) and
 `RunsPage.test.tsx` (list, deep link, delete with confirmation);
-`features/runs/testData.ts` builds the runs they share.
+`features/runs/testData.ts` builds the runs and requests they share. For
+approval gates: `core/api/approvals.test.ts`, `approvalFormat.test.ts`,
+`ApprovalCard.test.tsx` (the words, folded values, the countdown, busy and
+read-only states), `PendingApprovals.test.tsx` (through `LiveRun` too),
+`useRunApprovals.test.tsx` (answering through `useRun`), `RunsPageWaiting.test.tsx`
+(a waiting run in the history, the Runs tab and its detail, approve, decline and a
+refused answer), `useWaitingRuns.test.tsx` and `features/pipelines/PipelineNav.test.tsx`
+(the badge), and `features/settings/IntegrationApproval.test.tsx` (the switch).
+`TemplatesPage.test.tsx` and `App.test.tsx` stub `useWaitingRuns`: they answer
+fetch calls in order, for their own screen.
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.

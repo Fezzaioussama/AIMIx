@@ -57,8 +57,8 @@ function ApprovalSwitch({
         </p>
         <p id={hintId} className="mt-0.5 text-xs text-slate-400">
           {asks
-            ? 'In a run, each action waits for your OK first.'
-            : 'Its tools act without asking you first.'}
+            ? 'In a run, each action waits for your OK first. Chat cannot use its tools.'
+            : 'Its tools act without asking you first, in runs and in chat.'}
         </p>
       </div>
       <SwitchButton

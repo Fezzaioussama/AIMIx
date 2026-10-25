@@ -65,11 +65,19 @@ like any other. Chat history is not persisted.
 
 Chat uses a LangGraph agent with the same provider and default model as
 pipelines (yours from Settings, else `LLM_PROVIDER`). Each pipeline step uses its selected model. Set `MCP_SERVERS` in
-`backend/.env` to a JSON object. Chat can use every tool advertised by the
-configured servers. Each pipeline step can use all tools, no tools, or a
-selected set according to its `allowed_tools` setting.
+`backend/.env` to a JSON object. Each pipeline step can use all tools, no tools,
+or a selected set according to its `allowed_tools` setting.
 No server is configured by default. The connectors in a coding assistant or IDE
 are separate and do not automatically become AIMIx server tools.
+
+**These tools ask first.** An MCP tool can change something outside AIMIx, so by
+default (`MCP_REQUIRE_APPROVAL=true`) a pipeline step that calls one waits for the
+run's owner to approve it: the run shows **Waiting for you** and a card with the
+tool and what it will use appears on the Runs page, with **Approve** and
+**Decline**. The chat has no run to pause, so it is *not offered* those tools.
+To let chat use the tools of `MCP_SERVERS`, set `MCP_REQUIRE_APPROVAL=false`:
+then they act without asking, in runs and in chat. See
+[Approvals](api-reference.md#approvals).
 
 For example, this public server exposes LangChain documentation tools:
 
@@ -102,7 +110,10 @@ Each user can also connect **their own** MCP servers on the Settings page
 `<name>_<tool>`; **Test connection** lists them. These servers must use
 `https` and a public address. To try one running on your machine, set
 `APP_ENV=local` and `INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true` in `backend/.env`;
-then `http://127.0.0.1:<port>/mcp` is accepted.
+then `http://127.0.0.1:<port>/mcp` is accepted. Each integration has an **Ask me
+before its tools act** switch, on by default: in a run, its tools wait for your
+approval, and chat is not offered them. Switch it off for an integration you
+trust to let its tools act at once, in runs and in chat.
 
 After starting the backend, `GET /api/agent-tools` lists each pipeline tool's
 name, description, and source (`AIMIx`, `MCP`, or the integration's name). The builder uses this list to
@@ -110,7 +121,10 @@ offer tool choices. Give a step an **Agent role** and choose **All tools**, **No
 tools**, or exact named tools. All tools is the default for older pipelines;
 the two native pipeline tools are `list_pipelines` and `inspect_pipeline`.
 An explicit tool list fails at run time if one of its names is no longer
-available. Tool actions run without an approval prompt.
+available. Built-in tools act without an approval prompt unless
+`AGENT_APPROVAL_TOOLS` names them (for example
+`AGENT_APPROVAL_TOOLS=save_artifact`); a request nobody answers within
+`APPROVAL_TIMEOUT_SECONDS` (30 minutes) counts as declined.
 
 ### Coming from the Django version
 
@@ -144,7 +158,7 @@ The backend start target applies pending database migrations before launching th
 
 ## Try each feature
 
-1. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and configured MCP tools.
+1. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and the configured MCP tools that need no approval (see [above](#give-chat-and-pipeline-steps-mcp-tools)).
 2. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage. Give each step a role, prompt, model, and tool
    access; mark deliverables as **Output**. Write prompts using `{input}`,
