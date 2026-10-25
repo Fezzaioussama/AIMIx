@@ -11,7 +11,10 @@ function EmptyState() {
   return (
     <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-300">
       No schedules yet. Open a saved pipeline and choose{' '}
-      <Link to="/pipeline" className="text-sky-300 underline-offset-2 hover:underline">
+      <Link
+        to="/pipeline"
+        className="rounded-sm text-sky-300 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+      >
         Schedule this pipeline
       </Link>{' '}
       to have it run by itself.

@@ -19,7 +19,8 @@ export interface SchedulePanelProps {
   className?: string;
 }
 
-const LINK = 'text-sky-300 underline-offset-2 hover:underline';
+const LINK =
+  'rounded-sm text-sky-300 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400';
 
 /**
  * "Schedule this pipeline": a foldable panel under the builder's title that makes the
