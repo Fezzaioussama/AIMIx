@@ -54,6 +54,19 @@ class DocumentSettings(BaseModel):
     document_max_unpacked_bytes: int = Field(
         50_000_000, ge=1, validation_alias="DOCUMENT_MAX_UNPACKED_BYTES"
     )
+    # ...and one with a part over this that may be XML (not a picture or other media):
+    # parsing a part costs time and memory far beyond its unpacked size.
+    document_max_xml_part_bytes: int = Field(
+        10_000_000, ge=1, validation_alias="DOCUMENT_MAX_XML_PART_BYTES"
+    )
+    # Documents read at once in the process (uploads and agents alike); another
+    # waits up to DOCUMENT_EXTRACTION_WAIT_SECONDS for a turn, then is refused.
+    document_max_concurrent_extractions: int = Field(
+        2, ge=1, validation_alias="DOCUMENT_MAX_CONCURRENT_EXTRACTIONS"
+    )
+    document_extraction_wait_seconds: float = Field(
+        30.0, gt=0, validation_alias="DOCUMENT_EXTRACTION_WAIT_SECONDS"
+    )
     # Refuse an image (or cap a rendered PDF page) past this size, before decoding it.
     document_max_image_pixels: int = Field(
         40_000_000, ge=1, validation_alias="DOCUMENT_MAX_IMAGE_PIXELS"
@@ -72,6 +85,10 @@ class DocumentSettings(BaseModel):
     document_ocr_max_pages: int = Field(30, ge=1, validation_alias="DOCUMENT_OCR_MAX_PAGES")
     document_ocr_timeout_seconds: float = Field(
         15.0, gt=0, validation_alias="DOCUMENT_OCR_TIMEOUT_SECONDS"
+    )
+    # All the OCR of one document; later scanned pages are skipped and named.
+    document_ocr_max_seconds: float = Field(
+        120.0, gt=0, validation_alias="DOCUMENT_OCR_MAX_SECONDS"
     )
     document_ocr_dpi: int = Field(300, ge=72, validation_alias="DOCUMENT_OCR_DPI")
 
