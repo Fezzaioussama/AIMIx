@@ -16,6 +16,7 @@ from api.routes import API_PREFIX, api_router
 from api.services.documents.ocr import ocr_config, ocr_engine
 from api.services.run_executor import BackgroundRunExecutor
 from api.services.runs import interrupt_abandoned_runs
+from api.services.schedules.scheduler import build_scheduler
 from config.logging_setup import configure_logging
 from config.settings import get_settings
 
@@ -23,9 +24,12 @@ from config.settings import get_settings
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Runs a previous process left active become resumable before any new one
-    starts; on shutdown, active runs are interrupted (and resumable) too."""
+    starts; on shutdown, active runs are interrupted (and resumable) too. The
+    scheduler starts runs in between, and stops before the executor does."""
     interrupt_abandoned_runs(app.state.database)
+    app.state.scheduler.start()
     yield
+    await asyncio.to_thread(app.state.scheduler.stop)
     await asyncio.to_thread(app.state.run_executor.shutdown)
 
 
@@ -49,6 +53,7 @@ def create_app() -> FastAPI:
     app.state.run_executor = BackgroundRunExecutor(
         settings.run_max_concurrent, settings.run_shutdown_grace_seconds
     )
+    app.state.scheduler = build_scheduler(app.state.database, app.state.run_executor, settings)
     install_error_handlers(app)
     install_middleware(app, settings)
     app.include_router(api_router())

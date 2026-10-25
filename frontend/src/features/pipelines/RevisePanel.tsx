@@ -1,10 +1,11 @@
-import { ChevronDown, Sparkles } from 'lucide-react';
-import { useId, useState, type ReactNode, type SyntheticEvent } from 'react';
+import { Sparkles } from 'lucide-react';
+import { useId, useState, type SyntheticEvent } from 'react';
 
 import type { Pipeline } from '../../core/api/types';
 import { Spinner } from '../../core/ui/Spinner';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from './buttonStyles';
+import { Foldable, PanelToggle } from './FoldablePanel';
 import { RevisionReview } from './RevisionReview';
 import { REVISION_EXAMPLES, REVISION_INSTRUCTION_MAX_LENGTH } from './revision';
 import {
@@ -56,7 +57,14 @@ export function RevisePanel({
       aria-labelledby={`${id}-title`}
       className={`rounded-2xl border border-indigo-400/20 bg-[linear-gradient(135deg,rgba(99,102,241,0.10),rgba(168,85,247,0.05))] ${className}`}
     >
-      <PanelToggle id={id} level={headingLevel} open={open} onToggle={() => setOpen(!open)} />
+      <PanelToggle
+        id={id}
+        level={headingLevel}
+        icon={<Sparkles aria-hidden="true" className="size-4 shrink-0 text-indigo-300" />}
+        title="Ask AIMIx to change this pipeline"
+        open={open}
+        onToggle={() => setOpen(!open)}
+      />
       <Foldable id={`${id}-body`} open={open}>
         <InstructionForm id={id} panel={panel} disabled={disabled} />
         <StatusLine panel={panel} />
@@ -76,50 +84,6 @@ export function RevisePanel({
         )}
       </Foldable>
     </section>
-  );
-}
-
-interface PanelToggleProps {
-  id: string;
-  level: 2 | 3;
-  open: boolean;
-  onToggle: () => void;
-}
-
-function PanelToggle({ id, level, open, onToggle }: PanelToggleProps) {
-  const Heading = level === 2 ? 'h2' : 'h3';
-  return (
-    <Heading id={`${id}-title`}>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={`${id}-body`}
-        onClick={onToggle}
-        className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold text-slate-100 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 sm:px-5"
-      >
-        <Sparkles aria-hidden="true" className="size-4 shrink-0 text-indigo-300" />
-        <span className="flex-1">Ask AIMIx to change this pipeline</span>
-        <ChevronDown
-          aria-hidden="true"
-          className={`size-4 shrink-0 text-slate-400 transition-transform duration-300 motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-    </Heading>
-  );
-}
-
-/** Opens by animating its grid row; `inert` keeps folded content out of reach. */
-function Foldable({ id, open, children }: { id: string; open: boolean; children: ReactNode }) {
-  return (
-    <div
-      id={id}
-      inert={!open}
-      className={`grid transition-[grid-template-rows] duration-300 motion-reduce:transition-none ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
-    >
-      <div className="min-w-0 overflow-hidden">
-        <div className="px-4 pb-5 sm:px-5">{children}</div>
-      </div>
-    </div>
   );
 }
 

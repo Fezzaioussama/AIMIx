@@ -25,6 +25,10 @@ export const API = {
     `/api/runs/${runId}/approvals/${approvalId}/approve`,
   declineToolCall: (runId: number, approvalId: number) =>
     `/api/runs/${runId}/approvals/${approvalId}/decline`,
+  schedules: '/api/schedules',
+  schedule: (scheduleId: number) => `/api/schedules/${scheduleId}`,
+  runSchedule: (scheduleId: number) => `/api/schedules/${scheduleId}/run`,
+  previewSchedule: '/api/schedules/preview',
   extractDocument: '/api/documents/extract',
   files: '/api/files',
   /** One file of the user's workspace, by its '/'-separated path. */

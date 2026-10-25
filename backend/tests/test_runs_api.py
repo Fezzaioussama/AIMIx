@@ -20,6 +20,8 @@ SUMMARY_KEYS = {
     "id",
     "pipeline_id",
     "pipeline_name",
+    "trigger",
+    "schedule_id",
     "status",
     "error",
     "created_at",

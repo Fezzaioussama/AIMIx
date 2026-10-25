@@ -17,6 +17,8 @@ import { MissionPage } from './features/mission/MissionPage';
 import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
 import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
 import { RunsPage } from './features/runs/RunsPage';
+import { SCHEDULES_PATH } from './features/schedules/paths';
+import { SchedulesPage } from './features/schedules/SchedulesPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { TemplatesPage } from './features/templates/TemplatesPage';
 
@@ -136,6 +138,8 @@ export function App() {
         <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/files" element={<FilesPage />} />
+        {/* A fixed path wins over the run id below it. */}
+        <Route path={SCHEDULES_PATH} element={<SchedulesPage />} />
         <Route path="/runs/:runId?" element={<RunsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

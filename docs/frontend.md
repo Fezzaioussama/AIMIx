@@ -28,7 +28,8 @@ frontend/src/
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, LiveRun, useRun and the run history
-    settings/       # SettingsPage: LLM providers, Integrations (users' MCP servers) and Usage
+schedules/ # the Schedule panel (builder) and the Schedules view of the Runs screen
+settings/ # SettingsPage: LLM providers, Integrations (users' MCP servers) and Usage
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -46,13 +47,14 @@ frontend/src/
 | `/templates` | `TemplatesPage` | guarded |
 | `/files` | `FilesPage` | guarded |
 | `/runs`, `/runs/:runId` | `RunsPage` (one route, `/runs/:runId?`) | guarded |
+| `/runs/schedules` | `SchedulesPage` (a fixed path, so it wins over `:runId`; `SCHEDULES_PATH`) | guarded |
 | `/settings` | `SettingsPage` | guarded |
 | `*` | redirect to `/login` | — |
 
 Guarded routes render inside `AppShell`: a static `AmbientBackdrop`, the fixed
 top nav (its highlight slides between items; "Pipelines" covers the pipeline
 screens, the template gallery and the run history, including the routes below
-them such as `/runs/7`; "Missions" covers `/mission` and `/mission/7`) and the
+them such as `/runs/7` and `/runs/schedules`; "Missions" covers `/mission` and `/mission/7`) and the
 `RequireAuth` outlet, which `PageTransition` eases in when the first path segment
 changes (so `/runs` → `/runs/7` and `/mission` → `/mission/7` keep the page
 mounted). `/mission` is the front door: signing in (`LoginPage`) and "Open the
@@ -73,7 +75,7 @@ resolves the session before the first render without a redirect flash.
 | File | Contents |
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
-| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, and runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, `RunApproval`, `ApprovalStatus`), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`). |
+| `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary` with its `RunTrigger` and `schedule_id`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, `RunApproval`, `ApprovalStatus`), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`) and schedules (`Schedule`, `ScheduleTiming`, `ScheduleFrequency`, `ScheduleInput`, `SchedulePatch`, `SchedulePreview`). |
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request` and `requestBlob` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
@@ -134,9 +136,11 @@ on
 the
 server
 |
-⏎
+
+
 | `approvals.ts` | `approveToolCall(runId, approvalId)` and `declineToolCall(...)`: answer a tool call a run waits on; each gives back the updated run, and a clash or an expired request is a 409 `conflict` |
 | `usage.ts` | `fetchUsage(days, signal)`: what the account's runs of the last days used and cost (`GET /usage`) |
+| `schedules.ts` | `listSchedules` (all, or one pipeline's), `createSchedule`, `updateSchedule` (`PATCH`), `deleteSchedule`, `runScheduleNow` and `previewSchedule` (when a timing would first run) — each takes an optional abort signal, all with the default 30 s timeout |
 | `errorMessage.ts` | `errorMessage(cause, fallback)`: a caught value as words for the person (an `ApiError`'s message, else the fallback) |
 
 ### What `client.ts` does for every call
@@ -224,6 +228,8 @@ Components here render and animate; they never fetch or touch storage.
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
 | `navIcons.ts` | `navIcon(route)`: the top bar's icon per section, used on a phone above each label |
 | `BusyNotice.tsx`, `Spinner.tsx` | Loading line with shimmer text; the spinner (`decorative` hides it inside a labelled control) |
+| `SwitchButton.tsx` | The bare `role="switch"` button: `checked`, `disabled`, `onChange(next)`, and its name from `label`, or from the visible text it points to with `labelledBy` and `describedBy`. The one switch every other is built on |
+| `ToggleSwitch.tsx` | A `SwitchButton` with its state in words ("On" / "Off") beside it: `checked`, `label` (its accessible name), `disabled`, `onChange(next)`. Shared by the integrations and the schedules |
 | `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
@@ -363,11 +369,12 @@ server would need a table and endpoints; that is not part of this version.
 
 | File | Role |
 |---|---|
-| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results. It follows the open pipeline's newest run (`features/runs/useFollowedRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`FollowedRunBar`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
+| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results; under its title the foldable "Ask AIMIx to change this pipeline" and "Schedule this pipeline" ([`features/schedules`](#featuresschedules)) panels. It follows the open pipeline's newest run (`features/runs/useFollowedRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`FollowedRunBar`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
 | `AttachDocument.tsx`, `useAttachDocument.ts` | "Attach a document" under every run input: choose a PDF, Word, Excel, PowerPoint, image, HTML, CSV or text file (the picker's `accept` and the helper text both come from `DOCUMENT_FORMATS`), the server reads it (`core/api/documents.ts`), and its text is added to the input under a `[Document: name]` line, where it stays editable. The hook reads its callback when the file *finishes* (so text typed meanwhile is kept), replaces a file still being read, and cancels on unmount. Refusals show the backend's reason under that field |
-| `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none, then the optional cost limit |
+| `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none, then the optional cost limit. `RunInputCard` exports `RunInputFields` (those fields alone, with "Attach a document"; an optional `label` names the free-text field), which the schedule form asks its inputs with too, naming it "Input for each scheduled run" so the builder page never holds two fields called "Run input" |
 | `CostLimitField.tsx` | The "Stop if it costs more than $…" field of the run form: optional, labelled, with its hint or problem under it as a polite live region. The draft keeps it as typed text (`RunDraft.maxCost`); `costLimitProblem` flags text that is not an amount above zero and `isRunReady` then blocks the run, because running without the cap the person asked for would be worse than not running. `runRequest` sends it as `max_cost_usd` |
 | `StepHeading.tsx` | The title row of a step's card: name, position, model, Output badge and, for a followed run's step, what its model calls cost (`CostText`; a pending step shows nothing) |
+| `FoldablePanel.tsx` | `PanelToggle` (the bar: a heading holding one button with an icon, a title and a chevron, `aria-expanded` / `aria-controls`) and `Foldable` (the body, animated by its grid row, `inert` while folded). `RevisePanel` and `SchedulePanel` are built on them |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, replacing the whole draft (`replace`, for an accepted revision), saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
 | `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps, `replace` (an accepted revision) and saving the proposed workflow (later saves update it) |
@@ -452,7 +459,28 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
+| `RunsHeader.tsx` | The header both views of the Runs screen share: brand, the pipeline sub-navigation, and two underline tabs, History (`/runs`) and Schedules (`/runs/schedules`, `aria-current` on the one shown), then a line of text. The sub-navigation is unchanged, so it still fits a phone |
+| `RunTriggerTag.tsx` | A small clock and "Scheduled" for a run a schedule started (`trigger === 'schedule'`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
+| `RunByline.tsx` | The line under a run's title in `RunDetail`: "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a scheduled run, the link only while the pipeline exists) |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
+
+### `features/schedules`
+
+Runs that start on their own (`/api/schedules`). Two screens use one form:
+the builder's **Schedule this pipeline** panel creates a schedule, and the
+**Schedules** view of the Runs screen (`/runs/schedules`) lists, switches, edits,
+runs and deletes them.
+
+| File | Role |
+|---|---|
+| `scheduleDraft.ts` | Pure helpers: `ScheduleDraft` (what the form holds), `FREQUENCIES` (one rule per preset — its label, which fields it asks for, how it reads in words: Strategy + Registry, mirroring the backend's presets), `describeTiming` ("Every Monday at 09:00, Paris time"; hourly names no zone; a day past the 28th adds "or the last day, in shorter months"), `formatNextRun` ("Mon 26 Oct, 09:00" on the schedule's own clock), `timeZoneOptions` (UTC first, then every zone `Intl` knows, and the current one), `withFrequency` (hourly asks for minutes instead of a time), `scheduleProblem`, and `toCreate` / `toPatch` / `draftFromSchedule`. It works out no time itself: when a schedule runs is the server's rule |
+| `ScheduleFields.tsx` | The timing fields: Repeat, Day of the week (weekly) or Day of the month (monthly), Time (or Minutes past the hour when hourly) and Time zone. Native `time` and `select` controls with `color-scheme: dark`; every control labelled |
+| `ScheduleForm.tsx` | The form both screens share: the fields, a live `role="status"` summary (the timing in words, then "Next run: …"), the run inputs asked like a manual run's (`RunInputFields`, under a "What each run is given" legend), a problem shown as an alert only after a first try, and an optional `blocked` reason that disables saving. It keeps its own draft, starting from `initial`; give it a `key` to start over |
+| `useSchedulePreview.ts` | `useSchedulePreview(timing \| null)` → `{ nextRunAt, error, loading }`: asks `POST /api/schedules/preview` once the timing has stayed put for `PREVIEW_DELAY_MS` (300 ms), aborts a request a newer timing makes obsolete or the screen leaving, ignores an answer that arrives after its request was dropped, and asks nothing for an incomplete timing |
+| `SchedulePanel.tsx`, `useCreateSchedule.ts` | The builder's foldable panel (built on `FoldablePanel`, mounted under `RevisePanel`). Its body is built when first opened (a page that never opens it asks the server nothing) and starts afresh for another pipeline. An unsaved pipeline is told to save first; unsaved edits disable saving ("a schedule runs the saved version"). `useCreateSchedule(pipelineId, inputs)` → `{ busy, error, created, create }`: after a schedule is created the form is replaced by a fresh one, so one press never saves it twice, and leaving drops the request |
+| `SchedulesPage.tsx`, `useSchedules.ts` | The Schedules view: loading, an empty state that points to the builder, and the list; each outcome appears as a notice above the list, so a refusal is never below the fold. `useSchedules()` → `{ schedules, status, notice, actions }` with `update`, `setEnabled`, `remove` and `runNow` (which resolves to the started run, or `null`), over the settings' `useSubmission` (one busy flag, one notice). The list is fetched again every `ACTIVE_REFRESH_MS` (5 s) while a listed last run is queued or running and every `IDLE_REFRESH_MS` (30 s) otherwise, so a schedule that fires while the page is open shows up; the refresh pauses while a change is being saved (an older refresh can never put the old state back), a failed one is tried again, and everything is cancelled on unmount |
+| `ScheduleList.tsx`, `ScheduleCard.tsx` | Each schedule as a card — its pipeline (a link to the builder), the timing in words, an on/off `ToggleSwitch`, "Next run" (or "Off. It will not run until you turn it on."), "Last run" (the date and a status badge, a link to the run), why the last time could not start, and Run now / Edit / Delete — or, while being edited, as its form with the pipeline's inputs, across the whole row. Delete asks first, with focus on "Keep it", which gives focus back to Delete; closing the form returns focus to Edit. "Run now" opens the run it started |
+| `paths.ts` | `SCHEDULES_PATH`, the one place the route is written |
 
 ### `features/settings`
 
@@ -480,8 +508,7 @@ Integrations (the user's own MCP servers):
 | File | Role |
 |---|---|
 | `IntegrationsSection.tsx` | Heading, a plain-words explanation, the list, "+ Add an integration" and the section's notice |
-| `IntegrationCard.tsx` | One server: name, host, an on/off `role="switch"`, an "Ask me before its tools act" switch (on by default; says in words that chat cannot use the tools of an integration that asks), header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline confirmation that takes focus ("Keep it") and gives it back |
-| `SwitchButton.tsx` | The `role="switch"` button both switches of a card share |
+| `IntegrationCard.tsx` | One server: name, host, an on/off `ToggleSwitch`, an "Ask me before its tools act" switch (on by default; says in words that chat cannot use the tools of an integration that asks), header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline confirmation that takes focus ("Keep it") and gives it back |
 | `ConnectionTestResult.tsx` | An always-present `aria-live` region: "Connecting…", the tools found (name and description), or why the test failed |
 | `IntegrationForm.tsx`, `HeaderRows.tsx` | Add or edit: name (typed as snake_case), server URL, and header rows whose values are password fields; a saved value shows only as "Saved value ending in …", and is kept when its field is left empty |
 | `integrationDraft.ts` | Pure helpers: the form draft, `draftProblem` (mirrors the backend rules: name pattern, URL, header names and values; every value again when the address changes), `toCreate`, `toPatch` (only what changed; a kept header is sent without its value) |
@@ -601,6 +628,18 @@ addresses and what a tab remembers). `App.test.tsx` checks the nav order and the
 Missions route, `features/auth/LoginPage.test.tsx` the landing after sign-in,
 `features/pipelines/OpenInMissionLink.test.tsx` the builder's link and
 `core/hooks/useMediaQuery.test.tsx` the media-query hook.
+For schedules:
+`core/api/schedules.test.ts`, `features/schedules/scheduleDraft.test.ts` (words,
+ordinals, next-run text across zones, drafts and requests),
+`useSchedulePreview.test.tsx` (fake timers: the delay, the burst, the same timing
+twice, a superseded request, errors, unmount), `useSchedules.test.tsx`,
+`useCreateSchedule.test.tsx`, `SchedulePanel.test.tsx` (folded until opened and
+asking nothing until then, the fields each frequency needs, the live summary,
+every refusal, named inputs, busy, afresh per pipeline), `SchedulesPage.test.tsx`
+(the list, off and failed times, toggle, delete with confirmation and focus, edit
+in place, run now) and `features/runs/RunScheduledMark.test.tsx`;
+`features/schedules/testData.ts` holds their fixtures and `serve`, a fetch stand-in
+that answers each `METHOD /path` from a table and records the calls.
 `test-setup.ts` makes `getContext` return `null`, i.e. tests run as a browser
 without WebGL or canvas, and stubs the observers jsdom lacks. Watch mode:
 `npm run test:watch`.

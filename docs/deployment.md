@@ -224,6 +224,47 @@ Things to know:
   recorded"); the migration (`d51cc5c2111e`) adds its columns in place and keeps
   every run and step.
 
+### Scheduled runs
+
+Users can make a pipeline run by itself (the builder's *Schedule this pipeline*
+panel, listed under *Runs → Schedules*). The scheduler is a thread **inside the
+API process**: every `SCHEDULER_TICK_SECONDS` it starts the runs that are due, on
+the same executor as manual runs, so `RUN_MAX_CONCURRENT` still bounds them and
+the rest wait queued.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SCHEDULER_ENABLED` | `true` | `false` keeps every schedule saved and starts none. Use it on any process that is not *the* one scheduler |
+| `SCHEDULER_TICK_SECONDS` | `30` | How often due schedules are looked for; a run starts at most this late |
+| `SCHEDULES_MAX_PER_USER` | `20` | Schedules one account may have (`0` stops new ones; existing ones keep running until switched off or deleted) |
+
+- **Single replica, like runs.** An occurrence is claimed with a compare-and-set
+  on the schedule's `next_run_at`, so even two processes sharing a database never
+  start the same occurrence. But the run executor still assumes one process (see
+  below), so do not scale out; a second process, if you ever run one, needs
+  `SCHEDULER_ENABLED=false`.
+- **Nothing runs while the container is down.** A deploy stops the old container
+  before it starts the new one. A schedule that came due meanwhile runs **once**
+  when the app is back (within one tick), not once per missed time. A run that a
+  redeploy interrupts is *Interrupted* and can be resumed, like any other.
+- **Runs use the owner's own key.** Each scheduled run starts with its owner's LLM
+  provider and key (the Settings page, else the server's); an account with none
+  gets the reason on the schedule ("it could not start: No API key is set…") and
+  no run, and the schedule waits for its next time. A schedule keeps spending that
+  key (and `E2B_API_KEY`, if set, when its agents run code) until it is switched
+  off or deleted; hourly is the shortest it can be, and `SCHEDULES_MAX_PER_USER`
+  bounds how many an account has.
+- **Time zones need tz data.** Schedules are read on an IANA time zone's clock
+  (Python's `zoneinfo`), which finds its data in the system database or else in
+  the `tzdata` Python package. The image installs that package (the lockfile
+  pulls it in through `python-dateutil`, a dependency of the E2B client), and the
+  Debian base normally has the system database as well. Remove both and no zone
+  would be accepted ("Unknown time zone").
+- **Logs** carry ids and outcomes only, never inputs or outputs:
+  `scheduler.started`, `schedule.fired` (schedule, run and slot),
+  `schedule.start_failed` (with the error code), `schedule.fire_crashed` and
+  `scheduler.tick_failed` (with a traceback).
+
 ### Limits of this setup
 
 - **One replica.** SQLite on a volume supports a single instance; do not scale
@@ -240,9 +281,12 @@ Things to know:
   waiting for a slot, or waiting for an approval, are interrupted the same way
   (their pending requests expire, and a resumed run asks again).
 - **One Uvicorn worker.** Runs are queued per process (at most
-  `RUN_MAX_CONCURRENT` at once). The image starts a single worker; do not add
-  `--workers`, or a starting worker would mark the runs of the others as
-  interrupted.
+  `RUN_MAX_CONCURRENT` at once), and each worker would run its own scheduler. The
+  image starts a single worker; do not add `--workers`, or a starting worker would
+  mark the runs of the others as interrupted.
+- **Schedules fire only while the process is up** (see
+  [Scheduled runs](#scheduled-runs)); a time missed during a deploy is run once
+  afterwards, not replayed.
 
 ## Troubleshooting
 
@@ -261,3 +305,6 @@ Things to know:
 | PDFs show boxes instead of letters; log has `artifacts.pdf_font_unavailable` | No TrueType font at `PDF_FONT_PATH` (image built without `fonts-dejavu-core`, or a custom path) | Build with the repository `Dockerfile`, or point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a font that covers your users' scripts |
 | Runs stop with "Spending limit reached" | The run's limit, or `RUN_DEFAULT_MAX_COST_USD` for a run with none, was reached | Raise the limit when resuming the run (Runs screen, or `POST /api/runs/<id>/resume` with `max_cost_usd`), or raise or unset the variable |
 | Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) | Resume them from the Runs screen; finished steps are kept |
+| A schedule never runs; no `scheduler.started` line in the log | `SCHEDULER_ENABLED=false`, or the schedule is off (its "Next run" says so) | Remove the variable; switch the schedule on |
+| A schedule says "it could not start: No API key is set for …" | Its owner saved no key and the server has none | The owner adds a key on the Settings page; the schedule's next time starts normally |
+| Creating a schedule fails with "Unknown time zone" for every zone | The image has no time zone database | Build with the repository `Dockerfile`, or install `tzdata` |

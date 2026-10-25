@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 
 import type { Integration } from '../../core/api/types';
+import { SwitchButton } from '../../core/ui/SwitchButton';
+import { ToggleSwitch } from '../../core/ui/ToggleSwitch';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { actionButtonClass } from './actionButton';
 import { ConnectionTestResult, toolCount } from './ConnectionTestResult';
 import { hostOf } from './integrationDraft';
-import { SwitchButton } from './SwitchButton';
 import type { ConnectionTest } from './useIntegrations';
 
 interface IntegrationCardProps {
@@ -17,27 +18,6 @@ interface IntegrationCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
-}
-
-function EnabledSwitch({
-  integration,
-  busy,
-  onToggle,
-}: Pick<IntegrationCardProps, 'integration' | 'busy' | 'onToggle'>) {
-  const { enabled, name } = integration;
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <span aria-hidden="true" className="text-xs text-slate-300">
-        {enabled ? 'On' : 'Off'}
-      </span>
-      <SwitchButton
-        checked={enabled}
-        disabled={busy}
-        onChange={onToggle}
-        label={`Let agents use ${name}`}
-      />
-    </div>
-  );
 }
 
 /** Whether a run stops for the owner's OK before this integration's tools act. */
@@ -128,7 +108,12 @@ function CardHeading({ headingId, integration, test, busy, onToggle }: CardHeadi
           </h3>
           <p className="truncate text-xs text-slate-400">{hostOf(integration.url)}</p>
         </div>
-        <EnabledSwitch integration={integration} busy={busy} onToggle={onToggle} />
+        <ToggleSwitch
+          checked={integration.enabled}
+          label={`Let agents use ${integration.name}`}
+          disabled={busy}
+          onChange={onToggle}
+        />
       </div>
       <p className="mt-2 text-xs text-slate-400">
         {headerSummary(integration)}

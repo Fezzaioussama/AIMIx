@@ -5,6 +5,7 @@ import { elapsedMs, formatDateTime, formatDuration } from '../../core/time';
 import { CostText } from '../../core/ui/CostText';
 import { describeCost } from '../../core/usageFormat';
 import { RunStatusBadge } from './RunStatusBadge';
+import { RunTriggerTag } from './RunTriggerTag';
 import { isActive } from './runStatus';
 
 interface RunHistoryListProps {
@@ -86,7 +87,10 @@ function RunLink({ run, selected }: { run: RunSummary; selected: boolean }) {
         <RunStatusBadge status={run.status} />
       </span>
       <span className="mt-1 flex flex-wrap items-center justify-between gap-x-2 text-xs text-slate-400">
-        <span>{formatDateTime(run.started_at ?? run.created_at)}</span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <span>{formatDateTime(run.started_at ?? run.created_at)}</span>
+          <RunTriggerTag trigger={run.trigger} />
+        </span>
         <span className="tabular-nums">
           {durationText(run)}
           {cost && (

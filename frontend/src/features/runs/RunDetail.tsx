@@ -1,11 +1,9 @@
-import { Link } from 'react-router-dom';
-
 import type { Run } from '../../core/api/types';
-import { formatDateTime } from '../../core/time';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { inputLabel } from '../pipelines/pipelineInputs';
 import { DeleteRunButton } from './DeleteRunButton';
 import { LiveRun } from './LiveRun';
+import { RunByline } from './RunByline';
 import { isActive } from './runStatus';
 import type { LiveRunState } from './useRun';
 
@@ -39,21 +37,7 @@ export function RunDetail({ live, onDelete, deleting }: RunDetailProps) {
         <h1 id="run-title" className="text-2xl font-bold tracking-tight break-words">
           {run.pipeline_name}
         </h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Started {formatDateTime(run.started_at ?? run.created_at)}
-          {run.pipeline_id !== null && (
-            <>
-              {' · '}
-              <Link
-                to="/pipeline"
-                state={{ pipelineId: run.pipeline_id }}
-                className="text-sky-300 underline-offset-2 hover:underline"
-              >
-                Open the pipeline
-              </Link>
-            </>
-          )}
-        </p>
+        <RunByline run={run} />
       </header>
       <LiveRun
         run={run}

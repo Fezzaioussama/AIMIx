@@ -275,6 +275,14 @@ class Settings(BaseSettings):
     run_default_max_cost_usd: float | None = Field(
         None, gt=0, allow_inf_nan=False, validation_alias="RUN_DEFAULT_MAX_COST_USD"
     )
+    # --- Scheduled runs (api/services/schedules) -------------------------------
+    # The scheduler runs inside the API process; false keeps every schedule
+    # saved but starts none (e.g. in a second process: only one may schedule).
+    scheduler_enabled: bool = Field(True, validation_alias="SCHEDULER_ENABLED")
+    # How often it looks for schedules that are due, so a run starts at most
+    # this late.
+    scheduler_tick_seconds: float = Field(30.0, gt=0, validation_alias="SCHEDULER_TICK_SECONDS")
+    schedules_max_per_user: int = Field(20, ge=0, validation_alias="SCHEDULES_MAX_PER_USER")
     openrouter_api_key: str = Field(
         "", validation_alias=_env("OPEN_ROUTER_KEY", "OPENROUTER_API_KEY")
     )

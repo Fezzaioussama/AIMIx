@@ -675,6 +675,8 @@ The run object:
   "id": 12,
   "pipeline_id": 7,
   "pipeline_name": "Summarise then translate",
+  "trigger": "manual",
+  "schedule_id": null,
   "status": "running",
   "error": null,
   "created_at": "2026-10-24T10:00:00Z",
@@ -701,6 +703,12 @@ The run object:
 
 `pending_approvals` lists the tool calls the run waits on, oldest first (empty
 unless the run is `waiting`); see [Approvals](#approvals).
+
+`trigger` says what started the run: `manual` (you, from the app or the API),
+`schedule` (one of your [schedules](#schedules); `schedule_id` names it, and
+becomes `null` once the schedule is deleted while `trigger` stays) or `chat`
+(the chat agent's `run_pipeline` tool). Runs recorded before schedules existed
+read as `manual`.
 
 `input` / `inputs` are what the run was started with. A step's `output` and
 `tool_calls` appear as soon as it succeeds; `final_output` once the run
@@ -763,7 +771,7 @@ or anything else out of range is a `400`. `?status=waiting&limit=1` is the cheap
 way to know whether anything waits for you: read `total`. `200`:
 
 ```json
-{ "items": [{ "id": 12, "pipeline_id": 7, "pipeline_name": "Summarise then translate", "status": "succeeded", "error": null, "created_at": "...", "started_at": "...", "finished_at": "...", "max_cost_usd": null, "max_tokens": null, "usage": { "input_tokens": 1434, "output_tokens": 587, "cost_usd": 0.0127, "cost_complete": true } }], "total": 42 }
+{ "items": [{ "id": 12, "pipeline_id": 7, "pipeline_name": "Summarise then translate", "trigger": "schedule", "schedule_id": 4, "status": "succeeded", "error": null, "created_at": "...", "started_at": "...", "finished_at": "...", "max_cost_usd": null, "max_tokens": null, "usage": { "input_tokens": 1434, "output_tokens": 587, "cost_usd": 0.0127, "cost_complete": true } }], "total": 42 }
 ```
 
 Summaries carry no inputs, outputs, definition or steps; they do carry the run's
@@ -981,6 +989,122 @@ lists the costliest first. The runs of a pipeline that was deleted stay in the
 report under the name they had, with `pipeline_id: null` (deleted pipelines of
 the same name are listed together). Chat messages are not counted: only pipeline
 runs.
+
+---
+
+## Schedules
+
+A schedule starts runs of one of your pipelines on its own, at a preset
+frequency, with the run inputs filled in once. It runs the pipeline **as last
+saved**, with your LLM provider and key (the Settings page, else the server's),
+and each run it starts is an ordinary [run](#runs) marked `trigger: "schedule"`.
+Schedules are checked every `SCHEDULER_TICK_SECONDS` (30), so a run starts at
+most that long after its time. A schedule that was overdue (the server was down)
+runs **once** when the server is back, not once per missed time.
+
+A schedule object:
+
+```json
+{
+  "id": 4,
+  "pipeline_id": 3,
+  "pipeline_name": "Competitor news",
+  "pipeline_inputs": [{ "name": "topic", "label": "Topic", "description": "" }],
+  "frequency": "weekly",
+  "time": "09:00",
+  "weekday": 0,
+  "day_of_month": null,
+  "timezone": "Europe/Paris",
+  "input": "",
+  "inputs": { "topic": "competitors" },
+  "enabled": true,
+  "next_run_at": "2026-10-26T08:00:00Z",
+  "last_run": { "id": 12, "status": "succeeded", "created_at": "2026-10-19T08:00:00Z" },
+  "last_error": null,
+  "created_at": "2026-10-24T10:00:00Z"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `frequency` | `hourly` (the shortest), `daily`, `weekdays` (Monday to Friday), `weekly` or `monthly` |
+| `time` | `"HH:MM"` on a 24-hour clock, in `timezone`. An `hourly` schedule uses the minutes only (its hour reads `00`) |
+| `weekday` | 0 (Monday) to 6 (Sunday); required for `weekly`, `null` for the others |
+| `day_of_month` | 1 to 31; required for `monthly`, `null` for the others. A month that is too short for it uses its last day (the 31st runs on 30 April and 28 February) |
+| `timezone` | An IANA name the server knows, such as `Europe/Paris`, `America/New_York` or `UTC` |
+| `input` / `inputs` | What each run is given, with the rules of [`POST /pipelines/<id>/runs`](#post-pipelinesidruns): free text for a pipeline without named inputs, a value for each named input otherwise. `pipeline_inputs` lists the pipeline's inputs |
+| `enabled` | Whether it runs. Off, it keeps its settings and `next_run_at` is `null` |
+| `next_run_at` | The next time it starts, in UTC |
+| `last_run` | The newest run it started (by itself or by [run now](#post-schedulesidrun)); `null` before the first, or when those runs were deleted |
+| `last_error` | Why its latest time could not start a run (for example no API key); `null` when it started. The schedule has already moved to its next time. An edit that changes what it runs or when, or turns it on, clears it (it has not failed yet); turning it off keeps it |
+
+A time is read on the zone's wall clock, so `09:00` stays 09:00 across
+daylight-saving changes. When the clocks go forward, a time in the skipped hour
+runs as much later as they jumped (02:30 becomes 03:30); when they go back, a
+time that happens twice runs once, the first time. An `hourly` schedule follows
+real hours: it runs both times through a repeated hour, and not in a skipped one.
+
+### `GET /schedules`
+
+Your schedules, oldest first. `?pipeline_id=3` narrows them to one pipeline's
+(another account's pipeline gives an empty list).
+
+### `POST /schedules`
+
+```json
+{ "pipeline_id": 3, "frequency": "weekly", "time": "09:00", "weekday": 0,
+  "timezone": "Europe/Paris", "inputs": { "topic": "competitors" }, "enabled": true }
+```
+
+`201` → the schedule, with its `next_run_at`. Send `input` (free text) or
+`inputs` (named values) as for a run; `enabled` defaults to `true`. Fields the
+frequency does not use are ignored and stored as `null`. The same checks as
+starting a run apply **before anything is saved**:
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | An unknown `timezone`; a `time` that is not `HH:MM`; a weekly schedule without `weekday` or a monthly one without `day_of_month`; inputs the pipeline does not take (blank text, a missing or unknown named input, text sent to a pipeline with named inputs); a pipeline without steps; or `SCHEDULES_MAX_PER_USER` (20) schedules already |
+| 404 | `not_found` | The pipeline is missing or not yours |
+
+### `PATCH /schedules/<id>`
+
+```json
+{ "time": "18:30", "enabled": true }
+```
+
+Every field is optional and one left out keeps its value; sending the same body
+twice leaves the same state. Timing fields change one by one. `input` and
+`inputs` replace what each run is given **as a whole** (the one left out becomes
+empty). The next time is worked out again when the timing changes or the schedule
+is turned on; changing only the inputs keeps it, so a time that is due is not
+postponed by an edit. Turning a schedule **off** always works and clears
+`next_run_at`. Turning it on, or changing its inputs, checks them again against
+the pipeline (`400` if they no longer fit). `200` → the schedule.
+
+### `DELETE /schedules/<id>`
+
+`204`. The runs it started stay in the history, with `schedule_id` `null`.
+Deleting a pipeline deletes its schedules too.
+
+### `POST /schedules/<id>/run`
+
+Starts one of the schedule's runs now, with its saved inputs, even when the
+schedule is off. `202` → the run (`trigger: "schedule"`, `queued`), to follow with
+`GET /runs/<id>`; the schedule's timing does not change. A pipeline that no longer
+takes the saved inputs is a `400`, and nothing is saved.
+
+### `POST /schedules/preview`
+
+```json
+{ "frequency": "monthly", "time": "09:00", "day_of_month": 31, "timezone": "Europe/Paris" }
+```
+
+`200` → `{ "next_run_at": "2026-10-31T08:00:00Z" }`: when a schedule with that
+timing would first run, worked out by the same rule the scheduler uses.
+Nothing is saved. The app calls it to show "next run" while the form is filled
+in. The same `400`s as saving apply to the timing.
+
+Every schedule route answers `404` for another account's schedule.
 
 ---
 

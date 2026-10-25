@@ -16,6 +16,8 @@ export function summaryOf(run: RunSummary): RunSummary {
     id: run.id,
     pipeline_id: run.pipeline_id,
     pipeline_name: run.pipeline_name,
+    trigger: run.trigger,
+    schedule_id: run.schedule_id,
     status: run.status,
     error: run.error,
     created_at: run.created_at,

@@ -187,12 +187,18 @@ export interface RunApproval {
   expires_at: string;
 }
 
+/** What started a run: its owner (by hand or through the API), a schedule, or the chat agent. */
+export type RunTrigger = 'manual' | 'schedule' | 'chat';
+
 /** A run in the history list (GET /api/runs): no inputs, outputs or steps. */
 export interface RunSummary {
   id: number;
   /** null once the pipeline was deleted; the run keeps its name. */
   pipeline_id: number | null;
   pipeline_name: string;
+  trigger: RunTrigger;
+  /** The schedule that started it; null for other runs, and once that schedule is deleted. */
+  schedule_id: number | null;
   status: RunStatus;
   error: RunError | null;
   created_at: string;
@@ -371,4 +377,68 @@ export interface IntegrationTool {
 
 export interface IntegrationTestResult {
   tools: IntegrationTool[];
+}
+
+/** How often a schedule runs; hourly is the most often. */
+export type ScheduleFrequency = 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
+
+/** The newest run a schedule started. */
+export interface ScheduleLastRun {
+  id: number;
+  status: RunStatus;
+  created_at: string;
+}
+
+/** When a schedule runs (and the body of POST /api/schedules/preview). */
+export interface ScheduleTiming {
+  frequency: ScheduleFrequency;
+  /** "HH:MM" on a 24-hour clock in `timezone`; an hourly schedule uses the minutes only. */
+  time: string;
+  /** 0 is Monday, 6 Sunday. Weekly schedules only. */
+  weekday?: number | null;
+  /** 1 to 31; past the end of a shorter month, its last day. Monthly schedules only. */
+  day_of_month?: number | null;
+  /** An IANA time zone name, e.g. "Europe/Paris". */
+  timezone: string;
+}
+
+/** A pipeline started on its own at a preset frequency (GET /api/schedules). */
+export interface Schedule extends ScheduleTiming {
+  id: number;
+  pipeline_id: number;
+  pipeline_name: string;
+  /** The pipeline's named inputs, for editing the values each run is given. */
+  pipeline_inputs: PipelineInput[];
+  weekday: number | null;
+  day_of_month: number | null;
+  /** The free text each run is given ("" when the pipeline has named inputs). */
+  input: string;
+  /** The value of each named input each run is given. */
+  inputs: Record<string, string>;
+  enabled: boolean;
+  /** ISO 8601, UTC; null while the schedule is off. */
+  next_run_at: string | null;
+  last_run: ScheduleLastRun | null;
+  /** Why its latest time could not start a run; null when it did. */
+  last_error: string | null;
+  created_at: string;
+}
+
+/** Body of POST /api/schedules: a pipeline, its timing and what each run is given. */
+export interface ScheduleInput extends ScheduleTiming, PipelineRunRequest {
+  pipeline_id: number;
+  enabled?: boolean;
+}
+
+/**
+ * Body of PATCH /api/schedules/<id>: omitted fields keep their value. `input` and `inputs`
+ * replace what each run is given as a whole.
+ */
+export interface SchedulePatch extends Partial<ScheduleTiming>, PipelineRunRequest {
+  enabled?: boolean;
+}
+
+export interface SchedulePreview {
+  /** ISO 8601, UTC: when a schedule with this timing would run first. */
+  next_run_at: string;
 }
