@@ -15,7 +15,8 @@ export function CostText({ view, compact = false, className = '' }: CostTextProp
   return (
     <span title={view.tip} className={`tabular-nums ${className}`}>
       {compact ? view.short : view.text}
-      <span className="sr-only">{`, ${view.tip}`}</span>
+      {/* In brackets, so "(40 out) of $0.0010 limit" cannot be heard as "40 out of $0.0010". */}
+      <span className="sr-only">{` (${view.tip})`}</span>
     </span>
   );
 }

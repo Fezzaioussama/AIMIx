@@ -29,7 +29,7 @@ describe('CostText', () => {
     if (!view) throw new Error('a used run has a cost view');
     const { container } = render(<CostText view={view} />);
 
-    expect(container).toHaveTextContent('$0.0123, 1,234 tokens in, 567 out');
+    expect(container).toHaveTextContent('$0.0123 (1,234 tokens in, 567 out)');
   });
 
   it('says the cost is unknown for the model, and still has the tokens', () => {

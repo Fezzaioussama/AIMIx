@@ -97,7 +97,7 @@ function PipelineRow({ entry }: { entry: PipelineUsage }) {
           <span className="ml-2 text-xs font-normal text-slate-400">(deleted)</span>
         )}
       </span>
-      <span className="flex items-baseline gap-4">
+      <span className="ml-auto flex items-baseline gap-4">
         <span className="text-xs text-slate-400 tabular-nums">
           {entry.runs === 1 ? '1 run' : `${formatCount(entry.runs)} runs`} ·{' '}
           {formatCount(totalTokens(entry.usage))} tokens
