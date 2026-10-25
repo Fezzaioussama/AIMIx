@@ -425,3 +425,4 @@ def test_settings_default_to_generous_but_finite_limits() -> None:
     assert settings.document_max_concurrent_extractions == 2
     assert settings.document_extraction_wait_seconds == 30.0
     assert settings.document_ocr_max_seconds == 120.0
+    assert settings.workspace_max_files == 2_000

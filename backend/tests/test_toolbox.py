@@ -58,7 +58,7 @@ RENDER = RenderOptions(Path("/no/such/font.ttf"), Path("/no/such/font-bold.ttf")
 def local_workspace(
     root: Path, limits: WorkspaceLimits = WORKSPACE_LIMITS, quota: int = 100_000
 ) -> LocalWorkspace:
-    return LocalWorkspace(WorkspaceStorage(root, quota), limits, RENDER)
+    return LocalWorkspace(WorkspaceStorage(root, quota, max_files=1_000), limits, RENDER)
 
 
 @pytest.mark.parametrize(

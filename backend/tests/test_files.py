@@ -165,6 +165,22 @@ def test_uploads_stop_at_the_storage_quota(files: TestClient) -> None:
     assert sorted(listed(files)) == ["a.txt", "b.txt"]
 
 
+def test_uploads_are_rate_limited_per_account(
+    app: FastAPI, files: TestClient, settings: Settings
+) -> None:
+    limited = settings.model_copy(update={"user_rate_limit_requests": 2})
+    app.dependency_overrides[app_settings] = lambda: limited
+
+    assert upload(files, ("a.txt", b"1")).status_code == 201
+    assert upload(files, ("b.txt", b"2")).status_code == 201
+    blocked = upload(files, ("c.txt", b"3"))
+
+    assert blocked.status_code == 429
+    assert blocked.json()["error"] == "throttled"
+    # Reading the list is not limited, and shows only what was stored.
+    assert sorted(listed(files)) == ["a.txt", "b.txt"]
+
+
 def test_one_bad_file_refuses_the_whole_upload(files: TestClient) -> None:
     assert upload(files, ("good.txt", b"ok"), ("bad.exe", b"MZ")).status_code == 415
     # Two files that end up with one name, and no file at all.

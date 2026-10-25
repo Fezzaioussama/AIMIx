@@ -18,6 +18,9 @@ class DocumentSettings(BaseModel):
     workspace_max_total_bytes: int = Field(
         100_000_000, ge=1, validation_alias="WORKSPACE_MAX_TOTAL_BYTES"
     )
+    # Files and folders one user may keep, however small: each costs an inode and
+    # makes every later write scan longer.
+    workspace_max_files: int = Field(2_000, ge=1, validation_alias="WORKSPACE_MAX_FILES")
     # What the Files page accepts; each upload is capped at DOCUMENT_MAX_BYTES.
     workspace_upload_extensions: CommaList = Field(
         [
