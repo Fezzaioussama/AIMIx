@@ -28,10 +28,57 @@ describe('PendingApprovals', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('shows nothing while nothing waits', () => {
+  it('shows no card while nothing waits', () => {
     const { container } = render(<PendingApprovals run={makeRun()} />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(container.textContent).toBe('');
+  });
+
+  it('keeps the keyboard in place when the answered card goes away', async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    const run = waitingRun(makeApproval());
+    const { container, rerender } = render(
+      <PendingApprovals run={run} onApprove={vi.fn()} onDecline={vi.fn()} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(screen.getByRole('button', { name: 'Approve' })).toHaveFocus();
+
+    rerender(
+      <PendingApprovals
+        run={{ ...run, status: 'running', pending_approvals: [] }}
+        onApprove={vi.fn()}
+        onDecline={vi.fn()}
+      />,
+    );
+
+    // Not back at the top of the page: on the spot where the card was.
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(document.body).not.toHaveFocus();
+    expect(container.firstElementChild).toHaveFocus();
+  });
+
+  it('leaves focus alone when it is somewhere else', async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    const run = waitingRun(makeApproval());
+    const { rerender } = render(
+      <>
+        <button type="button">Elsewhere</button>
+        <PendingApprovals run={run} onApprove={vi.fn()} onDecline={vi.fn()} />
+      </>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+
+    rerender(
+      <>
+        <button type="button">Elsewhere</button>
+        <PendingApprovals run={{ ...run, pending_approvals: [] }} />
+      </>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Elsewhere' })).toHaveFocus();
   });
 
   it('names the step and its agent on a card for each request', () => {
