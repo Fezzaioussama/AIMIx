@@ -67,6 +67,49 @@ describe('mission storage', () => {
     expect(stored.draft).toBeNull();
   });
 
+  it('gives a draft kept before conditions and review loops existed their defaults', () => {
+    const { condition: _c, review: _r, ...older } = PLAN.steps[0];
+    window.sessionStorage.setItem(
+      missionKey(),
+      JSON.stringify({ messages: [], draft: { ...PLAN, steps: [older] } }),
+    );
+
+    const { draft } = readMission(missionKey());
+
+    expect(draft?.steps[0]).toMatchObject({ condition: null, review: null });
+  });
+
+  it('keeps a draft’s condition and review loop', () => {
+    const flow = [
+      { ...PLAN.steps[0] },
+      {
+        ...PLAN.steps[1],
+        condition: { source: 'step:1', operator: 'contains', value: 'blog' },
+        review: { send_back_to_stage: 1, max_rounds: 2 },
+      },
+    ];
+    writeMission(missionKey(), { messages: [], draft: { ...PLAN, steps: flow as never } });
+
+    expect(readMission(missionKey()).draft?.steps[1]).toMatchObject({
+      condition: { source: 'step:1', operator: 'contains', value: 'blog' },
+      review: { send_back_to_stage: 1, max_rounds: 2 },
+    });
+  });
+
+  it('drops a draft whose condition or review is not what the screen reads', () => {
+    for (const damaged of [{ condition: 'blog' }, { review: { max_rounds: 'two' } }]) {
+      window.sessionStorage.setItem(
+        missionKey(),
+        JSON.stringify({
+          messages: [],
+          draft: { ...PLAN, steps: [{ ...PLAN.steps[0], ...damaged }] },
+        }),
+      );
+
+      expect(readMission(missionKey()).draft).toBeNull();
+    }
+  });
+
   it('drops an answer whose inner parts are not what the screen draws', () => {
     const brief = describeTeam(PLAN);
     const damaged: unknown[] = [

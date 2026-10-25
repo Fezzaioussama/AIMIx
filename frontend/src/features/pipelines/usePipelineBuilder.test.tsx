@@ -98,6 +98,38 @@ describe('usePipelineBuilder', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps conditions and review loops pointing where they did as steps come and go', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }),
+    );
+    const { result } = renderHook(() => usePipelineBuilder('vendor/model'));
+    act(() => result.current.actions.addStepAfter(1));
+    act(() => result.current.actions.addStepAfter(2));
+    act(() => result.current.actions.patchStep(2, { title: 'Looks back' }));
+    act(() =>
+      result.current.actions.patchStep(2, {
+        condition: { source: 'step:2', operator: 'not_empty', value: '' },
+        review: { send_back_to_stage: 2, max_rounds: 1 },
+      }),
+    );
+
+    // A step in a new stage after stage 1 is step 2 now, and the old steps move up.
+    act(() => result.current.actions.addStepAfter(1));
+    const titles = () => result.current.pipeline.steps.map((step) => step.title);
+    expect(titles()).toEqual(['', '', '', 'Looks back']);
+    const [, , , looking] = result.current.pipeline.steps;
+    expect(looking.order).toBe(4);
+    // It looked at old step 2, now step 3 in stage 3; it went back to stage 2, now stage 3.
+    expect(looking.condition?.source).toBe('step:3');
+    expect(looking.review?.send_back_to_stage).toBe(3);
+
+    // Removing the step it looks at leaves it looking at nothing, never at another step.
+    act(() => result.current.actions.removeStep(2));
+    const [, , last] = result.current.pipeline.steps;
+    expect(last.title).toBe('Looks back');
+    expect(last.condition?.source).toBe('step:0');
+  });
+
   it('marks the pipeline changed when its inputs are edited', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([]), { headers: { 'Content-Type': 'application/json' } }),

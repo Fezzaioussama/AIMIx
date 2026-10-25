@@ -37,6 +37,8 @@ export function StepHeading({ result }: { result: StepResult | RunStep }) {
   const label = stepLabel({ order: result.step_order, title: result.title });
   const followed = 'input_tokens' in result;
   const cost = followed ? describeCost(usageOfStep(result)) : null;
+  // A step that was skipped is never one of the pipeline's outputs.
+  const skipped = followed && result.status === 'skipped';
   return (
     <>
       <span className="font-semibold text-slate-100">{label}</span>
@@ -48,7 +50,7 @@ export function StepHeading({ result }: { result: StepResult | RunStep }) {
       <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-slate-400">
         {modelLabel(result.model)}
       </span>
-      {result.is_output && <OutputBadge />}
+      {result.is_output && !skipped && <OutputBadge />}
       {followed && <ReviewFacts step={result} />}
       {cost && <CostText view={cost} className="text-xs text-slate-300" />}
     </>

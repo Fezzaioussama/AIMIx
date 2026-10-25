@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Pipeline } from '../../core/api/types';
-import { json, PLAN, SAVED, routeFetch, storeAs } from './testData';
+import { json, PLAN, SAVED, planStep, routeFetch, storeAs } from './testData';
 import { AUTOSAVE_DELAY_MS, DEFAULT_MISSION_NAME, useMissionTeam } from './useMissionTeam';
 
 describe('useMissionTeam', () => {
@@ -136,6 +136,24 @@ describe('useMissionTeam', () => {
     act(() => result.current.removeStep(1));
     expect(result.current.pipeline?.steps).toHaveLength(1);
     expect(result.current.pipeline?.steps[0]).toMatchObject({ order: 1, role: 'Lead analyst' });
+  });
+
+  it('keeps a condition on the agent it looks at when another agent is removed', () => {
+    const looking = {
+      ...planStep(3, 3, 'Summary', true),
+      condition: { source: 'step:2', operator: 'not_empty' as const, value: '' },
+    };
+    const team = { ...PLAN, steps: [...PLAN.steps, looking] };
+    const { result } = renderHook(() => useMissionTeam(undefined, team));
+
+    act(() => result.current.removeStep(1));
+
+    // Comparison was step 2 and is step 1 now; the condition follows it.
+    expect(result.current.pipeline?.steps.map((step) => step.title)).toEqual([
+      'Comparison',
+      'Summary',
+    ]);
+    expect(result.current.pipeline?.steps[1].condition?.source).toBe('step:1');
   });
 
   it('saves a saved mission’s edits after a pause, once, keeping the team as it is', async () => {

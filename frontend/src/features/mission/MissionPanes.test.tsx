@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { json } from '../runs/testData';
+import { json, runStep } from '../runs/testData';
 import { MissionPage } from './MissionPage';
 import { LocationProbe, renderMission } from './testRender';
 import {
@@ -316,6 +316,33 @@ describe('the mission workspace: the results pane', () => {
 
     expect(await screen.findByRole('button', { name: 'Stop the run' })).toBeInTheDocument();
     expect(server.to('POST', '/api/runs/12/resume')).toHaveLength(1);
+  });
+
+  it('does not wait for a deliverable that was skipped, and says nothing was made', async () => {
+    const skipped = finishedRun({
+      steps: [
+        {
+          ...runStep(1, 'succeeded', 'Research notes'),
+          title: 'Market research',
+          is_output: false,
+        },
+        { ...runStep(2, 'skipped'), title: 'Comparison' },
+      ],
+    });
+    savedMission({
+      'GET /api/runs?limit=1&offset=0&pipeline_id=7': { items: [skipped], total: 1 },
+      'GET /api/runs/9': skipped,
+    });
+    renderMission('/mission/7');
+
+    const deliverables = await screen.findByRole('region', { name: 'Deliverables' });
+
+    expect(
+      await within(deliverables).findByText(
+        'No deliverable was made: the steps that make them did not run.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(deliverables).queryByText(/Not finished/)).not.toBeInTheDocument();
   });
 
   it('names the deliverables to expect before there is a run', async () => {

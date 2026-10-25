@@ -28,6 +28,18 @@ describe('describeChange', () => {
     ).toBe('Renames the pipeline to “Launch kit v2”');
   });
 
+  it('names a changed condition and review loop in plain words', () => {
+    expect(describeChange(change({ label: 'SEO', fields: ['condition'] }))).toBe(
+      'Changes the step “SEO”: its condition',
+    );
+    expect(describeChange(change({ label: 'QA', fields: ['prompt', 'review'] }))).toBe(
+      'Changes the step “QA”: instructions and its review loop',
+    );
+    expect(describeChange(change({ label: 'QA', fields: ['condition', 'review'] }))).toBe(
+      'Changes the step “QA”: its condition and its review loop',
+    );
+  });
+
   it('keeps a field it has no words for readable', () => {
     expect(describeChange(change({ fields: ['is_output', 'new_field'] }))).toBe(
       'Changes the step “Research”: whether it is an output and new field',

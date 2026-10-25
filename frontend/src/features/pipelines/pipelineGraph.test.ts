@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PipelineStep, RunStep, StepResult } from '../../core/api/types';
+import type {
+  PipelineStep,
+  RunStep,
+  StepCondition,
+  StepResult,
+  StepReview,
+} from '../../core/api/types';
 import { buildGraph, liveNodeStatus } from './pipelineGraph';
 
 /** A followed run's step that has used no tokens, and went through no review round. */
@@ -128,5 +134,67 @@ describe('liveNodeStatus', () => {
     expect(liveNodeStatus({ ...base, status: 'running' }, true)).toBe('running');
     expect(liveNodeStatus({ ...base, status: 'cancelled' }, false)).toBe('stopped');
     expect(liveNodeStatus({ ...base, status: 'pending' }, true)).toBe('waiting');
+  });
+
+  it('shows a skipped step as skipped, whether or not the run is still going', () => {
+    const skipped = {
+      ...result(1, 1, false),
+      ...UNUSED,
+      error: null,
+      started_at: null,
+      finished_at: null,
+    };
+    expect(liveNodeStatus({ ...skipped, status: 'skipped' }, true)).toBe('skipped');
+    expect(liveNodeStatus({ ...skipped, status: 'skipped' }, false)).toBe('skipped');
+  });
+});
+
+describe('buildGraph: conditions, reviews and rounds', () => {
+  const only: StepCondition = { source: 'previous_output', operator: 'contains', value: 'blog' };
+  const loop: StepReview = { send_back_to_stage: 2, max_rounds: 2 };
+  const flow = [
+    step(1, 1),
+    step(2, 2),
+    { ...step(3, 3), review: loop },
+    { ...step(4, 4, true), condition: only },
+  ];
+
+  function live(order: number, stage: number, status: RunStep['status'], rounds = 1): RunStep {
+    return {
+      ...result(order, stage, false),
+      ...UNUSED,
+      rounds,
+      status,
+      error: null,
+      started_at: null,
+      finished_at: null,
+    };
+  }
+
+  it('carries a step’s condition and review to its node, for the marks', () => {
+    const nodes = nodesOf(buildGraph(flow, [], false));
+    expect(nodes.map((node) => node.condition)).toEqual([null, null, null, only]);
+    expect(nodes.map((node) => node.review)).toEqual([null, null, loop, null]);
+  });
+
+  it('gives each step of a loop the most rounds it may take, and no other step', () => {
+    const nodes = nodesOf(buildGraph(flow, [], false));
+    expect(nodes.map((node) => node.roundTotal)).toEqual([null, 3, 3, null]);
+  });
+
+  it('shows a followed run’s step in the round its row is in', () => {
+    const steps = [live(1, 1, 'succeeded'), live(2, 2, 'running', 2), live(3, 3, 'succeeded')];
+    const nodes = nodesOf(buildGraph(flow, [], true, steps));
+    expect(nodes.map((node) => node.round)).toEqual([1, 2, 1, 1]);
+  });
+
+  it('shows a skipped step as skipped, and not as an output', () => {
+    const steps = [live(1, 1, 'succeeded'), live(4, 4, 'skipped')];
+    const nodes = nodesOf(buildGraph(flow, [], false, steps));
+    expect(nodes[3]).toMatchObject({ status: 'skipped', isOutput: false });
+  });
+
+  it('predicts the output before a run, skipped or not', () => {
+    expect(nodesOf(buildGraph(flow, [], false))[3].isOutput).toBe(true);
   });
 });

@@ -175,7 +175,11 @@ function ResultsArea({ view, allSteps, isRunning, elapsedMs }: ResultsAreaProps)
       </div>
 
       {view.tab === 'outputs' ? (
-        <OutputsPanel outputs={view.outputs} focusedStep={focusedStep} />
+        <OutputsPanel
+          outputs={view.outputs}
+          focusedStep={focusedStep}
+          noneBecauseSkipped={!isRunning && allSteps.some(skippedOutput)}
+        />
       ) : (
         <RunResults results={allSteps} focusedStep={focusedStep} runActive={isRunning} />
       )}
@@ -183,18 +187,28 @@ function ResultsArea({ view, allSteps, isRunning, elapsedMs }: ResultsAreaProps)
   );
 }
 
+/** A followed run's output step whose condition was not met: it made nothing. */
+function skippedOutput(step: StepResult | RunStep): boolean {
+  return 'status' in step && step.status === 'skipped' && step.is_output;
+}
+
 function OutputsPanel({
   outputs,
   focusedStep,
+  noneBecauseSkipped,
 }: {
   outputs: StepResult[];
   focusedStep: number | null;
+  /** The run ended and the steps that make the outputs were skipped. */
+  noneBecauseSkipped: boolean;
 }) {
   const stages = groupByStage(outputs, (result) => result.stage);
   if (stages.length === 0) {
     return (
       <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-400">
-        No outputs yet. Each one appears here as soon as it is ready.
+        {noneBecauseSkipped
+          ? 'No outputs: the steps that make them were skipped because their condition was not met.'
+          : 'No outputs yet. Each one appears here as soon as it is ready.'}
       </p>
     );
   }

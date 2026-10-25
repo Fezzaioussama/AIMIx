@@ -24,6 +24,48 @@ function drawer(overrides: Partial<Parameters<typeof StepDrawer>[0]> = {}) {
   return { ...handlers, ...view };
 }
 
+describe('StepDrawer: the options that change how work flows', () => {
+  it('offers a condition to any agent, folded away', () => {
+    drawer();
+
+    expect(screen.getByText('Run this step only if…').closest('details')).not.toHaveAttribute(
+      'open',
+    );
+  });
+
+  it('offers a review loop only to an agent with an earlier stage to send work to', () => {
+    const { rerender, onChange, onRemove, onClose } = drawer();
+    expect(screen.queryByText('Review loop')).not.toBeInTheDocument();
+
+    rerender(
+      <StepDrawer
+        step={analyst}
+        steps={PLAN.steps}
+        inputs={PLAN.inputs}
+        models={['vendor/fast']}
+        tools={TOOLS}
+        canRemove
+        onChange={onChange}
+        onRemove={onRemove}
+        onClose={onClose}
+      />,
+    );
+
+    expect(screen.getByText('Review loop')).toBeInTheDocument();
+  });
+
+  it('adds a condition through the drawer’s own change handler', async () => {
+    const user = userEvent.setup();
+    const { onChange } = drawer({ step: analyst });
+    await user.click(screen.getByText('Run this step only if…'));
+    await user.click(screen.getByRole('button', { name: 'Add a condition' }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      condition: { source: 'previous_output', operator: 'contains', value: '' },
+    });
+  });
+});
+
 describe('StepDrawer', () => {
   it('is a dialog named by the agent, and takes focus when it opens', () => {
     drawer();

@@ -84,7 +84,7 @@ function Labelled({ id, label, children }: { id: string; label: string; children
 function ConditionSection({ step, steps, inputs, onChange }: StepFlowFieldsProps) {
   const described = describeCondition(step, steps, inputs);
   return (
-    <FlowSection title="Run this step only if…" summary={described && `only if ${described}`}>
+    <FlowSection title="Run this step only if…" summary={described}>
       {step.condition === null ? (
         <>
           <p className="text-slate-400">This step always runs.</p>
@@ -165,7 +165,7 @@ function OperatorField({ id, condition, onChange }: FieldProps) {
     onChange({ ...condition, operator: next.value, value: next.takesValue ? condition.value : '' });
   }
   return (
-    <Labelled id={id} label="It">
+    <Labelled id={id} label="Check whether it">
       <select
         id={id}
         value={condition.operator}
