@@ -101,10 +101,10 @@ sequenceDiagram
     X->>G: arun(snapshot, agent, inputs, RunControl(observer, completed))
     loop each stage, its steps concurrently (PIPELINE_MAX_PARALLEL_STEPS)
         G->>O: STARTED → step row "running" (own short transaction)
-G->>A: execute(task + run_step): model, role, tools (agent_runtime; MCP_SERVERS + enabled integrations via mcp_connections_for, a failing integration skipped), and the step's usage meter
-Note over A,O: every model call: the run's meter checks its limit first (refused: budget_exceeded), then adds the call's tokens and cost to the step row
-Note over A: a tool that must ask first waits for the owner (run "waiting", see Approval gates)
-A-->>G: final text, tool name/status trace and usage, or DomainError
+        G->>A: execute(task + run_step): model, role, tools (agent_runtime; MCP_SERVERS + enabled integrations via mcp_connections_for, a failing integration skipped), and the step's usage meter
+        Note over A,O: every model call: the run's meter checks its limit first (refused: budget_exceeded), then adds the call's tokens and cost to the step row
+        Note over A: a tool that must ask first waits for the owner (run "waiting", see Approval gates)
+        A-->>G: final text, tool name/status trace and usage, or DomainError
         G->>O: SUCCEEDED / FAILED / CANCELLED → step row
         G->>G: join the stage; merge outputs in saved order
     end

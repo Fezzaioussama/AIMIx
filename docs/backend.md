@@ -58,8 +58,8 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | sandbox limits | `SANDBOX_TIMEOUT_SECONDS`, `SANDBOX_MAX_OUTPUT_CHARS`, `SANDBOX_MAX_FILES`, `SANDBOX_MAX_STREAM_CHARS` | Per `run_python` call: the whole call, from creating the sandbox to collecting its files, and the sandbox's lifetime (60 seconds), the report returned to the agent (10,000 characters), input files uploaded and output files or charts saved (10), and what the run may stream back before it is stopped (5,000,000 characters) |
 | `pipeline_max_parallel_steps` | `PIPELINE_MAX_PARALLEL_STEPS` | Agent steps that can run at once in one stage (4) |
 | `run_max_concurrent` / `run_shutdown_grace_seconds` | `RUN_MAX_CONCURRENT` / `RUN_SHUTDOWN_GRACE_SECONDS` | Background runs executing at once in the process; the rest wait queued (4) / how long active runs get on shutdown to record that they were interrupted (5 seconds) |
-| `scheduler_enabled` / `scheduler_tick_seconds` / `schedules_max_per_user` | `SCHEDULER_ENABLED` / `SCHEDULER_TICK_SECONDS` / `SCHEDULES_MAX_PER_USER` | Whether this process starts scheduled runs (`true`; `false` keeps schedules saved but starts none) / how often it looks for due schedules, so a run starts at most this late (30 seconds, above 0) / how many schedules one account may have (20; `0` stops new ones) |
 | `run_default_max_cost_usd` | `RUN_DEFAULT_MAX_COST_USD` | The cost limit, in USD, of a run whose starter sets none: it stops, failed, once its model calls have cost this much. Empty (the default) is no limit; zero, negative or non-finite values refuse to start the server. See [spending limits](api-reference.md#spending-limits) |
+| `scheduler_enabled` / `scheduler_tick_seconds` / `schedules_max_per_user` | `SCHEDULER_ENABLED` / `SCHEDULER_TICK_SECONDS` / `SCHEDULES_MAX_PER_USER` | Whether this process starts scheduled runs (`true`; `false` keeps schedules saved but starts none) / how often it looks for due schedules, so a run starts at most this late (30 seconds, above 0) / how many schedules one account may have (20; `0` stops new ones) |
 | document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES`, `DOCUMENT_MAX_SPREADSHEET_ROWS`, `DOCUMENT_MAX_IMAGE_PIXELS` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages, slides or TIFF pages read (300), what a `.docx`, `.xlsx` or `.pptx` may unpack to (50 MB), workbook rows read across all sheets (5,000; reading also stops past `DOCUMENT_MAX_CHARS` cells) and an image's pixels, checked before decoding (40 million). `DOCUMENT_MAX_BYTES` caps every upload, a run document or a file for the Files page, so `max_request_bytes` (`DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead) is the one request-size bound. The same limits apply when an agent reads a PDF or Word file from its workspace |
 | document OCR | `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_LANGUAGES`, `DOCUMENT_OCR_MAX_PAGES`, `DOCUMENT_OCR_TIMEOUT_SECONDS`, `DOCUMENT_OCR_DPI` | Tesseract OCR for images and PDF pages without a text layer: on (`true`), languages `eng+fra` (Tesseract codes joined by `+`, validated), at most 30 pages per document, 15 seconds per page, PDF pages rendered at 300 dpi |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
@@ -126,181 +126,11 @@ Tests replace any of these with `app.dependency_overrides`.
 | `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
 | `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model` | **unique `(pipeline_id, order)`** |
-| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `trigger`, `schedule_id` (FK, **set null** when the schedule is deleted), `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at` | `status` is a `RunStatus`, `trigger` a `RunTrigger` (`manual`, `schedule`, `chat`; `manual` for runs recorded before schedules); `""` error fields mean none; `steps` load ordered by `(stage, step_order)` |
+| `Integration` (`integrations`) | `user_id` (FK, cascade), `name`, `url`, `headers_encrypted` (one sealed JSON object), `header_hints` (JSON `{"name", "hint"}` list), `enabled`, `require_approval`, `created_at` | **unique `(user_id, name)`**; `name` matches `INTEGRATION_NAME_PATTERN`; `""` means no headers; `require_approval` ("Ask me before its tools act") is true unless switched off, also for rows that predate it |
+| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `trigger`, `schedule_id` (FK, **set null** when the schedule is deleted), `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at`, `max_cost_usd`, `max_tokens` | `status` is a `RunStatus`, `trigger` a `RunTrigger` (`manual`, `schedule`, `chat`; `manual` for runs recorded before schedules); `""` error fields mean none; the two limits are `NULL` for no limit; `steps` load ordered by `(stage, step_order)` |
 | `Schedule` (`schedules`) | `user_id` (FK, cascade), `pipeline_id` (FK, **cascade**: deleting a pipeline deletes its schedules), `frequency`, `hour`, `minute`, `weekday`, `day_of_month`, `timezone`, `input_text`, `input_values`, `enabled`, `next_run_at` (UTC, indexed; null while off), `last_error`, `created_at` | `frequency` is a `ScheduleFrequency` (`hourly`, `daily`, `weekdays`, `weekly`, `monthly`); `hour`/`minute` are wall-clock in `timezone` (an IANA name); `weekday` (0 = Monday) only for weekly and `day_of_month` only for monthly, `null` otherwise; `""` `last_error` means the latest time started |
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
+| `RunStep` (`run_steps`) | `run_id` (FK, cascade), `step_order`, `stage`, `title`, `model`, `status`, `is_output`, `input_used`, `output`, `tool_calls` (`[{"name","status"}]`), `error_code`, `error_detail`, `started_at`, `finished_at`, `input_tokens`, `output_tokens`, `cost_usd` | **unique `(run_id, step_order)`**; `status` is a `StepStatus`; the token columns start at `0` and `cost_usd` is `NULL` until a call with a known cost is added (`NULL` also means unknown) |
 | `RunApproval` (`run_approvals`) | `run_id` (FK, cascade, indexed), `step_order`, `tool_name`, `tool_source` (an integration's name, `MCP` or `AIMIx`), `tool_description`, `arguments` (JSON object, long text values shortened), `arguments_truncated`, `status`, `created_at`, `expires_at`, `decided_at` | `status` is an `ApprovalStatus`; only `pending` changes, by compare-and-set; `Run.pending_approvals` is a read-only view of the pending ones |
-`Integration`
-(`integrations`)
-`user_id`
-(FK,
-cascade),
-`name`,
-`url`,
-`headers_encrypted`
-(one
-sealed
-JSON
-object),
-`header_hints`
-(JSON
-`{"name",
-"hint"}`
-list),
-`enabled`,
-`require_approval`,
-`created_at`
-**unique
-`(user_id,
-name)`**;
-`name`
-matches
-`INTEGRATION_NAME_PATTERN`;
-`""`
-means
-no
-headers;
-`require_approval`
-("Ask
-me
-before
-its
-tools
-act")
-is
-true
-unless
-switched
-off,
-also
-for
-rows
-that
-predate
-it
-⏎
-`Run`
-(`runs`)
-`user_id`
-(FK,
-cascade),
-`pipeline_id`
-(FK,
-**set
-null**
-when
-the
-pipeline
-is
-deleted),
-`pipeline_name`,
-`definition`
-(JSON
-snapshot
-of
-the
-pipeline
-it
-runs),
-`input_text`,
-`input_values`,
-`status`,
-`final_output`,
-`error_code`,
-`error_detail`,
-`created_at`,
-`started_at`,
-`finished_at`,
-`max_cost_usd`,
-`max_tokens`
-`status`
-is
-a
-`RunStatus`;
-`""`
-error
-fields
-mean
-none;
-the
-two
-limits
-are
-`NULL`
-for
-no
-limit;
-`steps`
-load
-ordered
-by
-`(stage,
-step_order)`
-⏎
-`RunStep`
-(`run_steps`)
-`run_id`
-(FK,
-cascade),
-`step_order`,
-`stage`,
-`title`,
-`model`,
-`status`,
-`is_output`,
-`input_used`,
-`output`,
-`tool_calls`
-(`[{"name","status"}]`),
-`error_code`,
-`error_detail`,
-`started_at`,
-`finished_at`,
-`input_tokens`,
-`output_tokens`,
-`cost_usd`
-**unique
-`(run_id,
-step_order)`**;
-`status`
-is
-a
-`StepStatus`;
-the
-token
-columns
-start
-at
-`0`
-and
-`cost_usd`
-is
-`NULL`
-until
-a
-call
-with
-a
-known
-cost
-is
-added
-(`NULL`
-also
-means
-unknown)
-⏎
 
 A step's usage columns are written **once per model call**, by the database
 (`SET x = x + n`, `repositories/runs.add_step_usage`), the moment the call
@@ -345,62 +175,10 @@ shared in-memory connection.
 | `files.py` | `GET`/`POST /files`, `GET`/`DELETE /files/{path}` (download is a `FileResponse`, always an attachment) | `files.py`: `FileOut`, `FileListOut` |
 | `integrations.py` | `GET`/`POST /integrations`, `PATCH`/`DELETE /integrations/{id}`, `POST /integrations/{id}/test` | `integrations.py`: `IntegrationIn`, `IntegrationPatch`, `HeaderIn`, `IntegrationOut` (with `require_approval`), `HeaderOut`, `IntegrationTestOut`, `IntegrationToolOut` |
 | `pipelines.py` | list/create, get/put/patch/delete, `run` (waits for a recorded run; kept for compatibility), `generate`, `revise` | `pipelines.py`: `PipelineIn`, `PipelinePatch`, `PipelineOut`, `RunRequest`, `RunResponse`, `GenerateRequest`, `GenerateResponse`, `ReviseRequest` (`PipelineDraftIn`, `DraftStepIn`), `ReviseResponse`, `PipelineChangeOut` |
-|
-`runs.py`
-|
-`POST
-/pipelines/{id}/runs`
-(202),
-`GET
-/runs`
-(paged;
-filters
-`pipeline_id`
-and
-`status`),
-`GET
-/runs/{id}`,
-`POST
-/runs/{id}/cancel`,
-`POST
-/runs/{id}/resume`
-(optional
-body:
-new
-limits),
-`DELETE
-/runs/{id}`
-|
-`runs.py`:
-`RunListQuery`,
-`RunOut`
-(with
-`pending_approvals`),
-`RunSummaryOut`
-(limits
-and
-a
-computed
-`usage`),
-`RunStepOut`
-(token
-and
-cost
-fields),
-`RunDefinitionOut`,
-`RunPageOut`,
-`ResumeRequest`
-(+
-`RunRequest`
-for
-the
-start
-body)
-|
-⏎
-| `schedules.py` | `GET`/`POST /schedules`, `PATCH`/`DELETE /schedules/{id}`, `POST /schedules/{id}/run` (202, a run), `POST /schedules/preview` (declared before the id routes) | `schedules.py`: `ScheduleIn` (`ScheduleTimingIn` + `RunRequest` + `pipeline_id`), `SchedulePatch`, `ScheduleTimingIn`, `ScheduleListQuery`, `ScheduleOut`, `LastRunOut`, `SchedulePreviewOut` |
+| `runs.py` | `POST /pipelines/{id}/runs` (202), `GET /runs` (paged; filters `pipeline_id` and `status`), `GET /runs/{id}`, `POST /runs/{id}/cancel`, `POST /runs/{id}/resume` (optional body: new limits), `DELETE /runs/{id}` | `runs.py`: `RunListQuery`, `RunOut` (with `pending_approvals`), `RunSummaryOut` (limits and a computed `usage`), `RunStepOut` (token and cost fields), `RunDefinitionOut`, `RunPageOut`, `ResumeRequest` (+ `RunRequest` for the start body) |
 | `usage.py` | `GET /usage?days=30` | `usage.py`: `UsageQuery` (`days` 1–366), `UsageReportOut`, `PipelineUsageOut`, `UsageOut`; `BudgetIn` (the optional `max_cost_usd` and `max_tokens` that `RunRequest` and `ResumeRequest` share) |
 | `approvals.py` | `POST /runs/{id}/approvals/{approval_id}/approve`, `POST /runs/{id}/approvals/{approval_id}/decline` (each answers with the run) | `approvals.py`: `RunApprovalOut` (listed in `RunOut.pending_approvals`) |
+| `schedules.py` | `GET`/`POST /schedules`, `PATCH`/`DELETE /schedules/{id}`, `POST /schedules/{id}/run` (202, a run), `POST /schedules/preview` (declared before the id routes) | `schedules.py`: `ScheduleIn` (`ScheduleTimingIn` + `RunRequest` + `pipeline_id`), `SchedulePatch`, `ScheduleTimingIn`, `ScheduleListQuery`, `ScheduleOut`, `LastRunOut`, `SchedulePreviewOut` |
 | `templates.py` | `GET /templates`, `POST /templates/{slug}/use` | `templates.py`: `TemplateOut`, `TemplateUseIn` (optional body); a used template answers with `PipelineOut` |
 
 `schemas/common.py` holds the shared field types: `NonBlank` (trimmed, not
@@ -422,96 +200,10 @@ may be blank; the revise `instruction` is limited by
 | Module | Functions |
 |---|---|
 | `pipelines.py` | `for_user` (newest first, steps loaded), `get_owned` (or `NotFound`), `create_with_steps`, `replace_steps` (rename, redeclare the inputs and/or replace every step in one transaction), `delete`. Writes take a `PipelineChanges` value whose `None` fields are kept. |
-|
-`runs.py`
-|
-`create`
-(run
-+
-its
-step
-rows),
-`get_owned`
-(or
-`NotFound`),
-`load`
-(both
-with
-steps
-and
-pending
-approvals),
-`page_for_user`
-(newest
-first,
-summary
-columns
-only,
-total;
-optional
-pipeline
-and
-status
-filters),
-and
-the
-compare-and-set
-writes
-`set_status`,
-`set_step`,
-`end`
-(final
-status
-+
-settling
-running
-steps
-and
-expiring
-pending
-approvals),
-`reopen`
-(resume,
-optionally
-setting
-new
-limits;
-a
-step
-keeps
-its
-usage),
-`add_step_usage`
-(the
-atomic
-per-call
-increment),
-plus
-`delete`
-and
-`interrupt_active`
-(startup
-recovery
-of
-queued,
-running
-and
-waiting
-runs;
-a
-database
-without
-the
-runs
-table
-has
-none)
-|
-
-
+| `runs.py` | `create` (run + its step rows), `get_owned` (or `NotFound`), `load` (both with steps and pending approvals), `page_for_user` (newest first, summary columns only, total; optional pipeline and status filters), and the compare-and-set writes `set_status`, `set_step`, `end` (final status + settling running steps and expiring pending approvals), `reopen` (resume, optionally setting new limits; a step keeps its usage), `add_step_usage` (the atomic per-call increment), plus `delete` and `interrupt_active` (startup recovery of queued, running and waiting runs; a database without the runs table has none) |
+| `usage.py` | `steps_since(session, user, since)`: the usage columns of the user's steps in runs created since a moment, oldest run first — only the user's own runs are ever read. The report's grouping is `services/usage.py`. |
 | `approvals.py` | `ask` (save a pending request and move its run to `waiting` in one transaction; nothing when the run is no longer executing), `get_in_run` (or `NotFound`), `status_of`, `settle` (compare-and-set from `pending`; the run is `running` again once nothing else of it is pending) and `expire_pending` (as runs end) |
 | `bulk.py` | `changed`: the bulk-UPDATE row count the compare-and-set writes share |
-| `usage.py` | `steps_since(session, user, since)`: the usage columns of the user's steps in runs created since a moment, oldest run first — only the user's own runs are ever read. The report's grouping is `services/usage.py`. |
 | `schedules.py` | `for_user` (oldest first, optionally one pipeline's), `get_owned` (or `NotFound`), `get`, `count`, `create` / `save` (a `ScheduleFields` value), `delete`, `due(now)` (on, and `next_run_at <= now`, longest-waiting first), **`claim(id, seen, following)`** (the compare-and-set that moves `next_run_at` only while it still equals `seen`, so one caller starts each occurrence), `set_last_error`, `last_runs` (the newest run per schedule, summary columns only) |
 | `users.py` | `get`, `get_by_username`, `create` |
 | `provider_settings.py` | `for_user`, `get`, `save` (active provider + per-provider upsert in one transaction), `clear_key` (idempotent) |
@@ -528,69 +220,10 @@ Each write commits its own transaction.
 | `runs.py` | `RunService`: `start` (save the run queued with its limits, a limit left unset taking the server's default, and hand it to the executor; a `RunStart` carries the `trigger` and `schedule_id`, and `launcher` marks chat runs `chat`), `run_to_end` / `run_saved_to_end` (start and wait: the compatibility endpoint and the chat tool), `resume` (optionally under new limits; refused with `BudgetExceeded` when the run is still at one), `cancel`, `delete` (409 `Conflict` while active), `answer_approval` (the owner's approve or decline, through `approvals/decisions`), and the job `_execute` (one attempt on the executor's loop, recording `succeeded`, `failed` or `interrupted`; it builds the run's `RunMeter` from the run's limits and what earlier attempts spent, and its `RunControl` carries the run id, so each step's task knows where it runs). `launcher()` binds it to one user for the chat agent; `interrupt_abandoned_runs()` runs at startup. Logs `run.cancelled`, `run.resumed`, `run.interrupted_on_startup` — never inputs or outputs. |
 | `approvals/` | Approval gates, see [architecture.md](architecture.md#approval-gates). `policy.py` (`ApprovalPolicy`, `approval_policy_for`: the one place that says which tool calls ask first), `guard.py` (`guard_tools` applies the policy to an agent's tools: gated behind the gate, or left out where nobody can be asked; `run_gate`), `middleware.py` (`ApprovalMiddleware`, the LangChain `awrap_tool_call` decorator, and the text a declined or expired call gives the agent), `gate.py` (the `ApprovalGate` port, `RunApprovalGate`, `ApprovalLimits`; polls the database between `asyncio.sleep` calls), `decisions.py` (`answer`, `settle`, `ApprovalAnswer`: idempotent answers, a 409 for the other answer or an expired request), `preview.py` (`preview_arguments`). Logs `approval.requested` and `approval.decided` with ids, step, tool and outcome — never the arguments. |
 | `run_executor.py` | `RunExecutor` port (`submit(key, job) -> Future`, `cancel(key)`, `shutdown()`) and `BackgroundRunExecutor`: one asyncio loop on a daemon thread, started by the first job, at most `RUN_MAX_CONCURRENT` jobs at once. |
-|
-`run_recorder.py`
-|
-`RunRecorder`,
-the
-`StepObserver`
-that
-writes
-each
-step
-event
-in
-its
-own
-short
-transaction
-(`STEP_CHANGES`
-registry:
-event
-kind
-→
-expected
-statuses
-+
-columns),
-`record_usage`
-(one
-finished
-model
-call's
-usage,
-added
-to
-its
-step
-at
-once),
-and
-the
-run's
-`begin`
-/
-`end`
-with
-the
-endings
-`succeeded`,
-`failed`,
-`interrupted`,
-`cancelled`.
-Logs
-`run.started`
-and
-`run.finished`
-with
-status
-and
-duration.
-|
-⏎
-| `schedules/` | Scheduled runs (see [architecture.md](architecture.md#scheduled-runs)). `timing.py`: the pure rules, `Timing`, `FREQUENCIES` (one rule per preset: Strategy + Registry), `checked` (the one validation of a timing), `next_run_after(timing, after)` and `time_zone_error` — `zoneinfo` only, no clock, no database. `service.py`: the use cases behind the endpoints (`ScheduleAccess`, `ScheduleDraft`, `ScheduleEdit`/`TimingEdit`, `ScheduleView`; `create`, `update`, `delete`, `list_views`, `preview`, `run_now`), which check the pipeline's inputs with `prepare_run` before saving. `scheduler.py`: `Scheduler.tick()` / `fire()` (claim, then `RunService.start` with the owner's `ProfileAgents`, recording `last_error`), `SchedulerLoop` (the daemon thread) and `IdleScheduler` (when `SCHEDULER_ENABLED=false`), built by `build_scheduler`. Logs `schedule.created`, `schedule.updated`, `schedule.deleted`, `schedule.run_now`, `schedule.fired` (schedule, run and slot), `schedule.start_failed` (the error code), `schedule.fire_crashed` and `scheduler.started`/`stopped`/`tick_failed` — never inputs or outputs. |
+| `run_recorder.py` | `RunRecorder`, the `StepObserver` that writes each step event in its own short transaction (`STEP_CHANGES` registry: event kind → expected statuses + columns), `record_usage` (one finished model call's usage, added to its step at once), and the run's `begin` / `end` with the endings `succeeded`, `failed`, `interrupted`, `cancelled`. Logs `run.started` and `run.finished` with status and duration. |
 | `run_budget.py` | A run's spending limits, enforced while it executes. `RunBudget` (cost and token limits, `None` = none; `or_else` fills an unset limit from a fallback), `default_budget(settings)`, `limit_reached` over the `LIMITS` registry (one entry per kind of limit; a rounding slack of 1e-9 USD makes a sum a hair under a limit count as reached), `ensure_room` (resume refuses a run still at a limit), `format_usd` (words every amount in the server's messages) and `RunMeter`: the running total of one execution, shared by its steps under a lock. `RunMeter.for_step(order)` is the `UsageMeter` a step's agent reports to: `before_call` raises `BudgetExceeded` once a limit is reached, `after_call` adds the call to the total and saves it to its step. A call that has finished is never thrown away. |
 | `usage.py` | `total_usage(steps)` (a run's totals from its step rows or schemas) and `usage_report(session, user, days)`: the totals, the run count and the per-pipeline breakdown (costliest first; a deleted pipeline's runs group under their name) of `GET /usage`. |
+| `schedules/` | Scheduled runs (see [architecture.md](architecture.md#scheduled-runs)). `timing.py`: the pure rules, `Timing`, `FREQUENCIES` (one rule per preset: Strategy + Registry), `checked` (the one validation of a timing), `next_run_after(timing, after)` and `time_zone_error` — `zoneinfo` only, no clock, no database. `service.py`: the use cases behind the endpoints (`ScheduleAccess`, `ScheduleDraft`, `ScheduleEdit`/`TimingEdit`, `ScheduleView`; `create`, `update`, `delete`, `list_views`, `preview`, `run_now`), which check the pipeline's inputs with `prepare_run` before saving. `scheduler.py`: `Scheduler.tick()` / `fire()` (claim, then `RunService.start` with the owner's `ProfileAgents`, recording `last_error`), `SchedulerLoop` (the daemon thread) and `IdleScheduler` (when `SCHEDULER_ENABLED=false`), built by `build_scheduler`. Logs `schedule.created`, `schedule.updated`, `schedule.deleted`, `schedule.run_now`, `schedule.fired` (schedule, run and slot), `schedule.start_failed` (the error code), `schedule.fire_crashed` and `scheduler.started`/`stopped`/`tick_failed` — never inputs or outputs. |
 | `pipeline_revision.py` | `revise`: applies one instruction to a draft through the planner (`prompts.pipeline_revision_prompt` → `ask_planner`), keeps the draft's name when the planner gives none, and returns a `Revision` (the whole sanitised pipeline and its changes). Saves nothing. |
 | `pipeline_changes.py` | `diff_pipelines`: the pure change list a revision is reviewed with. Steps pair by content, title, prompt, then position (`STEP_MATCHERS`); a stage change is reported only when a step really runs at another point. |
 | `documents/` | Turns an uploaded file into run-input text. `extraction.py` (`extract_document`: picks a reader by extension, enforces size, tidies and truncates, and appends each omission a reader reports, such as skipped pages; `extraction_limits(settings)`, the limits for the endpoint and for agents reading workspace files alike; `megabytes()` for limit messages), `readers.py` (the `READERS` registry; plain text, and HTML via `toolbox/html_text.py`; every third-party parser is registered through `guarded`, which re-raises anything it throws as `DocumentUnreadable`), `pdf.py` (pypdf text layer; pages without one are rendered with PDFium through pypdfium2, under one process-wide lock because PDFium is not thread-safe), `images.py` (Pillow with only the PNG, JPEG, WebP, TIFF, BMP and GIF decoders, a pixel cap checked from each frame's header, TIFF pages counted by seeking, transparency onto white, 16-bit gray scaled, EXIF rotation), `office.py` (Word via python-docx, Excel via openpyxl in read-only mode, reading a sheet's real size rather than its declared one, PowerPoint via python-pptx with a `singledispatch` registry per shape kind; all three behind the unpacked-size zip guard), `scans.py` (`PageOcr`: the per-document OCR page cap, a page OCR times out or fails on skipped rather than the document, and the `[Not read: ...]` sentences), `ocr.py` (`TesseractOcr`, the adapter over pytesseract, and `ocr_engine`, which `create_app()` calls once and which returns `None`, logging why, when OCR is off or the binary or a language is missing), and `contracts.py` (`ExtractionLimits`, `ReadContext`, `ReadResult`, `ExtractedDocument`, and the `OcrEngine` port). Stateless: nothing is stored. A new format is one reader and one registry entry. |
@@ -734,6 +367,18 @@ so tests can never reach a real LLM.
 | `test_multiagent_graph.py` | LangGraph stage barriers, bounded concurrency, result ordering, failure propagation, step events, reuse of completed steps, snapshot round trip |
 | `test_runs_service.py` | Background runs end to end: recording, failure (and the cancelled parallel sibling), crashes, stop while running or queued, the concurrency limit, resume after failure (with the run's own snapshot), restart recovery, shutdown, delete |
 | `test_runs_api.py` | The runs HTTP surface: 202 start and polling, validation before saving, resume, idempotent stop, 409 delete, paging and filtering, ownership, the recorded compatibility endpoint, a run outliving its pipeline |
+| `test_llm_usage.py` | Usage arithmetic, the three cost sources (provider-reported, catalogue, unknown) and their edge cases, per-prompt counting, and the usage callback over a real multi-call agent loop (sums, refusal, a model's own callbacks kept) |
+| `test_step_agent_usage.py` | A step agent reports the sum of its model calls and obeys its meter; the catalogue prices a step's model |
+| `test_run_budget.py` | Limit checks and messages, the shared meter under thread contention (no lost or doubled call), defaults, `ensure_room` |
+| `test_runs_budget.py` | Usage and limits on background runs: per-step recording, a failed or stopped step keeping its spend, the stop at a limit with parallel steps (checked call by call against what the agents reported), token limits, resume under a higher limit and the refusal under the same one, the server default |
+| `test_usage_api.py` | Usage in run payloads, limits on both start routes, resume with a limit, the server default over HTTP, and `GET /usage` (totals, per pipeline, period, ownership, deleted pipelines, validation) |
+| `test_multiagent_usage.py` | The graph carries each step's usage to the observer and the run result, and hands each step its meter |
+| `test_approval_policy.py` | Which tool calls ask first (operator servers, each integration's switch, named built-in tools), the guard (gated, or left out where nobody can be asked) and the chat, which is not offered the tools that ask |
+| `test_approval_gate.py` / `test_approval_preview.py` | The gate in front of a real LangChain agent: approved, declined, unanswered, stopped and a stopped run; the arguments the owner reads and the logs never carry; the wait's limit; the arguments preview |
+| `test_approval_step_agent.py` | What a step agent does with its gate: a tool that does not ask never meets it, the gate hears the call as the model made it, and the real step-agent factory (an integration's tool asks, a trusted one acts at once, outside a recorded run the tool is not offered) |
+| `test_approvals_api.py` | Approve and decline over HTTP: the request in `GET /runs/{id}`, idempotent answers, 409 for the other answer or an expired request, stop (and its log) and delete of a waiting run, the `status` filter, ownership |
+| `test_approval_runs.py` / `test_approval_http_flow.py` | A waiting run on the real executor and a file database: approve, decline, expiry, stop, shutdown, a crash and resume, parallel steps, a failing sibling; and the whole flow through the HTTP API on that executor |
+| `test_integration_approval_setting.py` / `test_approval_schema.py` | The "Ask me before its tools act" switch over HTTP; the migration keeps saved integrations asking, `waiting` fits its column, a run's requests go with it |
 | `schedules/test_timing.py` | Next-run computation: every preset, the zone's calendar rather than UTC's, the hour the clocks skip and the one they repeat (Paris, New York), hourly across both changes, weekends, the 31st in short months and leap years, a half-hour zone, and steady gaps over two windows holding this year's clock changes in five zones |
 | `schedules/test_timing_checks.py` | `checked` and `time_zone_error`: known and unknown zones (path-like names included), the day a weekly or monthly schedule needs, the fields a frequency does not use, seconds dropped |
 | `schedules/test_scheduler.py` | `Scheduler` with a test clock and inline runs: a due schedule starts a run marked as its own, the owner's agent and inputs, not before its time, off means never, overdue after downtime runs once, **two threads racing for one occurrence start exactly one run** (a file database), `claim` as a compare-and-set, a stale snapshot starts nothing after an edit, and inputs read when the run starts |
@@ -744,18 +389,6 @@ so tests can never reach a real LLM.
 | `schedules/test_api_actions.py` | Delete (the runs stay, unlinked), cascade from the pipeline, ownership on every route, run now (also while off, failing, or with inputs that no longer fit), preview, and the trigger and last error shown |
 | `schedules/test_migration.py` | The schedules migration on a database that already holds a run: run steps survive upgrade and downgrade (a rebuild of `runs` must not cascade-delete them), old runs read `manual`, the foreign keys still act |
 | `test_run_triggers.py` | What started a run: chat, the API (both endpoints) and a resume |
-| `test_approval_policy.py` | Which tool calls ask first (operator servers, each integration's switch, named built-in tools), the guard (gated, or left out where nobody can be asked) and the chat, which is not offered the tools that ask |
-| `test_approval_gate.py` / `test_approval_preview.py` | The gate in front of a real LangChain agent: approved, declined, unanswered, stopped and a stopped run; the arguments the owner reads and the logs never carry; the wait's limit; the arguments preview |
-| `test_approval_step_agent.py` | What a step agent does with its gate: a tool that does not ask never meets it, the gate hears the call as the model made it, and the real step-agent factory (an integration's tool asks, a trusted one acts at once, outside a recorded run the tool is not offered) |
-| `test_approvals_api.py` | Approve and decline over HTTP: the request in `GET /runs/{id}`, idempotent answers, 409 for the other answer or an expired request, stop (and its log) and delete of a waiting run, the `status` filter, ownership |
-| `test_approval_runs.py` / `test_approval_http_flow.py` | A waiting run on the real executor and a file database: approve, decline, expiry, stop, shutdown, a crash and resume, parallel steps, a failing sibling; and the whole flow through the HTTP API on that executor |
-| `test_integration_approval_setting.py` / `test_approval_schema.py` | The "Ask me before its tools act" switch over HTTP; the migration keeps saved integrations asking, `waiting` fits its column, a run's requests go with it |
-| `test_llm_usage.py` | Usage arithmetic, the three cost sources (provider-reported, catalogue, unknown) and their edge cases, per-prompt counting, and the usage callback over a real multi-call agent loop (sums, refusal, a model's own callbacks kept) |
-| `test_step_agent_usage.py` | A step agent reports the sum of its model calls and obeys its meter; the catalogue prices a step's model |
-| `test_run_budget.py` | Limit checks and messages, the shared meter under thread contention (no lost or doubled call), defaults, `ensure_room` |
-| `test_runs_budget.py` | Usage and limits on background runs: per-step recording, a failed or stopped step keeping its spend, the stop at a limit with parallel steps (checked call by call against what the agents reported), token limits, resume under a higher limit and the refusal under the same one, the server default |
-| `test_usage_api.py` | Usage in run payloads, limits on both start routes, resume with a limit, the server default over HTTP, and `GET /usage` (totals, per pipeline, period, ownership, deleted pipelines, validation) |
-| `test_multiagent_usage.py` | The graph carries each step's usage to the observer and the run result, and hands each step its meter |
 | `test_llm_providers.py` / `test_llm_catalog.py` | Provider adapter, registry, catalogue |
 | `test_llm_retry.py` | The retry policy: retried and failing statuses, connection errors, timeouts, backoff, `Retry-After`, logging, streams |
 | `test_llm_provider_retries.py` / `test_agent_model_retries.py` | Retries on the direct provider and on the LangChain models (SDK retries off, exact attempt counts, no replayed stream), and the settings behind them |

@@ -28,8 +28,8 @@ frontend/src/
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, LiveRun, useRun and the run history
-schedules/ # the Schedule panel (builder) and the Schedules view of the Runs screen
-settings/ # SettingsPage: LLM providers, Integrations (users' MCP servers) and Usage
+    schedules/      # the Schedule panel (builder) and the Schedules view of the Runs screen
+    settings/       # SettingsPage: LLM providers, Integrations (users' MCP servers) and Usage
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -87,59 +87,9 @@ resolves the session before the first render without a redirect flash.
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 | `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
-|
-`runs.ts`
-|
-`startRun`
-(its
-body
-may
-carry
-`max_cost_usd`
-/
-`max_tokens`),
-`listRuns`
-(page,
-optional
-pipeline
-and
-status),
-`countWaitingRuns`
-(`listRuns`
-for
-`status=waiting`,
-one
-run:
-its
-`total`),
-`getRun`,
-`cancelRun`,
-`resumeRun`
-(optionally
-with
-new
-limits),
-`deleteRun`
-—
-all
-with
-the
-default
-30
-s
-timeout,
-since
-a
-run
-executes
-on
-the
-server
-|
-
-
-| `approvals.ts` | `approveToolCall(runId, approvalId)` and `declineToolCall(...)`: answer a tool call a run waits on; each gives back the updated run, and a clash or an expired request is a 409 `conflict` |
+| `runs.ts` | `startRun` (its body may carry `max_cost_usd` / `max_tokens`), `listRuns` (page, optional pipeline and status), `countWaitingRuns` (`listRuns` for `status=waiting`, one run: its `total`), `getRun`, `cancelRun`, `resumeRun` (optionally with new limits), `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
 | `usage.ts` | `fetchUsage(days, signal)`: what the account's runs of the last days used and cost (`GET /usage`) |
+| `approvals.ts` | `approveToolCall(runId, approvalId)` and `declineToolCall(...)`: answer a tool call a run waits on; each gives back the updated run, and a clash or an expired request is a 409 `conflict` |
 | `schedules.ts` | `listSchedules` (all, or one pipeline's), `createSchedule`, `updateSchedule` (`PATCH`), `deleteSchedule`, `runScheduleNow` and `previewSchedule` (when a timing would first run) — each takes an optional abort signal, all with the default 30 s timeout |
 | `errorMessage.ts` | `errorMessage(cause, fallback)`: a caught value as words for the person (an `ApiError`'s message, else the fallback) |
 
@@ -228,9 +178,9 @@ Components here render and animate; they never fetch or touch storage.
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
 | `navIcons.ts` | `navIcon(route)`: the top bar's icon per section, used on a phone above each label |
 | `BusyNotice.tsx`, `Spinner.tsx` | Loading line with shimmer text; the spinner (`decorative` hides it inside a labelled control) |
+| `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 | `SwitchButton.tsx` | The bare `role="switch"` button: `checked`, `disabled`, `onChange(next)`, and its name from `label`, or from the visible text it points to with `labelledBy` and `describedBy`. The one switch every other is built on |
 | `ToggleSwitch.tsx` | A `SwitchButton` with its state in words ("On" / "Off") beside it: `checked`, `label` (its accessible name), `disabled`, `onChange(next)`. Shared by the integrations and the schedules |
-| `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
 (MIT + Commons Clause — keep `LICENSE.md` next to them): `Aurora` (WebGL2
@@ -451,11 +401,11 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
 | `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume onApprove onDecline busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, the cards of the actions it waits on, any `children` (e.g. its inputs), then the results. Pair it with `useRun` (`onApprove={live.approve}`, `onDecline={live.decline}`); without both, requests are shown but not answerable on that screen |
 | `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done", ticking elapsed time, the running cost (`RunCost`), Stop / Resume (`ResumeControl`) and extra `actions`, an `aria-live` line, and why the run stopped or waits (the failed step and its error, "Spending limit reached." with the server's message, "You stopped this run", "The server restarted…", "This run is waiting for you…") |
-| `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under its status bar (a polite `aria-live` count), each as an `ApprovalCard`: "Needs your OK", `Allow “Send email”?`, which step and agent role asks and from which integration, the tool's description, what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), the time left (ticking, `useNow`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "No answer counts as a decline". `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`) |
-| `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. `PipelineNav` shows it as a badge on the Runs tab, with the same count in words for screen readers |
 | `RunCost.tsx` | The run's cost in the status bar: `$0.0123` (its token counts a hover away, and read out), "$0.0123 or more" when part of it is unpriced, "Cost unknown for this model" when none is, next to "of $0.50 limit" when the run has a limit; nothing before an active run has used anything (or "Limit $0.50" if it has one), and "No usage recorded" for a finished run with none |
 | `ResumeControl.tsx` | The Resume button. A run that stopped at its spending limit cannot resume under it, so it shows "Raise the limit to $[ ] Resume" instead, prefilled with double the old limit, saying what the run has used so far and refusing an amount at or below that; the token variant appears when it was a token limit. `onResume(budget?)` carries the new limit |
 | `runBudget.ts` | `limitReached(run)` (which limit a run is at; mirrors the server's rule, rounding slack included), `limitParts`, `suggestedLimit`, `limitBudget` and `limitProblem` for the resume form, and `BUDGET_ERROR_CODE` |
+| `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under its status bar (a polite `aria-live` count), each as an `ApprovalCard`: "Needs your OK", `Allow “Send email”?`, which step and agent role asks and from which integration, the tool's description, what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), the time left (ticking, `useNow`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "No answer counts as a decline". `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`) |
+| `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. `PipelineNav` shows it as a badge on the Runs tab, with the same count in words for screen readers |
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |

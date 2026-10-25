@@ -694,10 +694,10 @@ The run object:
     "steps": [{ "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" }, "..."]
   },
   "steps": [
-{ "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123 },
-{ "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004 }
-],
-"pending_approvals": []
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123 },
+    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004 }
+  ],
+  "pending_approvals": []
 }
 ```
 

@@ -162,20 +162,20 @@ Signing in lands on **Missions**, the front door. The other screens are the same
 features one step closer to the machinery.
 
 1. **Missions** (`/mission`) — say what you want done, e.g. "Research the three main
-competitors of my product and write a one-page comparison". AIMIx puts a team of
-agents together and tells you in plain words who does what, which tools each one
-uses and what you will need to provide; nothing is saved yet. Ask for changes in
-your own words ("add an agent that checks the facts"), read the proposed changes
-and **Apply** or **Discard** them. Press **Run it** (or type "run it"), fill in
-what the team needs (you can attach a document) and the run starts; the first run
-saves the mission. The team in the middle shows each agent waiting, running or
-done and opens a side drawer to edit its role, prompt, model and tools; **Results**
-leads with the deliverables, folds the full run details away once the run is done
-and lists your newest files. Reopen a mission at `/mission/<id>` or with **Open in
-mission view** on the builder, and hand it to the advanced mode with **Open in
-builder**. Under 1280px wide the three panes become tabs. The conversation is kept
-for the browser tab only; the team and its runs are saved on the server. Template
-quick-starts sit under the examples on the empty screen.
+   competitors of my product and write a one-page comparison". AIMIx puts a team of
+   agents together and tells you in plain words who does what, which tools each one
+   uses and what you will need to provide; nothing is saved yet. Ask for changes in
+   your own words ("add an agent that checks the facts"), read the proposed changes
+   and **Apply** or **Discard** them. Press **Run it** (or type "run it"), fill in
+   what the team needs (you can attach a document) and the run starts; the first run
+   saves the mission. The team in the middle shows each agent waiting, running or
+   done and opens a side drawer to edit its role, prompt, model and tools; **Results**
+   leads with the deliverables, folds the full run details away once the run is done
+   and lists your newest files. Reopen a mission at `/mission/<id>` or with **Open in
+   mission view** on the builder, and hand it to the advanced mode with **Open in
+   builder**. Under 1280px wide the three panes become tabs. The conversation is kept
+   for the browser tab only; the team and its runs are saved on the server. Template
+   quick-starts sit under the examples on the empty screen.
 2. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and the configured MCP tools that need no approval (see [above](#give-chat-and-pipeline-steps-mcp-tools)).
 3. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage. Give each step a role, prompt, model, and tool
