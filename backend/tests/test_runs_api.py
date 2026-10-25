@@ -25,6 +25,9 @@ SUMMARY_KEYS = {
     "created_at",
     "started_at",
     "finished_at",
+    "max_cost_usd",
+    "max_tokens",
+    "usage",
 }
 
 

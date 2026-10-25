@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from api.schemas.chat import ChatRequest
 from api.schemas.pipelines import GenerateRequest, PipelineIn, PipelinePatch, RunRequest
+from api.services.run_budget import RunBudget
 
 
 def pipeline(**step: object) -> dict[str, object]:
@@ -77,7 +78,35 @@ def test_run_trims_the_text_and_named_values() -> None:
     # Which of the two a run needs depends on the pipeline, so the service checks it.
     body = RunRequest.model_validate({"input": " go ", "inputs": {"topic": " bees "}})
     assert (body.input, body.inputs) == ("go", {"topic": "bees"})
-    assert RunRequest.model_validate({}).model_dump() == {"input": "", "inputs": {}}
+    assert RunRequest.model_validate({}).model_dump() == {
+        "input": "",
+        "inputs": {},
+        "max_cost_usd": None,
+        "max_tokens": None,
+    }
+
+
+def test_a_run_may_set_a_cost_and_a_token_limit() -> None:
+    body = RunRequest.model_validate({"input": "go", "max_cost_usd": 0.5, "max_tokens": 20_000})
+    assert (body.budget.max_cost_usd, body.budget.max_tokens) == (0.5, 20_000)
+    assert RunRequest.model_validate({"input": "go"}).budget == RunBudget()
+
+
+@pytest.mark.parametrize(
+    "limits",
+    [
+        {"max_cost_usd": 0},
+        {"max_cost_usd": -1},
+        {"max_cost_usd": float("inf")},
+        {"max_cost_usd": "a lot"},
+        {"max_tokens": 0},
+        {"max_tokens": -5},
+        {"max_tokens": 1.5},
+    ],
+)
+def test_a_run_refuses_limits_that_cannot_be_met(limits: dict) -> None:
+    with pytest.raises(ValidationError):
+        RunRequest.model_validate({"input": "go", **limits})
 
 
 def test_named_inputs_are_validated(default_model: str) -> None:

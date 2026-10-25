@@ -87,7 +87,9 @@ def _reported_cost(message: AIMessage, tokens: TokenUsage, model: ModelInfo | No
     return float(cost) if math.isfinite(cost) and cost >= 0 else None
 
 
-def _catalogue_cost(message: AIMessage, tokens: TokenUsage, model: ModelInfo | None) -> float | None:
+def _catalogue_cost(
+    message: AIMessage, tokens: TokenUsage, model: ModelInfo | None
+) -> float | None:
     """The call's tokens at the model's published prices."""
     return model.price(tokens.input_tokens, tokens.output_tokens) if model else None
 
@@ -201,9 +203,9 @@ class UsageCallback(BaseCallbackHandler):
 def metered(model: BaseChatModel, callback: BaseCallbackHandler) -> BaseChatModel:
     """A copy of ``model`` whose every call ``callback`` hears (its own callbacks kept).
 
-    The callback rides on the model, not on the agent's run config: on Python
-    3.10 LangGraph cannot carry a config's callbacks into an async agent's
-    model call, so they would never fire.
+    The callback rides on the model, not on the agent's run config: with the
+    Python 3.10 this project runs on, a callback given in that config never
+    reached the agent's model calls (checked), so it would never fire.
     """
     existing = model.callbacks
     if isinstance(existing, BaseCallbackManager):
