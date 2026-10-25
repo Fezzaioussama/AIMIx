@@ -96,11 +96,16 @@ class LimitReached:
     limit: str
 
 
+#: A cost is a sum of many small floats, so ten $0.01 calls can add up to
+#: $0.0999999…: a run this close under its limit has reached it.
+ROUNDING_SLACK = 1e-9
+
+
 def limit_reached(budget: RunBudget, spent: TokenUsage) -> LimitReached | None:
     """The first limit ``spent`` has reached; None while every limit has room."""
     for kind in LIMITS:
         allowed, used = kind.allowed(budget), kind.used(spent)
-        if allowed is not None and used is not None and used >= allowed:
+        if allowed is not None and used is not None and used + ROUNDING_SLACK >= allowed:
             return LimitReached(kind.amount(used), kind.limit(allowed))
     return None
 
