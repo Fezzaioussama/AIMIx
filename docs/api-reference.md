@@ -13,9 +13,19 @@ interactive explorer at `/api/docs`.
 **Errors:** every error body is `{"error": "<code>", "detail": "<message>"}`.
 The code list is in the [README error contract](../README.md#error-contract);
 other codes you may see are `method_not_allowed` (405), `budget_exceeded` (409,
-a run reached its [spending limit](#spending-limits)) and `server_error` (500,
-an unexpected failure). A validation error's `detail` lists each problem as
-`field: message`, e.g. `"steps.0.model: Unknown model 'x'. Choose one of: ..."`.
+a run reached its [spending limit](#spending-limits)), `too_many_runs` (429, the
+account already has `RUN_MAX_ACTIVE_PER_USER` runs active), `run_still_running`
+(202, not a failure: see [`POST /pipelines/<id>/run`](#post-pipelinesidrun)) and
+`server_error` (500, an unexpected failure). A validation error's `detail` lists
+each problem as `field: message`, e.g. `"steps.0.model: Unknown model 'x'. Choose
+one of: ..."`.
+
+**Spending routes are rate limited per account:** `POST /chat`, `/pipelines/generate`,
+`/pipelines/revise`, `/pipelines/<id>/run`, `/pipelines/<id>/runs`,
+`/runs/<id>/resume`, `/schedules/<id>/run` and `/templates/<slug>/use` each allow
+`USER_RATE_LIMIT_REQUESTS` (30) requests per `USER_RATE_LIMIT_WINDOW_SECONDS` (60)
+per account (ids in the path share one counter); past it, `429 throttled` with
+`Retry-After`.
 
 ---
 
@@ -330,6 +340,14 @@ error status (502/503/504), including `502 tool_unavailable` if an MCP server
 cannot be reached. A failure **after** streaming starts is logged and ends
 the stream.
 
+`prompt` holds at most 100,000 characters (`400 validation_error` past it). The
+agent's model calls are counted like a run's; when the operator sets
+`CHAT_MAX_TOKENS`, the calls behind one message stop once they have used that
+many tokens (in and out): before the first text chunk that is a `409
+budget_exceeded` (`"This reply stopped at 12,034 tokens because it reached its
+10,000-token limit."`), after it the stream ends. A pipeline that
+`run_pipeline` starts is an ordinary run, under the run limits below.
+
 ---
 
 ## Documents
@@ -498,8 +516,9 @@ A pipeline object:
 ```
 
 `user`, `created_at`, and the step `id`s are read-only. `steps` must contain at
-least one step; each `model` must be in `GET /models`. `order` must be unique
-within a pipeline (a repeated `order` is a `400 validation_error`).
+least one step and at most 50; each `model` must be in `GET /models`, and each
+`prompt` holds at most 50,000 characters. `order` must be unique within a
+pipeline (a repeated `order` is a `400 validation_error`).
 
 `stage` (integer ≥ 1, optional, defaults to the step's `order`) sets how steps
 run. Stages run one after another in ascending order; **steps that share a stage
@@ -664,7 +683,8 @@ field it does not send.
 
 Kept for API compatibility: it starts a run exactly like
 [`POST /pipelines/<id>/runs`](#post-pipelinesidruns) — recorded in your run
-history — and waits for its end. New clients start a run and poll it instead.
+history — and waits for its end, at most `RUN_WAIT_MAX_SECONDS` (300). New
+clients start a run and poll it instead.
 
 A pipeline without named inputs runs on free text:
 
@@ -685,7 +705,9 @@ file and send what it returns as the value. The run API itself only ever sees te
 Sending text to a pipeline with named inputs, named values to one without, a
 blank value, or a name the pipeline does not declare is a `400
 validation_error` whose `detail` names the problem; no agent runs. Both
-fields are trimmed.
+fields are trimmed. Together they hold at most 500,000 characters (room for a
+few documents at the default `DOCUMENT_MAX_CHARS`), and `inputs` names at most
+20 values; past either, a `400 validation_error`.
 
 Either body may also carry `max_cost_usd` and/or `max_tokens`, the run's
 [spending limits](#spending-limits). A run that reaches one ends the request
@@ -731,13 +753,21 @@ Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
 `502/503/504` agent or tool failures (the run stops and the response carries
 no partial result; the recorded run keeps the steps that succeeded and can be
 resumed), `409 conflict` if the run is stopped from the run history while
-this request waits.
+this request waits, and `429 too_many_runs` as for
+[`POST /pipelines/<id>/runs`](#post-pipelinesidruns).
+
+A run still going after `RUN_WAIT_MAX_SECONDS` is **not** stopped: the request
+answers `202` with `{"error": "run_still_running", "detail": "Run 42 is still going
+after 300 s and continues in the background. Follow it with GET /api/runs/42."}`.
+The run's id is in `detail` (it is also the newest of
+`GET /runs?pipeline_id=<id>&limit=1`); poll it like any run.
 
 The call takes as long as its stages combined, and a parallel stage takes as
 long as its slowest step. When a step's tool must [ask for approval](#approvals),
 the call also waits until the run's owner answers (from the Runs page or the
 [approval endpoints](#post-runsidapprovalsapproval_idapprove-and-decline)), or the
-request expires after `APPROVAL_TIMEOUT_SECONDS`.
+request expires after `APPROVAL_TIMEOUT_SECONDS` — within the
+`RUN_WAIT_MAX_SECONDS` above.
 
 ## Runs
 
@@ -762,6 +792,12 @@ Same body as `POST /pipelines/<id>/run`. `202` → the run, `queued`, every step
 validation_error` and nothing is saved; `404` for a pipeline that is not yours.
 A failure of the model or a tool (or a missing API key) does not fail this
 request: the run ends `failed` with that error.
+
+An account may have at most `RUN_MAX_ACTIVE_PER_USER` (3) runs `queued`,
+`running` or `waiting` at once, however they start (this endpoint, the
+compatibility one, a resume, a schedule, chat's `run_pipeline`). One more is a
+`429 too_many_runs` and nothing is saved; the check is made in the same
+transaction as the save, so requests sent together cannot pass it together.
 
 The run object:
 
@@ -847,8 +883,16 @@ A run may carry `max_cost_usd` (a number above zero, in USD) and/or
 `max_tokens` (a whole number of at least 1, counting tokens in and out), both
 `null` for no limit. Send them in the body of `POST /pipelines/<id>/runs`; a
 limit left out takes the server default, `RUN_DEFAULT_MAX_COST_USD` for the cost
-(no limit when it is empty). A value that is not a positive finite number is a
-`400 validation_error` and nothing is saved.
+and `RUN_DEFAULT_MAX_TOKENS` for the tokens (no limit when empty). A value that
+is not a positive finite number is a `400 validation_error` and nothing is saved.
+
+The operator may also set **ceilings** that no run passes: `RUN_MAX_COST_USD` and
+`RUN_MAX_TOKENS`. A limit asked for above one is refused, never quietly lowered:
+`400 validation_error`, `"Runs here may have at most a $5.00 limit; you asked for
+$10.00."` (`"... at most a 1,000,000-token limit ..."` for tokens), and nothing is
+saved. A run that sets no limit of its own gets the default, cut to the ceiling,
+or the ceiling when there is no default; the run's `max_cost_usd` and
+`max_tokens` always show the limits that apply.
 
 The limit is enforced while the run executes, not after: every finished model
 call is added to the run's running total, which parallel steps share, and a
@@ -865,7 +909,8 @@ limit is reached still finishes and is counted, so the total can pass the limit
 by the calls then in flight (at most one per parallel step). A call that is cut
 off in flight (a parallel step stopped by the failure of another) reports no
 usage, so what the provider may still charge for it is not counted. A cost limit
-cannot stop calls whose cost is unknown; use `max_tokens` for those.
+cannot stop calls whose cost is unknown; use `max_tokens` for those (or the
+server's `RUN_DEFAULT_MAX_TOKENS`).
 
 ### `GET /runs`
 
@@ -920,7 +965,16 @@ it. The limits cover the whole run, every attempt together, so a run that
 stopped at its limit needs a higher one: resuming it under a limit it has
 already reached is a `409 budget_exceeded` (`"This run already reached its $0.50
 limit (it used $0.52). Raise the limit to resume it."`) and the run stays as it
-was. An invalid limit is a `400 validation_error`.
+was. An invalid limit, or one above the server's ceiling, is a `400
+validation_error`; a run limit saved before the ceiling was lowered is cut to it,
+and a limit the run never had takes the server's default.
+
+A resume needs room under `RUN_MAX_ACTIVE_PER_USER` like a start (`429
+too_many_runs`, the run unchanged). A run stopped a moment ago may still be
+winding down (a tool call it cannot abandon): the resume waits for that up to
+`RUN_SHUTDOWN_GRACE_SECONDS` (5), then answers `409 conflict` ("This run is still
+stopping. Try again in a moment.") so the stopped attempt can never record its
+end over the new one.
 
 ### `DELETE /runs/<id>`
 
@@ -983,7 +1037,13 @@ nothing. Failures:
   "planner_model": "openai/gpt-oss-120b" }
 ```
 
-`planner_model` is optional (defaults to your default model). `200`:
+`planner_model` is optional (defaults to your default model); `description`
+holds at most 20,000 characters. The planner answers inside the request, so its
+call times out after `LLM_PLANNER_TIMEOUT_SECONDS` (300; `504 provider_timeout`)
+and may write at most `LLM_PLANNER_MAX_OUTPUT_TOKENS` (32,000) tokens. A provider
+that refuses the call is a `502 provider_unavailable` whose `detail` says only
+that (`"openrouter could not answer the request."`): the provider's own message,
+which can describe the account or echo part of its key, goes to no caller. `200`:
 
 ```json
 {
@@ -1087,7 +1147,8 @@ only a save checks them, and the planner's answer is cleaned up as for generate.
 
 Errors: `400 validation_error`, before the planner is asked, for a blank or too
 long instruction or a draft that could not be saved for another reason (no
-steps, a repeated `order`, an unknown model, an invalid input name);
+steps, a repeated `order`, an unknown model, an invalid input name, more than
+50 steps or a step prompt over 50,000 characters);
 `502 upstream_response_invalid` when the planner's answer holds no usable
 pipeline; `502/503/504` for provider failures, as for generate.
 
@@ -1131,7 +1192,9 @@ saved**, with your LLM provider and key (the Settings page, else the server's),
 and each run it starts is an ordinary [run](#runs) marked `trigger: "schedule"`.
 Schedules are checked every `SCHEDULER_TICK_SECONDS` (30), so a run starts at
 most that long after its time. A schedule that was overdue (the server was down)
-runs **once** when the server is back, not once per missed time.
+runs **once** when the server is back, not once per missed time. A time that
+comes while the schedule's previous run is still `queued`, `running` or
+`waiting` is **skipped** (`last_error` says so) rather than queued behind it.
 
 A schedule object:
 
@@ -1148,6 +1211,8 @@ A schedule object:
   "timezone": "Europe/Paris",
   "input": "",
   "inputs": { "topic": "competitors" },
+  "max_cost_usd": 0.5,
+  "max_tokens": null,
   "enabled": true,
   "next_run_at": "2026-10-26T08:00:00Z",
   "last_run": { "id": 12, "status": "succeeded", "created_at": "2026-10-19T08:00:00Z" },
@@ -1164,10 +1229,11 @@ A schedule object:
 | `day_of_month` | 1 to 31; required for `monthly`, `null` for the others. A month that is too short for it uses its last day (the 31st runs on 30 April and 28 February) |
 | `timezone` | An IANA name the server knows, such as `Europe/Paris`, `America/New_York` or `UTC` |
 | `input` / `inputs` | What each run is given, with the rules of [`POST /pipelines/<id>/runs`](#post-pipelinesidruns): free text for a pipeline without named inputs, a value for each named input otherwise. `pipeline_inputs` lists the pipeline's inputs |
+| `max_cost_usd` / `max_tokens` | Each run's [spending limits](#spending-limits), as for a run; `null` leaves that limit to the server's default. Within the server's ceiling, like any run's |
 | `enabled` | Whether it runs. Off, it keeps its settings and `next_run_at` is `null` |
 | `next_run_at` | The next time it starts, in UTC |
 | `last_run` | The newest run it started (by itself or by [run now](#post-schedulesidrun)); `null` before the first, or when those runs were deleted |
-| `last_error` | Why its latest time could not start a run (for example no API key); `null` when it started. The schedule has already moved to its next time. An edit that changes what it runs or when, or turns it on, clears it (it has not failed yet); turning it off keeps it |
+| `last_error` | Why its latest time could not start a run (for example no API key, the account's `RUN_MAX_ACTIVE_PER_USER` runs already active, or `"Skipped a run: run 12 of this schedule was still in progress."`); `null` when it started. The schedule has already moved to its next time. An edit that changes what it runs, its limits or when, or turns it on, clears it (it has not failed yet); turning it off keeps it |
 
 A time is read on the zone's wall clock, so `09:00` stays 09:00 across
 daylight-saving changes. When the clocks go forward, a time in the skipped hour
@@ -1188,13 +1254,14 @@ Your schedules, oldest first. `?pipeline_id=3` narrows them to one pipeline's
 ```
 
 `201` → the schedule, with its `next_run_at`. Send `input` (free text) or
-`inputs` (named values) as for a run; `enabled` defaults to `true`. Fields the
+`inputs` (named values), and optionally `max_cost_usd` / `max_tokens`, as for a
+run; `enabled` defaults to `true`. Fields the
 frequency does not use are ignored and stored as `null`. The same checks as
 starting a run apply **before anything is saved**:
 
 | Status | `error` | When |
 |---|---|---|
-| 400 | `validation_error` | An unknown `timezone`; a `time` that is not `HH:MM`; a weekly schedule without `weekday` or a monthly one without `day_of_month`; inputs the pipeline does not take (blank text, a missing or unknown named input, text sent to a pipeline with named inputs); a pipeline without steps; or `SCHEDULES_MAX_PER_USER` (20) schedules already |
+| 400 | `validation_error` | An unknown `timezone`; a `time` that is not `HH:MM`; a weekly schedule without `weekday` or a monthly one without `day_of_month`; inputs the pipeline does not take (blank text, a missing or unknown named input, text sent to a pipeline with named inputs); a limit above the server's ceiling; a pipeline without steps; or `SCHEDULES_MAX_PER_USER` (20) schedules already (counted in the insert's own transaction, so creates sent together cannot pass it together) |
 | 404 | `not_found` | The pipeline is missing or not yours |
 
 ### `PATCH /schedules/<id>`
@@ -1206,7 +1273,10 @@ starting a run apply **before anything is saved**:
 Every field is optional and one left out keeps its value; sending the same body
 twice leaves the same state. Timing fields change one by one. `input` and
 `inputs` replace what each run is given **as a whole** (the one left out becomes
-empty). The next time is worked out again when the timing changes or the schedule
+empty). So do `max_cost_usd` and `max_tokens`: sending either one sets both (the
+one left out becomes `null`, the server's default), and `null` removes a limit;
+sending neither keeps them. A limit above the server's ceiling is a `400`.
+The next time is worked out again when the timing changes or the schedule
 is turned on; changing only the inputs keeps it, so a time that is due is not
 postponed by an edit. Turning a schedule **off** always works and clears
 `next_run_at`. Turning it on, or changing its inputs, checks them again against
@@ -1222,7 +1292,8 @@ Deleting a pipeline deletes its schedules too.
 Starts one of the schedule's runs now, with its saved inputs, even when the
 schedule is off. `202` → the run (`trigger: "schedule"`, `queued`), to follow with
 `GET /runs/<id>`; the schedule's timing does not change. A pipeline that no longer
-takes the saved inputs is a `400`, and nothing is saved.
+takes the saved inputs is a `400`, and nothing is saved; an account with
+`RUN_MAX_ACTIVE_PER_USER` runs active, a `429 too_many_runs`.
 
 ### `POST /schedules/preview`
 
@@ -1320,5 +1391,6 @@ pipelines.
 |---|---|---|
 | 400 | `validation_error` | `name` is blank or too long |
 | 404 | `not_found` | No template has that slug (checked before any tool discovery) |
+| 429 | `throttled` | Over the per-account rate limit of the spending routes (see the top of this page) |
 | 502 | `tool_unavailable` | A configured MCP server could not be reached while listing the caller's tools |
 | 503 | `provider_not_configured` | The caller's saved key can no longer be decrypted (as for `GET /models`) |

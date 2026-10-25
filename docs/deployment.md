@@ -105,7 +105,10 @@ If you set `ALLOW_PUBLIC_REGISTRATION=true`, registration is open. A server-wide
 set `ALLOW_SERVER_LLM_KEY=true`, which would let **anyone who registers** spend
 it. Leave both unset: each user saves their own key on the Settings page,
 encrypted with `SECRET_KEY`, and a request without one fails with
-`provider_not_configured`.
+`provider_not_configured`. If you do turn it on, also set the ceilings
+`RUN_MAX_COST_USD`, `RUN_MAX_TOKENS` and `CHAT_MAX_TOKENS` (see
+[Spending limits](#spending-limits-and-usage)); the container logs
+`runs.spending_unbounded` at startup for each one left empty.
 
 ### Users' integrations (their own MCP servers)
 
@@ -244,12 +247,16 @@ setup recommended above) spend their own money, so the default is optional.
 Things to know:
 
 - The limit only counts costs the app knows. A model with an unknown cost counts
-  for tokens only, so a cost limit never stops it (a token limit set through the
-  API does).
+  for tokens only, so a cost limit never stops it; a token limit does (set
+  through the API, or `RUN_DEFAULT_MAX_TOKENS` for runs that set none).
+- `RUN_MAX_COST_USD` and `RUN_MAX_TOKENS` are ceilings no user can raise: a run
+  asking for more is refused, and one asking for nothing gets them. Each account
+  may have `RUN_MAX_ACTIVE_PER_USER` (3) runs queued, running or waiting at once.
 - A call in flight when the limit is reached still finishes and is counted, so a
   run can pass its limit by the calls then running (at most one per parallel
   step).
-- The usage report counts pipeline runs only, not chat messages.
+- The usage report counts pipeline runs only, not chat messages (one message's
+  calls stop at `CHAT_MAX_TOKENS` when it is set).
 - Runs recorded before this feature existed show no usage ("No usage
   recorded"); the migration (`d51cc5c2111e`) adds its columns in place and keeps
   every run and step.
@@ -334,6 +341,7 @@ the rest wait queued.
 | Uploads answer `storage_quota_exceeded` | That user's files reached `WORKSPACE_MAX_TOTAL_BYTES` | They delete files on the Files page, or raise the limit |
 | PDFs show boxes instead of letters; log has `artifacts.pdf_font_unavailable` | No TrueType font at `PDF_FONT_PATH` (image built without `fonts-dejavu-core`, or a custom path) | Build with the repository `Dockerfile`, or point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a font that covers your users' scripts |
 | Runs stop with "Spending limit reached" | The run's limit, or `RUN_DEFAULT_MAX_COST_USD` for a run with none, was reached | Raise the limit when resuming the run (Runs screen, or `POST /api/runs/<id>/resume` with `max_cost_usd`), or raise or unset the variable |
+| Starting a run answers `too_many_runs` | The account already has `RUN_MAX_ACTIVE_PER_USER` runs queued, running or waiting (a schedule says so in its last error) | Wait for one to end or stop one, or raise the variable |
 | Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) | Resume them from the Runs screen; finished steps are kept |
 | A schedule never runs; no `scheduler.started` line in the log | `SCHEDULER_ENABLED=false`, or the schedule is off (its "Next run" says so) | Remove the variable; switch the schedule on |
 | A schedule says "it could not start: No API key is set for …" | Its owner saved no key and the server has none | The owner adds a key on the Settings page; the schedule's next time starts normally |

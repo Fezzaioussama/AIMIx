@@ -101,9 +101,12 @@ Tools of MCP servers and integrations (and the built-in tools in
   (`APPROVAL_POLL_SECONDS`) and the page polls the run every 1.5 s, so an answer
   takes up to a second or two to show. There is no notification outside the Runs
   tab's count, and no email or push.
-- **The compatibility endpoint blocks.** `POST /pipelines/<id>/run` and chat's
+- **The compatibility endpoint waits.** `POST /pipelines/<id>/run` and chat's
   `run_pipeline` wait for a run's end, so one that asks keeps its caller waiting
-  until the owner answers on the Runs page (or the request expires).
+  until the owner answers on the Runs page, at most `RUN_WAIT_MAX_SECONDS` (300):
+  the endpoint then answers `202 run_still_running` and the run goes on. A run
+  waiting for an answer also keeps its executor slot (`RUN_MAX_CONCURRENT`) the
+  whole time; `RUN_MAX_ACTIVE_PER_USER` keeps one account from holding them all.
 
 **Fix options:** per-tool "always allow" rules saved with the integration; a
 `requires_approval` flag in `GET /agent-tools` so the builder can show which
@@ -115,8 +118,12 @@ notifications for waiting runs; letting chat ask inline.
 The run executor (`api/services/run_executor.py`) is an asyncio loop in the API
 process, and its queue lives in memory. That is enough for the single
 container this deploys as, but a second process (another replica or Uvicorn
-worker) would not share the queue, and its start-up recovery would mark the
-first process's active runs as interrupted. A restart interrupts the runs in
+worker) would not share the queue, and its start-up recovery
+(`repositories/active_runs.interrupt_active`, which takes every active run in
+the database for one the previous process left) would mark the first process's
+active runs as interrupted, while they go on executing there. The guard that
+keeps a resume from overlapping a stopped attempt still winding down
+(`RunExecutor.settled`) is in memory too. A restart interrupts the runs in
 progress; they have to be resumed by hand. Run progress is polled (every 1.5 s
 per open run), not pushed.
 
@@ -138,20 +145,25 @@ made. So:
   a run stopped by its owner) reports no usage, so what the provider may charge
   for it is not counted.
 - A cost limit cannot stop calls whose cost is unknown (a model with no known
-  price). Only a token limit can, and the app offers a cost limit; a token limit
-  is set through the API.
+  price). Only a token limit can (`RUN_DEFAULT_MAX_TOKENS`, `RUN_MAX_TOKENS`),
+  and the app offers a cost limit; a token limit is set through the API.
 - A step's `cost_usd` adds up the calls whose cost is known. If a provider
   reports it on only some calls, the step shows a floor and nothing marks it
   incomplete: a run's `cost_complete` turns `false` only when a step used
   tokens and has no cost at all.
-- Usage covers pipeline runs, not chat messages, and the chat agent's
-  `run_pipeline` tool starts runs under the server default limit only.
+- Chat messages are metered (`CHAT_MAX_TOKENS` bounds one message) but their
+  usage is not saved, so `GET /usage` covers pipeline runs only, and the chat
+  agent's `run_pipeline` tool starts runs under the server's default limits
+  only. A provider that sends no usage in a stream (TogetherAI unless it does
+  so by default) leaves a chat message's calls uncounted. The planner
+  (generate, revise) is bounded per call (`LLM_PLANNER_MAX_OUTPUT_TOKENS`) but
+  not metered either.
 
 **Fix:** refuse a call that cannot fit the remaining budget, from an estimate of
 its prompt size and the model's maximum output (a pre-flight check in
 `RunMeter.check`); keep a `cost_complete` column on `run_steps` so a partial
-cost is visible; count chat usage through the same `UsageCallback` where
-`services/agent.py` builds its model; give the chat tool an optional limit.
+cost is visible; save chat and planner usage so `GET /usage` and per-account
+daily caps can count it; give the chat tool an optional limit.
 
 ### 9. Scheduled runs: what the first version leaves out
 
@@ -166,9 +178,10 @@ while it is down. Beyond that:
 - **Missed times are not replayed.** After downtime an overdue schedule runs once,
   not once per missed time, and there is no "catch up" option. A run starts up to
   `SCHEDULER_TICK_SECONDS` (30 s) after its time.
-- **Runs can overlap.** A schedule starts its next run even if the previous one is
-  still queued or running (an hourly pipeline that takes two hours); only
-  `RUN_MAX_CONCURRENT` bounds them, the rest wait queued.
+- **A long run skips times.** A time that comes while the schedule's previous run
+  is still queued, running or waiting is skipped, with `last_error` saying so (an
+  hourly pipeline that takes two hours runs every other hour). It is not
+  queued behind the previous one, and "run now" is not held back by it.
 - **Unattended runs and approvals.** A scheduled run has nobody watching it. If one of
   its steps calls a tool that asks first (a tool of an MCP server or an integration
   whose "Ask me before its tools act" switch is on), the run waits for its owner and
