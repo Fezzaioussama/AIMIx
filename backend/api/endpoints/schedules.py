@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from api.deps import Now, PipelineRun, Schedules, user_rate_limit
+from api.deps import Now, PipelineRun, Schedules
 from api.schemas.runs import RunOut
 from api.schemas.schedules import (
     ScheduleIn,
@@ -22,6 +22,7 @@ from api.schemas.schedules import (
 from api.services.runs import RunStart
 from api.services.schedules import service
 from api.services.schedules.timing import Timing
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 

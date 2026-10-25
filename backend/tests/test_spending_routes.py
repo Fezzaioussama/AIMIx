@@ -11,12 +11,13 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from api.deps import app_settings, user_rate_limit
+from api.deps import app_settings
 from api.models import PIPELINE_MAX_INPUTS, User
 from api.routes import API_PREFIX, PROTECTED_ROUTERS
 from api.schemas.chat import CHAT_PROMPT_MAX_LENGTH
 from api.schemas.common import PIPELINE_MAX_STEPS, RUN_INPUT_MAX_LENGTH, STEP_PROMPT_MAX_LENGTH
 from api.schemas.planning import PLAN_DESCRIPTION_MAX_LENGTH
+from api.throttling import user_rate_limit
 from tests.conftest import TEST_SETTINGS, FakeAgent, FakeProvider, use_agent
 from tests.test_endpoints import make_pipeline
 

@@ -7,9 +7,10 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, UploadFile
 
-from api.deps import DocumentLimits, DocumentOcr, user_rate_limit
+from api.deps import DocumentLimits, DocumentOcr
 from api.schemas.documents import DocumentOut
 from api.services.documents import extraction
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 

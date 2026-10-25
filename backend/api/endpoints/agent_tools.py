@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.deps import ToolCatalog, user_rate_limit
+from api.deps import ToolCatalog
 from api.schemas.agent_tools import ToolDescriptorOut
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/agent-tools", tags=["agent-tools"])
 

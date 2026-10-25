@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response
 
-from api.deps import Integrations, user_rate_limit
+from api.deps import Integrations
 from api.schemas.integrations import (
     HeaderIn,
     IntegrationIn,
@@ -21,6 +21,7 @@ from api.schemas.integrations import (
 )
 from api.services.integrations import service
 from api.services.integrations.headers import HeaderInput
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 

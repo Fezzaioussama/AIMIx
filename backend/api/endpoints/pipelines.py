@@ -7,15 +7,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Response
 
-from api.deps import (
-    CurrentUser,
-    DbSession,
-    PipelineRun,
-    Profile,
-    Providers,
-    ToolCatalog,
-    user_rate_limit,
-)
+from api.deps import CurrentUser, DbSession, PipelineRun, Profile, Providers, ToolCatalog
 from api.models import Pipeline
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch, RunRequest, RunResponse
@@ -30,6 +22,7 @@ from api.services import pipeline_flow
 from api.services import pipeline_revision as revision_service
 from api.services import pipelines as pipeline_service
 from api.services.runs import RunStart
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
 

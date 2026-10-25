@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from api.deps import AppSettings, Auth, CurrentUser, DbSession, auth_rate_limit
+from api.deps import AppSettings, Auth, CurrentUser, DbSession
 from api.exceptions import NotAuthenticated
 from api.schemas.auth import (
     AccessTokenResponse,
@@ -14,6 +14,7 @@ from api.schemas.auth import (
     WhoAmIResponse,
 )
 from api.services import accounts
+from api.throttling import auth_rate_limit
 from config.settings import Settings
 
 #: Public on purpose: this is how an account comes into existence and signs in (§6).

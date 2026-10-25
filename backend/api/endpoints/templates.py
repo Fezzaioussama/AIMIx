@@ -5,11 +5,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.deps import TemplateUse, user_rate_limit
+from api.deps import TemplateUse
 from api.schemas.pipelines import PipelineOut
 from api.schemas.templates import TemplateOut, TemplateUseIn
 from api.services.templates import registry
 from api.services.templates.use import TemplateChoice, use_template
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 

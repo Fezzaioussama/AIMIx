@@ -9,11 +9,12 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from api.deps import app_settings, user_rate_limit
+from api.deps import app_settings
 from api.models import Pipeline, PipelineStep, User
 from api.repositories import users
 from api.security import hash_password
 from api.services.catalog import default_model_id
+from api.throttling import user_rate_limit
 from llm import exceptions as llm_exceptions
 from tests.conftest import (
     FailingProvider,

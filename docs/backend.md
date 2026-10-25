@@ -123,7 +123,6 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `AppSettings` | The `Settings` |
 | `Signer` | A `TokenSigner` configured from the settings (`SECRET_KEY` plus `SECRET_KEY_FALLBACKS`) |
 | `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` (also once the account signed out after the token was issued) |
-| `ClientAddress` | The client's address (`request_client`), per `TRUSTED_PROXY_HOPS`; the auth rate limit counts against it |
 | `Secrets` | A `SecretBox` keyed from the settings (`security.secret_box_for`, which the scheduler and the integration connections use too), for saved API keys |
 | `Profile` | The user's `LLMProfile`: provider, default model and saved key (Settings page, else `.env`) |
 | `Providers` | A factory for the user's planner `LLMProvider` (`get_planner_provider`: `LLM_PLANNER_TIMEOUT_SECONDS`, `LLM_PLANNER_MAX_OUTPUT_TOKENS`), used by planning |
@@ -139,6 +138,17 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `FileUploads` | The `UploadPolicy`: `DOCUMENT_MAX_BYTES` per file and `WORKSPACE_UPLOAD_EXTENSIONS` |
 
 Tests replace any of these with `app.dependency_overrides`.
+
+### `throttling.py`
+
+The rate-limit dependencies, each counter persisted through `services/rate_limits.py`
+so every app process shares it.
+
+| Dependency | What it does |
+|---|---|
+| `ClientAddress` | The client's address (`request_client`), per `TRUSTED_PROXY_HOPS`; the auth rate limit counts against it |
+| `auth_rate_limit` | On every public auth route: `AUTH_RATE_LIMIT_REQUESTS` per `AUTH_RATE_LIMIT_WINDOW_SECONDS`, per client and path |
+| `user_rate_limit` | On routes that make the server spend (model calls, outbound calls, document parsing): `USER_RATE_LIMIT_REQUESTS` per `USER_RATE_LIMIT_WINDOW_SECONDS`, per account and route template |
 
 ### `models.py` and `db.py`
 

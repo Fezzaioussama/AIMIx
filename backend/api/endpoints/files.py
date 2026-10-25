@@ -8,9 +8,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from api.deps import FileUploads, UserFiles, user_rate_limit
+from api.deps import FileUploads, UserFiles
 from api.schemas.files import FileListOut, FileOut
 from api.services.files import service as file_service
+from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/files", tags=["files"])
 

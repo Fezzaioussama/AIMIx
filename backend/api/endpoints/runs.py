@@ -8,13 +8,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from api.deps import CurrentUser, DbSession, PipelineRun, Runs, user_rate_limit
+from api.deps import CurrentUser, DbSession, PipelineRun, Runs
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import runs as repository
 from api.schemas.pipelines import RunRequest
 from api.schemas.runs import ResumeRequest, RunListQuery, RunOut, RunPageOut, RunSummaryOut
 from api.services.run_budget import NO_BUDGET
 from api.services.runs import RunStart
+from api.throttling import user_rate_limit
 
 router = APIRouter(tags=["runs"])
 

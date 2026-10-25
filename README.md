@@ -289,12 +289,19 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `permission_denied` | 403 | Authenticated but not allowed |
 | `not_found` | 404 | No such record, or it belongs to someone else |
 | `conflict` | 409 | The request clashes with the record's state, e.g. deleting a run in progress |
+| `request_too_large` | 413 | The request body is over its cap (an upload, or `REQUEST_MAX_JSON_BYTES`) |
+| `throttled` | 429 | Too many requests for this client, account or username; `Retry-After` says when to retry |
+| `too_many_runs` | 429 | The account already has `RUN_MAX_ACTIVE_PER_USER` runs queued or running |
+| `run_still_running` | 202 | Not a failure: the run outlived `RUN_WAIT_MAX_SECONDS` and goes on; `detail` names it |
+| `documents_busy` | 503 | Other documents are being read; retry after `Retry-After` seconds |
 | `provider_not_configured` | 503 | No API key for the selected provider |
 | `provider_unavailable` | 502 | The provider rejected the request |
 | `provider_timeout` | 504 | A provider or agent request timed out |
 | `tool_unavailable` | 502 | A configured MCP server or tool is unavailable |
 | `upstream_response_invalid` | 502 | The planner returned unusable output |
 | `server_error` | 500 | An unexpected failure (logged by the server) |
+
+The full list, with every route that can return each code, is in [docs/api-reference.md](docs/api-reference.md).
 
 ## Configuration
 

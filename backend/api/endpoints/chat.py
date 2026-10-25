@@ -5,9 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from api.deps import Agents, user_rate_limit
+from api.deps import Agents
 from api.schemas.chat import ChatRequest
 from api.services import chat as chat_service
+from api.throttling import user_rate_limit
 
 router = APIRouter(tags=["chat"])
 

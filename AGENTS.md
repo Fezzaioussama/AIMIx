@@ -62,12 +62,13 @@ backend/
     endpoints/*.py       #   HTTP boundary: one APIRouter per resource; validate, call, shape
     schemas/*.py         #   pydantic request + response contracts (one module per resource)
     deps.py              #   FastAPI dependencies: db session, settings, current user, provider
+    throttling.py        #   rate-limit dependencies: client address, auth and per-account limits
     services/*.py        #   ALL business logic and orchestration
     repositories/*.py    #   data access (SQLAlchemy); ownership filtering lives here
     models.py            #   SQLAlchemy models + invariants that belong to the entity
     db.py                #   engine and session factory, built from settings
     security.py          #   password hashing and JWT signing — pure, no framework
-    middleware.py        #   allowed hosts, CORS, security headers
+    middleware.py        #   allowed hosts, CORS, security headers, request-body caps
     exceptions.py        #   domain errors carrying a code + HTTP status
     errors.py            #   the ONE place that shapes an error response
     cli.py               #   operational entry points (llm-probe, create-user, import)
@@ -92,7 +93,9 @@ frontend/src/
   features/<feature>/    # one folder per feature: pages, feature hooks, subcomponents
 docs/                    # developer documentation; update it with the behaviour it describes
 Dockerfile, railway.json # the one production image and its Railway settings (docs/deployment.md)
-.github/workflows/ci.yml # CI: `make check` plus a build and smoke test of the image
+docker-entrypoint.sh     # hands the /data volume to the app user, then drops root for good
+.github/workflows/ci.yml # CI: `make check`, a dependency audit, and a build + smoke test of the image
+.github/dependabot.yml   # weekly dependency, image and action updates (pinned by digest/SHA)
 ```
 
 The repository is backend + frontend only. Automation engines (n8n or any other) are
@@ -158,10 +161,9 @@ and `services → llm`. `llm/` never imports `api/` or `config/` — it receives
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
 **Files already over budget (technical debt).** None — no file in `backend/` or
-`frontend/src/` exceeds the 700-line cap. Four source files are past the 300-line target
+`frontend/src/` exceeds the 700-line cap. Three source files are past the 300-line target
 and should be split before they grow: `frontend/src/core/api/types.ts` (489),
-`backend/api/models.py` (463), `backend/api/services/prompts.py` (351) and
-`backend/api/deps.py` (336). The largest files
+`backend/api/models.py` (463) and `backend/api/services/prompts.py` (351). The largest files
 overall are tests, the biggest being `frontend/src/features/mission/useMission.test.tsx`
 (561). When a file first crosses a budget, list it here with its line count so the next
 change knows not to grow it.

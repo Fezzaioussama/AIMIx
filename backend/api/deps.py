@@ -29,7 +29,6 @@ from api.services.integrations.service import IntegrationAccess
 from api.services.llm import LLMProfile, get_planner_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
-from api.services.rate_limits import RateLimitRequest, client_address, enforce
 from api.services.run_executor import RunExecutor
 from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
@@ -51,32 +50,6 @@ def app_settings() -> Settings:
 
 DbSession = Annotated[Session, Depends(db_session)]
 AppSettings = Annotated[Settings, Depends(app_settings)]
-
-
-def request_client(request: Request, settings: AppSettings) -> str:
-    """The client's address (TRUSTED_PROXY_HOPS says which proxy headers to trust)."""
-    peer = request.client.host if request.client else "unknown"
-    forwarded = request.headers.getlist("x-forwarded-for")
-    return client_address(forwarded, peer, settings.trusted_proxy_hops)
-
-
-ClientAddress = Annotated[str, Depends(request_client)]
-
-
-def auth_rate_limit(
-    request: Request, client: ClientAddress, session: DbSession, settings: AppSettings
-) -> None:
-    """Persist one counter per client and auth path, shared by every app process."""
-    enforce(
-        session,
-        settings.secret_key,
-        RateLimitRequest(
-            client,
-            request.url.path,
-            settings.auth_rate_limit_requests,
-            settings.auth_rate_limit_window_seconds,
-        ),
-    )
 
 
 def document_limits(settings: AppSettings) -> ExtractionLimits:
@@ -136,26 +109,6 @@ def current_user(
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
-
-
-def user_rate_limit(
-    request: Request, user: CurrentUser, session: DbSession, settings: AppSettings
-) -> None:
-    """One counter per account and route (its path template, so ids in the URL
-    share it), for routes that make the server spend: add it to a route's
-    ``dependencies``."""
-    route = request.scope.get("route")
-    enforce(
-        session,
-        settings.secret_key,
-        RateLimitRequest(
-            f"user:{user.id}",
-            getattr(route, "path", request.url.path),
-            settings.user_rate_limit_requests,
-            settings.user_rate_limit_window_seconds,
-            "Too many requests. Try again later.",
-        ),
-    )
 
 
 def user_files(user: CurrentUser, settings: AppSettings) -> WorkspaceStorage:
