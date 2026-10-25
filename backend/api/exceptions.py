@@ -114,6 +114,17 @@ class OcrTimedOut(DocumentUnreadable):
     """OCR gave up on one page. A multi-page reader skips that page; alone, it is a 422."""
 
 
+class DocumentReadersBusy(DomainError):
+    """Every document reader of the process stayed busy for as long as one may wait."""
+
+    code = "documents_busy"
+    status_code = 503
+
+    def __init__(self, detail: str, retry_after: int) -> None:
+        super().__init__(detail)
+        self.headers = {"Retry-After": str(retry_after)}
+
+
 class FileAlreadyExists(DomainError):
     """A write would replace a file that the caller did not ask to replace."""
 

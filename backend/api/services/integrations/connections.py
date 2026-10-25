@@ -24,7 +24,7 @@ from api.db import Database
 from api.exceptions import ValidationFailed
 from api.models import Integration, User
 from api.repositories import integrations as repository
-from api.security import SecretBox, UnreadableSecret
+from api.security import SecretBox, UnreadableSecret, secret_box_for
 from api.services.integrations.headers import reveal
 from api.services.integrations.rules import IntegrationRules, check_url, rules_from
 from api.services.mcp import MCPConnections, connection, connections
@@ -107,7 +107,7 @@ def mcp_connections_for(database: Database, user: User, settings: Settings) -> M
     with database.session() as session:
         rows = repository.enabled_for(session, user)
     rules = rules_from(settings)
-    box = SecretBox(settings.secret_key)
+    box = secret_box_for(settings)
     own = {row.name: usable for row in rows if (usable := _usable(row, box, rules)) is not None}
     return MCPConnections(
         operator=connections(settings.mcp_servers, settings.mcp_timeout_seconds),

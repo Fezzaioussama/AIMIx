@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,12 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from api.exceptions import DomainError
-from config.settings import LOCAL_SECRET_KEY, Settings
+from config.settings import (
+    LOCAL_SECRET_KEY,
+    MIN_PRODUCTION_HASH_ITERATIONS,
+    MIN_PRODUCTION_SECRET_KEY_LENGTH,
+    Settings,
+)
 from tests.conftest import TEST_SETTINGS
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -100,24 +106,80 @@ def test_local_development_gets_a_throwaway_key() -> None:
     assert settings(app_env="local", secret_key="").secret_key == LOCAL_SECRET_KEY
 
 
+#: Long enough for production.
+PRODUCTION_KEY = "p" * MIN_PRODUCTION_SECRET_KEY_LENGTH
+
+
 @pytest.mark.parametrize(
-    "values",
+    ("values", "problem"),
     [
-        {"secret_key": ""},
-        {"secret_key": "k", "debug": True},
-        {"secret_key": "k", "allowed_hosts": ""},
-        {"secret_key": "k", "integrations_allow_private_network": True},
+        ({"secret_key": ""}, "SECRET_KEY must be set"),
+        ({"debug": True}, "DEBUG"),
+        ({"allowed_hosts": ""}, "ALLOWED_HOSTS"),
+        ({"integrations_allow_private_network": True}, "INTEGRATIONS_ALLOW_PRIVATE_NETWORK"),
+        ({"secret_key": "p" * 31}, "at least 32 characters"),
+        ({"secret_key": LOCAL_SECRET_KEY}, "local development key"),
+        ({"password_hash_iterations": 599_999}, "PASSWORD_HASH_ITERATIONS"),
     ],
 )
-def test_production_refuses_unsafe_configuration(values: dict[str, object]) -> None:
+def test_production_refuses_unsafe_configuration(values: dict[str, object], problem: str) -> None:
+    with pytest.raises(ValidationError, match=problem):
+        settings(app_env="production", **{"secret_key": PRODUCTION_KEY, **values})
+
+
+def test_production_accepts_a_long_key_and_the_default_work_factor() -> None:
+    chosen = settings(app_env="production", secret_key=PRODUCTION_KEY)
+    assert chosen.password_hash_iterations >= MIN_PRODUCTION_HASH_ITERATIONS
+
+
+def test_the_iteration_floor_applies_to_production_only() -> None:
+    assert settings(app_env="local", password_hash_iterations=1).password_hash_iterations == 1
+
+
+def startup_warnings(secret_key: str, caplog: pytest.LogCaptureFixture) -> list[str]:
+    """What ``create_app`` warns about with this key. The handler sits on the app's
+    own logger: ``create_app`` reconfigures the root one."""
+    from api.main import create_app
+    from config.settings import pin_settings
+
+    main_logger = logging.getLogger("api.main")
+    main_logger.addHandler(caplog.handler)
+    pin_settings(TEST_SETTINGS.model_copy(update={"secret_key": secret_key}))
+    try:
+        create_app()
+    finally:
+        pin_settings(TEST_SETTINGS)
+        main_logger.removeHandler(caplog.handler)
+    return [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_the_local_development_key_is_announced_at_startup(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    warnings = startup_warnings(LOCAL_SECRET_KEY, caplog)
+    assert any("settings.local_secret_key" in message for message in warnings)
+
+
+def test_a_configured_key_is_not_announced(caplog: pytest.LogCaptureFixture) -> None:
+    warnings = startup_warnings(TEST_SETTINGS.secret_key, caplog)
+    assert not any("local_secret_key" in message for message in warnings)
+
+
+def test_auth_hardening_settings_have_safe_defaults() -> None:
+    defaults = settings()
+    assert defaults.trusted_proxy_hops == 0
+    assert defaults.secret_key_fallbacks == []
+    assert defaults.auth_account_failure_limit == 10
+    assert defaults.auth_account_failure_window_seconds == 900
+    assert settings(SECRET_KEY_FALLBACKS="old-a, old-b").secret_key_fallbacks == ["old-a", "old-b"]
     with pytest.raises(ValidationError):
-        settings(app_env="production", **values)
+        settings(TRUSTED_PROXY_HOPS="-1")
 
 
 def test_production_turns_on_hsts() -> None:
     from api.middleware import HSTS_HEADER
 
-    assert settings(app_env="production", secret_key="k").app_env == "production"
+    assert settings(app_env="production", secret_key=PRODUCTION_KEY).app_env == "production"
     assert "Strict-Transport-Security" in HSTS_HEADER
 
 

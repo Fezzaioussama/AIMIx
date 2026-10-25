@@ -1,4 +1,4 @@
-import { clearTokens, getAccessToken, saveTokens } from '../auth/tokenStorage';
+import { clearTokens, endSession, getAccessToken, saveTokens } from '../auth/tokenStorage';
 import { API } from './endpoints';
 import type { AuthTokens } from './types';
 
@@ -118,7 +118,10 @@ async function performRefresh(): Promise<AuthTokens> {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) {
-    clearTokens();
+    // A refused refresh cookie (401) is the end of the session, so the app signs out.
+    // Anything else (a 5xx, a 429) is a hiccup: the next call refreshes again.
+    if (response.status === 401) endSession();
+    else clearTokens();
     throw await toApiError(response);
   }
   const tokens = (await response.json()) as AuthTokens;
@@ -137,14 +140,17 @@ const AUTH_PATHS = new Set<string>([API.login, API.register, API.refresh, API.lo
 
 /** Sends the call, refreshing the session once on a 401; a non-2xx answer becomes an ApiError. */
 async function sendChecked(path: string, options: RequestOptions): Promise<Response> {
+  const isAuthCall = AUTH_PATHS.has(path);
   let response = await send(path, options);
-  if (response.status === 401 && !AUTH_PATHS.has(path)) {
+  if (response.status === 401 && !isAuthCall) {
     await refreshAccessToken();
     response = await send(path, options);
   }
 
   if (!response.ok) {
-    if (response.status === 401) clearTokens();
+    // Refused even with a fresh token: the server no longer takes this session. (On a
+    // sign-in call, a 401 is only a wrong password: there is no session to end.)
+    if (response.status === 401 && !isAuthCall) endSession();
     throw await toApiError(response);
   }
   return response;
@@ -167,16 +173,7 @@ export async function* streamText(
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const options = { method: 'POST' as const, body, signal, timeoutMs: GENERATION_TIMEOUT_MS };
-  let response = await send(path, options);
-  if (response.status === 401) {
-    await refreshAccessToken();
-    response = await send(path, options);
-  }
-
-  if (!response.ok) {
-    if (response.status === 401) clearTokens();
-    throw await toApiError(response);
-  }
+  const response = await sendChecked(path, options);
   if (!response.body)
     throw new ApiError('Streaming is not supported by this browser.', 0, 'unsupported');
 

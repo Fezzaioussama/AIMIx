@@ -12,21 +12,30 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ExtractionLimits:
-    """What one extraction may cost; every value comes from settings (§6)."""
+    """What one extraction may cost, and how many may run at once; every value
+    comes from settings (§6)."""
 
     max_bytes: int
     max_chars: int
     #: Pages of a PDF, slides of a deck or frames of a TIFF read before stopping.
     max_pages: int
     max_unpacked_bytes: int
+    #: An Office part this large is refused unless it is a picture or other media.
+    max_xml_part_bytes: int
     #: An image, or a PDF page rendered for OCR, never has more pixels than this.
     max_image_pixels: int
     #: Rows read from one workbook, across all its sheets.
     max_spreadsheet_rows: int
     #: Pages one document may send to OCR; the rest are skipped and named.
     max_ocr_pages: int
+    #: Time all the OCR of one document may take; later pages are skipped and named.
+    ocr_max_seconds: float
     #: Resolution a PDF page is rendered at for OCR (lower if over max_image_pixels).
     ocr_dpi: int
+    #: Documents read at once in the process, whoever asks.
+    max_concurrent: int
+    #: How long a document waits for its turn, or for the PDF renderer, before giving up.
+    wait_seconds: float
 
 
 class OcrEngine(Protocol):

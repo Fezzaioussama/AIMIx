@@ -39,8 +39,20 @@ def install_frontend(app: FastAPI, dist_dir: str) -> None:
         # An unknown API path stays a JSON 404, never the app's HTML.
         if path == api_root or path.startswith(f"{api_root}/"):
             raise NotFound("Not Found")
-        file = (root / path).resolve()
-        if path and file.is_file() and file.is_relative_to(root):
+        file = _build_file(root, path)
+        if file is not None:
             headers = IMMUTABLE if file.is_relative_to(root / "assets") else REVALIDATE
             return FileResponse(file, headers=headers)
         return FileResponse(index, headers=REVALIDATE)
+
+
+def _build_file(root: Path, path: str) -> Path | None:
+    """The built file ``path`` names inside ``root``, else None (a client route).
+    A path no file system accepts (a NUL byte, a name too long) names none."""
+    if not path:
+        return None
+    try:
+        file = (root / path).resolve()
+        return file if file.is_file() and file.is_relative_to(root) else None
+    except (OSError, ValueError):
+        return None

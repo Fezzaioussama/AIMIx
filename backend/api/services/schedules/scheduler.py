@@ -30,7 +30,7 @@ from api.models import Run, Schedule, User
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import schedules as repository
 from api.repositories import users
-from api.security import SecretBox
+from api.security import SecretBox, secret_box_for
 from api.services import llm_settings
 from api.services.llm import provider_config
 from api.services.multiagent.contracts import StepAgent
@@ -212,7 +212,7 @@ def build_scheduler(database: Database, executor: RunExecutor, settings: Setting
     if not settings.scheduler_enabled:
         return IdleScheduler()
     runs = RunService(database, executor, settings.pipeline_max_parallel_steps)
-    scheduler = Scheduler(database, runs, ProfileAgents(database, SecretBox(settings.secret_key)))
+    scheduler = Scheduler(database, runs, ProfileAgents(database, secret_box_for(settings)))
     return SchedulerLoop(
         scheduler.tick, settings.scheduler_tick_seconds, settings.run_shutdown_grace_seconds
     )

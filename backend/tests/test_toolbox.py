@@ -42,10 +42,14 @@ DOCUMENT_LIMITS = ExtractionLimits(
     max_chars=10_000,
     max_pages=5,
     max_unpacked_bytes=1_000_000,
+    max_xml_part_bytes=500_000,
     max_image_pixels=1_000_000,
     max_spreadsheet_rows=100,
     max_ocr_pages=3,
+    ocr_max_seconds=60.0,
     ocr_dpi=72,
+    max_concurrent=2,
+    wait_seconds=5.0,
 )
 WORKSPACE_LIMITS = WorkspaceLimits(1_000, 500, 20, 10, 5, DOCUMENT_LIMITS)
 #: A missing font, so PDFs use the built-in one wherever the tests run.
@@ -55,7 +59,7 @@ RENDER = RenderOptions(Path("/no/such/font.ttf"), Path("/no/such/font-bold.ttf")
 def local_workspace(
     root: Path, limits: WorkspaceLimits = WORKSPACE_LIMITS, quota: int = 100_000
 ) -> LocalWorkspace:
-    return LocalWorkspace(WorkspaceStorage(root, quota), limits, RENDER)
+    return LocalWorkspace(WorkspaceStorage(root, quota, max_files=1_000), limits, RENDER)
 
 
 @pytest.mark.parametrize(

@@ -327,7 +327,8 @@ def test_shutting_down_interrupts_active_runs_instead_of_cancelling_them(
     pipeline = make_pipeline(database, owner, [1])
     agent = ScriptedAgent(hold=("role-1",))
     started = service.start(owner, pipeline, RunStart("seed"), agent)
-    wait_for(database, started.run.id, lambda run: run.status == RunStatus.RUNNING)
+    # The step, not just the run: a step that never started stays pending.
+    wait_for(database, started.run.id, lambda run: run.steps[0].status == StepStatus.RUNNING)
 
     executor.shutdown()
 

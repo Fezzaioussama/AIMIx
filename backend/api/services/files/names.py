@@ -7,11 +7,8 @@ import unicodedata
 from pathlib import PurePosixPath
 
 from api.exceptions import ValidationFailed
-from api.services.files.storage import NAME_MAX_BYTES
+from api.services.files.storage import NAME_MAX_BYTES, UNSAFE_NAME_CHARACTERS
 
-#: Characters no file name keeps: controls, and the separators and wildcards that
-#: some operating system reserves.
-_UNSAFE = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]+')
 _SPACES = re.compile(r"\s+")
 
 #: Media type per extension, so a download is labelled the same on every server
@@ -43,11 +40,11 @@ def file_type(name: str) -> str:
 
 
 def safe_filename(raw: str) -> str:
-    """A plain, visible name for an uploaded file: no folders, no control or
-    reserved characters, no leading dot, at most NAME_MAX_BYTES, and a lower-case
+    """A plain, visible name for an uploaded file: no folders, no control, direction
+    or reserved characters, no leading dot, at most NAME_MAX_BYTES, and a lower-case
     extension. ``C:\\Users\\me\\Q3 report?.PDF`` becomes ``Q3 report_.pdf``."""
     base = PurePosixPath(raw.replace("\\", "/")).name
-    text = _UNSAFE.sub("_", unicodedata.normalize("NFC", base))
+    text = UNSAFE_NAME_CHARACTERS.sub("_", unicodedata.normalize("NFC", base))
     text = _SPACES.sub(" ", text).strip().lstrip(". ")
     original_suffix = PurePosixPath(text).suffix
     suffix = original_suffix.lower()

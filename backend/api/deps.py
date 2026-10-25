@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from api.exceptions import NotAuthenticated
 from api.models import User
-from api.security import SecretBox, TokenSigner
+from api.security import SecretBox, TokenSigner, secret_box_for
 from api.services import accounts, llm_settings
 from api.services.addresses import Resolver, resolve_host
 from api.services.agent import get_chat_agent
@@ -29,7 +29,7 @@ from api.services.integrations.service import IntegrationAccess
 from api.services.llm import LLMProfile, get_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
-from api.services.rate_limits import RateLimitRequest, enforce
+from api.services.rate_limits import RateLimitRequest, client_address, enforce
 from api.services.run_budget import default_budget
 from api.services.run_executor import RunExecutor
 from api.services.run_recorder import utcnow
@@ -53,14 +53,25 @@ DbSession = Annotated[Session, Depends(db_session)]
 AppSettings = Annotated[Settings, Depends(app_settings)]
 
 
-def auth_rate_limit(request: Request, session: DbSession, settings: AppSettings) -> None:
+def request_client(request: Request, settings: AppSettings) -> str:
+    """The client's address (TRUSTED_PROXY_HOPS says which proxy headers to trust)."""
+    peer = request.client.host if request.client else "unknown"
+    forwarded = request.headers.getlist("x-forwarded-for")
+    return client_address(forwarded, peer, settings.trusted_proxy_hops)
+
+
+ClientAddress = Annotated[str, Depends(request_client)]
+
+
+def auth_rate_limit(
+    request: Request, client: ClientAddress, session: DbSession, settings: AppSettings
+) -> None:
     """Persist one counter per client and auth path, shared by every app process."""
-    identity = request.client.host if request.client else "unknown"
     enforce(
         session,
         settings.secret_key,
         RateLimitRequest(
-            identity,
+            client,
             request.url.path,
             settings.auth_rate_limit_requests,
             settings.auth_rate_limit_window_seconds,
@@ -90,6 +101,7 @@ def token_signer(settings: AppSettings) -> TokenSigner:
         secret_key=settings.secret_key,
         access_lifetime=timedelta(minutes=settings.jwt_access_minutes),
         refresh_lifetime=timedelta(days=settings.jwt_refresh_days),
+        fallback_keys=tuple(settings.secret_key_fallbacks),
     )
 
 
@@ -149,7 +161,9 @@ def user_rate_limit(
 def user_files(user: CurrentUser, settings: AppSettings) -> WorkspaceStorage:
     """The signed-in user's private directory, the one their agents use too."""
     directory = user_workspace_dir(settings.workspace_dir, user.id)
-    return WorkspaceStorage(directory, settings.workspace_max_total_bytes)
+    return WorkspaceStorage(
+        directory, settings.workspace_max_total_bytes, settings.workspace_max_files
+    )
 
 
 UserFiles = Annotated[WorkspaceStorage, Depends(user_files)]
@@ -168,7 +182,7 @@ FileUploads = Annotated[UploadPolicy, Depends(upload_policy)]
 
 
 def secret_box(settings: AppSettings) -> SecretBox:
-    return SecretBox(settings.secret_key)
+    return secret_box_for(settings)
 
 
 Secrets = Annotated[SecretBox, Depends(secret_box)]

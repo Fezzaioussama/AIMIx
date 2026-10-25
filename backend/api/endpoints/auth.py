@@ -52,7 +52,9 @@ def register(body: RegisterRequest, session: DbSession, settings: AppSettings) -
 
 @public_router.post("/login")
 def login(body: LoginRequest, response: Response, auth: Auth) -> AccessTokenResponse:
-    tokens = accounts.sign_in(auth.session, auth.signer, body.username, body.password)
+    credentials = accounts.Credentials(body.username, body.password)
+    policy = accounts.sign_in_policy(auth.settings)
+    tokens = accounts.sign_in(auth.session, auth.signer, credentials, policy)
     _set_refresh_cookie(response, tokens.refresh, auth.settings)
     return AccessTokenResponse(access=tokens.access)
 

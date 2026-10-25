@@ -76,7 +76,7 @@ resolves the session before the first render without a redirect flash.
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
 | `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary` with its `RunTrigger` and `schedule_id`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, which includes `skipped`, and `RunStep`'s `rounds` and `verdict`, `RunApproval`, `ApprovalStatus`), a step's `condition` and `review` (`StepCondition`, `ConditionOperator`, `StepReview`; every `PipelineStep` has both, `null` when unset), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`) and schedules (`Schedule`, `ScheduleTiming`, `ScheduleFrequency`, `ScheduleInput`, `SchedulePatch`, `SchedulePreview`). |
-| `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request` and `requestBlob` share one send-with-refresh path. |
+| `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request`, `requestBlob` and `streamText` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
 | `chat.ts` | `streamChatReply` |
@@ -102,8 +102,13 @@ resolves the session before the first render without a redirect flash.
 - On a non-2xx response, parses `{error, detail}` into
   `ApiError(message=detail, status, code=error)`; a non-API body (e.g. a proxy
   page) degrades to `"Request failed (<status>)"`.
-- On **401**, clears the stored tokens so the route guard sends the user to
-  `/login`.
+- On **401**, refreshes the session once (one refresh shared by concurrent calls)
+  and retries. If the server refuses the refresh (401), or refuses the call even
+  with the fresh token, the session is over: `endSession()` drops the token and
+  tells `AuthProvider`, which signs the screens out, so the route guard sends the
+  user to `/login`. A refresh failing for another reason (a 5xx, a 429) only drops
+  the token, and the next call refreshes again. A 401 from `/login` itself is a
+  wrong password, not the end of a session.
 - Network failure → `ApiError` with `code: 'network_error'`, status 0;
   timeout → `code: 'timeout'`.
 
@@ -113,8 +118,8 @@ Branch on `error.code`, never on `error.message`.
 
 | File | Role |
 |---|---|
-| `tokenStorage.ts` | The **only** module that touches `localStorage` (`access_token`, `refresh_token`). Every access is wrapped in try/catch. |
-| `AuthContext.tsx` | `AuthProvider` + `useAuth()` → `{ isAuthenticated, login, register, logout }`. |
+| `tokenStorage.ts` | The access token, in memory only (the refresh token is an HttpOnly cookie; nothing goes to browser storage). `endSession()` drops it and notifies `subscribeToSessionEnd()` listeners (Observer): on logout, and when the server refuses the session. |
+| `AuthContext.tsx` | `AuthProvider` + `useAuth()` → `{ isAuthenticated, isReady, login, register, logout }`. It subscribes to the session's end and then signs out (a guarded screen goes to `/login`; a public page stays where it is, so nothing loops). Its `forgetAccountData` prop runs at each session end and on signing in; `main.tsx` passes the mission storage's `forgetAllMissions`. |
 | `RequireAuth.tsx` | Route guard; redirects to `/login` with `state.from`. |
 
 ## `core/hooks/useModels.ts`
@@ -158,8 +163,17 @@ pure helpers screens share: `elapsedMs(startedAt, finishedAt, now)`,
 
 ## `core/markdown/renderMarkdown.ts`
 
-`marked` → HTML → `DOMPurify.sanitize`. Model output is untrusted, so any
-`dangerouslySetInnerHTML` must go through this function.
+`marked` → HTML → a private `DOMPurify` instance. Model output is untrusted (a web
+page or document the model read can steer it), so any `dangerouslySetInnerHTML` must
+go through this function. Beyond scripts it keeps nothing that could pass for the
+app's own screen: HTML only (no SVG or MathML), no form controls (`form`, `button`,
+`textarea`, `select`, `label`, …), no `dialog` or `<style>`, and no `style` or `class`
+attribute (the app's Tailwind classes include `fixed inset-0`), so a reply cannot draw
+a fake sign-in panel or an invisible full-screen link. What Markdown makes still
+renders: tables with their `align`, code blocks, lists and links. The one input
+Markdown makes, a task-list box, is kept as a disabled checkbox, and any other input
+becomes one. Links open in the same tab, as before, with `rel="noopener noreferrer"`.
+The hooks doing this live on the module's own instance, added once.
 
 ## `core/ui/` — shared presentation and motion
 
@@ -281,7 +295,10 @@ save runs at a time. A failed save shows on the team pane and waits for the next
 mission (`aimix.mission.v1.<pipeline id>`, or `….new` for a draft, which also keeps
 the draft team), at most 200 messages, every access in try/catch. It lasts for the tab:
 another tab or browser starts that mission's conversation again from a greeting with
-its team. A proposal that was waiting when the page was left shows as no longer
+its team. The keys name no account, so all of them are forgotten (`forgetAllMissions`)
+when the session ends (a logout, or the server refusing the session) and again when
+someone signs in: the next account in the tab never finds the last one's prompts, team
+brief or draft team. A proposal that was waiting when the page was left shows as no longer
 available, and a message left unanswered is said to be. Keeping conversations on the
 server would need a table and endpoints; that is not part of this version.
 
@@ -522,8 +539,11 @@ goes to `HOME_PATH`, the mission workspace.
 ## Tests
 
 `npm test` (Vitest, jsdom). Existing suites include `App.test.tsx`,
-`core/api/client.test.ts` (auth header, error contract, 401 handling, network
-error), `core/markdown/renderMarkdown.test.ts` (sanitisation),
+`core/api/client.test.ts` (auth header, error contract, 401 handling and when it
+ends the session, network error), `core/auth/AuthContext.test.tsx` (signing out when
+the session ends or on logout, no loop on public pages, forgetting mission drafts),
+`core/auth/tokenStorage.test.ts`, `core/markdown/renderMarkdown.test.ts` (sanitisation:
+injected forms, styles, classes and links; what Markdown makes still renders),
 `core/ui/GlowButton.test.tsx`, `core/ui/reactbits/reactbits.test.tsx`
 (fallbacks and accessible text of the adapted effects),
 `features/chat/ChatPage.test.tsx`, `core/api/files.test.ts` and

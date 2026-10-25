@@ -4,8 +4,8 @@ Base path: `/api`. JSON in and out, except `POST /chat` which streams plain text
 
 **Auth:** every endpoint requires `Authorization: Bearer <access>` unless marked
 **public**. Routes are protected by default (`PROTECTED_ROUTERS` in
-`api/routes.py`); a missing, invalid or expired token is `401 not_authenticated`
-with `WWW-Authenticate: Bearer`.
+`api/routes.py`); a missing, invalid or expired token, or one issued before its
+account signed out, is `401 not_authenticated` with `WWW-Authenticate: Bearer`.
 
 Outside production the OpenAPI schema is served at `/api/openapi.json` and an
 interactive explorer at `/api/docs`.
@@ -13,8 +13,12 @@ interactive explorer at `/api/docs`.
 **Errors:** every error body is `{"error": "<code>", "detail": "<message>"}`.
 The code list is in the [README error contract](../README.md#error-contract);
 other codes you may see are `method_not_allowed` (405), `budget_exceeded` (409,
-a run reached its [spending limit](#spending-limits)) and `server_error` (500,
-an unexpected failure). A validation error's `detail` lists each problem as
+a run reached its [spending limit](#spending-limits)), `request_too_large` (413,
+a body over its cap: `DOCUMENT_MAX_BYTES` plus 1 MB for a multipart upload,
+`REQUEST_MAX_JSON_BYTES` for any other body, counted as it arrives whether or not
+it declares a `Content-Length`, and refused before authentication), `throttled`
+(429, with `Retry-After`) and `server_error` (500, an unexpected failure). A
+validation error's `detail` lists each problem as
 `field: message`, e.g. `"steps.0.model: Unknown model 'x'. Choose one of: ..."`.
 
 ---
@@ -42,8 +46,12 @@ with `ALLOW_PUBLIC_REGISTRATION=true`; otherwise this endpoint returns `403`.
 
 `200` → `{ "access": "<jwt>" }` and sets the refresh token in an `HttpOnly`,
 `SameSite=Strict` cookie. JavaScript and browser storage never receive the
-refresh token. Wrong credentials → `401`. Lifetimes: `JWT_ACCESS_MINUTES` (60),
-`JWT_REFRESH_DAYS` (1).
+refresh token. Wrong credentials → `401`, the same for an unknown username, in
+about the same time. After `AUTH_ACCOUNT_FAILURE_LIMIT` (10) failures for one
+username within `AUTH_ACCOUNT_FAILURE_WINDOW_SECONDS` (900), from any client,
+signing in to it returns `429 throttled` with `Retry-After` until the window
+ends, even with the right password; a successful sign-in clears the count.
+Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
 
 ### `POST /token/refresh` — public
 
@@ -52,11 +60,15 @@ invalid. `200` → `{ "access": "<jwt>" }` plus the replacement refresh cookie.
 
 ### `POST /token/logout` — public
 
-Revokes the presented refresh cookie and clears it. Idempotent; returns `204`.
+Revokes the presented refresh cookie and clears it, and ends every access token
+already issued to the account (they return `401` from then on). Idempotent;
+returns `204`.
 
 All public authentication operations are limited per client and operation by
 `AUTH_RATE_LIMIT_REQUESTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`; excess requests
-return `429 throttled` with `Retry-After`.
+return `429 throttled` with `Retry-After`. The client is the connection's peer,
+or behind proxies the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` names (see
+[backend.md](backend.md)).
 
 ### `GET /protected`
 
@@ -295,16 +307,22 @@ depends on the source's setting (`MCP_REQUIRE_APPROVAL`, an integration's
 The five workspace tools are confined to a private
 `AGENT_WORKSPACE_DIR/user-<id>` directory — the same one the [Files](#files)
 endpoints show the user. They reject absolute, parent and hidden paths and never
-follow a link; reads, searches and CSV rows are bounded by the `WORKSPACE_*`
+follow a link, and refuse to create a file or folder whose name holds a control
+character, a line break, a text-direction mark or any of `\ : * ? " < > |`;
+reads, searches and CSV rows are bounded by the `WORKSPACE_*`
 settings. `read_workspace_file` returns text, Markdown, JSON, YAML, HTML and CSV
 files as written, and PDF and Word (and the other run-document formats) as their
 extracted text, cut at `WORKSPACE_MAX_OUTPUT_CHARS`. `save_artifact` writes `.txt`,
-`.md`, `.json`, `.csv` and `.html` as given; for `.docx` and `.pdf` the agent
+`.md`, `.json` and `.html` as given, and `.csv` as given unless a cell would run
+as a spreadsheet formula (it starts with `=`, `+`, `-`, `@`, a tab or a carriage
+return and is not a plain number such as `-12.5`, even once split on another
+delimiter): such a cell then gets a leading `'` and every cell is quoted. For
+`.docx` and `.pdf` the agent
 passes Markdown (headings, paragraphs, bullet and numbered lists, bold, italic,
 links, tables, code, quotes) and it is laid out as a document. It never
 overwrites an existing file, refuses an artifact (or its Markdown) over
 `WORKSPACE_MAX_FILE_BYTES`, and refuses one that would take the user's files past
-`WORKSPACE_MAX_TOTAL_BYTES`. When any workspace-reading tool is enabled, outbound
+`WORKSPACE_MAX_TOTAL_BYTES` or `WORKSPACE_MAX_FILES`. When any workspace-reading tool is enabled, outbound
 `web_search` and `fetch_url` are suppressed unless
 `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true` explicitly accepts the
 data-exfiltration risk.
@@ -366,18 +384,34 @@ Supported by extension (case-insensitive):
 | PowerPoint | `.pptx` | Per slide: `## Slide <n>: <title>`, its text, table rows (`a \| b`), grouped shapes, then `Speaker notes: ...` |
 | Image | `.png`, `.jpg`, `.jpeg`, `.webp`, `.tif`, `.tiff`, `.bmp`, `.gif` | Read by OCR. Every page of a TIFF; the first frame of an animated GIF or WebP. Transparency is read as white and an EXIF rotation is applied. The content decides the decoder, so a misnamed photo still reads, but only these decoders ever run |
 | HTML | `.html`, `.htm` | Visible text only |
-| Text | `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`, `.xml`, `.log`, `.rst` | Decoded as UTF-8 (BOM, UTF-16 and Windows-1252 are handled) |
+| Text | `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`, `.xml`, `.log`, `.rst` | Decoded as UTF-8 (BOM, UTF-16 and Windows-1252 are handled; a damaged UTF-16 file keeps its readable text, with `�` where it is damaged) |
 
 **OCR** (Tesseract, languages `DOCUMENT_OCR_LANGUAGES`, default English and
 French) reads images and the PDF pages that have no text layer; pages with a
 text layer are never sent to it. A PDF page is rendered at `DOCUMENT_OCR_DPI`
 (300), less if that would exceed `DOCUMENT_MAX_IMAGE_PIXELS`. At most
 `DOCUMENT_OCR_MAX_PAGES` (30) pages of one document are recognised, each
-within `DOCUMENT_OCR_TIMEOUT_SECONDS` (15). A page past that cap, one that
-takes too long or that OCR fails on, or every scanned page when OCR is off or not
+within `DOCUMENT_OCR_TIMEOUT_SECONDS` (15), and no new page is started once the
+document's OCR has taken `DOCUMENT_OCR_MAX_SECONDS` (120). A page past either
+limit, one that takes too long or that OCR fails on, one that waits more than
+`DOCUMENT_EXTRACTION_WAIT_SECONDS` (30) for the PDF renderer (one page renders
+at a time in the process), or every scanned page when OCR is off or not
 installed, is skipped, and the text names it at the end, for example
 `[Not read: pages 31-40 (OCR reads at most 30 pages per document).]` or
 `[Not read: page 2 (no text layer, and OCR is not available).]`.
+
+At most `DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` (2) documents are read at once in
+the server, uploads and agents reading workspace files alike; another waits up to
+`DOCUMENT_EXTRACTION_WAIT_SECONDS` (30) for its turn, then gets `503
+documents_busy` with a `Retry-After` header. The route is also rate-limited per
+account (`USER_RATE_LIMIT_REQUESTS` per `USER_RATE_LIMIT_WINDOW_SECONDS`).
+
+An Office file is refused before it is parsed when it would unpack past
+`DOCUMENT_MAX_UNPACKED_BYTES` (50 MB), or when one of its parts is over
+`DOCUMENT_MAX_XML_PART_BYTES` (10 MB) and does not start like a picture or other
+media (parsing XML costs many times its size; a part is judged by its bytes, not
+its name). Reading stops once the text is longer than `DOCUMENT_MAX_CHARS`, empty
+paragraphs, cells and rows counting one character each.
 
 `200`:
 
@@ -407,17 +441,20 @@ named as above, so the model knows too.
 |---|---|---|
 | 400 | `validation_error` | No `file` field |
 | 401 | `not_authenticated` | No or invalid token |
-| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request whose declared `Content-Length` is over that plus 1 MB is refused earlier, before it is read, as `request_too_large` |
+| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request body over that plus 1 MB is refused earlier, as `request_too_large`: before it is read when its `Content-Length` says so, else as soon as it passes the cap |
 | 415 | `unsupported_document` | The extension is not supported; `detail` lists the supported ones |
-| 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx`, `.xlsx` or `.pptx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES` (50 MB), an image (or one TIFF page) over `DOCUMENT_MAX_IMAGE_PIXELS` (40 million) checked before it is decoded, an image while OCR is off or not installed, or no text at all (`detail` then says which pages were skipped and why) |
+| 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx`, `.xlsx` or `.pptx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES` (50 MB) or holds a non-media part over `DOCUMENT_MAX_XML_PART_BYTES` (10 MB), an image (or one TIFF page) over `DOCUMENT_MAX_IMAGE_PIXELS` (40 million) checked before it is decoded, an image while OCR is off or not installed, or no text at all (`detail` then says which pages were skipped and why) |
+| 429 | `throttled` | The account sent more than `USER_RATE_LIMIT_REQUESTS` uploads in `USER_RATE_LIMIT_WINDOW_SECONDS`; `Retry-After` says when to try again |
+| 503 | `documents_busy` | `DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` documents were already being read and none finished within `DOCUMENT_EXTRACTION_WAIT_SECONDS`; `Retry-After` says when to try again |
 
 Limits are per request and come from settings (see `backend/.env.example`).
 The file's name and content are never logged.
 
 The call is synchronous. OCR takes about three seconds per dense A4 page on one
-CPU, so a long scan can hold the request for a minute or two (at worst
-`DOCUMENT_OCR_MAX_PAGES` x `DOCUMENT_OCR_TIMEOUT_SECONDS`); the frontend waits
-up to ten minutes (`UPLOAD_TIMEOUT_MS`), longer than that worst case by default.
+CPU, so a long scan can hold the request for a minute or two (at worst about
+`DOCUMENT_OCR_MAX_SECONDS` plus one `DOCUMENT_OCR_TIMEOUT_SECONDS`, after up to
+`DOCUMENT_EXTRACTION_WAIT_SECONDS` waiting for a turn); the frontend waits up to
+ten minutes (`UPLOAD_TIMEOUT_MS`), longer than that worst case by default.
 
 ---
 
@@ -449,8 +486,10 @@ one (`404`). Names and contents are never logged.
 ```
 
 `type` is the lower-case extension without its dot (empty when there is none).
-`used_bytes` is the sum of the sizes listed, which is what the quota counts;
-hidden files are neither listed nor counted. The list is not paginated.
+`used_bytes` is the sum of the sizes listed. Hidden files are not listed; the
+quota still counts the one kind there is, the hidden copy a replacement is
+written to before it takes the file's place, and removes one that a crash left
+behind for over an hour. The list is not paginated.
 
 ### `POST /files`
 
@@ -459,20 +498,24 @@ hidden files are neither listed nor counted. The list is not paginated.
 of the stored files, in the shape of `GET /files`'s entries.
 
 Each name is made safe first: only the last part of the browser's name is kept;
-control and reserved characters (`/ \ : * ? " < > |`) become `_`; whitespace is
+control characters, line and paragraph separators, text-direction marks and
+reserved characters (`/ \ : * ? " < > |`) become `_`; whitespace is
 collapsed; leading dots are dropped; the extension is lower-cased and the name is
 cut to 255 bytes. `C:\Users\me\Q3 report?.PDF` is stored as `Q3 report_.pdf`.
 Names, extensions and sizes are checked for every file before any is written;
 a name conflict or the quota is checked as each file is saved, so a refusal
-there keeps the files saved before it. The app uploads one file per request.
+there keeps the files saved before it. The app uploads one file per request;
+the route is rate-limited per account (`USER_RATE_LIMIT_REQUESTS` per
+`USER_RATE_LIMIT_WINDOW_SECONDS`).
 
 | Status | `error` | When |
 |---|---|---|
 | 400 | `validation_error` | No `files` part, a name with nothing left after cleaning, or two files with the same name |
 | 409 | `file_exists` | A file has that name and `replace` was not `true` |
-| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request whose declared `Content-Length` is over that plus 1 MB is refused before it is read, as `request_too_large` |
-| 413 | `storage_quota_exceeded` | The user's files would take more than `WORKSPACE_MAX_TOTAL_BYTES` (100 MB) |
+| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request body over that plus 1 MB is refused as `request_too_large`: before it is read when its `Content-Length` says so, else as soon as it passes the cap |
+| 413 | `storage_quota_exceeded` | The user's files would take more than `WORKSPACE_MAX_TOTAL_BYTES` (100 MB), or a new file would make more than `WORKSPACE_MAX_FILES` (2,000) files and folders |
 | 415 | `unsupported_file_type` | The extension is not in `WORKSPACE_UPLOAD_EXTENSIONS`; `detail` lists the accepted ones |
+| 429 | `throttled` | The account sent more than `USER_RATE_LIMIT_REQUESTS` uploads in `USER_RATE_LIMIT_WINDOW_SECONDS`; `Retry-After` says when to try again |
 
 ### `GET /files/<path>`
 

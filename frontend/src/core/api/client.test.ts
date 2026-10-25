@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { ApiError, request, requestBlob } from './client';
-import { clearTokens, getAccessToken, saveTokens } from '../auth/tokenStorage';
+import { ApiError, request, requestBlob, streamText } from './client';
+import {
+  clearTokens,
+  getAccessToken,
+  saveTokens,
+  subscribeToSessionEnd,
+} from '../auth/tokenStorage';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -12,7 +17,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('api client', () => {
+  let unsubscribe = (): void => {};
+
   afterEach(() => {
+    unsubscribe();
+    unsubscribe = () => {};
     clearTokens();
     vi.restoreAllMocks();
   });
@@ -76,6 +85,68 @@ describe('api client', () => {
 
     await expect(request(API.pipelines)).rejects.toBeInstanceOf(ApiError);
     expect(getAccessToken()).toBeNull();
+  });
+
+  it('ends the session, so the screens sign out, when the server refuses the refresh', async () => {
+    saveTokens({ access: 'stale' });
+    const ended = vi.fn();
+    unsubscribe = subscribeToSessionEnd(ended);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ error: 'not_authenticated', detail: 'Token expired' }, 401),
+    );
+
+    await expect(request(API.pipelines)).rejects.toMatchObject({ status: 401 });
+    expect(ended).toHaveBeenCalledOnce();
+  });
+
+  it('ends the session when even a refreshed token is refused', async () => {
+    saveTokens({ access: 'stale' });
+    const ended = vi.fn();
+    unsubscribe = subscribeToSessionEnd(ended);
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ error: 'not_authenticated', detail: 'Expired' }, 401))
+      .mockResolvedValueOnce(jsonResponse({ access: 'fresh' }))
+      .mockResolvedValueOnce(jsonResponse({ error: 'not_authenticated', detail: 'Gone' }, 401));
+
+    await expect(request(API.pipelines)).rejects.toMatchObject({ status: 401 });
+    expect(ended).toHaveBeenCalledOnce();
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('ends the session when a chat stream’s refresh is refused', async () => {
+    const ended = vi.fn();
+    unsubscribe = subscribeToSessionEnd(ended);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse({ error: 'not_authenticated', detail: 'Token expired' }, 401),
+    );
+
+    await expect(streamText(API.chat, { prompt: 'hi' }).next()).rejects.toBeInstanceOf(ApiError);
+    expect(ended).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the session through a refresh that fails for another reason', async () => {
+    const ended = vi.fn();
+    unsubscribe = subscribeToSessionEnd(ended);
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(jsonResponse({ error: 'not_authenticated', detail: 'Expired' }, 401))
+      .mockResolvedValueOnce(jsonResponse({ error: 'error', detail: 'Unavailable' }, 503));
+
+    await expect(request(API.pipelines)).rejects.toMatchObject({ status: 503 });
+    expect(ended).not.toHaveBeenCalled();
+  });
+
+  it('does not take a refused sign-in for the end of a session', async () => {
+    const ended = vi.fn();
+    unsubscribe = subscribeToSessionEnd(ended);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({ error: 'not_authenticated', detail: 'Wrong' }, 401));
+
+    await expect(
+      request(API.login, { method: 'POST', body: { username: 'a', password: 'b' } }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(ended).not.toHaveBeenCalled();
   });
 
   it('sends a FormData as multipart, leaving the Content-Type to the browser', async () => {

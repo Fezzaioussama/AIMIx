@@ -57,6 +57,21 @@ export function forgetMission(key: string): void {
   }
 }
 
+/**
+ * Forgets every mission this tab kept. The keys name no account, so they go when the
+ * session does (AuthProvider's `forgetAccountData`, wired in main.tsx): the next person
+ * to sign in here must not find the last one's prompts, team brief and draft team.
+ */
+export function forgetAllMissions(): void {
+  try {
+    const storage = window.sessionStorage;
+    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
+    for (const key of keys) if (key?.startsWith(PREFIX)) storage.removeItem(key);
+  } catch {
+    // Nothing could be kept, so there is nothing to forget.
+  }
+}
+
 function parseMission(value: unknown): StoredMission {
   if (!isRecord(value)) return EMPTY;
   return {

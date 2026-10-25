@@ -28,7 +28,9 @@ dependencies = [
     "python-docx>=1.2.0",
     "python-pptx>=1.0.2",
     "reportlab>=5.1.0",
-    "sqlalchemy>=2.0",
+    # 2.1 (Python 3.11+) changes Select's typing and how Alembic compares Float
+    # columns; stay on 2.0 until the code and migrations move to it.
+    "sqlalchemy>=2.0,<2.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
