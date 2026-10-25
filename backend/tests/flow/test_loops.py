@@ -17,7 +17,7 @@ from api.services.multiagent.contracts import (
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.loops import find_loops, recursion_limit
 from api.services.multiagent.reviews import Verdict
-from tests.flow_fakes import (
+from tests.flow.fakes import (
     PASS,
     REVISE,
     RecordingObserver,

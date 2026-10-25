@@ -4,7 +4,7 @@ what a skipped step leaves behind, and where a condition reads its text from."""
 from __future__ import annotations
 
 from api.services.multiagent.contracts import RunControl, StepEventKind, StepResult
-from tests.flow_fakes import (
+from tests.flow.fakes import (
     RecordingObserver,
     ScriptedAgent,
     outputs_of,

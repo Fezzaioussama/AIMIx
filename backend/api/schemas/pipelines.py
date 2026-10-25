@@ -25,8 +25,7 @@ from api.models import (
 )
 from api.schemas.common import ModelId, NonBlank, UtcDateTime
 from api.schemas.usage import BudgetIn
-from api.services.multiagent.conditions import StepCondition, shape_problem, tidy
-from api.services.multiagent.reviews import rounds_problem
+from api.services.multiagent.conditions import StepCondition, tidy
 from api.services.pipeline_changes import ChangeKind, ChangeTarget
 from api.services.pipeline_inputs import input_name_error
 
@@ -66,35 +65,26 @@ Inputs = Annotated[
 
 class StepConditionIn(BaseModel):
     """ "Run this step only if ...": what to look at, how to compare it, and with
-    what. Whether its source exists in the pipeline is checked as a whole
-    (``services/pipeline_flow``), when the pipeline is saved."""
+    what, stored tidy. Whether it can work in the pipeline is checked as a whole
+    (``services/pipeline_flow``), which names the step when it cannot."""
 
     source: Annotated[str, StringConstraints(strip_whitespace=True)]
     operator: Annotated[str, StringConstraints(strip_whitespace=True)]
     value: str = ""
 
     @model_validator(mode="after")
-    def _usable(self) -> StepConditionIn:
-        condition = tidy(StepCondition(self.source, self.operator, self.value))
-        if problem := shape_problem(condition):
-            raise ValueError(f"A step's condition {problem}.")
-        self.value = condition.value
+    def _tidy(self) -> StepConditionIn:
+        self.value = tidy(StepCondition(self.source, self.operator, self.value)).value
         return self
-
-
-def _valid_rounds(max_rounds: int) -> int:
-    if problem := rounds_problem(max_rounds):
-        raise ValueError(f"A review loop {problem}.")
-    return max_rounds
 
 
 class StepReviewIn(BaseModel):
     """Makes a step a reviewer that can send the work back for fixes. That the
-    stage is an earlier one that exists is checked as a whole, when the pipeline
-    is saved."""
+    stage is an earlier one that exists, and how many times it may go back, is
+    checked as a whole (``services/pipeline_flow``)."""
 
-    send_back_to_stage: int = Field(ge=1)
-    max_rounds: Annotated[int, AfterValidator(_valid_rounds)]
+    send_back_to_stage: int
+    max_rounds: int
 
 
 class PipelineStepIn(BaseModel):
