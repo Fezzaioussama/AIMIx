@@ -158,8 +158,17 @@ pure helpers screens share: `elapsedMs(startedAt, finishedAt, now)`,
 
 ## `core/markdown/renderMarkdown.ts`
 
-`marked` → HTML → `DOMPurify.sanitize`. Model output is untrusted, so any
-`dangerouslySetInnerHTML` must go through this function.
+`marked` → HTML → a private `DOMPurify` instance. Model output is untrusted (a web
+page or document the model read can steer it), so any `dangerouslySetInnerHTML` must
+go through this function. Beyond scripts it keeps nothing that could pass for the
+app's own screen: HTML only (no SVG or MathML), no form controls (`form`, `button`,
+`textarea`, `select`, `label`, …), no `dialog` or `<style>`, and no `style` or `class`
+attribute (the app's Tailwind classes include `fixed inset-0`), so a reply cannot draw
+a fake sign-in panel or an invisible full-screen link. What Markdown makes still
+renders: tables with their `align`, code blocks, lists and links. The one input
+Markdown makes, a task-list box, is kept as a disabled checkbox, and any other input
+becomes one. Links open in the same tab, as before, with `rel="noopener noreferrer"`.
+The hooks doing this live on the module's own instance, added once.
 
 ## `core/ui/` — shared presentation and motion
 
