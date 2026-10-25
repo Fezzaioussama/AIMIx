@@ -9,7 +9,9 @@ once, not once per missed time. A claimed occurrence starts like a manual run
 (``RunService.start``), with the owner's LLM profile and a
 ``PipelineAgentGenerator``. When it cannot start (no API key, inputs the
 pipeline no longer takes), the reason is saved on the schedule and logged, and
-the schedule waits for its next time. An occurrence is started at most once: a
+the schedule waits for its next time. So does an occurrence that comes while
+the schedule's previous run is still active: it is skipped, not queued behind
+it, and the schedule says why. An occurrence is started at most once: a
 process that dies between a claim and its run loses that occurrence.
 """
 
@@ -27,9 +29,9 @@ from sqlalchemy.orm import Session
 from api.db import Database
 from api.exceptions import DomainError, NotFound
 from api.models import Run, Schedule, User
+from api.repositories import active_runs, users
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import schedules as repository
-from api.repositories import users
 from api.security import SecretBox
 from api.services import llm_settings
 from api.services.llm import provider_config
@@ -119,12 +121,29 @@ class Scheduler:
         with self._database.session() as session:
             if not repository.claim(session, schedule.id, seen, following):
                 return False
+            previous = active_runs.of_schedule(session, schedule.id)
+        if previous is not None:
+            return self._skip(schedule, seen, previous)
         run = self._start(schedule.id)
         self._record(schedule.id, "")
         logger.info(
             "schedule.fired schedule_id=%s run_id=%s slot=%s", schedule.id, run.id, seen.isoformat()
         )
         return True
+
+    def _skip(self, schedule: Schedule, slot: datetime, previous: int) -> bool:
+        """Pass over a claimed occurrence: its previous run is still active."""
+        logger.info(
+            "schedule.skipped schedule_id=%s previous_run_id=%s slot=%s",
+            schedule.id,
+            previous,
+            slot.isoformat(),
+        )
+        self._record(
+            schedule.id,
+            f"Skipped a run: run {previous} of this schedule was still in progress.",
+        )
+        return False
 
     def _start(self, schedule_id: int) -> Run:
         """Start the run of a claimed schedule, with what is saved now: an edit

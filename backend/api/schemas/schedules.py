@@ -19,6 +19,7 @@ from pydantic import (
 from api.models import TIMEZONE_MAX_LENGTH, RunStatus, ScheduleFrequency
 from api.schemas.common import RunInputValues, Trimmed, UtcDateTime, ensure_run_input_size
 from api.schemas.pipelines import PipelineInputField, RunRequest
+from api.schemas.usage import BudgetIn
 from api.services.schedules.timing import time_zone_error
 
 
@@ -72,17 +73,22 @@ class ScheduleTimingIn(BaseModel):
 
 class ScheduleIn(ScheduleTimingIn, RunRequest):
     """Body of POST /api/schedules: a pipeline, its timing, and what each run
-    is given (``input`` or ``inputs``, as for a run)."""
+    is given (``input`` or ``inputs``, and its spending limits, as for a run)."""
 
     pipeline_id: int
     enabled: bool = True
 
 
-class SchedulePatch(BaseModel):
+#: What a schedule's runs may spend: ``max_cost_usd`` and ``max_tokens``.
+BUDGET_FIELDS = frozenset(BudgetIn.model_fields)
+
+
+class SchedulePatch(BudgetIn):
     """Body of PATCH /api/schedules/{id}: omitted fields keep their value.
 
     Timing fields are changed one by one. ``input`` and ``inputs`` replace what
-    each run is given as a whole: the one left out becomes empty."""
+    each run is given as a whole: the one left out becomes empty. So do the
+    spending limits: sending either one sets both, and null is no limit."""
 
     frequency: ScheduleFrequency | None = None
     time: ClockTime | None = None
@@ -97,6 +103,10 @@ class SchedulePatch(BaseModel):
     def _bounded(self) -> SchedulePatch:
         ensure_run_input_size(self.input, self.inputs)
         return self
+
+    @property
+    def sends_budget(self) -> bool:
+        return bool(BUDGET_FIELDS & self.model_fields_set)
 
 
 class ScheduleListQuery(BaseModel):
@@ -130,6 +140,9 @@ class ScheduleOut(BaseModel):
     timezone: str
     input: str = Field(validation_alias="input_text")
     inputs: dict[str, str] = Field(validation_alias="input_values")
+    #: Each run's spending limits; null is the server's default.
+    max_cost_usd: float | None
+    max_tokens: int | None
     enabled: bool
     #: Null while the schedule is off.
     next_run_at: UtcDateTime | None

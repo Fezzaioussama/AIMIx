@@ -30,6 +30,7 @@ from api.services.llm import LLMProfile, get_planner_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, enforce
+from api.services.run_budget import run_limits
 from api.services.run_executor import RunExecutor
 from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
@@ -316,7 +317,7 @@ def schedule_access(
     user: CurrentUser, session: DbSession, settings: AppSettings, now: Now
 ) -> ScheduleAccess:
     """The signed-in user's schedules (the builder's Schedule panel, Runs screen)."""
-    return ScheduleAccess(session, user, settings.schedules_max_per_user, now)
+    return ScheduleAccess(session, user, settings.schedules_max_per_user, now, run_limits(settings))
 
 
 Schedules = Annotated[ScheduleAccess, Depends(schedule_access)]

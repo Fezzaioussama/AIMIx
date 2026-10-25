@@ -46,7 +46,9 @@ def _edit(body: SchedulePatch) -> service.ScheduleEdit:
     )
     sent_inputs = body.input is not None or body.inputs is not None
     start = RunStart(body.input or "", body.inputs or {}) if sent_inputs else None
-    return service.ScheduleEdit(timing, start, body.enabled)
+    return service.ScheduleEdit(
+        timing, start, body.enabled, body.budget if body.sends_budget else None
+    )
 
 
 @router.get("")
@@ -59,9 +61,8 @@ def list_schedules(
 
 @router.post("", status_code=201)
 def create_schedule(body: ScheduleIn, access: Schedules) -> ScheduleOut:
-    draft = service.ScheduleDraft(
-        body.pipeline_id, _timing(body), RunStart(body.input, body.inputs), body.enabled
-    )
+    start = RunStart(body.input, body.inputs, body.budget)
+    draft = service.ScheduleDraft(body.pipeline_id, _timing(body), start, body.enabled)
     return ScheduleOut.model_validate(service.create(access, draft))
 
 

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, load_only, selectinload
 
 from api.exceptions import NotFound
 from api.models import Run, Schedule, ScheduleFrequency, User
+from api.repositories import quota
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,20 @@ class ScheduleFields:
     timezone: str
     input_text: str
     input_values: dict[str, str]
+    #: Each run's spending limits; None is the server's default.
+    max_cost_usd: float | None
+    max_tokens: int | None
     enabled: bool
     next_run_at: datetime | None
     last_error: str = ""
+
+
+@dataclass(frozen=True)
+class NewSchedule:
+    """A schedule to save: the pipeline it runs, and everything else it sets."""
+
+    pipeline_id: int
+    fields: ScheduleFields
 
 
 def _owned_by(user: User) -> Select[tuple[Schedule]]:
@@ -63,9 +75,12 @@ def get_owned(session: Session, user: User, schedule_id: int) -> Schedule:
     return schedule
 
 
+def _count_of(user: User) -> Select[Any]:
+    return select(func.count()).select_from(Schedule).where(Schedule.user_id == user.id)
+
+
 def count(session: Session, user: User) -> int:
-    query = select(func.count()).select_from(Schedule).where(Schedule.user_id == user.id)
-    return session.scalar(query) or 0
+    return session.scalar(_count_of(user)) or 0
 
 
 def _apply(schedule: Schedule, fields: ScheduleFields) -> None:
@@ -73,10 +88,13 @@ def _apply(schedule: Schedule, fields: ScheduleFields) -> None:
         setattr(schedule, name, value)
 
 
-def create(session: Session, user: User, pipeline_id: int, fields: ScheduleFields) -> Schedule:
-    schedule = Schedule(user_id=user.id, pipeline_id=pipeline_id, last_error="")
-    _apply(schedule, fields)
+def create(session: Session, user: User, new: NewSchedule, cap: quota.Quota) -> Schedule:
+    """Save a schedule, only while the user keeps within ``cap`` schedules."""
+    quota.lock_owner(session, user.id)
+    schedule = Schedule(user_id=user.id, pipeline_id=new.pipeline_id, last_error="")
+    _apply(schedule, new.fields)
     session.add(schedule)
+    quota.enforce(session, _count_of(user), cap)
     session.commit()
     return get_owned(session, user, schedule.id)
 

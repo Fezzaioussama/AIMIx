@@ -3,7 +3,8 @@
 Takes and returns plain Python values (AGENTS.md §2). A schedule's timing goes
 through ``timing.checked`` and its run inputs through the rules every run
 applies (``pipelines.prepare_run``) before anything is saved, so a schedule
-that saves is one whose runs can start.
+that saves is one whose runs can start. Its spending limits are each run's,
+within the server's ceiling (``RunLimits``) like any run's.
 """
 
 from __future__ import annotations
@@ -18,9 +19,11 @@ from api.exceptions import ValidationFailed
 from api.models import Run, RunStatus, RunTrigger, Schedule, ScheduleFrequency, User
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import schedules as repository
+from api.repositories.quota import Quota
 from api.repositories.schedules import ScheduleFields
 from api.services.multiagent.contracts import StepAgent
 from api.services.pipelines import prepare_run
+from api.services.run_budget import NO_LIMITS, RunBudget, RunLimits
 from api.services.runs import RunService, RunStart
 from api.services.schedules.timing import Timing, checked, next_run_after
 
@@ -36,6 +39,8 @@ class ScheduleAccess:
     #: SCHEDULES_MAX_PER_USER.
     max_per_user: int
     now: datetime
+    #: The server's run limits, whose ceiling a schedule's limits must fit.
+    limits: RunLimits = NO_LIMITS
 
 
 @dataclass(frozen=True)
@@ -71,11 +76,13 @@ class TimingEdit:
 @dataclass(frozen=True)
 class ScheduleEdit:
     """Changes to a schedule: its timing field by field, its run inputs as a
-    whole (``start``), and whether it is on. None keeps what is saved."""
+    whole (``start``; its budget is ignored), whether it is on, and its runs'
+    spending limits as a whole (``budget``). None keeps what is saved."""
 
     timing: TimingEdit = field(default_factory=TimingEdit)
     start: RunStart | None = None
     enabled: bool | None = None
+    budget: RunBudget | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +107,8 @@ class ScheduleView:
     timezone: str
     input_text: str
     input_values: dict[str, str]
+    max_cost_usd: float | None
+    max_tokens: int | None
     enabled: bool
     next_run_at: datetime | None
     last_run: LastRunView | None
@@ -117,13 +126,18 @@ def timing_of(schedule: Schedule) -> Timing:
     )
 
 
+def budget_of(schedule: Schedule) -> RunBudget:
+    return RunBudget(schedule.max_cost_usd, schedule.max_tokens)
+
+
 def run_start(schedule: Schedule) -> RunStart:
     """What each of the schedule's runs is started with, marked as its own."""
     return RunStart(
         schedule.input_text,
         dict(schedule.input_values),
-        trigger=RunTrigger.SCHEDULE,
-        schedule_id=schedule.id,
+        budget_of(schedule),
+        RunTrigger.SCHEDULE,
+        schedule.id,
     )
 
 
@@ -139,6 +153,8 @@ def _fields(
         timezone=timing.timezone,
         input_text=start.text,
         input_values=dict(start.values),
+        max_cost_usd=start.budget.max_cost_usd,
+        max_tokens=start.budget.max_tokens,
         enabled=enabled,
         next_run_at=next_run_at,
     )
@@ -159,7 +175,10 @@ def _error_after(row: Schedule, edit: ScheduleEdit, timing: Timing, enabled: boo
     schedule runs or when (or turns it on) starts a new configuration, which has not
     failed yet, so the old reason goes; any other edit keeps it."""
     reconfigured = (
-        edit.start is not None or timing != timing_of(row) or (enabled and not row.enabled)
+        edit.start is not None
+        or edit.budget is not None
+        or timing != timing_of(row)
+        or (enabled and not row.enabled)
     )
     return "" if reconfigured else row.last_error
 
@@ -181,6 +200,8 @@ def _view(row: Schedule, last_run: Run | None) -> ScheduleView:
         timezone=row.timezone,
         input_text=row.input_text,
         input_values=dict(row.input_values),
+        max_cost_usd=row.max_cost_usd,
+        max_tokens=row.max_tokens,
         enabled=row.enabled,
         next_run_at=row.next_run_at,
         last_run=_last_run(last_run),
@@ -206,14 +227,17 @@ def _check_inputs(access: ScheduleAccess, pipeline_id: int, start: RunStart) -> 
 
 
 def create(access: ScheduleAccess, draft: ScheduleDraft) -> ScheduleView:
+    """Save a new schedule. SCHEDULES_MAX_PER_USER is checked in the insert's
+    own transaction, so two requests at once cannot both pass it."""
     limit = access.max_per_user
-    if repository.count(access.session, access.user) >= limit:
-        raise ValidationFailed(f"You can have up to {limit} schedules. Delete one first.")
+    access.limits.allow(draft.start.budget)
     _check_inputs(access, draft.pipeline_id, draft.start)
     timing = checked(draft.timing)
     next_run = next_run_after(timing, access.now) if draft.enabled else None
     fields = _fields(timing, draft.start, draft.enabled, next_run)
-    row = repository.create(access.session, access.user, draft.pipeline_id, fields)
+    refusal = ValidationFailed(f"You can have up to {limit} schedules. Delete one first.")
+    new = repository.NewSchedule(draft.pipeline_id, fields)
+    row = repository.create(access.session, access.user, new, Quota(limit, refusal))
     logger.info(
         "schedule.created user_id=%s schedule_id=%s pipeline_id=%s frequency=%s",
         access.user.id,
@@ -233,7 +257,8 @@ def update(access: ScheduleAccess, schedule_id: int, edit: ScheduleEdit) -> Sche
     not start goes when the edit gives it something new to try."""
     row = repository.get_owned(access.session, access.user, schedule_id)
     timing = checked(edit.timing.applied_to(timing_of(row)))
-    start = edit.start or RunStart(row.input_text, row.input_values)
+    budget = budget_of(row) if edit.budget is None else access.limits.allow(edit.budget)
+    start = replace(edit.start or RunStart(row.input_text, row.input_values), budget=budget)
     enabled = row.enabled if edit.enabled is None else edit.enabled
     if enabled and (edit.start is not None or not row.enabled):
         _check_inputs(access, row.pipeline_id, start)
