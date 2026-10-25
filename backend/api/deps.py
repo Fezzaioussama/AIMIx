@@ -26,7 +26,7 @@ from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage, user_workspace_dir
 from api.services.integrations.rules import IntegrationRules, rules_from
 from api.services.integrations.service import IntegrationAccess
-from api.services.llm import LLMProfile, get_provider
+from api.services.llm import LLMProfile, get_planner_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, enforce
@@ -185,9 +185,9 @@ ProviderFactory = Callable[[], LLMProvider]
 
 
 def provider_factory(profile: Profile) -> ProviderFactory:
-    """Hands endpoints the factory, not the provider, so the request body is
-    validated before an unconfigured provider can fail the request."""
-    return partial(get_provider, profile)
+    """The planner's provider (its own timeout and output bound), as a factory, so
+    the body is validated before an unconfigured provider can fail the request."""
+    return partial(get_planner_provider, profile)
 
 
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]

@@ -7,7 +7,7 @@ settings; the llm package itself receives plain values (§5 D).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -77,12 +77,26 @@ def provider_config(profile: LLMProfile, model_id: str | None = None) -> Provide
     )
 
 
-def get_provider(profile: LLMProfile) -> LLMProvider:
-    """Return the profile's provider, or raise a domain error the API can map."""
+def get_provider(profile: LLMProfile, config: ProviderConfig | None = None) -> LLMProvider:
+    """Return the profile's provider (built with ``config`` when given), or raise
+    a domain error the API can map."""
     try:
-        return create_provider(profile.provider, provider_config(profile))
+        return create_provider(profile.provider, config or provider_config(profile))
     except llm_exceptions.ProviderNotConfigured as cause:
         raise ProviderNotConfigured(str(cause)) from cause
+
+
+def get_planner_provider(profile: LLMProfile) -> LLMProvider:
+    """The provider of the pipeline planner, which answers inside the request: its
+    calls time out after LLM_PLANNER_TIMEOUT_SECONDS and write at most
+    LLM_PLANNER_MAX_OUTPUT_TOKENS tokens."""
+    settings = get_settings()
+    config = replace(
+        provider_config(profile),
+        timeout_seconds=settings.llm_planner_timeout_seconds,
+        max_output_tokens=settings.llm_planner_max_output_tokens,
+    )
+    return get_provider(profile, config)
 
 
 def get_agent_model(profile: LLMProfile, model_id: str | None = None) -> BaseChatModel:

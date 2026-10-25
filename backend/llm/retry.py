@@ -112,6 +112,12 @@ def _http_response(error: BaseException) -> tuple[int, Mapping[str, str]] | None
     return None
 
 
+def status_code(error: BaseException) -> int | None:
+    """The HTTP status of an SDK status error; None for any other error."""
+    response = _http_response(error)
+    return None if response is None else response[0]
+
+
 def transient_reason(error: BaseException) -> str | None:
     """Why ``error`` deserves another attempt, or None when it does not."""
     response = _http_response(error)
