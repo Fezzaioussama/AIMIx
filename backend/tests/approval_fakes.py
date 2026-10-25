@@ -79,6 +79,9 @@ class ParkedExecutor:
     def cancel(self, key: int) -> None:
         return None
 
+    def settled(self, key: int) -> bool:
+        return True
+
     def shutdown(self) -> None:
         return None
 

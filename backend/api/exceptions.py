@@ -66,6 +66,34 @@ class BudgetExceeded(DomainError):
     status_code = 409
 
 
+class TooManyRuns(DomainError):
+    """The account already has as many runs active as it may (RUN_MAX_ACTIVE_PER_USER)."""
+
+    code = "too_many_runs"
+    status_code = 429
+
+    def __init__(self, cap: int) -> None:
+        super().__init__(
+            f"You already have {cap} run{'' if cap == 1 else 's'} queued, running or "
+            "waiting, the most one account may have at once. Wait for one to end, or stop one."
+        )
+
+
+class RunStillRunning(DomainError):
+    """A caller waited RUN_WAIT_MAX_SECONDS for a run's end; the run goes on.
+    Accepted, not failed: the client follows the run by its id."""
+
+    code = "run_still_running"
+    status_code = 202
+
+    def __init__(self, run_id: int, waited_seconds: float) -> None:
+        super().__init__(
+            f"Run {run_id} is still going after {waited_seconds:g} s and continues in the "
+            f"background. Follow it with GET /api/runs/{run_id}."
+        )
+        self.run_id = run_id
+
+
 class ProviderNotConfigured(DomainError):
     code = "provider_not_configured"
     status_code = 503

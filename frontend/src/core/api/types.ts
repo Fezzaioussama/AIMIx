@@ -85,15 +85,18 @@ export interface Pipeline {
 }
 
 /**
- * Spending limits of a run, set when it starts or raised when it resumes. A limit
- * left out keeps its default (the server's, or the run's own on resume).
+ * Spending limits of a run, set when it starts or raised when it resumes. A limit left out
+ * keeps its default (the server's, or the run's own on resume); none may pass the server's.
  */
 export interface RunBudget {
   /** Stop once the model calls have cost this much, in USD. */
-  max_cost_usd?: number;
+  max_cost_usd?: number | null;
   /** Stop once the model calls have used this many tokens, in and out. */
-  max_tokens?: number;
+  max_tokens?: number | null;
 }
+
+/** A run's or a schedule's saved limits; null is none of its own. */
+export type SpendingLimits = { [Limit in keyof RunBudget]-?: number | null };
 
 /** Body of a run: free text, or a value for each input the pipeline declares. */
 export interface PipelineRunRequest extends RunBudget {
@@ -236,7 +239,7 @@ export interface RunApproval {
 export type RunTrigger = 'manual' | 'schedule' | 'chat';
 
 /** A run in the history list (GET /api/runs): no inputs, outputs or steps. */
-export interface RunSummary {
+export interface RunSummary extends SpendingLimits {
   id: number;
   /** null once the pipeline was deleted; the run keeps its name. */
   pipeline_id: number | null;
@@ -249,9 +252,6 @@ export interface RunSummary {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
-  /** The run's spending limits; null is no limit. */
-  max_cost_usd: number | null;
-  max_tokens: number | null;
   /** What its model calls used and cost so far, over every attempt. */
   usage: Usage;
 }
@@ -448,7 +448,7 @@ export interface ScheduleTiming {
 }
 
 /** A pipeline started on its own at a preset frequency (GET /api/schedules). */
-export interface Schedule extends ScheduleTiming {
+export interface Schedule extends ScheduleTiming, SpendingLimits {
   id: number;
   pipeline_id: number;
   pipeline_name: string;
@@ -477,7 +477,7 @@ export interface ScheduleInput extends ScheduleTiming, PipelineRunRequest {
 
 /**
  * Body of PATCH /api/schedules/<id>: omitted fields keep their value. `input` and `inputs`
- * replace what each run is given as a whole.
+ * replace what each run is given as a whole; so do the two limits (null removes one).
  */
 export interface SchedulePatch extends Partial<ScheduleTiming>, PipelineRunRequest {
   enabled?: boolean;

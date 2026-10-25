@@ -10,11 +10,19 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from llm.exceptions import ProviderRequestError, ProviderTimeout
-from llm.retry import NO_RETRIES, SYSTEM_CLOCK, Retrier, RetryClock, RetryPolicy, is_timeout
+from llm.retry import (
+    NO_RETRIES,
+    SYSTEM_CLOCK,
+    Retrier,
+    RetryClock,
+    RetryPolicy,
+    is_timeout,
+    status_code,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +32,14 @@ class ProviderConfig:
     """Everything a provider needs, passed in rather than read from the
     environment, so the layer stays framework-agnostic and testable (§5 D)."""
 
-    api_key: str
+    # Kept out of repr, so a logged or traceback-printed config never shows it.
+    api_key: str = field(repr=False)
     default_model: str
     timeout_seconds: float
     base_url: str | None = None
     retry: RetryPolicy = NO_RETRIES
+    #: The most tokens one answer may have (the API's ``max_tokens``); None leaves it to the model.
+    max_output_tokens: int | None = None
 
 
 @runtime_checkable
@@ -83,10 +94,12 @@ class OpenAICompatibleProvider:
         return Retrier(self._config.retry, self.name, model, self._clock)
 
     def _create(self, prompt: str, model: str, *, stream: bool) -> Any:
+        bound = self._config.max_output_tokens
         return self._client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             stream=stream,
+            **({} if bound is None else {"max_tokens": bound}),
         )
 
     @contextmanager
@@ -95,19 +108,22 @@ class OpenAICompatibleProvider:
         try:
             yield
         except Exception as cause:
-            # Normalised so every provider fails the same way (§5 L). The
-            # prompt is deliberately never logged (§6 observability).
+            # Normalised so every provider fails the same way (§5 L). Only the
+            # error's type and status are logged: never the prompt (§6), nor the
+            # provider's message, which can echo the key or the account's state.
             logger.warning(
-                "llm.request_failed provider=%s model=%s error=%s",
+                "llm.request_failed provider=%s model=%s error=%s status=%s",
                 self.name,
                 model,
                 type(cause).__name__,
+                status_code(cause),
             )
             if is_timeout(cause):
                 raise ProviderTimeout(
                     f"{self.name} did not respond within {self._config.timeout_seconds:g}s."
                 ) from cause
-            raise ProviderRequestError(f"{self.name} rejected the request: {cause}") from cause
+            # Generic on purpose: the caller may be spending the server's key.
+            raise ProviderRequestError(f"{self.name} could not answer the request.") from cause
 
     def generate(self, prompt: str, model: str | None = None) -> str:
         resolved = self._resolve_model(model)

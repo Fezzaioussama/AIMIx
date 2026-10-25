@@ -5,11 +5,22 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from config.fields import Secret, env_aliases
+from config.run_settings import TokenLimit
 
 
 class LlmSettings(BaseModel):
     llm_provider: str = Field("openrouter", validation_alias="LLM_PROVIDER")
     llm_timeout_seconds: float = Field(3600.0, gt=0, validation_alias="LLM_TIMEOUT_SECONDS")
+    # The planner (POST /pipelines/generate and /revise) answers inside the request,
+    # so it gets a shorter timeout and a bound on what it writes.
+    llm_planner_timeout_seconds: float = Field(
+        300.0, gt=0, validation_alias="LLM_PLANNER_TIMEOUT_SECONDS"
+    )
+    llm_planner_max_output_tokens: int = Field(
+        32_000, ge=1, validation_alias="LLM_PLANNER_MAX_OUTPUT_TOKENS"
+    )
+    # Tokens (in and out) the model calls behind one chat message may use; empty is no limit.
+    chat_max_tokens: TokenLimit = Field(None, validation_alias="CHAT_MAX_TOKENS")
     # Retries of a transient provider failure (llm/retry.py); 0 turns them off.
     llm_max_retries: int = Field(2, ge=0, le=10, validation_alias="LLM_MAX_RETRIES")
     llm_retry_base_delay_seconds: float = Field(

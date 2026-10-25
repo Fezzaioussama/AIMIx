@@ -25,6 +25,8 @@ export const SCHEDULE: Schedule = {
   timezone: 'Europe/Paris',
   input: 'Research my competitors’ news',
   inputs: {},
+  max_cost_usd: null,
+  max_tokens: null,
   enabled: true,
   next_run_at: '2026-10-26T08:00:00Z',
   last_run: null,

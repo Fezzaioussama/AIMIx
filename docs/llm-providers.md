@@ -37,7 +37,13 @@ Every implementation must:
   produced nothing;
 - retry only through the policy in `llm/retry.py`, with the SDK's own retries
   switched off (see [Retry policy](#retry-policy));
-- never log the prompt (it can contain user data).
+- never log the prompt (it can contain user data), and never put the provider's
+  own error message in what it raises or logs: it can describe the account
+  (credits, plan) or echo part of the key, and the error reaches every caller
+  of an instance whose accounts spend the server's key.
+
+`ProviderConfig` keeps `api_key` out of its `repr`, so a logged or
+traceback-printed config never shows the key.
 
 ## `OpenAICompatibleProvider`
 
@@ -50,14 +56,19 @@ class implements the transport for both:
   policy (below).
 - `_normalised_failures` — the one place that catches a broad `Exception` from
   the SDK, once the retries are spent. It logs `llm.request_failed` (provider,
-  model, error class — no prompt) and re-raises as `ProviderTimeout` if the
-  class name contains "timeout", otherwise `ProviderRequestError`, always
+  model, error class and HTTP status — no prompt, no provider message) and
+  re-raises as `ProviderTimeout` if the class name contains "timeout", otherwise
+  `ProviderRequestError("<provider> could not answer the request.")`, always
   `from cause`. A failure in the middle of a stream is normalised the same way.
 - `generate` — returns `choices[0].message.content`.
 - `stream` — yields non-empty `choices[0].delta.content` pieces.
 
-The call sends a single user message; there is no system prompt, history,
-temperature, or max-tokens setting today.
+The call sends a single user message; there is no system prompt, history or
+temperature setting. `config.max_output_tokens`, when set, is sent as
+`max_tokens`: the planner's provider (`api/services/llm.get_planner_provider`)
+sets it to `LLM_PLANNER_MAX_OUTPUT_TOKENS` (32,000) and its timeout to
+`LLM_PLANNER_TIMEOUT_SECONDS` (300), because the planner answers inside an
+HTTP request; the CLI probe keeps `LLM_TIMEOUT_SECONDS` and no bound.
 
 ## Retry policy
 
@@ -174,7 +185,9 @@ each answer in `AIMessage.usage_metadata`; the pieces are:
   Python 3.10). It prices each finished call and tells a `UsageMeter` port
   *before* a call (`before_call`; raising refuses the call, and the exception
   reaches the agent unchanged) and *after* it (`after_call(usage)`). The
-  budget of a run is one such meter (`api/services/run_budget.py`).
+  budget of a run is one such meter (`api/services/run_budget.py`); the chat
+  agent's `ChatMeter` (`api/services/agent.py`) is another, which stops the
+  calls behind one message at `CHAT_MAX_TOKENS`.
 
 ### Where the cost of a call comes from
 

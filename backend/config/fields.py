@@ -41,7 +41,13 @@ def _drop_placeholder(value: str) -> str:
     return "" if value.lower() in SECRET_PLACEHOLDERS else value
 
 
+def _empty_is_none(value: object) -> object:
+    return None if isinstance(value, str) and not value.strip() else value
+
+
 #: ``a,b, c`` in the environment; a list in code.
 CommaList = Annotated[list[str], NoDecode, BeforeValidator(_split_commas)]
 #: A credential: surrounding blanks are dropped and a placeholder means unset.
 Secret = Annotated[str, AfterValidator(_drop_placeholder)]
+#: On an optional limit: ``X=`` (empty or blank) in the environment means unset (None).
+EmptyIsNone = BeforeValidator(_empty_is_none)

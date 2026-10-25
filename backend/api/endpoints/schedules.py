@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
-from api.deps import Now, PipelineRun, Schedules
+from api.deps import Now, PipelineRun, Schedules, user_rate_limit
 from api.schemas.runs import RunOut
 from api.schemas.schedules import (
     ScheduleIn,
@@ -46,7 +46,9 @@ def _edit(body: SchedulePatch) -> service.ScheduleEdit:
     )
     sent_inputs = body.input is not None or body.inputs is not None
     start = RunStart(body.input or "", body.inputs or {}) if sent_inputs else None
-    return service.ScheduleEdit(timing, start, body.enabled)
+    return service.ScheduleEdit(
+        timing, start, body.enabled, body.budget if body.sends_budget else None
+    )
 
 
 @router.get("")
@@ -59,9 +61,8 @@ def list_schedules(
 
 @router.post("", status_code=201)
 def create_schedule(body: ScheduleIn, access: Schedules) -> ScheduleOut:
-    draft = service.ScheduleDraft(
-        body.pipeline_id, _timing(body), RunStart(body.input, body.inputs), body.enabled
-    )
+    start = RunStart(body.input, body.inputs, body.budget)
+    draft = service.ScheduleDraft(body.pipeline_id, _timing(body), start, body.enabled)
     return ScheduleOut.model_validate(service.create(access, draft))
 
 
@@ -82,7 +83,7 @@ def delete_schedule(schedule_id: int, access: Schedules) -> Response:
     return Response(status_code=204)
 
 
-@router.post("/{schedule_id}/run", status_code=202)
+@router.post("/{schedule_id}/run", status_code=202, dependencies=[Depends(user_rate_limit)])
 def run_schedule_now(schedule_id: int, access: Schedules, context: PipelineRun) -> RunOut:
     """Start one of the schedule's runs now; poll ``GET /runs/{id}`` to follow it."""
     run = service.run_now(access, schedule_id, context.runs, context.agents())

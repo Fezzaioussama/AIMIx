@@ -146,12 +146,28 @@ spending as its starting total and may raise the limits
 (`POST /runs/<id>/resume` with a body); under a limit it has already reached it
 is refused (`409 budget_exceeded`).
 
+**The server's limits** (`run_policy.RunPolicy`, applied by `RunService` on every
+path that starts or resumes a run). A limit the starter leaves unset takes the
+default (`RUN_DEFAULT_MAX_COST_USD`, `RUN_DEFAULT_MAX_TOKENS`); the ceilings
+(`RUN_MAX_COST_USD`, `RUN_MAX_TOKENS`) refuse a limit asked for above them and
+cut a default or a saved limit to them (`run_budget.RunLimits`). Only a token
+limit bounds a model with no known price. An account may have
+`RUN_MAX_ACTIVE_PER_USER` runs queued, running or waiting: `repositories/quota`
+counts them in the same transaction as the insert (or the resume) that adds one,
+after locking the owner's row, so requests sent together cannot pass it together
+(`429 too_many_runs`).
+
 **Stop** (`POST /runs/<id>/cancel`): the request writes `cancelled` (from
 `queued`, `running` or `waiting`), marks running steps `cancelled` and expires
 the approvals still pending, then asks the executor to cancel the task.
 LangGraph cancels the in-flight agents, whose model calls are cut at once (an
 agent waiting at an approval gate is cut the same way); a run still waiting for
-a slot simply never starts. Stopping a finished run changes nothing.
+a slot simply never starts. Stopping a finished run changes nothing. The
+stopped task may take a moment to wind down (a tool call it cannot abandon); its
+last write, `interrupted`, only applies to a run still `running`, so a resume
+must not start a new attempt before it has ended: `RunExecutor.settled(run_id)`
+waits up to `RUN_SHUTDOWN_GRACE_SECONDS` for that, and the resume is otherwise a
+`409 conflict` ("still stopping").
 
 **Interrupted.** On shutdown (FastAPI lifespan) the executor cancels its jobs;
 a cancelled job records `interrupted`, unless its owner stopped it first (then
@@ -170,7 +186,10 @@ see below). Resuming any other run returns it unchanged.
 
 **Waiting callers.** `POST /pipelines/<id>/run` (kept for API compatibility)
 and the chat agent's `run_pipeline` tool start a run the same way and wait for
-its end (`RunService.run_to_end`), so their runs are recorded too.
+its end (`RunService.run_to_end`), so their runs are recorded too. The wait is
+bounded by `RUN_WAIT_MAX_SECONDS`: then `RunStillRunning` (`202
+run_still_running`) frees the request thread and the run goes on, so callers
+that wait cannot pin the threadpool every synchronous endpoint shares.
 
 #### Conditions and review loops
 
@@ -340,7 +359,13 @@ sequenceDiagram
   queued and handed to the executor, and the scheduler does not wait for it.
   `ProfileAgents` checks that a key exists first (`provider_config`), so an
   account with none gets an explanation on the schedule instead of a run that can
-  only fail.
+  only fail. The run gets the schedule's own limits (`max_cost_usd`,
+  `max_tokens`), within the server's like any run.
+- **One run at a time.** After the claim, a schedule whose previous run is still
+  queued, running or waiting (`repositories/active_runs.of_schedule`) skips the
+  occurrence: no run, `last_error` says which run was still in progress, and the
+  log says `schedule.skipped`. So a pipeline that takes longer than its schedule's
+  interval runs every other time instead of piling up queued runs.
 - **Failures** never stop the loop. A `DomainError` raised while starting (no API
   key, inputs the pipeline no longer takes, a pipeline without steps) is saved in
   `schedules.last_error` and logged as `schedule.start_failed`; any other
@@ -356,7 +381,9 @@ sequenceDiagram
   `Scheduler.tick()` with a clock they control and the inline run executor.
 - **Validation at save time** (`schedules/service.py`): the pipeline is the
   user's, its inputs pass `prepare_run` (the rules a run applies), the timing
-  passes `checked`, and the account has fewer than `SCHEDULES_MAX_PER_USER`.
+  passes `checked`, its limits are within the server's ceiling, and the account
+  keeps at most `SCHEDULES_MAX_PER_USER` (counted in the insert's own
+  transaction, through `repositories/quota`).
   Turning a schedule off always works; turning it on, or changing its inputs,
   checks them again. While its timing is unchanged, saving keeps the saved
   `next_run_at`, so an occurrence that is due is not postponed by an edit.

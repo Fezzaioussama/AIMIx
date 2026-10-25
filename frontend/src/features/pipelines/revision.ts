@@ -2,7 +2,7 @@ import type { Pipeline, PipelineChange } from '../../core/api/types';
 
 /**
  * Longest change request the backend accepts. Mirrors REVISION_INSTRUCTION_MAX_LENGTH in
- * backend/api/schemas/pipelines.py, which decides; here it only caps the text box.
+ * backend/api/schemas/planning.py, which decides; here it only caps the text box.
  */
 export const REVISION_INSTRUCTION_MAX_LENGTH = 2000;
 

@@ -7,7 +7,8 @@ import pytest
 from pydantic import ValidationError
 
 from api.schemas.chat import ChatRequest
-from api.schemas.pipelines import GenerateRequest, PipelineIn, PipelinePatch, RunRequest
+from api.schemas.pipelines import PipelineIn, PipelinePatch, RunRequest
+from api.schemas.planning import GenerateRequest
 from api.services.run_budget import RunBudget
 
 

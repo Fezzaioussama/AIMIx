@@ -29,6 +29,8 @@ SCHEDULE_KEYS = {
     "timezone",
     "input",
     "inputs",
+    "max_cost_usd",
+    "max_tokens",
     "enabled",
     "next_run_at",
     "last_run",

@@ -26,12 +26,12 @@ from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage, user_workspace_dir
 from api.services.integrations.rules import IntegrationRules, rules_from
 from api.services.integrations.service import IntegrationAccess
-from api.services.llm import LLMProfile, get_provider
+from api.services.llm import LLMProfile, get_planner_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, client_address, enforce
-from api.services.run_budget import default_budget
 from api.services.run_executor import RunExecutor
+from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
 from api.services.runs import RunService, launcher
 from api.services.schedules.service import ScheduleAccess
@@ -199,9 +199,8 @@ ProviderFactory = Callable[[], LLMProvider]
 
 
 def provider_factory(profile: Profile) -> ProviderFactory:
-    """Hands endpoints the factory, not the provider, so the request body is
-    validated before an unconfigured provider can fail the request."""
-    return partial(get_provider, profile)
+    """The planner's provider, built only once the request body is valid."""
+    return partial(get_planner_provider, profile)
 
 
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
@@ -241,7 +240,7 @@ def run_service(request: Request, executor: Executor, settings: AppSettings) -> 
         request.app.state.database,
         executor,
         settings.pipeline_max_parallel_steps,
-        default_budget(settings),
+        run_policy(settings),
     )
 
 
@@ -330,7 +329,8 @@ def schedule_access(
     user: CurrentUser, session: DbSession, settings: AppSettings, now: Now
 ) -> ScheduleAccess:
     """The signed-in user's schedules (the builder's Schedule panel, Runs screen)."""
-    return ScheduleAccess(session, user, settings.schedules_max_per_user, now)
+    limits = run_policy(settings).limits
+    return ScheduleAccess(session, user, settings.schedules_max_per_user, now, limits)
 
 
 Schedules = Annotated[ScheduleAccess, Depends(schedule_access)]
