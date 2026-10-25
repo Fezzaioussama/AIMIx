@@ -17,7 +17,7 @@ from mcp import McpError
 from mcp.types import ErrorData
 from sqlalchemy.orm import Session
 
-from api.deps import host_resolver, secret_box
+from api.deps import app_settings, host_resolver, secret_box
 from api.models import Pipeline, User
 from api.repositories import pipelines
 from api.security import SecretBox
@@ -25,6 +25,7 @@ from api.services import mcp_discovery
 from api.services.catalog import default_model_id
 from api.services.multiagent import step_agent
 from api.services.outbound import ResponseTooLarge
+from tests.conftest import TEST_SETTINGS
 from tests.mcp_fakes import TOOL_DESCRIPTION, DnsAnswer, FakeServers, ServerBehaviour, resolver
 from tests.test_integration_tools import TOKEN, save_integration
 
@@ -226,3 +227,37 @@ def test_a_connection_test_asks_again_for_header_values_it_cannot_read(
     assert response.json()["detail"].endswith("Enter each value again.")
     # The list still loads, so the values can be entered again.
     assert auth_client.get(URL).status_code == 200
+
+
+#: Routes that make the server reach out to an MCP server or a DNS server.
+REACHING_OUT = [
+    ("POST", URL, {"name": "erp", "url": "https://erp.example/mcp"}),
+    ("PATCH", URL + "/{id}", {"enabled": True}),
+    ("POST", URL + "/{id}/test", None),
+    ("GET", "/api/agent-tools", None),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "payload"), REACHING_OUT)
+def test_routes_that_reach_out_are_rate_limited_per_account(
+    app: FastAPI,
+    auth_client: TestClient,
+    session: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path: str,
+    payload: dict[str, Any] | None,
+) -> None:
+    integration_id = save_integration(session, user, "crm")
+    servers(monkeypatch, {"crm": ["search"]})
+    limited = TEST_SETTINGS.model_copy(update={"user_rate_limit_requests": 2})
+    app.dependency_overrides[app_settings] = lambda: limited
+    url = path.format(id=integration_id)
+
+    for _ in range(2):
+        assert auth_client.request(method, url, json=payload).status_code < 429
+    blocked = auth_client.request(method, url, json=payload)
+
+    assert blocked.status_code == 429
+    assert blocked.json()["error"] == "throttled"
