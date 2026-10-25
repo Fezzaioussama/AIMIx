@@ -1,25 +1,65 @@
 """Excel workbooks and PowerPoint decks: what text they give, the limits on them, and
-the zip-bomb guard they share with Word. Files are built with openpyxl and
-python-pptx, so the real parsers run."""
+the package guards they share with Word, with what a hostile Office file may cost.
+Files are built with python-docx, openpyxl and python-pptx, or edited as zips, so
+the real parsers run."""
 
 from __future__ import annotations
 
+import os
 import zipfile
 from dataclasses import replace
 from io import BytesIO
+from typing import Protocol
 
 import pytest
+from docx import Document
+from docx import table as docx_table
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
+from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches
 
 from api.exceptions import DocumentUnreadable
+from api.services.documents.contracts import ReadContext
 from api.services.documents.extraction import TRUNCATION_NOTE, extract_document
-from tests.test_documents import LIMITS, upload
+from api.services.documents.office import read_docx, read_pptx, read_xlsx
+from tests.test_documents import LIMITS, make_docx, upload
 
 SPREADSHEET_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 FIRST_SHEET = "xl/worksheets/sheet1.xml"
+WORD_BODY = "word/document.xml"
+
+
+class Saveable(Protocol):
+    """A python-docx document, an openpyxl workbook or a python-pptx deck."""
+
+    def save(self, target: BytesIO) -> object: ...
+
+
+def saved(document: Saveable) -> bytes:
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def with_part(package: bytes, name: str, content: bytes | str) -> bytes:
+    """``package`` with the part ``name`` replaced, or added when it has none."""
+    source = zipfile.ZipFile(BytesIO(package))
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            if item.filename != name:
+                target.writestr(item, source.read(item.filename))
+        target.writestr(name, content)
+    return buffer.getvalue()
+
+
+def docx_with_body(body: str) -> bytes:
+    """make_docx(), with its body replaced by ``body`` (WordprocessingML)."""
+    document = f'<w:document xmlns:w="{WORD_NS}"><w:body>{body}</w:body></w:document>'
+    return with_part(make_docx(), WORD_BODY, document)
 
 
 def make_xlsx() -> bytes:
@@ -32,21 +72,13 @@ def make_xlsx() -> bytes:
     sales.append([])
     sales.append(["South", 3.5])
     workbook.create_sheet("Costs").append(["Rent", 1000])
-    buffer = BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()
+    return saved(workbook)
 
 
 def with_first_sheet(body: str) -> bytes:
     """make_xlsx(), with the first sheet's XML replaced by ``body`` inside <worksheet>."""
     sheet = f'<worksheet xmlns="{SPREADSHEET_NS}">{body}</worksheet>'
-    source = zipfile.ZipFile(BytesIO(make_xlsx()))
-    buffer = BytesIO()
-    with zipfile.ZipFile(buffer, "w") as target:
-        for item in source.infolist():
-            content = source.read(item.filename)
-            target.writestr(item, sheet if item.filename == FIRST_SHEET else content)
-    return buffer.getvalue()
+    return with_part(make_xlsx(), FIRST_SHEET, sheet)
 
 
 def make_pptx() -> bytes:
@@ -66,9 +98,7 @@ def make_pptx() -> bytes:
     group = second.shapes.add_group_shape()
     group.shapes.add_textbox(Inches(1), Inches(4), Inches(2), Inches(1)).text = "Grouped words"
     deck.slides.add_slide(deck.slide_layouts[6])  # blank: no title, no text
-    buffer = BytesIO()
-    deck.save(buffer)
-    return buffer.getvalue()
+    return saved(deck)
 
 
 # --- Excel -------------------------------------------------------------------------
@@ -168,6 +198,107 @@ def test_a_deck_that_unpacks_too_large_is_refused() -> None:
 def test_something_that_is_not_a_deck_is_unreadable() -> None:
     with pytest.raises(DocumentUnreadable, match="PowerPoint"):
         extract_document("fake.pptx", b"just some words", LIMITS)
+
+
+# --- what a hostile package may cost ---------------------------------------------------
+
+#: python-docx's own template unpacks to 0.8 MB; leave room for what a test adds.
+#: Each XML part is still capped at LIMITS.max_xml_part_bytes (0.5 MB).
+UNPACKED_ROOM = replace(LIMITS, max_unpacked_bytes=5_000_000)
+
+
+def test_reading_a_word_file_stops_once_even_empty_paragraphs_fill_the_text() -> None:
+    # 50,000 empty paragraphs: 300 kB of XML, under the part limit, then a line.
+    data = docx_with_body("<w:p/>" * 50_000 + "<w:p><w:r><w:t>The end</w:t></w:r></w:p>")
+
+    result = read_docx(data, ReadContext(UNPACKED_ROOM))
+
+    assert result.cut_short is True
+    assert len(result.text) <= LIMITS.max_chars  # not 50,000 line breaks
+    with pytest.raises(DocumentUnreadable, match="No text could be read"):
+        extract_document("empty.docx", data, UNPACKED_ROOM)
+
+
+def test_a_word_file_with_an_xml_part_over_the_limit_is_refused_before_parsing() -> None:
+    # 100,000 empty paragraphs: 600 kB of XML that add 1 kB to the file.
+    data = docx_with_body("<w:p/>" * 100_000)
+    assert len(data) < len(make_docx()) + 1_000
+
+    with pytest.raises(DocumentUnreadable, match="Word file has a part too large to read"):
+        extract_document("flood.docx", data, UNPACKED_ROOM)
+
+
+def test_a_part_is_judged_by_its_content_not_its_name() -> None:
+    disguised = b"<x>" + b"<y/>" * 150_000 + b"</x>"
+    data = with_part(make_docx(), "word/media/image1.png", disguised)
+
+    with pytest.raises(DocumentUnreadable, match="part too large"):
+        extract_document("disguised.docx", data, UNPACKED_ROOM)
+
+
+def test_a_picture_over_the_xml_part_limit_still_reads() -> None:
+    noise = BytesIO()
+    Image.frombytes("L", (800, 800), os.urandom(640_000)).save(noise, "PNG")
+    assert len(noise.getvalue()) > LIMITS.max_xml_part_bytes
+    document = Document()
+    document.add_paragraph("Photo below")
+    document.add_picture(BytesIO(noise.getvalue()))
+
+    result = extract_document("photo.docx", saved(document), UNPACKED_ROOM)
+
+    assert result.text == "Photo below"
+
+
+def test_a_cell_spanning_millions_of_columns_is_read_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    document = Document()
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Wide"
+    table.cell(0, 1).text = "Next"
+    table.cell(0, 0)._tc.get_or_add_tcPr().grid_span = 100_000_000
+    data = saved(document)
+
+    def expanded(_row: object) -> None:
+        pytest.fail("row.cells repeats a cell once per column it spans")
+
+    # python-docx's row.cells would hand back this one cell 100 million times.
+    monkeypatch.setattr(docx_table._Row, "cells", property(expanded))
+    assert extract_document("span.docx", data, LIMITS).text == "Wide | Next"
+
+
+def test_a_cell_merged_down_shows_its_text_on_every_row() -> None:
+    document = Document()
+    table = document.add_table(rows=3, cols=2)
+    table.cell(0, 0).text = "North"
+    for row, value in enumerate(("1", "2", "3")):
+        table.cell(row, 1).text = value
+    table.cell(0, 0).merge(table.cell(2, 0))
+
+    result = extract_document("merged.docx", saved(document), LIMITS)
+
+    assert result.text.splitlines() == ["North | 1", "North | 2", "North | 3"]
+
+
+def test_reading_a_deck_stops_inside_a_long_table_once_the_text_is_full() -> None:
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    slide.shapes.add_table(3_000, 1, Inches(1), Inches(1), Inches(4), Inches(4))
+
+    result = read_pptx(saved(deck), ReadContext(LIMITS))
+
+    assert result.cut_short is True
+    assert len(result.text) <= LIMITS.max_chars  # not 3,000 empty rows
+
+
+def test_reading_a_workbook_stops_once_sheet_headings_fill_the_text() -> None:
+    workbook = Workbook()
+    for number in range(300):
+        workbook.create_sheet(f"Empty {number}")
+
+    result = read_xlsx(saved(workbook), ReadContext(LIMITS))
+
+    assert result.cut_short is True
+    assert len(result.text) < 2 * LIMITS.max_chars  # not 300 headings
+    assert "Empty 299" not in result.text
 
 
 # --- HTTP ----------------------------------------------------------------------------

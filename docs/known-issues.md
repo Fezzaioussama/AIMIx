@@ -14,14 +14,20 @@ the client) if lists grow large.
 ### 2. Document inputs are read in the request thread
 
 `POST /documents/extract` parses, renders and OCRs in the request's worker
-thread. Each step is bounded (size, page, row, pixel and character limits, and
-`DOCUMENT_OCR_TIMEOUT_SECONDS` per OCR'd page), but the request as a whole has
-no wall-clock timeout: a long scan holds a worker for minutes, at worst
-`DOCUMENT_OCR_MAX_PAGES` x `DOCUMENT_OCR_TIMEOUT_SECONDS` in OCR alone, which
-conflicts with AGENTS.md §6 ("no long-running work in the request path"). PDFium
-rendering is serialised across the process (it is not thread-safe) and has no
-time limit of its own, so one slow page to render (heavy vector art) delays every
-other scan being rendered.
+thread, with the native parsers (pypdf, PDFium, Pillow, lxml) in the server's own
+process. Each step is bounded (size, page, row, pixel, XML-part and character
+limits, `DOCUMENT_OCR_TIMEOUT_SECONDS` per OCR'd page and
+`DOCUMENT_OCR_MAX_SECONDS` per document), and at most
+`DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` documents are read at once, but nothing
+can interrupt a parser mid-call: a long scan still holds a worker for about two
+minutes, which conflicts with AGENTS.md §6 ("no long-running work in the request
+path"), and pypdf's text layer has no time limit of its own. PDFium rendering is
+serialised across the process (it is not thread-safe); a page that waits past
+`DOCUMENT_EXTRACTION_WAIT_SECONDS` for it is skipped, but the page being
+rendered cannot be stopped. An Office file is refused only when one part is over
+`DOCUMENT_MAX_XML_PART_BYTES`, so several parts just under it (up to
+`DOCUMENT_MAX_UNPACKED_BYTES` in all) are parsed whole: about 20 MB of memory per
+MB of XML at worst.
 
 Not read at all: legacy binary Office files (`.doc`, `.xls`, `.ppt`), `.xlsm`,
 SmartArt and chart text in slides, handwriting beyond what Tesseract manages,
@@ -54,15 +60,15 @@ Word file from its workspace runs the same readers in the agent's thread.
 ### 4. Files: no pagination, and a narrow quota race on replacement
 
 `GET /api/files` returns every file a user has; only `WORKSPACE_MAX_TOTAL_BYTES`
-bounds the list. The quota is checked before a write and, for a new file, again
+and `WORKSPACE_MAX_FILES` bound the list. A new file is counted against the quota
 once its bytes are on disk, so concurrent new files never stay over the limit.
 A replacement (`replace=true`) is checked only before it lands, so two
 simultaneous replacements by one user can overshoot by the growth of one file.
-A replacement is staged as a hidden `.upload-*.part` file; one left by a crash
-is invisible to the user and to the quota, and nothing removes it.
+Each save walks the user's whole folder to count the quota (once), which
+`WORKSPACE_MAX_FILES` keeps short.
 
 **Fix:** add `limit`/`offset` to the listing; take a per-user lock (database row
-or `flock`) around a replacement; sweep stale `.part` files on startup.
+or `flock`) around a replacement.
 
 ### 5. PDF artifacts: italics, CJK and right-to-left text
 

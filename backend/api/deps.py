@@ -161,7 +161,9 @@ def user_rate_limit(
 def user_files(user: CurrentUser, settings: AppSettings) -> WorkspaceStorage:
     """The signed-in user's private directory, the one their agents use too."""
     directory = user_workspace_dir(settings.workspace_dir, user.id)
-    return WorkspaceStorage(directory, settings.workspace_max_total_bytes)
+    return WorkspaceStorage(
+        directory, settings.workspace_max_total_bytes, settings.workspace_max_files
+    )
 
 
 UserFiles = Annotated[WorkspaceStorage, Depends(user_files)]

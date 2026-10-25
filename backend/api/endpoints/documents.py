@@ -5,16 +5,16 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 
-from api.deps import DocumentLimits, DocumentOcr
+from api.deps import DocumentLimits, DocumentOcr, user_rate_limit
 from api.schemas.documents import DocumentOut
 from api.services.documents import extraction
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.post("/extract")
+@router.post("/extract", dependencies=[Depends(user_rate_limit)])
 def extract_document(file: UploadFile, limits: DocumentLimits, ocr: DocumentOcr) -> DocumentOut:
     """Read an uploaded PDF, Office file, image, HTML or text file and return its text.
 

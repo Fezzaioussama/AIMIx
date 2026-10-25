@@ -3,7 +3,9 @@ and how uploaded file names are made safe."""
 
 from __future__ import annotations
 
+import os
 import stat
+import time
 import unicodedata
 from pathlib import Path
 
@@ -11,12 +13,19 @@ import pytest
 
 from api.exceptions import FileAlreadyExists, NotFound, StorageQuotaExceeded, ValidationFailed
 from api.services.files.names import BINARY, file_type, media_type, safe_filename
-from api.services.files.storage import NAME_MAX_BYTES, WorkspaceStorage, user_workspace_dir
+from api.services.files.storage import (
+    NAME_MAX_BYTES,
+    WorkspaceStorage,
+    WorkspaceUsage,
+    user_workspace_dir,
+)
+
+MAX_FILES = 5
 
 
 @pytest.fixture
 def storage(tmp_path: Path) -> WorkspaceStorage:
-    return WorkspaceStorage(tmp_path / "user-1", max_total_bytes=1_000)
+    return WorkspaceStorage(tmp_path / "user-1", max_total_bytes=1_000, max_files=MAX_FILES)
 
 
 def names(storage: WorkspaceStorage) -> list[str]:
@@ -113,7 +122,7 @@ def test_the_quota_counts_every_visible_file(storage: WorkspaceStorage) -> None:
     assert names(storage) == ["a.txt"]
 
     storage.save("b.txt", b"x" * 400)
-    assert storage.used_bytes() == 1_000
+    assert storage.usage() == WorkspaceUsage(bytes=1_000, entries=2)
 
 
 def test_replacing_a_file_counts_only_the_difference(storage: WorkspaceStorage) -> None:
@@ -125,24 +134,102 @@ def test_replacing_a_file_counts_only_the_difference(storage: WorkspaceStorage) 
     assert (storage.root / "a.txt").read_bytes() == b"y" * 1_000
 
 
-def test_a_write_that_ends_over_the_quota_removes_itself(
+def test_of_two_writes_that_fit_alone_the_later_to_finish_removes_itself(
     storage: WorkspaceStorage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    storage.save("other.txt", b"x" * 800)
-    real = storage.used_bytes
-    checks: list[int] = []
+    real = storage.usage
 
-    def used_bytes() -> int:
-        # The first check runs as if "other.txt" were still being written elsewhere.
-        checks.append(0 if not checks else real())
-        return checks[-1]
+    def usage() -> WorkspaceUsage:
+        # Another request's file lands while this one is being written.
+        (storage.root / "other.txt").write_bytes(b"x" * 600)
+        return real()
 
-    monkeypatch.setattr(storage, "used_bytes", used_bytes)
+    monkeypatch.setattr(storage, "usage", usage)
 
     with pytest.raises(StorageQuotaExceeded):
-        storage.save("late.txt", b"y" * 300)
-    assert checks == [0, 1_100]
+        storage.save("late.txt", b"y" * 600)
     assert names(storage) == ["other.txt"]
+
+
+def test_each_save_walks_the_workspace_once(
+    storage: WorkspaceStorage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = storage.usage
+    walks: list[WorkspaceUsage] = []
+
+    def usage() -> WorkspaceUsage:
+        walks.append(real())
+        return walks[-1]
+
+    monkeypatch.setattr(storage, "usage", usage)
+
+    storage.save("new.txt", b"x")
+    storage.save("new.txt", b"xy", replace=True)
+
+    assert walks == [WorkspaceUsage(1, 1), WorkspaceUsage(1, 1)]
+
+
+def test_files_and_folders_count_against_their_own_limit(storage: WorkspaceStorage) -> None:
+    for number in range(MAX_FILES - 2):
+        storage.save(f"file-{number}.txt", b"")  # empty files cost no bytes
+    storage.save("reports/q3.md", b"")  # a file and its folder: entries four and five
+
+    with pytest.raises(StorageQuotaExceeded, match="more than 5 files and folders"):
+        storage.save("another.txt", b"")
+    with pytest.raises(StorageQuotaExceeded):
+        storage.save("deep/er/still.txt", b"")
+    # A refused file leaves no folder behind, and replacing adds nothing.
+    assert storage.usage().entries == MAX_FILES
+    assert not (storage.root / "deep").exists()
+    storage.save("file-0.txt", b"new", replace=True)
+    assert (storage.root / "file-0.txt").read_bytes() == b"new"
+
+
+def test_a_staged_replacement_counts_and_a_stale_one_is_swept(storage: WorkspaceStorage) -> None:
+    storage.prepare()
+    stale = storage.root / f".upload-{'a' * 32}.part"
+    stale.write_bytes(b"x" * 900)
+    hour_ago = time.time() - 3_700
+    os.utime(stale, (hour_ago, hour_ago))
+    live = storage.root / f".upload-{'b' * 32}.part"
+    live.write_bytes(b"x" * 600)
+
+    # The live one (a replacement still being written) counts; the stale one goes.
+    with pytest.raises(StorageQuotaExceeded):
+        storage.save("a.txt", b"x" * 401)
+    assert not stale.exists()
+    assert live.exists()
+    assert names(storage) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "fake\nsecond-line.txt",
+        "colour\x1b[31m.txt",
+        "next\x85line.txt",
+        "line\N{LINE SEPARATOR}separator.txt",
+        "invoice\N{RIGHT-TO-LEFT OVERRIDE}txt.exe",
+        'say "hi".txt',
+        "notes: q3.md",
+        "folder\r/inside.txt",
+    ],
+)
+def test_a_new_name_with_unsafe_characters_is_refused(storage: WorkspaceStorage, path: str) -> None:
+    with pytest.raises(ValidationFailed, match="cannot contain control characters"):
+        storage.save(path, b"x")
+    assert names(storage) == []
+
+
+def test_a_file_already_named_unsafely_can_still_be_read_and_deleted(
+    storage: WorkspaceStorage,
+) -> None:
+    storage.prepare()
+    (storage.root / "old\nname.txt").write_bytes(b"x")
+
+    assert storage.existing("old\nname.txt") == storage.root / "old\nname.txt"
+    storage.delete("old\nname.txt")
+    assert names(storage) == []
 
 
 def test_delete_removes_the_file_and_the_folders_it_emptied(storage: WorkspaceStorage) -> None:
@@ -176,6 +263,8 @@ def test_a_folder_is_not_a_file(storage: WorkspaceStorage) -> None:
         ("  notes  .txt ", "notes.txt"),
         ("bad\x00\x07name.csv", "bad_name.csv"),
         ('a<b>c:"d"|e*.json', "a_b_c_d_e_.json"),
+        ("invoice\N{RIGHT-TO-LEFT OVERRIDE}gpj.exe", "invoice_gpj.exe"),
+        ("two\N{LINE SEPARATOR}lines.md", "two_lines.md"),
         (unicodedata.normalize("NFD", "Résumé.docx"), "Résumé.docx"),
         ("Отчёт за год.pdf", "Отчёт за год.pdf"),
     ],

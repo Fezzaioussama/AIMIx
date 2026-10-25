@@ -3,6 +3,7 @@ and the failure paths. Files are built for real, not mocked, so the parsers run.
 
 from __future__ import annotations
 
+import codecs
 import re
 from dataclasses import replace
 from io import BytesIO
@@ -21,8 +22,13 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
-from api.deps import document_limits
-from api.exceptions import DocumentTooLarge, DocumentUnreadable, UnsupportedDocument
+from api.deps import app_settings, document_limits
+from api.exceptions import (
+    DocumentReadersBusy,
+    DocumentTooLarge,
+    DocumentUnreadable,
+    UnsupportedDocument,
+)
 from api.main import create_app
 from api.middleware import RequestSizeLimitMiddleware
 from api.models import User
@@ -32,6 +38,7 @@ from api.services.documents.extraction import (
     extract_document,
     supported_extensions,
 )
+from api.services.documents.gate import extraction_slot
 from api.services.documents.readers import READERS, TEXT_SUFFIXES
 from config.settings import MULTIPART_OVERHEAD_BYTES, Settings, pin_settings
 from tests.conftest import TEST_SETTINGS, FakeProvider
@@ -43,10 +50,14 @@ LIMITS = ExtractionLimits(
     max_chars=1_000,
     max_pages=3,
     max_unpacked_bytes=1_000_000,
+    max_xml_part_bytes=500_000,
     max_image_pixels=1_000_000,
     max_spreadsheet_rows=100,
     max_ocr_pages=3,
+    ocr_max_seconds=60.0,
     ocr_dpi=72,
+    max_concurrent=2,
+    wait_seconds=5.0,
 )
 
 
@@ -116,6 +127,19 @@ def test_text_decoding_handles_bom_windows_1252_and_utf16() -> None:
     assert extract_document("a.txt", "\ufeffhello".encode(), LIMITS).text == "hello"
     assert extract_document("a.txt", "café".encode("cp1252"), LIMITS).text == "café"
     assert extract_document("a.txt", "héllo".encode("utf-16"), LIMITS).text == "héllo"
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        b"!",  # an odd byte at the end
+        b"\x00\xd8",  # half a surrogate pair at the end
+        b"\x00\xd8A\x00",  # half a surrogate pair inside the text
+    ],
+)
+def test_a_damaged_utf16_file_keeps_its_readable_text(damage: bytes) -> None:
+    data = codecs.BOM_UTF16_LE + "héllo".encode("utf-16-le") + damage
+    assert extract_document("a.txt", data, LIMITS).text.startswith("héllo\N{REPLACEMENT CHARACTER}")
 
 
 def test_a_binary_file_with_a_text_extension_is_refused() -> None:
@@ -302,6 +326,50 @@ def test_upload_over_the_size_limit_is_413(app: FastAPI, auth_client: TestClient
     assert response.json()["error"] == "document_too_large"
 
 
+def test_uploads_are_rate_limited_per_account(app: FastAPI, auth_client: TestClient) -> None:
+    limited = TEST_SETTINGS.model_copy(update={"user_rate_limit_requests": 2})
+    app.dependency_overrides[app_settings] = lambda: limited
+
+    assert upload(auth_client, "a.txt", b"one").status_code == 200
+    assert upload(auth_client, "b.txt", b"two").status_code == 200
+    blocked = upload(auth_client, "c.txt", b"three")
+
+    assert blocked.status_code == 429
+    assert blocked.json()["error"] == "throttled"
+
+
+# --- how many documents are read at once ----------------------------------------
+
+
+def test_a_document_waits_for_a_free_reader_then_is_refused() -> None:
+    limits = replace(LIMITS, max_concurrent=1, wait_seconds=0.05)
+
+    busy = pytest.raises(DocumentReadersBusy, match="busy reading other documents")
+    with extraction_slot(1, 60.0), busy as refusal:  # another document is being read
+        extract_document("a.txt", b"hi", limits)
+    assert refusal.value.headers == {"Retry-After": "1"}
+    # The slot is free again once that document is done.
+    assert extract_document("a.txt", b"hi", limits).text == "hi"
+
+
+def test_a_busy_server_answers_503_in_the_error_contract(
+    app: FastAPI, auth_client: TestClient
+) -> None:
+    app.dependency_overrides[document_limits] = lambda: replace(
+        LIMITS, max_concurrent=1, wait_seconds=0.05
+    )
+
+    with extraction_slot(1, 60.0):
+        response = upload(auth_client, "notes.txt", b"hello")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": "documents_busy",
+        "detail": "The server is busy reading other documents. Try again in a moment.",
+    }
+    assert response.headers["retry-after"] == "1"
+
+
 def test_a_document_becomes_the_input_an_agent_reads(
     auth_client: TestClient, session: Session, user: User, fake_provider: FakeProvider
 ) -> None:
@@ -355,3 +423,8 @@ def test_settings_default_to_generous_but_finite_limits() -> None:
     assert settings.document_max_bytes == 10_000_000
     assert settings.document_max_chars == 120_000
     assert settings.max_request_bytes == settings.document_max_bytes + MULTIPART_OVERHEAD_BYTES
+    assert settings.document_max_xml_part_bytes == 10_000_000
+    assert settings.document_max_concurrent_extractions == 2
+    assert settings.document_extraction_wait_seconds == 30.0
+    assert settings.document_ocr_max_seconds == 120.0
+    assert settings.workspace_max_files == 2_000

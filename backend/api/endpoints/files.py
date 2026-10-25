@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from api.deps import FileUploads, UserFiles
+from api.deps import FileUploads, UserFiles, user_rate_limit
 from api.schemas.files import FileListOut, FileOut
 from api.services.files import service as file_service
 
@@ -29,7 +29,7 @@ def list_files(storage: UserFiles, policy: FileUploads) -> FileListOut:
     return FileListOut.model_validate(file_service.list_files(storage, policy))
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(user_rate_limit)])
 def upload_files(
     files: Annotated[list[UploadFile], File()],
     storage: UserFiles,
