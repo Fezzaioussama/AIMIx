@@ -2,7 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 
 import * as authApi from '../api/auth';
-import { clearTokens, hasSession, saveTokens } from './tokenStorage';
+import {
+  clearTokens,
+  endSession,
+  hasSession,
+  saveTokens,
+  subscribeToSessionEnd,
+} from './tokenStorage';
 
 /**
  * Shared auth state (AGENTS.md §7 Observer): components read it through
@@ -16,12 +22,42 @@ interface AuthContextValue {
   logout: () => Promise<void>;
 }
 
+interface AuthProviderProps {
+  children: ReactNode;
+  /**
+   * Forgets what this tab kept for an account (wired in main.tsx). It runs each time
+   * the session ends (a logout, or the server refusing the session) and again on
+   * signing in, so one account's data never reaches the next one in the tab.
+   */
+  forgetAccountData?: () => void;
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+/**
+ * Whether the screens are signed in. However the session ends, they sign out: the route
+ * guard then sends the visitor to /login, while a public page (the landing page,
+ * /login) stays where it is, so nothing loops.
+ */
+function useSignedIn(forgetAccountData?: () => void) {
   const [isAuthenticated, setIsAuthenticated] = useState(hasSession);
-  const [isReady, setIsReady] = useState(hasSession);
+  useEffect(
+    () =>
+      subscribeToSessionEnd(() => {
+        setIsAuthenticated(false);
+        forgetAccountData?.();
+      }),
+    [forgetAccountData],
+  );
+  return [isAuthenticated, setIsAuthenticated] as const;
+}
 
+/**
+ * A reload loses the in-memory access token, so the refresh cookie is tried once;
+ * whether that answer is in yet.
+ */
+function useRestoredSession(setSignedIn: (signedIn: boolean) => void): boolean {
+  const [isReady, setIsReady] = useState(hasSession);
   useEffect(() => {
     if (hasSession()) return;
     let active = true;
@@ -29,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .restoreSession()
       .then((tokens) => {
         saveTokens(tokens);
-        if (active) setIsAuthenticated(true);
+        if (active) setSignedIn(true);
       })
       .catch(() => clearTokens())
       .finally(() => {
@@ -38,13 +74,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [setSignedIn]);
+  return isReady;
+}
 
-  const login = useCallback(async (username: string, password: string) => {
-    const tokens = await authApi.login(username, password);
-    saveTokens(tokens);
-    setIsAuthenticated(true);
-  }, []);
+export function AuthProvider({ children, forgetAccountData }: AuthProviderProps) {
+  const [isAuthenticated, setIsAuthenticated] = useSignedIn(forgetAccountData);
+  const isReady = useRestoredSession(setIsAuthenticated);
+
+  const login = useCallback(
+    async (username: string, password: string) => {
+      const tokens = await authApi.login(username, password);
+      forgetAccountData?.(); // whatever the tab holds is from a session that ended
+      saveTokens(tokens);
+      setIsAuthenticated(true);
+    },
+    [forgetAccountData],
+  );
 
   const register = useCallback(async (username: string, password: string) => {
     await authApi.register(username, password);
@@ -54,8 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } finally {
-      clearTokens();
-      setIsAuthenticated(false);
+      endSession();
     }
   }, []);
 
