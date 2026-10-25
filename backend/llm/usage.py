@@ -173,6 +173,8 @@ class UsageCallback(BaseCallbackHandler):
         with self._lock:
             return self._total
 
+    # The parameters are LangChain's callback interface (BaseCallbackHandler), so their
+    # number is not ours to choose (AGENTS.md §1: at most 4 parameters otherwise).
     def on_chat_model_start(
         self,
         serialized: dict[str, Any],
