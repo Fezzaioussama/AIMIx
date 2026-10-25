@@ -22,6 +22,9 @@ interface ScheduleCardProps {
 /** The id of a schedule's Edit button, so focus can return to it when the form closes. */
 export const editButtonId = (scheduleId: number) => `schedule-edit-${scheduleId}`;
 
+const LINK_FOCUS =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400';
+
 function DeleteConfirm({
   busy,
   onConfirm,
@@ -71,7 +74,7 @@ function LastRun({ schedule }: { schedule: Schedule }) {
   return (
     <Link
       to={`/runs/${last.id}`}
-      className="inline-flex flex-wrap items-center gap-2 text-slate-100 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+      className={`inline-flex flex-wrap items-center gap-2 text-slate-100 underline-offset-2 hover:underline ${LINK_FOCUS}`}
     >
       <span className="sr-only">Open the run from </span>
       <span>{formatDateTime(last.created_at)}</span>
@@ -80,41 +83,43 @@ function LastRun({ schedule }: { schedule: Schedule }) {
   );
 }
 
-/** One schedule: what it runs and how often, when it runs next, how the last run went. */
-export function ScheduleCard({
+type CardProps = Pick<ScheduleCardProps, 'schedule' | 'busy'>;
+
+/** The pipeline (a link to the builder), the timing in words, and the on/off switch. */
+function CardHeading({
   schedule,
   busy,
+  headingId,
   onToggle,
-  onRunNow,
-  onEdit,
-  onDelete,
-}: ScheduleCardProps) {
-  const [confirming, setConfirming] = useState(false);
-  const deleteButton = useRef<HTMLButtonElement>(null);
-  const headingId = `schedule-${schedule.id}`;
-
+}: CardProps & { headingId: string; onToggle: ScheduleCardProps['onToggle'] }) {
   return (
-    <SpotlightCard as="section" aria-labelledby={headingId} className="p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 id={headingId} className="text-lg font-semibold break-words">
-            <Link
-              to="/pipeline"
-              state={{ pipelineId: schedule.pipeline_id }}
-              className="underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
-            >
-              {schedule.pipeline_name}
-            </Link>
-          </h3>
-          <p className="mt-0.5 text-sm text-slate-200">{describeTiming(schedule)}</p>
-        </div>
-        <ToggleSwitch
-          checked={schedule.enabled}
-          label={`Run ${schedule.pipeline_name} on this schedule`}
-          disabled={busy}
-          onChange={onToggle}
-        />
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 id={headingId} className="text-lg font-semibold break-words">
+          <Link
+            to="/pipeline"
+            state={{ pipelineId: schedule.pipeline_id }}
+            className={`underline-offset-2 hover:underline ${LINK_FOCUS}`}
+          >
+            {schedule.pipeline_name}
+          </Link>
+        </h3>
+        <p className="mt-0.5 text-sm text-slate-200">{describeTiming(schedule)}</p>
       </div>
+      <ToggleSwitch
+        checked={schedule.enabled}
+        label={`Run ${schedule.pipeline_name} on this schedule`}
+        disabled={busy}
+        onChange={onToggle}
+      />
+    </div>
+  );
+}
+
+/** When it runs next, how the last run went, and why the last time could not start. */
+function CardFacts({ schedule }: Pick<CardProps, 'schedule'>) {
+  return (
+    <>
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-slate-400">Next run</dt>
         <dd className="text-slate-100">{nextRunText(schedule)}</dd>
@@ -128,6 +133,19 @@ export function ScheduleCard({
           The last time, it could not start: {schedule.last_error}
         </p>
       )}
+    </>
+  );
+}
+
+type ActionProps = CardProps & Pick<ScheduleCardProps, 'onRunNow' | 'onEdit' | 'onDelete'>;
+
+/** Run now, Edit, and Delete, which asks first with focus on the safe "Keep it". */
+function CardActions({ schedule, busy, onRunNow, onEdit, onDelete }: ActionProps) {
+  const [confirming, setConfirming] = useState(false);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+
+  return (
+    <>
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
@@ -166,6 +184,24 @@ export function ScheduleCard({
           }}
         />
       )}
+    </>
+  );
+}
+
+/** One schedule: what it runs and how often, when it runs next, how the last run went. */
+export function ScheduleCard({ onToggle, ...rest }: ScheduleCardProps) {
+  const headingId = `schedule-${rest.schedule.id}`;
+
+  return (
+    <SpotlightCard as="section" aria-labelledby={headingId} className="p-5">
+      <CardHeading
+        schedule={rest.schedule}
+        busy={rest.busy}
+        headingId={headingId}
+        onToggle={onToggle}
+      />
+      <CardFacts schedule={rest.schedule} />
+      <CardActions {...rest} />
     </SpotlightCard>
   );
 }

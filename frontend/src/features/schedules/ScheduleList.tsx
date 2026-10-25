@@ -28,6 +28,34 @@ function useRestoreFocus(editing: number | null) {
   }, [editing]);
 }
 
+interface EditCardProps {
+  schedule: Schedule;
+  busy: boolean;
+  onSave: (draft: ScheduleDraft) => void;
+  onCancel: () => void;
+}
+
+/** A schedule's form, in a highlighted card. */
+function EditCard({ schedule, busy, onSave, onCancel }: EditCardProps) {
+  return (
+    <SpotlightCard variant="highlighted" className="p-5">
+      <h3 className="mb-4 text-lg font-semibold break-words">
+        Edit the schedule of {schedule.pipeline_name}
+      </h3>
+      <ScheduleForm
+        idBase={`schedule-form-${schedule.id}`}
+        label={`Edit the schedule of ${schedule.pipeline_name}`}
+        inputs={schedule.pipeline_inputs}
+        initial={draftFromSchedule(schedule)}
+        submitLabel="Save changes"
+        busy={busy}
+        onSubmit={onSave}
+        onCancel={onCancel}
+      />
+    </SpotlightCard>
+  );
+}
+
 /** Each schedule as a card, or as its form while it is being edited. */
 export function ScheduleList({ schedules, busy, actions, onStarted }: ScheduleListProps) {
   const [editing, setEditing] = useState<number | null>(null);
@@ -52,21 +80,12 @@ export function ScheduleList({ schedules, busy, actions, onStarted }: ScheduleLi
           className={`min-w-0 ${editing === schedule.id ? 'lg:col-span-2' : ''}`}
         >
           {editing === schedule.id ? (
-            <SpotlightCard variant="highlighted" className="p-5">
-              <h3 className="mb-4 text-lg font-semibold break-words">
-                Edit the schedule of {schedule.pipeline_name}
-              </h3>
-              <ScheduleForm
-                idBase={`schedule-form-${schedule.id}`}
-                label={`Edit the schedule of ${schedule.pipeline_name}`}
-                inputs={schedule.pipeline_inputs}
-                initial={draftFromSchedule(schedule)}
-                submitLabel="Save changes"
-                busy={busy}
-                onSubmit={(draft) => void save(schedule, draft)}
-                onCancel={() => setEditing(null)}
-              />
-            </SpotlightCard>
+            <EditCard
+              schedule={schedule}
+              busy={busy}
+              onSave={(draft) => void save(schedule, draft)}
+              onCancel={() => setEditing(null)}
+            />
           ) : (
             <AnimatedContent distance={18} delay={Math.min(index, 6) * 0.05}>
               <ScheduleCard

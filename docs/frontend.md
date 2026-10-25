@@ -290,7 +290,8 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive`, `isResumable` (mirroring the backend's status sets), `finishedStepCount`, and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen |
 | `RunsHeader.tsx` | The header both views of the Runs screen share: brand, the pipeline sub-navigation, and two underline tabs, History (`/runs`) and Schedules (`/runs/schedules`, `aria-current` on the one shown), then a line of text. The sub-navigation is unchanged, so it still fits a phone |
-| `RunTriggerTag.tsx` | A small clock and "Scheduled" for a run a schedule started (`trigger === 'schedule'`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunDetail`'s header |
+| `RunTriggerTag.tsx` | A small clock and "Scheduled" for a run a schedule started (`trigger === 'schedule'`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
+| `RunByline.tsx` | The line under a run's title in `RunDetail`: "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a scheduled run, the link only while the pipeline exists) |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 
 ### `features/schedules`

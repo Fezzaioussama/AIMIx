@@ -85,18 +85,37 @@ export function ScheduleForm({
         </p>
       )}
       {blocked && <p className="mb-3 text-sm text-sky-300">{blocked}</p>}
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={busy || Boolean(blocked)} className={PRIMARY_BUTTON}>
-          {busy && <Spinner decorative className="size-4" />}
-          {busy ? 'Saving…' : submitLabel}
-        </button>
-        {onCancel && (
-          <button type="button" onClick={onCancel} disabled={busy} className={SECONDARY_BUTTON}>
-            Cancel
-          </button>
-        )}
-      </div>
+      <FormButtons
+        busy={busy}
+        locked={Boolean(blocked)}
+        submitLabel={submitLabel}
+        onCancel={onCancel}
+      />
     </form>
+  );
+}
+
+interface FormButtonsProps {
+  busy: boolean;
+  /** Saving is not possible right now (see `blocked`). */
+  locked: boolean;
+  submitLabel: string;
+  onCancel?: () => void;
+}
+
+function FormButtons({ busy, locked, submitLabel, onCancel }: FormButtonsProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button type="submit" disabled={busy || locked} className={PRIMARY_BUTTON}>
+        {busy && <Spinner decorative className="size-4" />}
+        {busy ? 'Saving…' : submitLabel}
+      </button>
+      {onCancel && (
+        <button type="button" onClick={onCancel} disabled={busy} className={SECONDARY_BUTTON}>
+          Cancel
+        </button>
+      )}
+    </div>
   );
 }
 

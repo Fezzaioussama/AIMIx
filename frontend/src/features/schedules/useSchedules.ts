@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 import {
   deleteSchedule,
@@ -9,6 +9,8 @@ import {
 import type { Run, Schedule, SchedulePatch } from '../../core/api/types';
 import { isActive } from '../runs/runStatus';
 import { errorText, useSubmission, type Submission } from '../settings/useSubmission';
+
+type SetSchedules = Dispatch<SetStateAction<Schedule[] | null>>;
 
 /** While a listed schedule's last run is active, the list is fetched again this often. */
 export const ACTIVE_REFRESH_MS = 5000;
@@ -75,16 +77,10 @@ function useScheduleRefresh(
 }
 
 /**
- * State and transport for the Schedules list, kept out of the components (AGENTS.md §2):
- * the account's schedules, and switching one on or off, changing, deleting or starting it.
- * Each says how it went in `notice`.
+ * Switching one schedule on or off, changing, deleting or starting it: each says how it went
+ * in the notice, and the list follows what the server answered.
  */
-export function useSchedules() {
-  const submission = useSubmission('loading');
-  const { status, notice, setNotice, submit } = submission;
-  const [schedules, setSchedules] = useScheduleList(submission);
-  useScheduleRefresh(schedules, status === 'idle', setSchedules);
-
+function useScheduleActions({ submit, setNotice }: Submission, setSchedules: SetSchedules) {
   const replace = useCallback(
     (saved: Schedule) =>
       setSchedules((current) =>
@@ -132,12 +128,19 @@ export function useSchedules() {
     return started;
   };
 
-  return {
-    schedules,
-    status,
-    notice,
-    actions: { update, setEnabled, remove, runNow, dismiss: () => setNotice(null) },
-  };
+  return { update, setEnabled, remove, runNow, dismiss: () => setNotice(null) };
+}
+
+/**
+ * State and transport for the Schedules list, kept out of the components (AGENTS.md §2): the
+ * account's schedules (kept current), the notice, and the actions on them.
+ */
+export function useSchedules() {
+  const submission = useSubmission('loading');
+  const [schedules, setSchedules] = useScheduleList(submission);
+  useScheduleRefresh(schedules, submission.status === 'idle', setSchedules);
+  const actions = useScheduleActions(submission, setSchedules);
+  return { schedules, status: submission.status, notice: submission.notice, actions };
 }
 
 export type SchedulesState = ReturnType<typeof useSchedules>;
