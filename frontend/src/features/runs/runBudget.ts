@@ -46,11 +46,18 @@ export function usedText(run: Limited, kind: LimitKind): string {
   return `${formatTokens(totalTokens(run.usage))} tokens`;
 }
 
-/** A starting point for a higher limit: double the old one, as plain digits. */
+/**
+ * A starting point for a higher limit, as plain digits: double what the run has used, or
+ * its old limit if that is more. A run that stopped at its limit has used at least that
+ * much (the call that crossed it still counted), so the suggestion is always above it.
+ */
 export function suggestedLimit(run: Limited, kind: LimitKind): string {
-  if (kind === 'tokens') return String((run.max_tokens ?? 0) * 2);
-  const doubled = (run.max_cost_usd ?? 0) * 2;
-  return doubled >= 0.1 ? doubled.toFixed(2) : String(Number(doubled.toFixed(4)));
+  if (kind === 'tokens') return String(Math.max(totalTokens(run.usage), run.max_tokens ?? 0) * 2);
+  const doubled = Math.max(run.usage.cost_usd ?? 0, run.max_cost_usd ?? 0) * 2;
+  if (doubled >= 0.1) return doubled.toFixed(2);
+  // Under ten cents the screen shows four decimals, so suggest four, rounded up to stay
+  // above what was used (the slack keeps float noise from rounding 0.0044 up to 0.0045).
+  return String(Math.ceil(doubled * 10_000 - 1e-9) / 10_000);
 }
 
 /** The body of a resume for a new limit, or null when `text` is not a usable one. */

@@ -60,7 +60,7 @@ export function LiveRunHeader({
           )}
           <RunCost run={run} active={active} />
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           {active && onStop && (
             <button type="button" onClick={onStop} disabled={busy} className={RUN_BUTTON.stop}>
               Stop

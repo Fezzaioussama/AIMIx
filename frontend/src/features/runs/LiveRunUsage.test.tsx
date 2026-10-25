@@ -137,7 +137,7 @@ describe('LiveRun at its spending limit', () => {
     const onResume = vi.fn();
     render(<LiveRun run={stopped} onResume={onResume} />);
     const field = screen.getByLabelText('Raise the limit to');
-    expect(field).toHaveValue('1.00');
+    expect(field).toHaveValue('1.04');
 
     await userEvent.clear(field);
     await userEvent.type(field, '2');

@@ -46,7 +46,8 @@ describe('ResumeControl', () => {
   it('asks for a higher limit when the run stopped at its limit, and says what it has used', () => {
     render(<ResumeControl run={overLimit} onResume={vi.fn()} busy={false} />);
 
-    expect(screen.getByLabelText('Raise the limit to')).toHaveValue('1.00');
+    // Double what it has used: a limit the run can actually continue under.
+    expect(screen.getByLabelText('Raise the limit to')).toHaveValue('1.04');
     expect(screen.getByText('It has used $0.52 so far.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
   });
@@ -69,7 +70,25 @@ describe('ResumeControl', () => {
 
     await userEvent.type(screen.getByLabelText('Raise the limit to'), '{Enter}');
 
-    expect(onResume).toHaveBeenCalledExactlyOnceWith({ max_cost_usd: 1 });
+    expect(onResume).toHaveBeenCalledExactlyOnceWith({ max_cost_usd: 1.04 });
+  });
+
+  it('suggests a limit above what a run that overshot a tiny limit used', () => {
+    const overshot = makeRun({
+      ...failed,
+      max_cost_usd: 0.001,
+      usage: usageOf(51, 40, 0.0022),
+      error: {
+        code: 'budget_exceeded',
+        detail: 'This run stopped at $0.0022 because it reached its $0.0010 limit.',
+      },
+    });
+    render(<ResumeControl run={overshot} onResume={vi.fn()} busy={false} />);
+
+    // Double the old limit, $0.002, would be below the $0.0022 already used.
+    expect(screen.getByLabelText('Raise the limit to')).toHaveValue('0.0044');
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
+    expect(screen.getByText('It has used $0.0022 so far.')).toBeInTheDocument();
   });
 
   it('will not resume under a limit the run has already used up', async () => {
@@ -111,11 +130,11 @@ describe('ResumeControl', () => {
     const onResume = vi.fn();
     render(<ResumeControl run={tokenStopped} onResume={onResume} busy={false} />);
 
-    expect(screen.getByLabelText('Raise the token limit to')).toHaveValue('4000');
+    expect(screen.getByLabelText('Raise the token limit to')).toHaveValue('4200');
     expect(screen.getByText('It has used 2,100 tokens so far.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Resume' }));
-    expect(onResume).toHaveBeenCalledExactlyOnceWith({ max_tokens: 4000 });
+    expect(onResume).toHaveBeenCalledExactlyOnceWith({ max_tokens: 4200 });
   });
 
   it('is not clickable while a stop or resume is in flight', () => {

@@ -65,10 +65,39 @@ describe('limit words', () => {
 });
 
 describe('a higher limit', () => {
-  it('starts from double the old one, in plain digits', () => {
-    expect(suggestedLimit(run({ max_cost_usd: 0.5 }), 'cost')).toBe('1.00');
-    expect(suggestedLimit(run({ max_cost_usd: 0.012 }), 'cost')).toBe('0.024');
+  it('starts from double what the run used, or its old limit if that is more', () => {
+    // Stopped at its $0.50 limit having used $0.52: double the $0.52.
+    expect(suggestedLimit(run({ max_cost_usd: 0.5 }), 'cost')).toBe('1.04');
+    // Used less than the limit it has: double the limit.
+    expect(suggestedLimit(run({ max_cost_usd: 0.5 }, usageOf(10, 5, 0.1)), 'cost')).toBe('1.00');
     expect(suggestedLimit(run({ max_tokens: 20000 }), 'tokens')).toBe('40000');
+    expect(suggestedLimit(run({ max_tokens: 1000 }), 'tokens')).toBe('3000');
+  });
+
+  it('writes a small cost with the four decimals the screen shows, rounded up', () => {
+    // 0.0022 doubled is exactly 0.0044, not rounded up to 0.0045 by float noise.
+    expect(suggestedLimit(run({ max_cost_usd: 0.001 }, usageOf(1, 1, 0.0022)), 'cost')).toBe(
+      '0.0044',
+    );
+    // The real figure behind "$0.0022": a call of 51 tokens in and 40 out.
+    expect(suggestedLimit(run({ max_cost_usd: 0.001 }, usageOf(1, 1, 0.002211)), 'cost')).toBe(
+      '0.0045',
+    );
+    // Dust never turns into "0", or into an exponent.
+    expect(suggestedLimit(run({ max_cost_usd: 0.00001 }, usageOf(1, 1, 0.00003)), 'cost')).toBe(
+      '0.0001',
+    );
+    expect(suggestedLimit(run({ max_cost_usd: 1e-7 }, usageOf(1, 1, 1e-7)), 'cost')).toBe('0.0001');
+  });
+
+  it('is always a limit the form accepts, whatever was used', () => {
+    for (const used of [0.00003, 0.0022, 0.0499, 0.05, 0.52, 3.333, 1234.5]) {
+      const stopped = run({ max_cost_usd: used / 2 }, usageOf(100, 50, used));
+      const suggestion = suggestedLimit(stopped, 'cost');
+
+      expect(Number(suggestion)).toBeGreaterThan(used);
+      expect(limitProblem(stopped, 'cost', suggestion)).toBeNull();
+    }
   });
 
   it('turns what was typed into the resume body, or nothing', () => {

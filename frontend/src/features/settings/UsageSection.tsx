@@ -46,7 +46,11 @@ function UsageSummary({ report }: { report: UsageReport }) {
         <Stat label="Cost">
           {cost ? <CostText view={cost} compact /> : formatCost(report.usage.cost_usd ?? 0)}
         </Stat>
-        <Stat label="Tokens" note={tokenBreakdown(report.usage)}>
+        <Stat
+          label="Tokens"
+          note={tokenBreakdown(report.usage)}
+          className="col-span-2 sm:col-span-1"
+        >
           {formatCount(totalTokens(report.usage))}
         </Stat>
       </dl>
@@ -68,12 +72,14 @@ function UsageSummary({ report }: { report: UsageReport }) {
 interface StatProps {
   label: string;
   note?: string;
+  /** Layout classes for the tile (e.g. spanning the row on a phone). */
+  className?: string;
   children: ReactNode;
 }
 
-function Stat({ label, note, children }: StatProps) {
+function Stat({ label, note, className = '', children }: StatProps) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+    <div className={`rounded-2xl border border-white/10 bg-white/[0.03] p-4 ${className}`}>
       <dt className="text-xs font-semibold tracking-wide text-slate-400 uppercase">{label}</dt>
       <dd className="mt-1 text-xl font-semibold text-slate-50 tabular-nums">{children}</dd>
       {note && <p className="mt-1 text-xs text-slate-400">{note}</p>}
@@ -91,12 +97,14 @@ function PipelineRow({ entry }: { entry: PipelineUsage }) {
           <span className="ml-2 text-xs font-normal text-slate-400">(deleted)</span>
         )}
       </span>
-      <span className="text-xs text-slate-400 tabular-nums">
-        {entry.runs === 1 ? '1 run' : `${formatCount(entry.runs)} runs`} ·{' '}
-        {formatCount(totalTokens(entry.usage))} tokens
-      </span>
-      <span className="text-sm text-slate-200">
-        {cost ? <CostText view={cost} compact /> : 'No usage'}
+      <span className="flex items-baseline gap-4">
+        <span className="text-xs text-slate-400 tabular-nums">
+          {entry.runs === 1 ? '1 run' : `${formatCount(entry.runs)} runs`} ·{' '}
+          {formatCount(totalTokens(entry.usage))} tokens
+        </span>
+        <span className="min-w-24 text-right text-sm text-slate-200">
+          {cost ? <CostText view={cost} compact /> : 'No usage'}
+        </span>
       </span>
     </li>
   );
