@@ -1,13 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import {
-  generatePipeline,
-  listPipelines,
-  revisePipeline,
-  runPipeline,
-  savePipeline,
-} from './pipelines';
+import { generatePipeline, listPipelines, revisePipeline, savePipeline } from './pipelines';
 import type { Pipeline } from './types';
 
 const pipeline: Pipeline = { name: 'Drafts', inputs: [], steps: [] };
@@ -16,14 +10,12 @@ describe('savePipeline', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('creates a new pipeline and updates an existing one', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(
-        async () =>
-          new Response(JSON.stringify(pipeline), {
-            headers: { 'Content-Type': 'application/json' },
-          }),
-      );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify(pipeline), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
 
     await savePipeline(pipeline);
     await savePipeline({ ...pipeline, id: 7 });
@@ -89,9 +81,11 @@ describe('revisePipeline', () => {
       steps: [{ order: 1, stage: 1, title: '', is_output: false, model: 'v/m' }],
     };
     const body = { revised_pipeline: sparse, changes: [], available_models: [] };
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }),
+      );
 
     const response = await revisePipeline(pipeline, 'Add a step');
 
@@ -106,21 +100,5 @@ describe('revisePipeline', () => {
       allowed_tools: null,
       expected_output: '',
     });
-  });
-});
-
-describe('runPipeline', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('posts the named inputs as the run body', async () => {
-    const empty = { pipeline_name: 'P', final_output: '', intermediate_results: [] };
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify(empty), { headers: { 'Content-Type': 'application/json' } }),
-    );
-
-    await runPipeline(7, { inputs: { topic: 'bees' } });
-
-    expect(fetchMock.mock.calls[0][0]).toBe(API.runPipeline(7));
-    expect(fetchMock.mock.calls[0][1]?.body).toBe('{"inputs":{"topic":"bees"}}');
   });
 });

@@ -23,6 +23,14 @@ describe('LiveRun', () => {
     expect(onStop).toHaveBeenCalledOnce();
   });
 
+  it('leaves the diagram out where it is already on screen, keeping the rest', () => {
+    render(<LiveRun run={makeRun()} diagram={false} />);
+
+    expect(screen.queryByRole('list', { name: 'Pipeline diagram' })).not.toBeInTheDocument();
+    expect(screen.getByText('1 of 3 steps done')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'All steps (3)' })).toBeInTheDocument();
+  });
+
   it('opens on the progress of a run in flight, with saved outputs already readable', () => {
     render(<LiveRun run={makeRun()} />);
 

@@ -90,10 +90,7 @@ export function TemplatesPage() {
   async function handleUse(template: MissionTemplate) {
     const created = await actions.create(template);
     if (created?.id === undefined) return;
-    // Routes keep the window's scroll; a card low in the gallery must not open
-    // the builder halfway down. The builder opens a saved pipeline from router
-    // state, as after Auto Pipeline.
-    window.scrollTo({ top: 0 });
+    // The builder opens a saved pipeline from router state, as after Auto Pipeline.
     navigate('/pipeline', { state: { pipelineId: created.id } });
   }
 

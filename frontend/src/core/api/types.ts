@@ -125,12 +125,6 @@ export interface StepResult {
   tool_calls: { name: string; status: 'success' | 'error' }[];
 }
 
-export interface PipelineRunResponse {
-  pipeline_name: string;
-  final_output: string;
-  intermediate_results: StepResult[];
-}
-
 /**
  * Where a run is. `queued`, `running` and `waiting` (a tool call waits for the
  * owner's approval) are active; the rest are final.

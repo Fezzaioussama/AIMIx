@@ -120,7 +120,7 @@ def _check_reserved(access: IntegrationAccess, name: str) -> None:
 def _check_name(access: IntegrationAccess, name: str, ignore_id: int | None = None) -> None:
     _check_reserved(access, name)
     if repository.name_taken(access.session, access.user, name, ignore_id):
-        raise ValidationFailed(f"You already have an integration named {name}.")
+        raise repository.name_taken_error(name)
 
 
 def _check_address(access: IntegrationAccess, url: str) -> None:

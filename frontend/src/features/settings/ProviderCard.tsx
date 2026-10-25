@@ -38,7 +38,7 @@ function ActiveBadge({ shown }: { shown: boolean }) {
 
 function keyStatus(entry: ProviderSettings): string {
   if (entry.key_source === 'saved') return `Saved key ending in ${entry.key_hint}`;
-  if (entry.key_source === 'environment') return 'Using the server key from backend/.env';
+  if (entry.key_source === 'environment') return 'Using the key the server provides';
   return 'No key saved';
 }
 

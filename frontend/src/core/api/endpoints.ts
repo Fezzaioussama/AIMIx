@@ -14,7 +14,6 @@ export const API = {
   pipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/`,
   generatePipeline: '/api/pipelines/generate',
   revisePipeline: '/api/pipelines/revise',
-  runPipeline: (pipelineId: number) => `/api/pipelines/${pipelineId}/run`,
   pipelineRuns: (pipelineId: number) => `/api/pipelines/${pipelineId}/runs`,
   runs: '/api/runs',
   run: (runId: number) => `/api/runs/${runId}`,

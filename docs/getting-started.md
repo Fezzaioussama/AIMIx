@@ -242,7 +242,7 @@ image, CI and Railway.
 | `provider_not_configured` "can no longer be read" | `SECRET_KEY` changed after you saved a key | Enter the key again on the Settings page |
 | `provider_unavailable` (502) | Provider rejected the call (bad key, unknown model, quota), or stayed overloaded through every retry (`llm.retry` warnings in the backend log) | Run `make run-llm`, then `cd backend && uv run python -m api.cli llm-probe "hi"` to see the provider's message |
 | `provider_timeout` (504) | Model slower than `LLM_TIMEOUT_SECONDS` | Raise it in `.env`, or pick a faster model |
-| Redirected to `/login` unexpectedly | Access token expired (default 60 min); the client does not refresh it yet | Sign in again — see [known-issues.md](known-issues.md) |
+| Redirected to `/login` unexpectedly | Your session ended: it renews itself while the refresh cookie is valid (`JWT_REFRESH_DAYS`, 1 day by default), and a new `SECRET_KEY` ends every session | Sign in again |
 | `no such table: users` / `pipelines` | Migrations not applied | `make migrate` |
 | Frontend shows "Could not reach the server." | Backend not running on :8000 | `make run-backend` |
 | Port already in use | A previous run is still alive | `make kill-all` |

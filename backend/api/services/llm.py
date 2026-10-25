@@ -55,8 +55,7 @@ def provider_config(profile: LLMProfile, model_id: str | None = None) -> Provide
     api_key = profile.api_key or settings.llm_api_keys.get(profile.provider, "")
     if not api_key:
         raise ProviderNotConfigured(
-            f"No API key is set for {profile.provider}. "
-            "Add one on the Settings page, or in backend/.env."
+            f"No API key is set for {profile.provider}. Add one on the Settings page."
         )
     return ProviderConfig(
         api_key=api_key,

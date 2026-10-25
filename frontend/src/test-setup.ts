@@ -17,3 +17,6 @@ class InertObserver {
 }
 globalThis.IntersectionObserver ??= InertObserver as unknown as typeof IntersectionObserver;
 globalThis.ResizeObserver ??= InertObserver as unknown as typeof ResizeObserver;
+
+// jsdom has no layout and no scrolling: window.scrollTo only logs "not implemented".
+window.scrollTo = (() => undefined) as typeof window.scrollTo;

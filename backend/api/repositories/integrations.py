@@ -9,9 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from api.exceptions import NotFound
+from api.exceptions import NotFound, ValidationFailed
 from api.models import Integration, User
 
 
@@ -55,6 +56,23 @@ def get_owned(session: Session, user: User, integration_id: int) -> Integration:
     return integration
 
 
+def name_taken_error(name: str) -> ValidationFailed:
+    """The refusal for a name another of the user's integrations already uses."""
+    return ValidationFailed(f"You already have an integration named {name}.")
+
+
+def _commit(session: Session, name: str | None) -> None:
+    """Commit. Two requests can pass the name check together, so the database's
+    unique name per user has the last word: that is the same refusal, not a 500."""
+    try:
+        session.commit()
+    except IntegrityError as cause:
+        session.rollback()
+        if name is None:
+            raise
+        raise name_taken_error(name) from cause
+
+
 def name_taken(session: Session, user: User, name: str, ignore_id: int | None = None) -> bool:
     """Whether another of the user's integrations already uses ``name``."""
     query = _owned_by(user).where(Integration.name == name)
@@ -95,13 +113,13 @@ def create(session: Session, user: User, changes: IntegrationChanges) -> Integra
     )
     _apply(integration, changes)
     session.add(integration)
-    session.commit()
+    _commit(session, changes.name)
     return integration
 
 
 def update(session: Session, integration: Integration, changes: IntegrationChanges) -> Integration:
     _apply(integration, changes)
-    session.commit()
+    _commit(session, changes.name)
     return integration
 
 

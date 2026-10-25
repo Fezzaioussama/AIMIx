@@ -67,7 +67,7 @@ function SettingsHeader() {
       <p className="mt-2 mb-8 text-sm text-slate-400">
         Choose the provider your chat, pipelines and planner use, and save your own API keys. Keys
         are encrypted on the server and never shown again, only their last four characters. Anything
-        you leave unset uses the server&apos;s backend/.env.
+        you leave unset uses the key the server provides, when it has one.
       </p>
     </header>
   );

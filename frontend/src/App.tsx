@@ -9,6 +9,7 @@ import { ActivePill } from './core/ui/ActivePill';
 import { AmbientBackdrop } from './core/ui/AmbientBackdrop';
 import { navIcon } from './core/ui/navIcons';
 import { PageTransition } from './core/ui/PageTransition';
+import { ScrollToTop } from './core/ui/ScrollToTop';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { ChatPage } from './features/chat/ChatPage';
@@ -107,6 +108,7 @@ function AppNav() {
 function AppShell() {
   return (
     <>
+      <ScrollToTop />
       <AmbientBackdrop />
       <AppNav />
       <div className="pt-[60px]">

@@ -5,13 +5,13 @@ Delete an entry when you fix it.
 
 ## Gaps
 
-### 3. The pipeline list is not paginated
+### 1. The pipeline list is not paginated
 
 `GET /api/pipelines/` returns all of the user's pipelines. This is fine for now;
 add `limit`/`offset` query parameters in the repository and endpoint (and update
 the client) if lists grow large.
 
-### 5. Document inputs are read in the request thread
+### 2. Document inputs are read in the request thread
 
 `POST /documents/extract` parses, renders and OCRs in the request's worker
 thread. Each step is bounded (size, page, row, pixel and character limits, and
@@ -34,7 +34,7 @@ which are not sent to OCR.
 render also lifts the PDFium lock) with a wall-clock timeout and let the client
 poll, and cap request bodies at the reverse proxy as well.
 
-### 6. Integrations: what the first version leaves out
+### 3. Integrations: what the first version leaves out
 
 Users' own MCP servers (`api/services/integrations/`) work with static headers
 only. Their URLs are stored as entered, so a service that puts its token in the
@@ -54,7 +54,7 @@ connections to the checked address in a custom httpx transport.
 and an agent reading a PDF or Word file from its workspace runs the same readers
 in the agent's thread.
 
-### 6. Files: no pagination, and a narrow quota race on replacement
+### 4. Files: no pagination, and a narrow quota race on replacement
 
 `GET /api/files` returns every file a user has; only `WORKSPACE_MAX_TOTAL_BYTES`
 bounds the list. The quota is checked before a write and, for a new file, again
@@ -67,7 +67,7 @@ is invisible to the user and to the quota, and nothing removes it.
 **Fix:** add `limit`/`offset` to the listing; take a per-user lock (database row
 or `flock`) around a replacement; sweep stale `.part` files on startup.
 
-### 7. PDF artifacts: italics, CJK and right-to-left text
+### 5. PDF artifacts: italics, CJK and right-to-left text
 
 The image's `fonts-dejavu-core` has no italic face, so italics in a PDF print
 upright (Word files keep them). DejaVu Sans covers Latin, Greek, Cyrillic and
@@ -79,7 +79,7 @@ back to Helvetica: Western European text only.
 scripts you need (for example Noto), add an italic font setting, and enable
 ReportLab's optional shaping extras for right-to-left text.
 
-### 8. Approval gates: what they leave out
+### 6. Approval gates: what they leave out
 
 Tools of MCP servers and integrations (and the built-in tools in
 `AGENT_APPROVAL_TOOLS`) wait for the run owner's OK inside a pipeline run
@@ -110,7 +110,7 @@ Tools of MCP servers and integrations (and the built-in tools in
 tools will ask; pausing the step's timeout clock while it waits; push or email
 notifications for waiting runs; letting chat ask inline.
 
-### 6. Runs execute inside the API process
+### 7. Runs execute inside the API process
 
 The run executor (`api/services/run_executor.py`) is an asyncio loop in the API
 process, and its queue lives in memory. That is enough for the single
@@ -125,7 +125,7 @@ behind a shared queue (the `RunExecutor` port is the seam), scope recovery to
 the worker that owned a run, optionally resume interrupted runs
 automatically, and push progress with server-sent events.
 
-### 7. A run's spending limit is checked between model calls
+### 8. A run's spending limit is checked between model calls
 
 A limit stops a run by refusing its *next* model call once the total has
 reached it (`api/services/run_budget.py`); a call cannot be priced before it is
@@ -153,10 +153,10 @@ its prompt size and the model's maximum output (a pre-flight check in
 cost is visible; count chat usage through the same `UsageCallback` where
 `services/agent.py` builds its model; give the chat tool an optional limit.
 
-### 8. Scheduled runs: what the first version leaves out
+### 9. Scheduled runs: what the first version leaves out
 
 Schedules (`api/services/schedules/`) start runs from a thread inside the API
-process, so they share every limit of entry 6 above: one process, nothing runs
+process, so they share every limit of entry 7 above: one process, nothing runs
 while it is down. Beyond that:
 
 - **At most once, not at least once.** The scheduler claims an occurrence (moves
@@ -201,5 +201,5 @@ in one transaction (or keep an `occurrences` table and start from it); add an
 "only when the last run is finished" option and a `schedule_id` filter on
 `GET /api/runs`; keep the last few start failures, notify the owner and pause a
 schedule after repeated ones; check a pipeline's schedules when it is saved. Moving
-execution to a worker (entry 6) also moves the scheduler there.
+execution to a worker (entry 7) also moves the scheduler there.
 

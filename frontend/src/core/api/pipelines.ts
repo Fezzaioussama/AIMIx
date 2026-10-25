@@ -1,12 +1,6 @@
 import { API } from './endpoints';
 import { GENERATION_TIMEOUT_MS, request } from './client';
-import type {
-  GeneratedPipelineResponse,
-  Pipeline,
-  PipelineRunRequest,
-  PipelineRunResponse,
-  RevisedPipelineResponse,
-} from './types';
+import type { GeneratedPipelineResponse, Pipeline, RevisedPipelineResponse } from './types';
 
 export function listPipelines(): Promise<Pipeline[]> {
   return request<Pipeline[]>(API.pipelines).then((pipelines) => pipelines.map(normalizePipeline));
@@ -22,18 +16,6 @@ export function savePipeline(pipeline: Pipeline): Promise<Pipeline> {
     method: pipeline.id === undefined ? 'POST' : 'PUT',
     body: pipeline,
   }).then(normalizePipeline);
-}
-
-export function runPipeline(
-  pipelineId: number,
-  body: PipelineRunRequest,
-): Promise<PipelineRunResponse> {
-  // Pipelines chain several model calls, so they wait as long as a generation.
-  return request<PipelineRunResponse>(API.runPipeline(pipelineId), {
-    method: 'POST',
-    body,
-    timeoutMs: GENERATION_TIMEOUT_MS,
-  });
 }
 
 /** Plans a pipeline from a description; nothing is saved. No `plannerModel` means the default. */

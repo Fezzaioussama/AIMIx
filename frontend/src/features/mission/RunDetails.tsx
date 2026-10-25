@@ -44,6 +44,7 @@ export function RunDetails({ run, followed }: { run: Run; followed: FollowedRun 
       </summary>
       <LiveRun
         run={run}
+        diagram={false} // the Team pane already shows it, live
         onStop={() => void followed.stop()}
         onResume={(budget) => void followed.resume(budget)}
         onApprove={(approvalId) => void followed.approve(approvalId)}

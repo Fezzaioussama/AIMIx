@@ -30,6 +30,8 @@ interface PipelineRunViewProps {
   isRunning: boolean;
   input: string;
   elapsedMs: number | null;
+  /** Draw the diagram (the default). Off where it is already on screen beside this view. */
+  diagram?: boolean;
   onEditStep?: (order: number) => void;
   onAddParallel?: (stage: number) => void;
   onAddAfter?: (stage: number) => void;
@@ -46,6 +48,7 @@ export function PipelineRunView({
   isRunning,
   input,
   elapsedMs,
+  diagram = true,
   onEditStep,
   onAddParallel,
   onAddAfter,
@@ -56,19 +59,21 @@ export function PipelineRunView({
 
   return (
     <section>
-      <PipelineGraph
-        steps={steps}
-        inputs={inputs}
-        results={view.results}
-        liveSteps={liveSteps}
-        isRunning={isRunning}
-        input={input}
-        selected={view.focus}
-        onSelect={view.select}
-        onEditStep={onEditStep}
-        onAddParallel={onAddParallel}
-        onAddAfter={onAddAfter}
-      />
+      {diagram && (
+        <PipelineGraph
+          steps={steps}
+          inputs={inputs}
+          results={view.results}
+          liveSteps={liveSteps}
+          isRunning={isRunning}
+          input={input}
+          selected={view.focus}
+          onSelect={view.select}
+          onEditStep={onEditStep}
+          onAddParallel={onAddParallel}
+          onAddAfter={onAddAfter}
+        />
+      )}
 
       {children}
 

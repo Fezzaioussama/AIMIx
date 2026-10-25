@@ -23,6 +23,8 @@ export interface LiveRunProps {
    * both, its requests are shown but cannot be answered here. */
   onApprove?: (approvalId: number) => void;
   onDecline?: (approvalId: number) => void;
+  /** Draw the pipeline's diagram (the default). Off where it is already on screen beside this. */
+  diagram?: boolean;
   /** Shown under the status bar, before the results (e.g. the run's inputs). */
   children?: ReactNode;
 }
@@ -43,6 +45,7 @@ export function LiveRun({
   actions,
   onApprove,
   onDecline,
+  diagram,
   children,
 }: LiveRunProps) {
   const active = isActive(run.status);
@@ -53,6 +56,7 @@ export function LiveRun({
       liveSteps={run.steps}
       runKey={run.id}
       isRunning={active}
+      diagram={diagram}
       input={run.input}
       elapsedMs={active ? null : elapsedMs(run.started_at, run.finished_at, Date.now())}
     >
