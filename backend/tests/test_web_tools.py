@@ -5,21 +5,27 @@ Every test runs over httpx.MockTransport and a fake resolver — no network.
 
 from __future__ import annotations
 
+import gzip
 import json
+import tracemalloc
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from time import perf_counter
 
+import anyio
 import httpx
 import pytest
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import ToolException
 
+from api.services.outbound import OutboundPolicy, guarded_transport
 from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.tools import TRUNCATED_NOTE, fetch_url_tool, web_search_tool
 from api.services.toolbox.web import MAX_REDIRECTS, WebGateway
-from tests.conftest import TEST_SETTINGS, tool_call
+from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE, tool_call
+from tests.network_fakes import FakeNetwork, changing
 
-CONFIG = replace(toolbox_config(TEST_SETTINGS), search_api_key="tvly-secret")
+CONFIG = replace(toolbox_config(TEST_SETTINGS, UNUSED_WORKSPACE), search_api_key="tvly-secret")
 PUBLIC_ADDRESS = "93.184.215.14"
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -167,3 +173,116 @@ async def test_fetch_url_timeout_is_an_error_result() -> None:
     assert isinstance(message, ToolMessage)
     assert message.status == "error"
     assert "timed out" in str(message.content)
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_never_connects_where_dns_points_after_the_check() -> None:
+    # A rebinding DNS server: public for the check, the metadata address after it.
+    lookups = changing([PUBLIC_ADDRESS], ["169.254.169.254"])
+    network = FakeNetwork()
+    web = WebGateway(CONFIG, guarded_transport(OutboundPolicy(lookups), network), lookups)
+
+    with pytest.raises(ToolException, match=r"rebind\.test is not a public address"):
+        await web.fetch("http://rebind.test/latest/meta-data/")
+
+    assert network.connected == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_connects_to_the_checked_address() -> None:
+    network = FakeNetwork(body=b"public page")
+    lookups = resolver({})
+    web = WebGateway(CONFIG, guarded_transport(OutboundPolicy(lookups), network), lookups)
+
+    page = await web.fetch("https://site.test/")
+
+    assert page.text == "public page"
+    assert network.connected == [PUBLIC_ADDRESS]
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_reads_a_gzip_bomb_within_bounded_memory() -> None:
+    bomb = gzip.compress(b"a" * 30_000_000)  # about 30 KB on the wire
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        headers = {"content-encoding": "gzip", "content-type": "text/plain"}
+        return httpx.Response(200, stream=httpx.ByteStream(bomb), headers=headers)
+
+    tracemalloc.start()
+    try:
+        page = await gateway(handler).fetch("https://site.test/bomb")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert (page.text, page.truncated) == ("a" * TEST_SETTINGS.web_fetch_max_chars, True)
+    assert peak < 5_000_000
+    assert requests[0].headers["accept-encoding"] == "identity"
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_refuses_an_encoding_it_cannot_bound() -> None:
+    brotli = httpx.Response(
+        200, stream=httpx.ByteStream(b"\x1b"), headers={"content-encoding": "br"}
+    )
+    with pytest.raises(ToolException, match="DecodingError"):
+        await gateway(lambda request: brotli).fetch("https://site.test/")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "charset",
+    ["zlib", "rot13", "hex", "base64", "bz2", "idna", "punycode", "undefined", "no-such-charset"],
+)
+async def test_fetch_url_reads_a_page_whatever_charset_it_claims(charset: str) -> None:
+    headers = {"content-type": f"text/plain; charset={charset}"}
+    page = httpx.Response(200, content="café".encode(), headers=headers)
+
+    assert (await gateway(lambda request: page).fetch("https://site.test/")).text == "café"
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_still_honours_a_real_charset() -> None:
+    headers = {"content-type": "text/plain; charset=latin-1"}
+    page = httpx.Response(200, content="café".encode("latin-1"), headers=headers)
+
+    assert (await gateway(lambda request: page).fetch("https://site.test/")).text == "café"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["http://[abc/", "http://site.test:99999/"])
+async def test_fetch_url_refuses_a_malformed_url(url: str) -> None:
+    requests: list[httpx.Request] = []
+    with pytest.raises(ToolException, match="not a valid URL"):
+        await gateway(recording(requests)).fetch(url)
+    assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_refuses_a_malformed_redirect() -> None:
+    moved = httpx.Response(302, headers={"location": "http://[abc/"})
+    with pytest.raises(ToolException, match="redirected to an invalid URL"):
+        await gateway(lambda request: moved).fetch("https://site.test/")
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_gives_up_at_its_overall_deadline() -> None:
+    async def drip(request: httpx.Request) -> httpx.Response:
+        await anyio.sleep(0.3)  # each hop well within WEB_TIMEOUT_SECONDS
+        return httpx.Response(302, headers={"location": "/next"})
+
+    web = WebGateway(
+        replace(CONFIG, fetch_max_seconds=0.2), httpx.MockTransport(drip), resolver({})
+    )
+    started = perf_counter()
+
+    message = await fetch_url_tool(web).ainvoke(
+        tool_call("fetch_url", {"url": "https://drip.test/"})
+    )
+
+    assert isinstance(message, ToolMessage)
+    assert message.status == "error"
+    assert "took longer than 0.2 seconds" in str(message.content)
+    assert perf_counter() - started < 1

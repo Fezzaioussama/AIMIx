@@ -398,15 +398,23 @@ land where agents read, and downloads are always attachments with a sandbox CSP,
 so stored HTML never runs as a page of the app's origin.
 
 `fetch_url` only reaches public addresses: every redirect hop is resolved and
-refused if any address is loopback, private, link-local or otherwise
-non-global, which keeps a prompt-injected agent out of the server's network and
-cloud metadata endpoint. httpx resolves the host again when it connects, so a
-DNS-rebinding window remains; drop `fetch_url` from `AGENT_BUILTIN_TOOLS` where
-that is unacceptable. Outbound web tools are automatically removed when
-workspace readers are offered unless the operator explicitly sets
-`AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`. Downloads stop at `WEB_FETCH_MAX_BYTES`, the text handed
-to the model at `WEB_FETCH_MAX_CHARS`, and each request at
-`WEB_TIMEOUT_SECONDS`, with no retries.
+refused if any address is loopback, private, link-local, multicast, site-local
+or otherwise non-global (an IPv6 address carrying an IPv4 one, such as NAT64
+`64:ff9b::/96` or 6to4, is judged by the IPv4 address), which keeps a
+prompt-injected agent out of the server's network and cloud metadata endpoint.
+The connection itself goes through `api/services/outbound.py`: its httpcore
+network backend resolves the host, checks every address and connects to one of
+exactly those addresses (TLS and the `Host` header still name the host), so a
+DNS server that answers differently the second time (DNS rebinding) cannot
+redirect it, and environment proxies never apply. Outbound web tools are
+automatically removed when workspace readers are offered unless the operator
+explicitly sets `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`. Bodies are asked
+for unencoded; gzip or deflate is still decoded by the transport in 64 KB
+pieces (any other encoding is refused), so a compressed bomb stops at
+`WEB_FETCH_MAX_BYTES` like any page. The text handed to the model stops at
+`WEB_FETCH_MAX_CHARS`, each request at `WEB_TIMEOUT_SECONDS`, and the whole
+call, redirects included, at `WEB_FETCH_MAX_SECONDS`, with no retries. A page
+whose charset is not a text codec (`zlib`, `idna`) is read as UTF-8.
 
 `run_python` lets an agent run code for data analysis and charts, offered only
 when `E2B_API_KEY` is set. Code never runs in the web process: `sandbox.py`
@@ -487,16 +495,20 @@ to the `fetch_url` rules, which live in `api/services/addresses.py` for both:
 streamable HTTP only (never stdio, which would run a command on this server),
 `https` (plain `http` only when `APP_ENV=local`), and a host that resolves only
 to public addresses. The check runs when an integration is saved, before a
-connection test, and before **every** request to it: the integration's
-connection carries a `GuardedClientFactory` whose httpx request hook resolves
-the host again (each discovery and tool call opens its own session). The MCP
-SDK follows redirects only within the same origin, and that request is
-checked too. httpx still resolves the name once more when it connects, so a
-DNS server that answers differently within those milliseconds (DNS rebinding)
-remains possible; this is the same window `fetch_url` accepts. Local
-development reaches a server on `127.0.0.1` with `APP_ENV=local` and
-`INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true`, which also drops the per-request
-guard; production refuses to start with that setting.
+connection test, and on **every** connection to it: the integration's
+connection carries a `GuardedClientFactory` whose clients use the
+`outbound.py` transport (each discovery and tool call opens its own session),
+so each connection resolves the host, checks every address and connects to
+one of exactly those, leaving no DNS-rebinding window, and no environment
+proxy applies. The MCP SDK follows redirects only within the same origin, and
+that connection is checked too. One HTTP response from a user's server (a JSON
+answer or an event stream) stops past `MCP_MAX_RESPONSE_BYTES`, decompressed
+size included, and every MCP tool's result, an operator server's too, reaches
+the model with its text cut at `MCP_TOOL_RESULT_MAX_CHARS` (`ResultCap`, a
+tool-call interceptor in `mcp_discovery.py`). Local development reaches a
+server on `127.0.0.1` with `APP_ENV=local` and
+`INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true`, which skips the address check but
+keeps the size limits; production refuses to start with that setting.
 
 The graph lives in `api/services/multiagent/`: `contracts.py` defines immutable
 pipeline and step snapshots, results, the async step-agent contract and the

@@ -118,19 +118,22 @@ server then opens connections to addresses users choose. The guard, in
 - **Public addresses only.** The host must resolve to global addresses alone —
   never loopback, private, link-local (the cloud metadata address
   `169.254.169.254` included), shared or reserved — when the integration is
-  saved, before a connection test, and before every request agents send. The
-  MCP client follows redirects only within the same origin, and checks that
-  request too. httpx resolves the name once more when it connects, so a DNS
-  server that changes its answer within those milliseconds (DNS rebinding) can
-  still slip through; this is the same residual risk as the `fetch_url` tool.
+  saved, before a connection test, and on every connection agents open, which
+  then goes to one of exactly the addresses that were checked: a DNS server
+  that changes its answer (DNS rebinding) cannot redirect it, and proxy
+  variables in the environment are ignored. The MCP client follows redirects
+  only within the same origin, and checks that connection too. The
+  `fetch_url` tool uses the same transport.
 - **Leave `INTEGRATIONS_ALLOW_PRIVATE_NETWORK` unset.** It exists for local
   development only; the container refuses to start with it on in production.
 - **Header values** (API keys, tokens) are encrypted with `SECRET_KEY` and never
   sent back to the browser. Changing `SECRET_KEY` makes them unreadable: the
   integration is skipped until its owner enters them again. The URL itself is
   stored as entered, so users should put tokens in headers, not in the URL.
-- **Bounded:** `INTEGRATIONS_MAX_PER_USER` (10) per account, and every
-  connection, test and tool call by `MCP_TIMEOUT_SECONDS`. Setting the limit to
+- **Bounded:** `INTEGRATIONS_MAX_PER_USER` (10) per account, every
+  connection, test and tool call by `MCP_TIMEOUT_SECONDS`, one response by
+  `MCP_MAX_RESPONSE_BYTES` and a tool result's text by
+  `MCP_TOOL_RESULT_MAX_CHARS`. Setting the limit to
   `0` stops new integrations being added; existing ones keep working until
   their owners delete or switch them off.
 - **Isolation:** an integration serves only its owner's agents. Its tool

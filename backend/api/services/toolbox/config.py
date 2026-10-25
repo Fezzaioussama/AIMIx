@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from api.services.documents.contracts import ExtractionLimits
 from api.services.documents.extraction import extraction_limits
 from config.settings import Settings
+
+#: Spends one run_python call of the user's hourly allowance, or raises
+#: ``ToolException`` once it is used up (built in ``agent_tools.native_tools``).
+SandboxQuota = Callable[[], None]
 
 
 @dataclass(frozen=True)
@@ -16,12 +21,14 @@ class ToolboxConfig:
 
     An empty ``search_api_key`` means web search is not configured.
     An empty ``sandbox_api_key`` means run_python is not configured.
+    ``workspace_dir`` is one user's own folder, never the shared parent.
     """
 
     enabled: tuple[str, ...]
     timeout_seconds: float
     fetch_max_bytes: int
     fetch_max_chars: int
+    fetch_max_seconds: float
     search_url: str
     search_max_results: int
     workspace_dir: Path
@@ -43,17 +50,25 @@ class ToolboxConfig:
     # Kept out of repr, so a logged config never shows it.
     search_api_key: str = field(default="", repr=False)
     sandbox_api_key: str = field(default="", repr=False)
+    #: None: run_python calls are not counted (tests, tools never offered).
+    sandbox_quota: SandboxQuota | None = field(default=None, repr=False, compare=False)
 
 
-def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> ToolboxConfig:
+def toolbox_config(
+    settings: Settings, workspace_dir: Path, sandbox_quota: SandboxQuota | None = None
+) -> ToolboxConfig:
+    """The toolbox of one user: ``workspace_dir`` is their folder
+    (``files.storage.user_workspace_dir``), required so a caller can never fall
+    back to AGENT_WORKSPACE_DIR itself, which holds every user's folder."""
     return ToolboxConfig(
         enabled=tuple(settings.agent_builtin_tools),
         timeout_seconds=settings.web_timeout_seconds,
         fetch_max_bytes=settings.web_fetch_max_bytes,
         fetch_max_chars=settings.web_fetch_max_chars,
+        fetch_max_seconds=settings.web_fetch_max_seconds,
         search_url=settings.tavily_search_url,
         search_max_results=settings.web_search_max_results,
-        workspace_dir=workspace_dir or settings.workspace_dir,
+        workspace_dir=workspace_dir,
         workspace_max_file_bytes=settings.workspace_max_file_bytes,
         workspace_max_output_chars=settings.workspace_max_output_chars,
         workspace_search_max_files=settings.workspace_search_max_files,
@@ -70,4 +85,5 @@ def toolbox_config(settings: Settings, workspace_dir: Path | None = None) -> Too
         pdf_bold_font_path=settings.pdf_bold_font_path,
         search_api_key=settings.tavily_api_key,
         sandbox_api_key=settings.e2b_api_key,
+        sandbox_quota=sandbox_quota,
     )

@@ -246,6 +246,10 @@ def test_each_user_has_a_limited_number_of_integrations(auth_client: TestClient)
         ["::ffff:127.0.0.1"],
         ["fe80::1%2"],
         ["fd00:ec2::254"],
+        ["64:ff9b::a9fe:a9fe"],
+        ["fec0::1"],
+        ["::7f00:1"],
+        ["ff02::1"],
         ["93.184.215.14", "10.0.0.5"],
     ],
 )
@@ -270,6 +274,16 @@ def test_an_unknown_host_is_refused(auth_client: TestClient, dns: dict[str, DnsA
     response = create(auth_client, url="https://nowhere.example/mcp")
     assert response.status_code == 400
     assert response.json()["detail"].startswith("Could not resolve nowhere.example.")
+
+
+def test_a_host_name_no_resolver_accepts_is_refused_not_a_crash(
+    auth_client: TestClient, dns: dict[str, DnsAnswer]
+) -> None:
+    host = "a" * 64 + ".example"  # one label over 63 characters fails IDNA encoding
+    dns[host] = UnicodeError("encoding with 'idna' codec failed")
+    response = create(auth_client, url=f"https://{host}/mcp")
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith(f"Could not resolve {host}.")
 
 
 def test_plain_http_is_refused_outside_local_development(auth_client: TestClient) -> None:

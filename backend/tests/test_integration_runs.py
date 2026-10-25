@@ -24,6 +24,7 @@ from api.security import SecretBox
 from api.services import mcp_discovery
 from api.services.catalog import default_model_id
 from api.services.multiagent import step_agent
+from api.services.outbound import ResponseTooLarge
 from tests.mcp_fakes import TOOL_DESCRIPTION, DnsAnswer, FakeServers, ServerBehaviour, resolver
 from tests.test_integration_tools import TOKEN, save_integration
 
@@ -168,6 +169,7 @@ def status_error(status: int) -> httpx.HTTPStatusError:
         (TimeoutError(), "it did not answer within the time limit"),
         (McpError(ErrorData(code=-32601, message="no")), "it answered with an MCP error"),
         (ValueError("odd"), "it did not answer as an MCP server"),
+        (ResponseTooLarge("big"), "it sent an answer larger than the size limit"),
     ],
 )
 def test_a_failed_connection_test_says_why(

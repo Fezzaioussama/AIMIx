@@ -9,6 +9,9 @@ need it keep working. A step that selected one of its tools still fails — in
 
 A user's tool is also dropped, and logged, when its name is already taken or
 is not one model APIs accept, so one odd server cannot break every run.
+
+Every MCP tool's result reaches the model with its text cut at
+MCP_TOOL_RESULT_MAX_CHARS (``ResultCap``, a tool-call interceptor).
 """
 
 from __future__ import annotations
@@ -16,7 +19,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 import anyio
@@ -24,12 +28,25 @@ import httpx
 from exceptiongroup import BaseExceptionGroup, ExceptionGroup
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.interceptors import (
+    MCPToolCallRequest,
+    MCPToolCallResult,
+    ToolCallInterceptor,
+)
 from langchain_mcp_adapters.sessions import Connection
 from mcp import McpError
+from mcp.types import (
+    CallToolResult,
+    ContentBlock,
+    EmbeddedResource,
+    TextContent,
+    TextResourceContents,
+)
 
 from api.exceptions import ToolUnavailable
 from api.services.addresses import AddressNotAllowed
 from api.services.mcp import MCPConnections
+from api.services.outbound import ResponseTooLarge
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +55,7 @@ INTEGRATION_KEY = "aimix_integration"
 
 #: Function names that OpenAI-compatible model APIs accept.
 TOOL_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
+TRUNCATED_NOTE = "\n\n[Truncated: the tool's result continues beyond this point.]"
 
 OPERATOR_FAILURES = (TimeoutError, McpError, ExceptionGroup, httpx.HTTPError)
 
@@ -64,6 +82,7 @@ def _status_reason(error: httpx.HTTPStatusError) -> str:
 #: Failure kind -> plain words for the person (§5 O: a new kind is one entry).
 REASONS: tuple[tuple[type[BaseException], Callable[[Any], str]], ...] = (
     (AddressNotAllowed, lambda error: str(error).rstrip(".")),
+    (ResponseTooLarge, lambda _: "it sent an answer larger than the size limit"),
     (TimeoutError, lambda _: "it did not answer within the time limit"),
     (httpx.TimeoutException, lambda _: "it did not answer within the time limit"),
     (httpx.HTTPStatusError, _status_reason),
@@ -85,11 +104,57 @@ def failure_kind(cause: BaseException) -> str:
     return type(_innermost(cause.__cause__ or cause)).__name__
 
 
+def _text(block: ContentBlock) -> str | None:
+    if isinstance(block, TextContent):
+        return block.text
+    if isinstance(block, EmbeddedResource) and isinstance(block.resource, TextResourceContents):
+        return block.resource.text
+    return None
+
+
+def cap_text(result: CallToolResult, max_chars: int) -> CallToolResult:
+    """``result`` with at most ``max_chars`` of text across its blocks: the
+    block that crosses the limit is cut and marked, later text blocks dropped."""
+    left = max_chars
+    for index, block in enumerate(result.content):
+        text = _text(block)
+        if text is None:
+            continue
+        if len(text) > left:
+            cut = TextContent(type="text", text=text[:left] + TRUNCATED_NOTE)
+            rest = [item for item in result.content[index + 1 :] if _text(item) is None]
+            return result.model_copy(update={"content": [*result.content[:index], cut, *rest]})
+        left -= len(text)
+    return result
+
+
+@dataclass(frozen=True)
+class ResultCap:
+    """A tool-call interceptor that bounds the text one call hands the model."""
+
+    max_chars: int
+
+    async def __call__(
+        self,
+        request: MCPToolCallRequest,
+        handler: Callable[[MCPToolCallRequest], Awaitable[MCPToolCallResult]],
+    ) -> MCPToolCallResult:
+        result = await handler(request)
+        return cap_text(result, self.max_chars) if isinstance(result, CallToolResult) else result
+
+
+def _client(servers: dict[str, Connection], result_max_chars: int | None) -> MultiServerMCPClient:
+    caps: list[ToolCallInterceptor] | None = (
+        [ResultCap(result_max_chars)] if result_max_chars is not None else None
+    )
+    return MultiServerMCPClient(servers, tool_name_prefix=True, tool_interceptors=caps)
+
+
 async def load_server_tools(
-    name: str, connection: Connection, timeout_seconds: float
+    name: str, connection: Connection, timeout_seconds: float, result_max_chars: int | None = None
 ) -> list[BaseTool]:
     """One server's tools, named ``<name>_<tool>``, or ``ToolUnavailable`` saying why not."""
-    client = MultiServerMCPClient({name: connection}, tool_name_prefix=True)
+    client = _client({name: connection}, result_max_chars)
     try:
         with anyio.fail_after(timeout_seconds):
             return await client.get_tools()
@@ -97,10 +162,12 @@ async def load_server_tools(
         raise ToolUnavailable(f"Could not connect to {name}: {failure_reason(cause)}.") from cause
 
 
-async def _operator_tools(servers: dict[str, Connection], timeout_seconds: float) -> list[BaseTool]:
+async def _operator_tools(
+    servers: dict[str, Connection], timeout_seconds: float, result_max_chars: int | None
+) -> list[BaseTool]:
     if not servers:
         return []
-    client = MultiServerMCPClient(servers, tool_name_prefix=True)
+    client = _client(servers, result_max_chars)
     try:
         with anyio.fail_after(timeout_seconds):
             return await client.get_tools()
@@ -110,10 +177,10 @@ async def _operator_tools(servers: dict[str, Connection], timeout_seconds: float
 
 
 async def _integration_tools(
-    name: str, connection: Connection, timeout_seconds: float
+    name: str, connection: Connection, timeout_seconds: float, result_max_chars: int | None
 ) -> list[BaseTool]:
     try:
-        tools = await load_server_tools(name, connection, timeout_seconds)
+        tools = await load_server_tools(name, connection, timeout_seconds, result_max_chars)
     except ToolUnavailable as cause:
         logger.warning(
             "integration.discovery_skipped integration=%s error=%s", name, failure_kind(cause)
@@ -149,10 +216,11 @@ async def discover_tools(
     if not configured.operator and not configured.user:
         return native
     names = list(configured.user)
+    cap = configured.result_max_chars
     # Every load is bounded by the timeout; waiting for all leaves no task behind.
     outcomes = await asyncio.gather(
-        _operator_tools(configured.operator, timeout_seconds),
-        *(_integration_tools(name, configured.user[name], timeout_seconds) for name in names),
+        _operator_tools(configured.operator, timeout_seconds, cap),
+        *(_integration_tools(name, configured.user[name], timeout_seconds, cap) for name in names),
         return_exceptions=True,
     )
     operator, *own = (_loaded(outcome) for outcome in outcomes)

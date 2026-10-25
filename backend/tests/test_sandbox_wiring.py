@@ -18,10 +18,10 @@ from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.registry import toolbox_tools
 from api.services.toolbox.sandbox import CodeExecution
 from config.settings import Settings
-from tests.conftest import TEST_SETTINGS
+from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE
 from tests.sandbox_fakes import FakeSandbox, Opener, call
 
-CONFIG = replace(toolbox_config(TEST_SETTINGS), sandbox_api_key="")
+CONFIG = replace(toolbox_config(TEST_SETTINGS, UNUSED_WORKSPACE), sandbox_api_key="")
 
 
 def test_run_python_is_offered_only_with_an_e2b_key(tmp_path: Path) -> None:
@@ -120,7 +120,7 @@ def test_sandbox_settings_reach_the_toolbox_without_showing_the_key() -> None:
         SANDBOX_MAX_FILES="4",
         SANDBOX_MAX_STREAM_CHARS="9000",
     )
-    config = toolbox_config(settings)
+    config = toolbox_config(settings, UNUSED_WORKSPACE)
 
     assert "run_python" in Settings.model_fields["agent_builtin_tools"].default
     assert (config.sandbox_api_key, config.sandbox_timeout_seconds) == ("e2b-real-looking-key", 30)

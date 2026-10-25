@@ -33,10 +33,10 @@ from api.services.toolbox.html_text import html_to_text
 from api.services.toolbox.registry import toolbox_tools
 from api.services.toolbox.tools import calculator_tool, current_datetime_tool
 from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
-from tests.conftest import TEST_SETTINGS, tool_call
+from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE, tool_call
 from tests.test_documents import make_docx, make_pdf
 
-CONFIG = toolbox_config(TEST_SETTINGS)
+CONFIG = toolbox_config(TEST_SETTINGS, UNUSED_WORKSPACE)
 DOCUMENT_LIMITS = ExtractionLimits(
     max_bytes=100_000,
     max_chars=10_000,
