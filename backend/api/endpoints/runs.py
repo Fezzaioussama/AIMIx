@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
-from api.deps import CurrentUser, DbSession, PipelineRun, Runs
+from api.deps import CurrentUser, DbSession, PipelineRun, Runs, user_rate_limit
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import runs as repository
 from api.schemas.pipelines import RunRequest
@@ -19,7 +19,9 @@ from api.services.runs import RunStart
 router = APIRouter(tags=["runs"])
 
 
-@router.post("/pipelines/{pipeline_id}/runs", status_code=202)
+@router.post(
+    "/pipelines/{pipeline_id}/runs", status_code=202, dependencies=[Depends(user_rate_limit)]
+)
 def start_run(pipeline_id: int, body: RunRequest, context: PipelineRun) -> RunOut:
     """Queue a run of a saved pipeline; poll ``GET /runs/{id}`` to follow it."""
     pipeline = pipeline_repository.get_owned(context.session, context.user, pipeline_id)
@@ -53,7 +55,7 @@ def cancel_run(run_id: int, user: CurrentUser, runs: Runs) -> RunOut:
     return RunOut.model_validate(runs.cancel(user, run_id))
 
 
-@router.post("/runs/{run_id}/resume")
+@router.post("/runs/{run_id}/resume", dependencies=[Depends(user_rate_limit)])
 def resume_run(run_id: int, context: PipelineRun, body: ResumeRequest | None = None) -> RunOut:
     """Continue a stopped run; an optional body sets new spending limits."""
     budget = body.budget if body is not None else NO_BUDGET

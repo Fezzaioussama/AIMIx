@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 
-from api.deps import Now, PipelineRun, Schedules
+from api.deps import Now, PipelineRun, Schedules, user_rate_limit
 from api.schemas.runs import RunOut
 from api.schemas.schedules import (
     ScheduleIn,
@@ -82,7 +82,7 @@ def delete_schedule(schedule_id: int, access: Schedules) -> Response:
     return Response(status_code=204)
 
 
-@router.post("/{schedule_id}/run", status_code=202)
+@router.post("/{schedule_id}/run", status_code=202, dependencies=[Depends(user_rate_limit)])
 def run_schedule_now(schedule_id: int, access: Schedules, context: PipelineRun) -> RunOut:
     """Start one of the schedule's runs now; poll ``GET /runs/{id}`` to follow it."""
     run = service.run_now(access, schedule_id, context.runs, context.agents())

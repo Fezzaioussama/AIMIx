@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from api.endpoints import pipelines as pipeline_endpoints
 from api.exceptions import ProviderTimedOut, UpstreamResponseInvalid
-from api.schemas.pipelines import REVISION_INSTRUCTION_MAX_LENGTH
+from api.schemas.planning import REVISION_INSTRUCTION_MAX_LENGTH
 from api.services import pipeline_revision as service
 from api.services.agent_types import ToolDescriptor
 from api.services.llm import LLMProfile

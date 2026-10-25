@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from api.deps import Agents
+from api.deps import Agents, user_rate_limit
 from api.schemas.chat import ChatRequest
 from api.services import chat as chat_service
 
 router = APIRouter(tags=["chat"])
 
 
-@router.post("/chat", response_class=StreamingResponse)
+@router.post("/chat", response_class=StreamingResponse, dependencies=[Depends(user_rate_limit)])
 async def chat(body: ChatRequest, agents: Agents) -> StreamingResponse:
     """Hand the prompt to the chat service and stream the reply.
 

@@ -13,11 +13,12 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    model_validator,
 )
 
 from api.models import TIMEZONE_MAX_LENGTH, RunStatus, ScheduleFrequency
-from api.schemas.common import UtcDateTime
-from api.schemas.pipelines import PipelineInputField, RunRequest, Trimmed
+from api.schemas.common import RunInputValues, Trimmed, UtcDateTime, ensure_run_input_size
+from api.schemas.pipelines import PipelineInputField, RunRequest
 from api.services.schedules.timing import time_zone_error
 
 
@@ -89,8 +90,13 @@ class SchedulePatch(BaseModel):
     day_of_month: DayOfMonth | None = None
     timezone: TimeZoneName | None = None
     input: Trimmed | None = None
-    inputs: dict[str, Trimmed] | None = None
+    inputs: RunInputValues | None = None
     enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _bounded(self) -> SchedulePatch:
+        ensure_run_input_size(self.input, self.inputs)
+        return self
 
 
 class ScheduleListQuery(BaseModel):

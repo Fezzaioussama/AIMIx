@@ -5,22 +5,26 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 
-from api.deps import CurrentUser, DbSession, PipelineRun, Profile, Providers, ToolCatalog
+from api.deps import (
+    CurrentUser,
+    DbSession,
+    PipelineRun,
+    Profile,
+    Providers,
+    ToolCatalog,
+    user_rate_limit,
+)
 from api.models import Pipeline
 from api.repositories import pipelines as repository
-from api.schemas.pipelines import (
+from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch, RunRequest, RunResponse
+from api.schemas.planning import (
     GenerateRequest,
     GenerateResponse,
     PipelineChangeOut,
-    PipelineIn,
-    PipelineOut,
-    PipelinePatch,
     ReviseRequest,
     ReviseResponse,
-    RunRequest,
-    RunResponse,
 )
 from api.services import pipeline_flow
 from api.services import pipeline_revision as revision_service
@@ -55,7 +59,7 @@ def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> 
     return PipelineOut.model_validate(pipeline)
 
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(user_rate_limit)])
 def generate_pipeline(
     body: GenerateRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
 ) -> GenerateResponse:
@@ -66,7 +70,7 @@ def generate_pipeline(
 
 # Declared before the "/{pipeline_id}/" routes, like /generate, so no id route
 # can ever claim the path.
-@router.post("/revise")
+@router.post("/revise", dependencies=[Depends(user_rate_limit)])
 def revise_pipeline(
     body: ReviseRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
 ) -> ReviseResponse:
@@ -110,9 +114,10 @@ def delete_pipeline(pipeline_id: int, user: CurrentUser, session: DbSession) -> 
     return Response(status_code=204)
 
 
-@router.post("/{pipeline_id}/run")
+@router.post("/{pipeline_id}/run", dependencies=[Depends(user_rate_limit)])
 def run_pipeline(pipeline_id: int, body: RunRequest, context: PipelineRun) -> RunResponse:
-    """Kept for API compatibility: a recorded run, waited for to its end.
+    """Kept for API compatibility: a recorded run, waited for to its end, at most
+    RUN_WAIT_MAX_SECONDS (then a 202 ``run_still_running``: the run goes on).
     New clients start one with ``POST /pipelines/{id}/runs`` and poll it."""
     pipeline = repository.get_owned(context.session, context.user, pipeline_id)
     start = RunStart(body.input, body.inputs, body.budget)

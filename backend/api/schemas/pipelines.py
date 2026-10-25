@@ -1,8 +1,8 @@
-"""Contracts for pipelines, runs, planning and the model catalogue."""
+"""Contracts for pipelines, runs and the model catalogue (planning: ``planning``)."""
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import (
     AfterValidator,
@@ -23,10 +23,18 @@ from api.models import (
     STEP_ROLE_MAX_LENGTH,
     STEP_TITLE_MAX_LENGTH,
 )
-from api.schemas.common import ModelId, NonBlank, UtcDateTime
+from api.schemas.common import (
+    PIPELINE_MAX_STEPS,
+    STEP_PROMPT_MAX_LENGTH,
+    ModelId,
+    NonBlank,
+    RunInputValues,
+    Trimmed,
+    UtcDateTime,
+    ensure_run_input_size,
+)
 from api.schemas.usage import BudgetIn
 from api.services.multiagent.conditions import StepCondition, tidy
-from api.services.pipeline_changes import ChangeKind, ChangeTarget
 from api.services.pipeline_inputs import input_name_error
 
 
@@ -97,7 +105,7 @@ class PipelineStepIn(BaseModel):
     allowed_tools: list[NonBlank] | None = None
     is_output: bool = False
     expected_output: str = Field("", max_length=STEP_EXPECTED_OUTPUT_MAX_LENGTH)
-    prompt: NonBlank
+    prompt: Annotated[NonBlank, Field(max_length=STEP_PROMPT_MAX_LENGTH)]
     model: ModelId
     condition: StepConditionIn | None = None
     review: StepReviewIn | None = None
@@ -116,7 +124,7 @@ class PipelineStepIn(BaseModel):
         return self
 
 
-def _valid_steps(steps: list[PipelineStepIn]) -> list[PipelineStepIn]:
+def valid_steps(steps: list[PipelineStepIn]) -> list[PipelineStepIn]:
     if not steps:
         raise ValueError("A pipeline needs at least one step.")
     orders = [step.order for step in steps]
@@ -125,7 +133,9 @@ def _valid_steps(steps: list[PipelineStepIn]) -> list[PipelineStepIn]:
     return steps
 
 
-Steps = Annotated[list[PipelineStepIn], AfterValidator(_valid_steps)]
+Steps = Annotated[
+    list[PipelineStepIn], Field(max_length=PIPELINE_MAX_STEPS), AfterValidator(valid_steps)
+]
 PipelineName = Annotated[NonBlank, Field(max_length=PIPELINE_NAME_MAX_LENGTH)]
 
 
@@ -191,20 +201,23 @@ class PipelineOut(BaseModel):
     steps: list[PipelineStepOut]
 
 
-Trimmed = Annotated[str, StringConstraints(strip_whitespace=True)]
-
-
 class RunRequest(BudgetIn):
     """Contract for POST /api/pipelines/<id>/run.
 
     ``input`` is the free text a pipeline without named inputs runs on;
     ``inputs`` holds a value for each input a pipeline declares. Which one is
-    required depends on the pipeline, so the service checks them. The optional
-    spending limits (``BudgetIn``) stop the run once reached.
+    required depends on the pipeline, so the service checks them; together they
+    hold at most RUN_INPUT_MAX_LENGTH characters. The optional spending limits
+    (``BudgetIn``) stop the run once reached.
     """
 
     input: Trimmed = ""
-    inputs: dict[str, Trimmed] = Field(default_factory=dict)
+    inputs: RunInputValues = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _bounded(self) -> RunRequest:
+        ensure_run_input_size(self.input, self.inputs)
+        return self
 
 
 class ToolCallOut(BaseModel):
@@ -231,65 +244,6 @@ class RunResponse(BaseModel):
     pipeline_name: str
     final_output: str
     intermediate_results: list[StepResultOut]
-
-
-class GenerateRequest(BaseModel):
-    """Contract for POST /api/pipelines/generate."""
-
-    description: NonBlank
-    #: Omitted means the caller's default model.
-    planner_model: ModelId | None = None
-
-
-class GenerateResponse(BaseModel):
-    generated_pipeline: dict[str, Any]
-    available_models: list[str]
-
-
-#: The longest change request a revision accepts: a few sentences.
-REVISION_INSTRUCTION_MAX_LENGTH = 2000
-
-
-class DraftStepIn(PipelineStepIn):
-    """A step of a draft under revision: unlike a saved step, its prompt may
-    still be blank (the planner writes it)."""
-
-    prompt: Trimmed = ""
-
-
-class PipelineDraftIn(BaseModel):
-    """The pipeline a revision starts from: ``PipelineIn``'s fields, but it may be
-    unsaved and unfinished, so its name and step prompts may be blank. Everything
-    else is checked as on save."""
-
-    name: Annotated[Trimmed, Field(max_length=PIPELINE_NAME_MAX_LENGTH)] = ""
-    inputs: Inputs = Field(default_factory=list)
-    steps: Annotated[list[DraftStepIn], AfterValidator(_valid_steps)]
-
-
-class ReviseRequest(BaseModel):
-    """Contract for POST /api/pipelines/revise. Nothing is saved."""
-
-    pipeline: PipelineDraftIn
-    instruction: Annotated[NonBlank, Field(max_length=REVISION_INSTRUCTION_MAX_LENGTH)]
-    #: Omitted means the caller's default model.
-    planner_model: ModelId | None = None
-
-
-class PipelineChangeOut(BaseModel):
-    """One difference between the draft and its revision, for people to review."""
-
-    target: ChangeTarget
-    kind: ChangeKind
-    label: str
-    order: int | None
-    fields: list[str]
-
-
-class ReviseResponse(BaseModel):
-    revised_pipeline: dict[str, Any]
-    changes: list[PipelineChangeOut]
-    available_models: list[str]
 
 
 class ModelsResponse(BaseModel):
