@@ -13,21 +13,56 @@ proxy gives you locally.
 | Job | What it does |
 |---|---|
 | `check` | `uv sync --frozen`, `npm ci`, then **`make check`** — Ruff, mypy, pytest (including the migrations-match-models check), Vitest and the production build. The same command you run locally (AGENTS.md §9). |
-| `image` | Builds the `Dockerfile` and smoke-tests the container: `/api/health` answers and `/settings` returns the app shell. |
+| `audit` | Known vulnerabilities in the locked dependencies: `pip-audit` over the Python packages the image installs, `npm audit --audit-level=high` over the frontend lockfile (see [Dependency updates and audits](#dependency-updates-and-audits)). |
+| `image` | Builds the `Dockerfile` and smoke-tests the container twice. Started as root on a root-owned volume, as on Railway: `/api/health` answers, `/settings` returns the app shell, the server runs as uid 10001 and owns the database it created. Started with `--user 10001`: it serves as well. |
 
-Railway deploys `main` only once both jobs pass (see *Wait for CI* below).
+Railway deploys `main` only once all three jobs pass (see *Wait for CI* below).
+
+### Dependency updates and audits
+
+- **Pinned.** The `Dockerfile` pins each base image by digest
+  (`node:24-alpine@sha256:…`, the tag kept for readers) and `ci.yml` pins each
+  action to a commit (`actions/checkout@<sha> # v4.4.0`); `uv.lock` and
+  `package-lock.json` pin the packages. A tag that moves changes nothing until a
+  pull request says so. The Debian packages (`apt-get install`) come from the
+  base image's Debian release when the image is built.
+- **Updated weekly by Dependabot** (`.github/dependabot.yml`): GitHub Actions,
+  the base images, npm (`frontend/`) and uv (`uv.lock`). Minor and patch updates
+  come as one pull request per ecosystem; a major update comes on its own, as
+  does SQLAlchemy, which `pyproject.toml` keeps below 2.1 until the code moves to
+  2.1's typing. Dependabot does not change the Python or Node version: move the
+  `python:` image tag together with `.python-version` (which CI and the
+  `uv sync` in the image read), and `node:` with `node-version` in `ci.yml`.
+- **Audited on every pull request and push** (the `audit` job). Python:
+  `uv export --frozen --no-dev` lists the packages the image installs at their
+  locked versions, and a pinned `pip-audit` looks each one up; the dev tools
+  (Ruff, mypy, pytest) only run in CI and are left out. npm:
+  `npm audit --audit-level=high` over the whole lockfile, dev dependencies
+  included, because Vite, Rollup and esbuild build the bundle browsers run; only
+  high and critical advisories fail the job (a known-malicious package is rated
+  critical).
+- **When the audit fails, `main` does not deploy.** Update the package (take the
+  Dependabot pull request, or `uv lock --upgrade-package NAME`, or
+  `npm update NAME --prefix frontend`). When no fixed version exists and the
+  advisory does not apply, add `--ignore-vuln <ID>` to the `pip-audit` line, or
+  for npm pin a fixed transitive version with `overrides` in
+  `frontend/package.json`, and say why in the commit.
+- Turn on Dependabot alerts and security updates in the repository's
+  *Settings → Code security*, so advisories published between pushes reach you.
 
 ## The image
 
 | | |
 |---|---|
 | Build | `docker build -t aimix .` |
-| Runs as | non-root user `aimix` (uid 10001) |
-| Start | `alembic upgrade head`, then Uvicorn on `$PORT` (default 8000) with proxy headers |
-| Defaults | `APP_ENV=production`, `FRONTEND_DIST_DIR=/app/frontend/dist`, `DATABASE_URL=sqlite:////data/aimix.sqlite3`, `AGENT_WORKSPACE_DIR=/data/workspace`, `OMP_THREAD_LIMIT=1` |
+| Base images | `python:3.12-slim-trixie` (Python 3.12, as in `.python-version`), `node:24-alpine` for the bundle and `ghcr.io/astral-sh/uv` to install the locked dependencies, each pinned by digest |
+| Runs as | non-root user `aimix` (uid 10001). The entrypoint (`docker-entrypoint.sh`) starts as root only to give `aimix` the volume at `/data` (the mount point, and anything an earlier run as root left there), then drops to `aimix` with no capabilities and runs the command. Started as another user (`--user 10001`), it runs the command as it is |
+| Start | `alembic upgrade head`, then Uvicorn on `$PORT` (default 8000); it reads proxy headers only when `TRUSTED_PROXY_HOPS` is above 0 (see [Client address behind a proxy](#client-address-behind-a-proxy)) |
+| Defaults | `APP_ENV=production`, `FRONTEND_DIST_DIR=/app/frontend/dist`, `AIMIX_DATA_DIR=/data`, `DATABASE_URL=sqlite:////data/aimix.sqlite3`, `AGENT_WORKSPACE_DIR=/data/workspace`, `TRUSTED_PROXY_HOPS=2`, `FORWARDED_ALLOW_IPS=*`, `OMP_THREAD_LIMIT=1` |
+| Health | `HEALTHCHECK` calls `/api/health` every 30 s, with the first `ALLOWED_HOSTS` entry as `Host` (Railway ignores it and uses `healthcheckPath`) |
 | OCR | Tesseract 5 from Debian (`tesseract-ocr`, with `tesseract-ocr-eng` and `tesseract-ocr-fra`), for scanned PDFs and images. About 105 MB of the image |
 | System packages | `fonts-dejavu-core` (installed with `--no-install-recommends`), the TrueType font PDF artifacts embed (`PDF_FONT_PATH`, `PDF_BOLD_FONT_PATH`) |
-| Never contains | `backend/.env`, any `*.sqlite3`, tests, `node_modules` (`.dockerignore`) |
+| Never contains | `uv`, `backend/.env`, users' files from a development checkout (`backend/workspace/`), any `*.sqlite3`, logs, tests, caches, `node_modules`: `.dockerignore` lets in only what the `Dockerfile` copies |
 
 ### OCR in the image
 
@@ -55,14 +90,50 @@ more threads made no page faster, and under a one-CPU quota made each about 3.5
 times slower). Expect about three seconds per dense A4 page per CPU, so a 30-page
 scan holds its request for one to two minutes.
 
-Try it locally — production settings refuse to start without these two:
+Try it locally — production settings refuse to start without these two (and
+`SECRET_KEY` must be at least 32 characters). No proxy stands in front here, so
+`TRUSTED_PROXY_HOPS=0`:
 
 ```bash
 docker run --rm -p 8080:8000 -v aimix-data:/data \
   -e SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')" \
-  -e ALLOWED_HOSTS=localhost -e ALLOW_PUBLIC_REGISTRATION=true aimix
+  -e ALLOWED_HOSTS=localhost -e TRUSTED_PROXY_HOPS=0 -e ALLOW_PUBLIC_REGISTRATION=true aimix
 # open http://localhost:8080, register, then add your key on the Settings page
 ```
+
+### Client address behind a proxy
+
+The login and registration rate limits count requests per client address. Behind
+a proxy the connection comes from the proxy, so the app finds the client in the
+`X-Forwarded-For` header instead, counting `TRUSTED_PROXY_HOPS` entries from the
+right: the entries on the right are added by the proxies, while anything further
+left may come from the client and can be forged. With no header the app uses the
+connection's address; with fewer entries than hops, the leftmost one.
+
+| Where the container runs | `TRUSTED_PROXY_HOPS` |
+|---|---|
+| Railway | `2`, the image's default |
+| A plain `docker run`, no proxy in front | `0`, so the header is ignored |
+| Behind one reverse proxy of your own (nginx, Caddy, a load balancer) | `1` |
+
+Railway does not document how its edge proxy fills the header. A Railway user's
+measurement (September 2026) found that the edge drops what the client sent and
+hands the app two entries, the client and then a Railway or CDN hop; so the
+client is the second entry from the right. `1` would read that shared hop and put
+every user in one rate-limit bucket. `2` is right whether the edge drops the
+client's entries or appends to them. Railway may change this, so check it on your
+service: log in from two networks and see whether they are limited separately.
+Requests that reach the service over Railway's private network
+(`*.railway.internal`) skip the edge and its cleaning of the header; do not
+expose the app there to anything you do not trust.
+
+The same variable decides whether Uvicorn reads the proxy headers. Above 0 it
+takes the scheme from `X-Forwarded-Proto`, which is how the app knows a request
+came over https, from any address (`FORWARDED_ALLOW_IPS=*`, as the container is
+reached only through the proxy). Uvicorn then also logs the leftmost
+`X-Forwarded-For` entry as the client address in its access log, which the
+client can forge, so nothing relies on it. At 0 Uvicorn ignores the proxy
+headers.
 
 ## Railway
 
@@ -87,11 +158,15 @@ application files change.
    | `SECRET_KEY` | `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` | Signs JWTs and encrypts saved API keys. Changing it signs everyone out and makes saved keys unreadable. |
    | `ALLOWED_HOSTS` | `${{RAILWAY_PUBLIC_DOMAIN}},healthcheck.railway.app` | Railway's health check calls with host `healthcheck.railway.app`; without it the deploy never turns healthy. |
    | `CORS_ALLOWED_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Same origin, so only for completeness. |
-   | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`python -m api.cli create-user NAME` in the service shell). Existing accounts are unaffected. |
-   | `RAILWAY_RUN_UID` | `0` | Railway mounts volumes as root; the non-root image user could not write the database otherwise. |
+   | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`docker-entrypoint.sh python -m api.cli create-user NAME` in the service shell, which runs it as the app user). Existing accounts are unaffected. |
+   | `TRUSTED_PROXY_HOPS` | unset (the image sets `2`) | Where the rate limits find the client's address; see [Client address behind a proxy](#client-address-behind-a-proxy). |
    | `RUN_DEFAULT_MAX_COST_USD` | optional (default empty: no limit) | A spending limit, in US dollars, for every run whose starter sets none: the run stops, failed, once its model calls have cost this much. A user can set a different limit on any run, higher or lower, and raise it to resume a run that stopped; see [Spending limits](#spending-limits-and-usage). |
    | `WORKSPACE_MAX_TOTAL_BYTES` | optional (default `100000000`) | The storage limit of one user's files. Uploads (each capped at `DOCUMENT_MAX_BYTES`, 10 MB) and agent artifacts both count. |
    | `WORKSPACE_UPLOAD_EXTENSIONS` | optional | The file types the Files page accepts (default `.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.yaml,.yml,.html`). Downloads are always attachments, so allowing more types does not let them run in the app. |
+
+   `RAILWAY_RUN_UID` is no longer needed: the image hands the root-owned volume
+   to its own user by itself. A service that still sets it to `0` keeps working
+   (the app still runs as uid 10001); you can delete the variable.
 
 4. **Domain.** *Settings → Networking → Generate Domain*.
 5. **Wait for CI.** *Settings → Source*: connect the GitHub repo on branch
@@ -324,7 +399,9 @@ the rest wait queued.
 |---|---|---|
 | Deploy stuck on "healthcheck failed", logs show `400` | `healthcheck.railway.app` missing from `ALLOWED_HOSTS` | Add it |
 | Container exits: `SECRET_KEY must be set in production` | Variable missing | Set `SECRET_KEY` |
-| `sqlite3.OperationalError: unable to open database file` | No volume at `/data`, or `RAILWAY_RUN_UID` unset | Mount the volume at `/data`; set `RAILWAY_RUN_UID=0` |
+| `sqlite3.OperationalError: unable to open database file` | No volume at `/data`, or the container was started as a user other than root or 10001 (`--user`), so the entrypoint could not give it the volume | Mount the volume at `/data`; let the container start as root (the default), or make the volume owned by 10001 |
+| Container exits at start: `chown: changing ownership of '/data…': Operation not permitted` | The runtime refused root's `chown` on the volume (a rootless runtime, or a network filesystem that squashes root) | Make the volume owned by uid 10001 and start with `--user 10001` |
+| One user's failed logins rate-limit everyone, or a client dodges the limit by sending its own `X-Forwarded-For` | `TRUSTED_PROXY_HOPS` does not match the proxies in front | Set it as in [Client address behind a proxy](#client-address-behind-a-proxy) |
 | Everyone signed out and saved keys "can no longer be read" | `SECRET_KEY` changed | Keep it stable; users re-enter keys in Settings |
 | Container exits: `FRONTEND_DIST_DIR=… has no index.html` | Image built without the frontend stage | Build with the repository `Dockerfile` |
 | Container exits: `INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production` | A local-development setting reached production | Remove the variable |
