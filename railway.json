@@ -3,7 +3,16 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
-    "watchPatterns": ["backend/**", "frontend/**", "pyproject.toml", "uv.lock", "Dockerfile"]
+    "watchPatterns": [
+      "backend/**",
+      "frontend/**",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "Dockerfile",
+      ".dockerignore",
+      "docker-entrypoint.sh"
+    ]
   },
   "deploy": {
     "healthcheckPath": "/api/health",
