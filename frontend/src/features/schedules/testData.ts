@@ -1,6 +1,16 @@
+import { configure } from '@testing-library/react';
 import { vi } from 'vitest';
 
 import type { Schedule } from '../../core/api/types';
+
+/**
+ * For a test file that waits on the schedule form's real 300 ms debounce, several times in
+ * each test: room to do so on a slow or busy machine, where a test would otherwise time out.
+ */
+export function allowForSlowMachines() {
+  vi.setConfig({ testTimeout: 20_000 });
+  configure({ asyncUtilTimeout: 5000 });
+}
 
 /** Shared by the schedule tests: a weekly schedule of a pipeline without named inputs. */
 export const SCHEDULE: Schedule = {

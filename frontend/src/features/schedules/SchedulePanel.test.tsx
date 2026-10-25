@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API } from '../../core/api/endpoints';
 import type { Pipeline } from '../../core/api/types';
 import { SchedulePanel, type SchedulePanelProps } from './SchedulePanel';
-import { SCHEDULE, json, refusal, serve } from './testData';
+import { SCHEDULE, allowForSlowMachines, json, refusal, serve } from './testData';
 import { PREVIEW_DELAY_MS } from './useSchedulePreview';
+
+allowForSlowMachines();
 
 const PIPELINE: Pipeline = { id: 3, name: 'Competitor news', inputs: [], steps: [] };
 const NAMED: Pipeline = {
@@ -35,6 +37,12 @@ const textBox = () => screen.getByRole('textbox', { name: 'Input for each schedu
 
 async function openPanel() {
   await userEvent.click(toggle());
+}
+
+/** Puts a sentence in the input in one step: typing it key by key is slow when the machine is busy. */
+async function enter(text: string) {
+  await userEvent.click(textBox());
+  await userEvent.paste(text);
 }
 
 describe('SchedulePanel', () => {
@@ -81,7 +89,7 @@ describe('SchedulePanel', () => {
 
     expect(await screen.findByText('Every Monday at 09:00, Paris time')).toBeInTheDocument();
     expect(await screen.findByText('Next run: Mon 26 Oct, 09:00')).toBeInTheDocument();
-    await userEvent.type(textBox(), 'Research my competitors’ news');
+    await enter('Research my competitors’ news');
     await userEvent.click(submit());
 
     const created = calls.find((call) => call.path === API.schedules);

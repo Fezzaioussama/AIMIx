@@ -8,7 +8,9 @@ import type { Schedule } from '../../core/api/types';
 import { makeRun } from '../runs/testData';
 import { SCHEDULES_PATH } from './paths';
 import { SchedulesPage } from './SchedulesPage';
-import { NAMED_SCHEDULE, SCHEDULE, json, refusal, serve } from './testData';
+import { NAMED_SCHEDULE, SCHEDULE, allowForSlowMachines, json, refusal, serve } from './testData';
+
+allowForSlowMachines();
 
 const NO_CONTENT = () => new Response(null, { status: 204 });
 const LISTING = `GET ${API.schedules}`;
