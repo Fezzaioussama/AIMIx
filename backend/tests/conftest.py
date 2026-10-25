@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from concurrent.futures import Future
+from pathlib import Path
 from typing import Any, TypeVar
 
 import pytest
@@ -92,6 +93,9 @@ TEST_SETTINGS = Settings(
     togetherai_default_model="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
 )
 pin_settings(TEST_SETTINGS)
+#: The workspace of toolbox configs built at import time. It cannot be created,
+#: so workspace tools are never offered from it: tests that need files use tmp_path.
+UNUSED_WORKSPACE = Path("/nonexistent/aimix-test-workspace")
 
 
 class FakeProvider:

@@ -6,6 +6,8 @@ one that does not exist. Each write commits its own transaction.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from sqlalchemy import Select, func, select
@@ -61,16 +63,27 @@ def name_taken_error(name: str) -> ValidationFailed:
     return ValidationFailed(f"You already have an integration named {name}.")
 
 
-def _commit(session: Session, name: str | None) -> None:
-    """Commit. Two requests can pass the name check together, so the database's
-    unique name per user has the last word: that is the same refusal, not a 500."""
+def over_quota_error(limit: int) -> ValidationFailed:
+    """The refusal for one integration more than INTEGRATIONS_MAX_PER_USER allows."""
+    return ValidationFailed(f"You can connect up to {limit} integrations. Delete one first.")
+
+
+@contextmanager
+def _unique_name(session: Session, name: str | None) -> Iterator[None]:
+    """Two requests can pass the name check together, so the database's unique
+    name per user has the last word: that is the same refusal, not a 500."""
     try:
-        session.commit()
+        yield
     except IntegrityError as cause:
         session.rollback()
         if name is None:
             raise
         raise name_taken_error(name) from cause
+
+
+def _commit(session: Session, name: str | None) -> None:
+    with _unique_name(session, name):
+        session.commit()
 
 
 def name_taken(session: Session, user: User, name: str, ignore_id: int | None = None) -> bool:
@@ -100,8 +113,18 @@ def _apply(integration: Integration, changes: IntegrationChanges) -> None:
         integration.header_hints = changes.headers.hints
 
 
-def create(session: Session, user: User, changes: IntegrationChanges) -> Integration:
-    """A new integration for ``user``; whatever ``changes`` leaves out starts empty."""
+def create(
+    session: Session, user: User, changes: IntegrationChanges, limit: int | None = None
+) -> Integration:
+    """A new integration for ``user``; whatever ``changes`` leaves out starts empty.
+
+    With ``limit``, the row is inserted and the user's integrations counted in
+    one transaction, rolled back with ``over_quota_error`` when there are now
+    more: two requests that both passed an earlier count cannot both get in.
+    SQLite serialises the writes; elsewhere the owner's row is locked first.
+    """
+    if limit is not None:
+        session.execute(select(User.id).where(User.id == user.id).with_for_update())
     integration = Integration(
         user_id=user.id,
         name="",
@@ -113,6 +136,11 @@ def create(session: Session, user: User, changes: IntegrationChanges) -> Integra
     )
     _apply(integration, changes)
     session.add(integration)
+    with _unique_name(session, changes.name):
+        session.flush()
+    if limit is not None and count(session, user) > limit:
+        session.rollback()
+        raise over_quota_error(limit)
     _commit(session, changes.name)
     return integration
 

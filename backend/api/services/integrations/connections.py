@@ -2,10 +2,12 @@
 user's enabled integrations. The chat agent, pipeline step agents and the tool
 catalogue all get them from ``mcp_connections_for`` (AGENTS.md §3).
 
-A user's server is reached through ``GuardedClientFactory``: before every
-request — discovery and each tool call open their own session — the host is
-resolved and refused unless it is public. Operator servers are trusted
-configuration and keep the SDK's default client.
+A user's server is reached through ``GuardedClientFactory``: every connection
+— discovery and each tool call open their own session — resolves the host,
+is refused unless every address is public, and goes to one of exactly those
+addresses; every response is cut off past MCP_MAX_RESPONSE_BYTES
+(``api.services.outbound``). Operator servers are trusted configuration and
+keep the SDK's default client.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import anyio
+import httpcore
 import httpx
 from langchain_mcp_adapters.sessions import Connection
 from pydantic import ValidationError
@@ -23,10 +25,10 @@ from api.exceptions import ValidationFailed
 from api.models import Integration, User
 from api.repositories import integrations as repository
 from api.security import SecretBox, UnreadableSecret, secret_box_for
-from api.services.addresses import Resolver, ensure_public_host, resolve_host
 from api.services.integrations.headers import reveal
 from api.services.integrations.rules import IntegrationRules, check_url, rules_from
 from api.services.mcp import MCPConnections, connection, connections
+from api.services.outbound import OutboundPolicy, guarded_client, guarded_transport
 from config.settings import HttpMCPServer, Settings
 
 logger = logging.getLogger(__name__)
@@ -34,11 +36,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class GuardedClientFactory:
-    """HTTP clients whose every request first checks that the host is still public
-    (SSRF, AGENTS.md §6). Matches the MCP SDK's ``McpHttpClientFactory``."""
+    """HTTP clients that connect only to addresses checked as public at connect
+    time and read bounded bodies (SSRF, AGENTS.md §6). Matches the MCP SDK's
+    ``McpHttpClientFactory``; ``network`` opens sockets, a fake in tests."""
 
     timeout_seconds: float
-    resolver: Resolver = resolve_host
+    policy: OutboundPolicy
+    network: httpcore.AsyncNetworkBackend | None = None
 
     def __call__(
         self,
@@ -46,16 +50,12 @@ class GuardedClientFactory:
         timeout: httpx.Timeout | None = None,
         auth: httpx.Auth | None = None,
     ) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
+        return guarded_client(
+            guarded_transport(self.policy, self.network),
             headers=headers,
             timeout=timeout or httpx.Timeout(self.timeout_seconds),
             auth=auth,
-            event_hooks={"request": [self.check]},
         )
-
-    async def check(self, request: httpx.Request) -> None:
-        with anyio.fail_after(self.timeout_seconds):
-            await ensure_public_host(request.url.host, self.resolver)
 
 
 def integration_connection(
@@ -77,13 +77,11 @@ def integration_connection(
         )
     except ValidationError as cause:
         raise ValidationFailed("That server URL is not valid.") from cause
-    policy = rules.addresses
-    guard = (
-        None
-        if policy.allow_private
-        else GuardedClientFactory(rules.timeout_seconds, policy.resolver)
+    addresses = rules.addresses
+    policy = OutboundPolicy(addresses.resolver, addresses.allow_private, rules.max_response_bytes)
+    return connection(
+        server, rules.timeout_seconds, GuardedClientFactory(rules.timeout_seconds, policy)
     )
-    return connection(server, rules.timeout_seconds, guard)
 
 
 def _usable(integration: Integration, box: SecretBox, rules: IntegrationRules) -> Connection | None:
@@ -112,5 +110,7 @@ def mcp_connections_for(database: Database, user: User, settings: Settings) -> M
     box = secret_box_for(settings)
     own = {row.name: usable for row in rows if (usable := _usable(row, box, rules)) is not None}
     return MCPConnections(
-        operator=connections(settings.mcp_servers, settings.mcp_timeout_seconds), user=own
+        operator=connections(settings.mcp_servers, settings.mcp_timeout_seconds),
+        user=own,
+        result_max_chars=settings.mcp_tool_result_max_chars,
     )

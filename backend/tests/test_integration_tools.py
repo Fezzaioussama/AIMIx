@@ -14,7 +14,10 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from langchain_core.messages import ToolMessage
 from langchain_mcp_adapters.sessions import Connection
+from langchain_mcp_adapters.tools import convert_mcp_tool_to_langchain_tool
+from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 from sqlalchemy.orm import Session
 
 from api.exceptions import ToolUnavailable
@@ -24,13 +27,12 @@ from api.repositories import users
 from api.repositories.integrations import IntegrationChanges
 from api.security import SecretBox, hash_password
 from api.services import mcp_discovery
-from api.services.addresses import AddressNotAllowed
 from api.services.integrations.connections import GuardedClientFactory, mcp_connections_for
 from api.services.integrations.headers import seal
 from api.services.mcp import MCPConnections
 from config.settings import HttpMCPServer, get_settings, pin_settings
-from tests.conftest import TEST_SETTINGS
-from tests.mcp_fakes import FakeServers, ServerBehaviour, fake_tool, resolver
+from tests.conftest import TEST_SETTINGS, tool_call
+from tests.mcp_fakes import FakeServers, ServerBehaviour, fake_tool
 
 TOKEN = "Bearer crm-secret-token-1234"
 DOCS = HttpMCPServer(transport="streamable_http", url="https://docs.example/mcp")
@@ -75,8 +77,12 @@ def test_one_builder_merges_operator_servers_and_enabled_integrations(
     assert (set(built.operator), set(built.user)) == ({"docs"}, {"crm"})
     crm = cast(dict[str, Any], built.user["crm"])
     assert (crm["url"], crm["headers"]) == ("https://crm.example/mcp", {"Authorization": TOKEN})
-    assert isinstance(crm["httpx_client_factory"], GuardedClientFactory)
+    guard = crm["httpx_client_factory"]
+    assert isinstance(guard, GuardedClientFactory)
+    assert guard.policy.max_response_bytes == TEST_SETTINGS.mcp_max_response_bytes
+    assert not guard.policy.allow_private
     assert "httpx_client_factory" not in cast(dict[str, Any], built.operator["docs"])
+    assert built.result_max_chars == TEST_SETTINGS.mcp_tool_result_max_chars
 
 
 @pytest.mark.usefixtures("operator_docs")
@@ -96,7 +102,7 @@ def test_an_integration_that_cannot_be_used_now_is_skipped(
     assert "crm-secret" not in caplog.text
 
 
-def test_local_private_servers_use_the_default_client(
+def test_local_private_servers_skip_the_address_check_but_keep_the_size_limit(
     app: FastAPI, session: Session, user: User
 ) -> None:
     allowed = {"app_env": "local", "integrations_allow_private_network": True}
@@ -106,19 +112,10 @@ def test_local_private_servers_use_the_default_client(
         built = mcp_connections_for(app.state.database, user, get_settings())
     finally:
         pin_settings(TEST_SETTINGS)
-    assert "httpx_client_factory" not in cast(dict[str, Any], built.user["local"])
-
-
-@pytest.mark.asyncio
-async def test_every_request_to_an_integration_rechecks_its_address() -> None:
-    guard = GuardedClientFactory(1, resolver({"crm.example": ["10.0.0.5"]}))
-
-    with pytest.raises(AddressNotAllowed, match=r"crm\.example is not a public address"):
-        await guard.check(httpx.Request("POST", "https://crm.example/mcp"))
-    await guard.check(httpx.Request("POST", "https://public.example/mcp"))
-    async with guard(headers={"Authorization": TOKEN}) as client:
-        assert client.event_hooks["request"] == [guard.check]
-        assert client.headers["authorization"] == TOKEN
+    guard = cast(dict[str, Any], built.user["local"])["httpx_client_factory"]
+    assert isinstance(guard, GuardedClientFactory)
+    assert guard.policy.allow_private
+    assert guard.policy.max_response_bytes == TEST_SETTINGS.mcp_max_response_bytes
 
 
 def user_servers(*names: str) -> MCPConnections:
@@ -195,3 +192,60 @@ def test_the_catalogue_survives_an_unreachable_integration(
 
     assert response.status_code == 200
     assert {item["source"] for item in response.json()} == {"AIMIx"}
+
+
+def text(value: str) -> TextContent:
+    return TextContent(type="text", text=value)
+
+
+def test_a_tool_result_is_cut_at_the_text_limit() -> None:
+    image = ImageContent(type="image", data="aGk=", mimeType="image/png")
+    result = CallToolResult(content=[text("a" * 30), image, text("b" * 30), text("c" * 5), image])
+
+    capped = mcp_discovery.cap_text(result, 40)
+
+    assert capped.content == [
+        text("a" * 30),
+        image,
+        text("b" * 10 + mcp_discovery.TRUNCATED_NOTE),
+        image,
+    ]
+    assert mcp_discovery.cap_text(result, 65) is result
+
+
+class OneResultSession:
+    """Stands in for an MCP session whose tool answers with a huge text."""
+
+    async def call_tool(self, name: str, arguments: Any, **kwargs: Any) -> CallToolResult:
+        return CallToolResult(content=[text("x" * 100_000)])
+
+
+@pytest.mark.asyncio
+async def test_the_model_receives_an_mcp_tool_result_cut_at_the_limit() -> None:
+    schema = {"type": "object", "properties": {}}
+    tool = convert_mcp_tool_to_langchain_tool(
+        cast(Any, OneResultSession()),
+        Tool(name="dump", inputSchema=schema),
+        tool_interceptors=[mcp_discovery.ResultCap(10)],
+    )
+
+    message = await tool.ainvoke(tool_call("dump", {}))
+
+    assert isinstance(message, ToolMessage)
+    blocks = cast(list[dict[str, Any]], message.content)
+    assert [block["text"] for block in blocks] == ["x" * 10 + mcp_discovery.TRUNCATED_NOTE]
+
+
+@pytest.mark.asyncio
+async def test_discovery_caps_every_servers_tool_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = servers(monkeypatch, {"docs": ["search"], "crm": ["lookup"]})
+    configured = MCPConnections(
+        operator=cast(dict[str, Connection], {"docs": {}}),
+        user=cast(dict[str, Connection], {"crm": {}}),
+        result_max_chars=1234,
+    )
+
+    await mcp_discovery.discover_tools(configured, [], 1)
+
+    cap = [mcp_discovery.ResultCap(1234)]
+    assert fake.interceptors == {"docs": cap, "crm": cap}

@@ -43,7 +43,7 @@ async def test_mcp_discovery_prefixes_names(monkeypatch: pytest.MonkeyPatch) -> 
         return query
 
     class FakeMCPClient:
-        def __init__(self, configured: object, *, tool_name_prefix: bool) -> None:
+        def __init__(self, configured: object, *, tool_name_prefix: bool, **_: object) -> None:
             observed["prefix"] = tool_name_prefix
 
         async def get_tools(self) -> list[Any]:
@@ -58,7 +58,7 @@ async def test_mcp_discovery_prefixes_names(monkeypatch: pytest.MonkeyPatch) -> 
 @pytest.mark.asyncio
 async def test_mcp_discovery_failure_is_a_domain_error(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingMCPClient:
-        def __init__(self, configured: object, *, tool_name_prefix: bool) -> None:
+        def __init__(self, configured: object, *, tool_name_prefix: bool, **_: object) -> None:
             pass
 
         async def get_tools(self) -> list[Any]:

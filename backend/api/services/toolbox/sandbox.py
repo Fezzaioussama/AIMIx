@@ -9,6 +9,11 @@ covers the whole call: creating the sandbox, uploading the inputs, running the
 code and collecting its files. It starts before the sandbox exists, so it
 always ends before the sandbox's own lifetime (the same timeout) does.
 
+Creating the sandbox is shielded from that deadline and from cancellation: a
+creation cut short could leave a sandbox running, and billed, that nothing
+would close. It finishes (bounded by the opener's own request timeout, and at
+most OPEN_GRACE_FACTOR deadlines here), then the call stops and closes it.
+
 Failures raise ``SandboxError``, a ``ToolException``: the agent receives it as
 an error result it can react to.
 """
@@ -33,6 +38,8 @@ OUTPUT_DIR = "/home/user/outputs"
 #: Where a call's files go, relative to its folder: separate, so never colliding.
 CHARTS_FOLDER = "charts"
 OUTPUTS_FOLDER = "outputs"
+#: A shielded creation is still abandoned after this many SANDBOX_TIMEOUT_SECONDS.
+OPEN_GRACE_FACTOR = 2
 
 
 class SandboxError(ToolException):
@@ -122,6 +129,18 @@ class CodeSandbox(Protocol):
 SandboxOpener = Callable[[], Awaitable[CodeSandbox]]
 
 
+def metered(open_sandbox: SandboxOpener, spend: Callable[[], None]) -> SandboxOpener:
+    """``open_sandbox`` that first calls ``spend`` (Decorator): a per-user
+    allowance that raises ``ToolException`` once used up, so no sandbox is
+    created. ``spend`` may touch the database, so it runs in a worker thread."""
+
+    async def open_metered() -> CodeSandbox:
+        await anyio.to_thread.run_sync(spend)
+        return await open_sandbox()
+
+    return open_metered
+
+
 @dataclass(frozen=True)
 class _Candidate:
     #: Where the file goes, relative to the call's folder.
@@ -174,7 +193,7 @@ async def _run(
     sandbox: CodeSandbox | None = None
     try:
         with anyio.fail_after(limits.timeout_seconds):
-            sandbox = await open_sandbox()
+            sandbox = await _open(open_sandbox, limits.timeout_seconds)
             run = await _use(sandbox, code, inputs, limits)
     except TimeoutError as cause:
         raise SandboxTimedOut(
@@ -184,6 +203,14 @@ async def _run(
         if sandbox is not None:  # outside the deadline: closing must not be cut short
             await _close(sandbox, limits.timeout_seconds)
     return run
+
+
+async def _open(open_sandbox: SandboxOpener, timeout_seconds: float) -> CodeSandbox:
+    """Create the sandbox even when the deadline passes or the agent is
+    cancelled meanwhile, so the caller holds it and can close it."""
+    with anyio.CancelScope(shield=True), anyio.fail_after(OPEN_GRACE_FACTOR * timeout_seconds):
+        sandbox = await open_sandbox()
+    return sandbox  # noqa: RET504 - inside the scope, mypy sees a path with no return
 
 
 async def _use(

@@ -10,18 +10,21 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 
 from api.models import User
+from api.repositories import users
+from api.security import hash_password
 from api.services import agent_tools
 from api.services.toolbox import registry
 from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.registry import toolbox_tools
 from api.services.toolbox.sandbox import CodeExecution
 from config.settings import Settings
-from tests.conftest import TEST_SETTINGS
+from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE
 from tests.sandbox_fakes import FakeSandbox, Opener, call
 
-CONFIG = replace(toolbox_config(TEST_SETTINGS), sandbox_api_key="")
+CONFIG = replace(toolbox_config(TEST_SETTINGS, UNUSED_WORKSPACE), sandbox_api_key="")
 
 
 def test_run_python_is_offered_only_with_an_e2b_key(tmp_path: Path) -> None:
@@ -120,10 +123,51 @@ def test_sandbox_settings_reach_the_toolbox_without_showing_the_key() -> None:
         SANDBOX_MAX_FILES="4",
         SANDBOX_MAX_STREAM_CHARS="9000",
     )
-    config = toolbox_config(settings)
+    config = toolbox_config(settings, UNUSED_WORKSPACE)
 
     assert "run_python" in Settings.model_fields["agent_builtin_tools"].default
     assert (config.sandbox_api_key, config.sandbox_timeout_seconds) == ("e2b-real-looking-key", 30)
     assert (config.sandbox_max_output_chars, config.sandbox_max_files) == (2000, 4)
     assert config.sandbox_max_stream_chars == 9000
     assert "e2b-real-looking-key" not in repr(config)
+
+
+def test_the_toolbox_needs_the_users_own_folder() -> None:
+    # No fallback to AGENT_WORKSPACE_DIR itself, which holds every user's folder.
+    with pytest.raises(TypeError, match="workspace_dir"):
+        toolbox_config(TEST_SETTINGS)  # type: ignore[call-arg]
+
+
+@pytest.mark.asyncio
+async def test_each_account_has_an_hourly_allowance_of_run_python_calls(
+    app: FastAPI,
+    session: Session,
+    user: User,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opener = Opener()
+    monkeypatch.setattr(registry, "E2BSandboxOpener", lambda *options: opener)
+    settings = TEST_SETTINGS.model_copy(
+        update={
+            "workspace_dir": tmp_path,
+            "agent_builtin_tools": ["run_python"],
+            "e2b_api_key": "e2b-test",
+            "sandbox_max_calls_per_hour": 2,
+        }
+    )
+    other = users.create(session, "other-user", hash_password("pw-other-123", iterations=1))
+
+    def run_python(owner: User) -> Any:
+        native = agent_tools.native_tools(app.state.database, owner, settings)
+        return next(item for item in native if item.name == "run_python")
+
+    mine = run_python(user)
+    assert [(await call(mine, code="go()")).status for _ in range(2)] == ["success"] * 2
+    refused = await call(mine, code="go()")
+    theirs = await call(run_python(other), code="go()")
+
+    assert refused.status == "error"
+    assert "limited to 2 calls an hour" in str(refused.content)
+    assert theirs.status == "success"
+    assert len(opener.opened) == 3  # the refused call never created a sandbox

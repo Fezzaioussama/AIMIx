@@ -207,3 +207,25 @@ async def test_saved_outputs_never_overwrite_or_leave_the_workspace(tmp_path: Pa
     content = str(message.content)
     assert f"outputs/report.csv: '{FOLDER}/outputs/report.csv' already exists" in content
     assert "outputs/.hidden: Use a visible path relative to the workspace." in content
+
+
+@pytest.mark.asyncio
+async def test_a_csv_the_code_writes_cannot_run_formulas_in_a_spreadsheet(
+    tmp_path: Path,
+) -> None:
+    outputs = {
+        "leads.csv": b'name,site\nacme,=HYPERLINK("evil.example")\n',
+        "plain.csv": "\ufeffname,total\nzoë,-12.5\n".encode(),
+        "latin.csv": "name;note\ncafé;@SUM(1)\n".encode("latin-1"),
+    }
+    sandbox = FakeSandbox(CodeExecution(), outputs)
+
+    message = await call(run_python(tmp_path, Opener(sandbox)), code="export()")
+
+    assert message.status == "success"
+    saved = tmp_path / FOLDER / "outputs"
+    assert (saved / "leads.csv").read_text() == (
+        '"name","site"\n"acme","\'=HYPERLINK(""evil.example"")"\n'
+    )
+    assert (saved / "plain.csv").read_bytes() == outputs["plain.csv"]  # nothing to change
+    assert (saved / "latin.csv").read_text() == '"name";"note"\n"café";"\'@SUM(1)"\n'

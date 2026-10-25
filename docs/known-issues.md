@@ -45,14 +45,11 @@ only. Their URLs are stored as entered, so a service that puts its token in the
 URL keeps it unencrypted at rest (header values are encrypted). A tool call
 that fails at the connection level stops the run, as for `MCP_SERVERS`, instead
 of reaching the agent as an error result. "Test connection" results live only
-in the open page, and the test endpoint has no rate limit beyond its timeout.
-The address check leaves the DNS-rebinding window described in
-[deployment.md](deployment.md#users-integrations-their-own-mcp-servers).
+in the open page.
 
 **Fix options:** encrypt the URL and show only its host; support the MCP OAuth
 flow; a tool interceptor that turns a failed call into an error result; store
-the last test's time and tool count; rate-limit tests like auth requests; pin
-connections to the checked address in a custom httpx transport.
+the last test's time and tool count.
 
 `POST /files` has the same request-size guard, and an agent reading a PDF or
 Word file from its workspace runs the same readers in the agent's thread.

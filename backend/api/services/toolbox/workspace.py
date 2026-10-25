@@ -9,6 +9,7 @@ ToolException it can react to, never as an aborted run.
 
 from __future__ import annotations
 
+import codecs
 import csv
 import json
 from collections.abc import Iterator
@@ -28,6 +29,7 @@ from api.services.files.storage import WorkspaceStorage
 #: Read and searched as they are; any other file is read through the document
 #: readers (PDF, Word, ...), which refuse what they cannot read.
 TEXT_SUFFIXES = frozenset({".csv", ".html", ".json", ".md", ".txt", ".yaml", ".yml"})
+CSV_SUFFIX = ".csv"
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,23 @@ class WorkspaceLimits:
     csv_max_rows: int
     #: What reading one PDF or Word file may cost: the run-document limits.
     documents: ExtractionLimits
+
+
+def _spreadsheet_safe(path: str, content: bytes, options: RenderOptions) -> bytes:
+    """A ``.csv`` with every cell a spreadsheet would run as a formula made text,
+    as ``save_artifact`` saves one (``artifacts.csv_writer``); any other file as
+    it is. A CSV with nothing to change keeps its bytes; a rewritten one is UTF-8,
+    keeping its byte-order mark. One that cannot be checked is refused."""
+    if Path(path).suffix.lower() != CSV_SUFFIX:
+        return content
+    bom = codecs.BOM_UTF8 if content.startswith(codecs.BOM_UTF8) else b""
+    body = content[len(bom) :]
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:  # Latin-1 reads every byte, so no formula stays hidden
+        text = body.decode("latin-1")
+    rendered = render_artifact(CSV_SUFFIX, text, options)
+    return content if rendered == text.encode("utf-8") else bom + rendered
 
 
 @contextmanager
@@ -115,9 +134,10 @@ class LocalWorkspace:
             raise ToolException("The file could not be read.") from cause
 
     def save_bytes(self, path: str, content: bytes) -> str:
-        """Save a new file of any type; returns its workspace-relative path."""
+        """Save a new file of any type; returns its workspace-relative path. A
+        ``.csv`` is made safe to open in a spreadsheet first, like an artifact."""
         with _tool_errors():
-            return self._store(path, content)
+            return self._store(path, _spreadsheet_safe(path, content, self._render))
 
     def _store(self, path: str, data: bytes) -> str:
         """Write a new file within the file limit and the quota, never replacing one."""

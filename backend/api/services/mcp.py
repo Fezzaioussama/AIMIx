@@ -25,6 +25,9 @@ class MCPConnections:
 
     operator: dict[str, Connection] = field(default_factory=dict)
     user: dict[str, Connection] = field(default_factory=dict)
+    #: The text of one tool result the model receives is cut here
+    #: (MCP_TOOL_RESULT_MAX_CHARS); None leaves results whole.
+    result_max_chars: int | None = None
 
 
 def connection(
