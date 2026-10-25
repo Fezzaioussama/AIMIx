@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import * as pipelinesApi from '../../core/api/pipelines';
 import type { Pipeline, PipelineInput, PipelineStep } from '../../core/api/types';
 import { insertStep } from './stages';
+import { withoutStep } from './stepFlowEdits';
 
 type Status = 'idle' | 'generating' | 'saving';
 
@@ -82,7 +83,8 @@ export function useAutoPipeline() {
     setSuccessMessage('');
     setGenerated((current) => {
       if (current === null) return null;
-      const model = current.steps.find((step) => step.stage === stage)?.model ?? current.steps[0].model;
+      const model =
+        current.steps.find((step) => step.stage === stage)?.model ?? current.steps[0].model;
       return {
         ...current,
         steps: insertStep(current.steps, { model, stage, parallel, isOutput: true }),
@@ -95,12 +97,7 @@ export function useAutoPipeline() {
     setGenerated((current) =>
       current === null || current.steps.length === 1
         ? current
-        : {
-            ...current,
-            steps: current.steps
-              .filter((_, position) => position !== index)
-              .map((step, position) => ({ ...step, order: position + 1 })),
-          },
+        : { ...current, steps: withoutStep(current.steps, current.steps[index].order) },
     );
   }, []);
 

@@ -8,7 +8,9 @@ from dataclasses import asdict
 from typing import Any
 
 from api.models import Pipeline, PipelineStep
+from api.services.multiagent.conditions import condition_from_data
 from api.services.multiagent.contracts import InputField, PipelineSpec, StepSpec
+from api.services.multiagent.reviews import review_from_data
 
 
 def _step_spec(step: PipelineStep) -> StepSpec:
@@ -24,6 +26,8 @@ def _step_spec(step: PipelineStep) -> StepSpec:
         step.is_output,
         # Column defaults apply on insert, so an unsaved step may still hold None.
         step.expected_output or "",
+        condition_from_data(step.condition),
+        review_from_data(step.review),
     )
 
 
@@ -69,6 +73,9 @@ def _stored_step(item: Mapping[str, Any]) -> StepSpec:
         allowed_tools=None if selected is None else tuple(selected),
         is_output=bool(item.get("is_output", False)),
         expected_output=item.get("expected_output", ""),
+        # Runs saved before conditions and review loops existed have neither key.
+        condition=condition_from_data(item.get("condition")),
+        review=review_from_data(item.get("review")),
     )
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
@@ -26,10 +26,13 @@ from api.models import (
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
 from api.services.llm import LLMProfile
+from api.services.multiagent.conditions import condition_from_data
 from api.services.multiagent.contracts import PipelineSpec, RunInputs, RunResult
 from api.services.multiagent.contracts import StepAgent as StepGenerator
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
+from api.services.multiagent.reviews import review_from_data
+from api.services.pipeline_flow import ensure_valid_spec, flow_problems, flow_step
 from api.services.pipeline_inputs import bind_run_inputs, input_name_error
 from api.services.prompts import pipeline_generation_prompt
 from config.settings import get_settings
@@ -50,10 +53,11 @@ class PreparedRun:
 def prepare_run(
     pipeline: Pipeline, initial_input: str = "", values: Mapping[str, str] | None = None
 ) -> PreparedRun:
-    """Snapshot a saved pipeline and check a run's free text, or its value for
-    each named input the pipeline declares, before any agent starts (§6)."""
+    """Snapshot a saved pipeline and check it, and a run's free text (or its value
+    for each named input the pipeline declares), before any agent starts (§6)."""
     ensure_runnable(pipeline)
     spec = snapshot_pipeline(pipeline)
+    ensure_valid_spec(spec)
     return PreparedRun(spec, bind_run_inputs(spec.inputs, initial_input, values or {}))
 
 
@@ -122,8 +126,9 @@ def parse_plan(
     """Extract the JSON pipeline from a model response and sanitise it.
 
     ``available_models`` lists the default first; a step naming any other
-    model gets it. Inputs that could not be saved are dropped. Kept separate
-    from the call so it can be tested without a provider.
+    model gets it. Inputs that could not be saved are dropped, and so are the
+    conditions and review loops that could not work. Kept separate from the
+    call so it can be tested without a provider.
     """
     match = JSON_OBJECT_PATTERN.search(raw or "")
     if match is None:
@@ -147,7 +152,17 @@ def parse_plan(
         sanitise_step(step, index, available_models, available_tools)
 
     plan["inputs"] = _sanitise_inputs(plan.get("inputs"))
+    _drop_unusable_flow(steps, plan["inputs"])
     return plan
+
+
+def _drop_unusable_flow(steps: list[dict[str, Any]], inputs: list[dict[str, str]]) -> None:
+    """Set aside each condition and review loop that cannot work in this plan
+    (the checks a save makes): a planner's slip never fails the request, it
+    only leaves that step without the field."""
+    problems = flow_problems([item["name"] for item in inputs], [flow_step(s) for s in steps])
+    for problem in problems:
+        steps[problem.order - 1][problem.field] = None  # orders are the positions, from 1
 
 
 def _text(value: object, limit: int | None = None) -> str:
@@ -183,8 +198,9 @@ def sanitise_step(
     available_tools: list[str] | None,
 ) -> None:
     """Make a planner step storable: unique order, a valid stage, a known model,
-    a short title, role and expected output, and a boolean output flag. Mission
-    templates reuse it, so their steps get models and tools by the same rule.
+    a short title, role and expected output, a boolean output flag, and a
+    condition and review in their stored form (or None). Mission templates
+    reuse it, so their steps get models and tools by the same rule.
 
     ``order`` is renumbered by position because planners that group steps into
     parallel stages tend to repeat it; a missing or invalid stage falls back to
@@ -209,6 +225,12 @@ def sanitise_step(
     else:
         step["allowed_tools"] = None
     step["is_output"] = step.get("is_output") is True
+    condition, review = (
+        condition_from_data(step.get("condition")),
+        review_from_data(step.get("review")),
+    )
+    step["condition"] = None if condition is None else asdict(condition)
+    step["review"] = None if review is None else asdict(review)
 
 
 def ensure_runnable(pipeline: Pipeline) -> None:

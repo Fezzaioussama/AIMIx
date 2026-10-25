@@ -489,8 +489,8 @@ A pipeline object:
     { "name": "language", "label": "Target language", "description": "e.g. French" }
   ],
   "steps": [
-    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" },
-    { "id": 13, "order": 2, "stage": 2, "title": "Translated summary", "role": "Translator", "allowed_tools": null, "is_output": true, "expected_output": "The bullets, translated", "prompt": "Translate to {language}:\n{input}", "model": "openai/gpt-oss-120b" }
+    { "id": 12, "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null },
+    { "id": 13, "order": 2, "stage": 2, "title": "Translated summary", "role": "Translator", "allowed_tools": null, "is_output": true, "expected_output": "The bullets, translated", "prompt": "Translate to {language}:\n{input}", "model": "openai/gpt-oss-120b", "condition": null, "review": null }
   ]
 }
 ```
@@ -540,10 +540,99 @@ optional `label` (≤ 100 characters, shown on the run form; the UI falls back t
 the name) and `description` (≤ 300 characters, telling the user what to
 enter). A `name` starts with a lowercase letter, uses only `a-z`, `0-9` and
 `_`, has at most 40 characters, is unique within the pipeline and is never
-`input` (`{input}` is each stage's input). Any step, **in any stage**, inserts
+`input` (`{input}` is each stage's input) or `feedback` (`{feedback}` is a
+reviewer's feedback, see [review loops](#conditions-and-review-loops)). Any step, **in any stage**, inserts
 a value with `{name}`, so later stages still see the original request. With
 `inputs: []` the pipeline runs on one free-text input, as pipelines saved
 before named inputs existed do.
+
+### Conditions and review loops
+
+Two more optional step fields change how work flows. Both are `null` by default
+(and for every step saved before they existed), which is the plain behaviour
+above.
+
+**`condition`: "run this step only if…"**
+
+```json
+{ "source": "previous_output", "operator": "contains", "value": "blog" }
+```
+
+`source` is what the condition looks at: `previous_output` (what the previous
+stage handed on, the step's `{input}`; in the first stage, the run's text),
+`input:<name>` (one of the pipeline's named inputs) or `step:<order>` (the output
+of a step in an **earlier** stage). `operator` is one of:
+
+| Operator | Holds when the text… |
+|---|---|
+| `contains` / `not_contains` | contains / does not contain `value` |
+| `equals` / `not_equals` | is / is not exactly `value` |
+| `is_empty` / `not_empty` | is empty / is not empty (`value` is ignored and stored as `""`) |
+
+Both sides are trimmed and compared ignoring case. `value` has at most 200
+characters and is required by the operators that compare. The condition is read
+right before the step would start. When it does not hold the step is
+**skipped**: its status is `skipped`, its output empty, and it never counts as an
+output. A skipped step is final, so a [resumed](#post-runsidresume) run keeps it
+without judging the condition again. A stage's merged output leaves skipped steps
+out (one step left passes its output on unchanged), and a stage in which every
+step was skipped hands its input on as it received it.
+
+**`review`: "send back for fixes"**
+
+```json
+{ "send_back_to_stage": 2, "max_rounds": 2 }
+```
+
+The step is a normal agent step whose prompt judges the work it receives. AIMIx
+adds one rule to its system prompt: end the answer with a line `VERDICT: PASS`
+or `VERDICT: REVISE`. When the reviewer's stage has finished, the engine reads
+the **last** line of its output that holds only such a verdict (any case; it may
+be wrapped in Markdown emphasis, a quote mark, a heading mark or a list dash, and
+end in a full stop; a line with other words on it is not a verdict) and takes
+that line out of the stored output. `REVISE` with rounds left sends the work
+back: the stages from `send_back_to_stage` up to the reviewer's own run again, in
+order, at most `max_rounds` (1 to 5) times, so they run at most `1 + max_rounds`
+times in all. The steps of the stage it goes back to receive their usual prompt
+plus a block "Feedback from the reviewer (round 2 of 3): …" holding the
+reviewer's answer without the verdict line, unless their prompt places that
+text itself with `{feedback}`. `PASS`, no verdict at all, or no rounds left
+carry on to the next stage; running out of rounds on `REVISE` is not an error.
+
+`{feedback}` is reserved like `{input}`: it is the reviewer's feedback while a
+step is redone and empty otherwise, and no input may be named `feedback` (a
+pipeline that declared one before keeps working: its own value wins). The stage
+after a reviewer receives the reviewer's answer, not the work it judged, so ask
+the reviewer to repeat the approved work when a later stage needs it, and mark
+the step whose work is reviewed as the output rather than the reviewer.
+
+**What a run records.** A step that runs again updates its own row in place: its
+status goes back to `running`, its output is replaced when it finishes, and its
+usage keeps adding up. `rounds` is the round the row is in (see
+[Runs](#runs)) and a reviewer's row keeps its `verdict`. A spending limit and
+approval gates work inside rounds like anywhere else.
+
+**Rules, checked when a pipeline is saved** (`POST`, `PUT` and `PATCH`; a
+`PATCH` checks what it leaves together with what it keeps) and again when a run
+starts. A problem is a `400 validation_error` whose `detail` names the step in
+plain words, for example `Step 3 (Publish): its condition looks at step 5, which
+does not run before it (pick a step in an earlier stage).` Every problem is
+listed.
+
+- The `operator` is one of the six, the `source` one of the three kinds, and
+  `value` is at most 200 characters and present where it is needed.
+- An `input:<name>` source names a declared input; a `step:<order>` source names
+  a step in a **strictly earlier** stage.
+- `send_back_to_stage` is a stage that has steps and is **before** the
+  reviewer's own; `max_rounds` is 1 to 5.
+- **Review loops may not overlap.** A loop covers the stages from its target to
+  its reviewer; two loops that share a stage (nested, interleaved, or two
+  reviewers in one stage) are refused, so every step has one round counter and
+  `1 + max_rounds` bounds how often it runs. Loops one after another are fine.
+
+`POST /pipelines/generate` and `/revise` sanitise a planner's `condition` and
+`review` by the same rules and drop (set to `null`) what cannot work instead of
+failing the request.
 
 ### `GET /pipelines/`
 
@@ -607,15 +696,18 @@ with `409 budget_exceeded`.
   "pipeline_name": "Summarise then translate",
   "final_output": "Résumé ...",
   "intermediate_results": [
-    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ...", "is_output": false, "tool_calls": [] },
-    { "step_order": 2, "stage": 2, "title": "French summary", "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ...", "is_output": true, "tool_calls": [{ "name": "list_pipelines", "status": "success" }] }
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "input_used": "Long article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "skipped": false, "rounds": 1 },
+    { "step_order": 2, "stage": 2, "title": "French summary", "model": "openai/gpt-oss-120b", "input_used": "Summary ...", "output": "Résumé ...", "is_output": true, "tool_calls": [{ "name": "list_pipelines", "status": "success" }], "skipped": false, "rounds": 1 }
   ]
 }
 ```
 
 `intermediate_results` holds every step's output, ordered by stage then `order`;
 `is_output` is `true` on the results that are the pipeline's outputs (the marked
-steps, or the last stage when none is marked).
+steps, or the last stage when none is marked), never on a step that was
+`skipped` (its condition did not hold: `output` is `""`). `rounds` is above 1
+for a step a [review loop](#conditions-and-review-loops) ran again; the result
+is its newest round.
 `tool_calls` records only each called tool's name and `success`/`error` status;
 it does not include arguments, tool results, or a durable execution trace.
 Each step's prompt has `{input}` replaced by its stage's input and `{name}` by
@@ -657,8 +749,9 @@ execute at once), `running`, `waiting` (running, but a tool call waits for your
 approval; see [Approvals](#approvals)), then `succeeded`, `failed`, `cancelled`
 (you stopped it) or `interrupted` (the server stopped or restarted during the
 run). `queued`, `running` and `waiting` are active. Each step is `pending`,
-`running`, `succeeded`, `failed` or `cancelled`; the step that asked stays
-`running` while its run is `waiting`.
+`running`, `succeeded`, `failed`, `cancelled` or `skipped` (its
+[condition](#conditions-and-review-loops) did not hold, so it did not run); the
+step that asked stays `running` while its run is `waiting`.
 
 ### `POST /pipelines/<id>/runs`
 
@@ -691,11 +784,11 @@ The run object:
   "definition": {
     "name": "Summarise then translate",
     "inputs": [{ "name": "article", "label": "Article", "description": "" }, { "name": "language", "label": "Target language", "description": "" }],
-    "steps": [{ "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" }, "..."]
+    "steps": [{ "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null }, "..."]
   },
   "steps": [
-    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123 },
-    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004 }
+    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123, "rounds": 1, "verdict": null },
+    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004, "rounds": 1, "verdict": null }
   ],
   "pending_approvals": []
 }
@@ -709,6 +802,16 @@ unless the run is `waiting`); see [Approvals](#approvals).
 becomes `null` once the schedule is deleted while `trigger` stays) or `chat`
 (the chat agent's `run_pipeline` tool). Runs recorded before schedules existed
 read as `manual`.
+
+`rounds` and `verdict` describe a [review loop](#conditions-and-review-loops).
+`rounds` is the round the step's row is in: 1, or more when a loop sent the work
+back and the step ran again (the row holds its newest round, so while a loop is
+redone the steps still to run again show the round before). `verdict` is what a
+reviewer's last answer decided, `"pass"` or `"revise"`, and `null` for any other
+step, for a reviewer that gave none, and while a reviewer is running again. A
+reviewer that ran out of rounds has `verdict: "revise"` and `rounds` of
+`1 + max_rounds`. A skipped step has `started_at: null`; `definition` carries each
+step's `condition` and `review` (`null` for a run saved before they existed).
 
 `input` / `inputs` are what the run was started with. A step's `output` and
 `tool_calls` appear as soon as it succeeds; `final_output` once the run
@@ -793,9 +896,21 @@ unchanged, so calling it twice is safe. `200` → the run.
 
 Continues a `failed`, `cancelled` or `interrupted` run from its first stage
 that did not fully succeed, with your current model settings: the steps that
-succeeded keep their outputs and do not run again, the others go back to
-`pending`, and the run executes its own `definition`. Any other run comes back
-unchanged. `200` → the run, `queued` again.
+succeeded (or were skipped) keep their outputs and do not run again, the others
+go back to `pending`, and the run executes its own `definition`. Any other run
+comes back unchanged. `200` → the run, `queued` again.
+
+A run stopped inside a [review loop](#conditions-and-review-loops) picks the loop
+up where it was, from what the rows hold. The newest `rounds` of any step in a
+loop's stages is the round it was in (one time fewer than that, the work had been
+sent back). Only a result saved in that round is kept; one from an earlier round
+is redone, and a reviewer's saved `REVISE` answer is read back as the feedback of
+the round that followed it while the reviewer has not run again. So a run stopped
+while the work was being redone redoes that stage with the reviewer's feedback; a
+run stopped between two rounds sends the work back when it resumes; a loop whose
+rounds were used up, or that ended on `PASS`, is not run again. The one thing a
+resume can lose is the feedback for a step that had not yet run in a round whose
+reviewer had already run again (the reviewer's earlier answer is gone by then).
 
 The body is optional: `{"max_cost_usd": 2.0}` and/or `{"max_tokens": 50000}` set
 new [spending limits](#spending-limits); a limit left out stays as the run has
@@ -876,9 +991,9 @@ nothing. Failures:
       { "name": "review", "label": "Product review", "description": "The review to answer" }
     ],
     "steps": [
-      { "order": 1, "stage": 1, "title": "Pros", "role": "Analyst", "allowed_tools": [], "is_output": false, "expected_output": "A bullet list of pros", "prompt": "List the pros in: {review}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 2, "stage": 1, "title": "Cons", "role": "Analyst", "allowed_tools": [], "is_output": false, "expected_output": "A bullet list of cons", "prompt": "List the cons in: {review}", "model": "deepseek/deepseek-v4-flash" },
-      { "order": 3, "stage": 2, "title": "Reply", "role": "Writer", "allowed_tools": [], "is_output": true, "expected_output": "A polite reply under 120 words", "prompt": "Reply to {review} using: {input}", "model": "deepseek/deepseek-v4-flash" }
+      { "order": 1, "stage": 1, "title": "Pros", "role": "Analyst", "allowed_tools": [], "is_output": false, "expected_output": "A bullet list of pros", "prompt": "List the pros in: {review}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null },
+      { "order": 2, "stage": 1, "title": "Cons", "role": "Analyst", "allowed_tools": [], "is_output": false, "expected_output": "A bullet list of cons", "prompt": "List the cons in: {review}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null },
+      { "order": 3, "stage": 2, "title": "Reply", "role": "Writer", "allowed_tools": [], "is_output": true, "expected_output": "A polite reply under 120 words", "prompt": "Reply to {review} using: {input}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null }
     ]
   },
   "available_models": ["deepseek/deepseek-v4-flash", "..."]
@@ -898,6 +1013,17 @@ a too-long one is cut to its limit), and any `is_output` other than `true`
 becomes `false`. Inputs that could not be saved are dropped: entries that are
 not objects, or whose `name` is invalid, reserved or already taken. A missing
 or non-list `inputs` becomes `[]`.
+The planner may also give a step a [`condition` or a `review`](#conditions-and-review-loops)
+("only run the SEO step if the topic mentions blogs", "add a QA agent that sends
+the draft back to the writer up to 2 times"). They are read forgivingly (numbers
+written as text are accepted; the `value` of `is_empty` and `not_empty` is
+dropped) and then checked together with the plan: one that is malformed, or
+cannot work in this plan (an unknown operator or source, an input the plan does
+not declare, a step that is not in an earlier stage, a stage that is not earlier
+or has no steps, rounds outside 1 to 5, a loop that shares a stage with another)
+becomes `null` and the rest of the plan is kept; of two loops that share a stage,
+the one that starts later is dropped. Steps are numbered by position, so
+`step:2` means the second step in the list.
 If the planner's answer has no usable JSON: `502 upstream_response_invalid`.
 
 ### `POST /pipelines/revise`
@@ -944,15 +1070,18 @@ in the revision's order with removals last.
 | `kind` | `added`, `removed` or `changed` |
 | `label` | The new name, the input's name, or the step's title (`Step N` without one) |
 | `order` | A step's order in the revision (in the draft for a removed step); `null` otherwise |
-| `fields` | For `changed`, what differs, in this order: `title`, `role`, `prompt`, `expected_output`, `model`, `allowed_tools`, `stage`, `is_output` for a step; `label`, `description` for an input; `name` for the pipeline |
+| `fields` | For `changed`, what differs, in this order: `title`, `role`, `prompt`, `expected_output`, `model`, `allowed_tools`, `stage`, `is_output`, `condition`, `review` for a step; `label`, `description` for an input; `name` for the pipeline |
 
 Steps are paired before they are compared: an unchanged step first, then the
 same title (ignoring case and spacing), then the same prompt, then the same
 position. Inputs are paired by name, so a renamed input reads as one removed and
 one added. Text is compared without surrounding whitespace, tool lists in any
-order. `stage` is listed only when a step now runs at another point: renumbered
-stages, a stage added or removed with its own steps, or a step only shifted by
-another step's move do not count.
+order, and a step's `condition` and `review` as a whole (any difference in one is
+one changed field). `stage` is listed only when a step now runs at another point:
+renumbered stages, a stage added or removed with its own steps, or a step only
+shifted by another step's move do not count. A draft may carry conditions and
+review loops that do not work yet (the builder can hold a half-finished flow):
+only a save checks them, and the planner's answer is cleaned up as for generate.
 
 Errors: `400 validation_error`, before the planner is asked, for a blank or too
 long instruction or a draft that could not be saved for another reason (no

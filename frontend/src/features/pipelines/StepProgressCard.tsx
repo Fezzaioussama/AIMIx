@@ -4,9 +4,11 @@ import type { RunStep } from '../../core/api/types';
 import { useNow } from '../../core/hooks/useNow';
 import { elapsedMs, formatDuration } from '../../core/time';
 import { Spinner } from '../../core/ui/Spinner';
-import { NODE_STATUS_STYLES } from './GraphNodeCard';
+import { NODE_STATUS_STYLES, SKIPPED_REASON } from './GraphNodeCard';
 import { liveNodeStatus, type NodeStatus } from './pipelineGraph';
+import { useRunFlow } from './RunFlowContext';
 import { StepHeading } from './StepHeading';
+import { describeCondition } from './stepFlow';
 
 /** What a step without an output is doing, in plain words. */
 const STATUS_TEXT: Record<Exclude<NodeStatus, 'done'>, string> = {
@@ -15,7 +17,16 @@ const STATUS_TEXT: Record<Exclude<NodeStatus, 'done'>, string> = {
   running: 'Working on it…',
   failed: 'This step failed.',
   stopped: 'Stopped before it finished.',
+  skipped: `Skipped. ${SKIPPED_REASON}.`,
 };
+
+/** For a skipped step: the condition that was not met, as the pipeline defines it. */
+function SkippedCondition({ step }: { step: RunStep }) {
+  const { steps, inputs } = useRunFlow();
+  const definition = steps.find((item) => item.order === step.step_order);
+  const described = definition ? describeCondition(definition, steps, inputs) : null;
+  return described === null ? null : <> It runs only if {described}.</>;
+}
 
 interface StepProgressCardProps {
   step: RunStep;
@@ -57,7 +68,12 @@ export function StepProgressCard({ step, runActive, highlighted = false }: StepP
           <span className="text-xs text-slate-400">{formatDuration(elapsed)}</span>
         )}
       </div>
-      {status !== 'done' && <p className="text-sm text-slate-300">{STATUS_TEXT[status]}</p>}
+      {status !== 'done' && (
+        <p className="text-sm text-slate-300">
+          {STATUS_TEXT[status]}
+          {status === 'skipped' && <SkippedCondition step={step} />}
+        </p>
+      )}
       {step.error && (
         <p className="mt-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm break-words text-red-300">
           {step.error.detail}

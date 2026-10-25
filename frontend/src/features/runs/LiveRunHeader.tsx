@@ -48,7 +48,10 @@ export function LiveRunHeader({
   const active = isActive(run.status);
   const now = useNow(active);
   const elapsed = elapsedMs(run.started_at, run.finished_at, now);
-  const progress = `${finishedStepCount(run)} of ${run.steps.length} steps done`;
+  const skipped = run.steps.filter((step) => step.status === 'skipped').length;
+  const progress = `${finishedStepCount(run)} of ${run.steps.length} steps done${
+    skipped > 0 ? ` (${skipped} skipped)` : ''
+  }`;
 
   return (
     <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-4">

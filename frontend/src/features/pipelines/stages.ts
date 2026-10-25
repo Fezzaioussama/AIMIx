@@ -1,3 +1,6 @@
+import type { PipelineStep } from '../../core/api/types';
+import { followNewStage, followRenumbering } from './stepFlowEdits';
+
 export interface StageGroup<T> {
   stage: number;
   items: T[];
@@ -36,8 +39,11 @@ export function insertStep(steps: PipelineStep[], options: InsertStepOptions): P
   const { model, stage, parallel, isOutput = false } = options;
   const updated = parallel
     ? steps
-    : steps.map((step) => ({ ...step, stage: step.stage > stage ? step.stage + 1 : step.stage }));
-  return [
+    : followNewStage(steps, stage).map((step) => ({
+        ...step,
+        stage: step.stage > stage ? step.stage + 1 : step.stage,
+      }));
+  const sorted = [
     ...updated,
     {
       order: Math.max(0, ...steps.map((step) => step.order)) + 1,
@@ -49,10 +55,18 @@ export function insertStep(steps: PipelineStep[], options: InsertStepOptions): P
       model,
       role: '',
       allowed_tools: null,
+      condition: null,
+      review: null,
     },
-  ]
-    .sort((first, second) => first.stage - second.stage || first.order - second.order)
-    .map((step, index) => ({ ...step, order: index + 1 }));
+  ].sort((first, second) => first.stage - second.stage || first.order - second.order);
+  // Numbering the steps again moves them: what refers to a step by number follows it.
+  const numbers = new Map<number, number | null>(
+    sorted.map((step, index) => [step.order, index + 1]),
+  );
+  return followRenumbering(
+    sorted.map((step, index) => ({ ...step, order: index + 1 })),
+    numbers,
+  );
 }
 
 /**
@@ -71,4 +85,3 @@ export function outputOrders(steps: { order: number; stage: number; is_output: b
 export function stepLabel(step: { order: number; title: string }): string {
   return step.title.trim() || `Step ${step.order}`;
 }
-import type { PipelineStep } from '../../core/api/types';

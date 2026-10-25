@@ -21,8 +21,10 @@ export function isResumable(status: RunStatus): boolean {
   return RESUMABLE.has(status);
 }
 
+/** Steps that are done with: finished, or skipped because their condition did not hold. */
 export function finishedStepCount(run: Run): number {
-  return run.steps.filter((step) => step.status === 'succeeded').length;
+  return run.steps.filter((step) => step.status === 'succeeded' || step.status === 'skipped')
+    .length;
 }
 
 /** The fields that decide what a step does, in a stable order. */
@@ -37,6 +39,8 @@ function stepShape(step: PipelineStep) {
     step.allowed_tools,
     step.is_output,
     step.expected_output,
+    step.condition,
+    step.review,
   ];
 }
 

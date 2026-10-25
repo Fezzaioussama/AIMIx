@@ -29,6 +29,8 @@ class AgentTask:
     #: Where the task runs, so a tool that must ask the run's owner first can
     #: (approval gates); None outside a recorded run, where nobody can be asked.
     run_step: RunStepRef | None = None
+    #: The step judges work and can send it back: its answer ends with a verdict line.
+    reviewer: bool = False
 
 
 @dataclass(frozen=True)

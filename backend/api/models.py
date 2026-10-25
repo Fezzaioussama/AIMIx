@@ -23,6 +23,12 @@ PIPELINE_INPUT_LABEL_MAX_LENGTH = 100
 PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH = 300
 PIPELINE_MAX_INPUTS = 20
 RESERVED_INPUT_NAME = "input"
+#: ``{feedback}`` is a reviewer's feedback while a step is redone (review loops).
+FEEDBACK_PLACEHOLDER = "feedback"
+#: What a step's "run only if" condition compares with, at most this many characters.
+STEP_CONDITION_VALUE_MAX_LENGTH = 200
+#: A review loop may send the work back at most this many times.
+STEP_REVIEW_MAX_ROUNDS = 5
 MODEL_ID_MAX_LENGTH = 200
 PROVIDER_NAME_MAX_LENGTH = 50
 API_KEY_HINT_LENGTH = 4
@@ -152,6 +158,11 @@ class PipelineStep(Base):
     steps are the outputs. Output steps still feed any later stage.
     ``expected_output`` tells the step's agent what to deliver; empty leaves
     that to the prompt.
+
+    ``condition`` makes the step conditional: ``{"source", "operator", "value"}``,
+    or None to always run it (``services/multiagent/conditions``). ``review``
+    makes it a reviewer that can send the work back:
+    ``{"send_back_to_stage", "max_rounds"}``, or None (``multiagent/reviews``).
     """
 
     __tablename__ = "pipeline_steps"
@@ -170,6 +181,8 @@ class PipelineStep(Base):
     )
     prompt: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(String(MODEL_ID_MAX_LENGTH))
+    condition: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+    review: Mapped[dict[str, int] | None] = mapped_column(JSON, nullable=True)
 
     pipeline: Mapped[Pipeline] = relationship(back_populates="steps")
 
@@ -227,6 +240,13 @@ class StepStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    #: Its condition did not hold, so it did not run. Final, like ``succeeded``:
+    #: a resumed run keeps it.
+    SKIPPED = "skipped"
+
+
+#: The steps a resumed run keeps as they are, whose agents it does not run again.
+COMPLETED_STEP_STATUSES = frozenset({StepStatus.SUCCEEDED, StepStatus.SKIPPED})
 
 
 class ApprovalStatus(str, Enum):
@@ -319,6 +339,12 @@ class RunStep(Base):
     ``tool_calls`` lists ``{"name", "status"}`` per tool call — never the
     arguments or results. The token and cost columns grow with each model call
     the step's agent makes, over every attempt: resuming a run never resets them.
+
+    A step inside a review loop that runs again updates this same row (its
+    output is replaced, its usage keeps adding up): ``rounds`` is the round the
+    row is in, 1 for every other step. ``verdict`` is what a reviewer's last
+    answer said (``pass`` or ``revise``), None for any other step or when it
+    gave none; it is what lets a resumed run pick a loop up where it was.
     """
 
     __tablename__ = "run_steps"
@@ -343,6 +369,8 @@ class RunStep(Base):
     output_tokens: Mapped[int] = mapped_column(default=0)
     #: USD, the calls whose cost is known added up; None when none is.
     cost_usd: Mapped[float | None]
+    rounds: Mapped[int] = mapped_column(default=1)
+    verdict: Mapped[str | None] = mapped_column(String(STATUS_MAX_LENGTH))
 
     run: Mapped[Run] = relationship(back_populates="steps")
 

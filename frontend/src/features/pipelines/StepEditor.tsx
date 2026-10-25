@@ -4,6 +4,7 @@ import type { AgentTool, PipelineInput, PipelineStep } from '../../core/api/type
 import { PromptPlaceholders } from './PromptPlaceholders';
 import { StageInput } from './StageInput';
 import { StepAgentFields } from './StepAgentFields';
+import { StepFlowFields } from './StepFlowFields';
 import { StepRoleFields } from './StepRoleFields';
 import { modelLabel } from './modelLabel';
 
@@ -31,6 +32,7 @@ export function StepEditor({
         <StepCard
           key={step.order}
           step={step}
+          steps={steps}
           inputs={inputs}
           availableModels={availableModels}
           availableTools={availableTools}
@@ -45,6 +47,8 @@ export function StepEditor({
 
 export interface StepCardProps {
   step: PipelineStep;
+  /** Every step of the pipeline, for what a condition may look at and where a review may go. */
+  steps: PipelineStep[];
   inputs: PipelineInput[];
   availableModels: string[];
   availableTools: AgentTool[];
@@ -53,9 +57,13 @@ export interface StepCardProps {
   onRemove: () => void;
 }
 
-/** One step's editor: stage, role fields, agent and tool fields, model and prompt. */
+/**
+ * One step's editor: stage, role fields, agent and tool fields, model and prompt, and the
+ * options that change how work flows (a condition, a review loop).
+ */
 export function StepCard({
   step,
+  steps,
   inputs,
   availableModels,
   availableTools,
@@ -77,6 +85,7 @@ export function StepCard({
         availableModels={availableModels}
         onChange={onChange}
       />
+      <StepFlowFields step={step} steps={steps} inputs={inputs} onChange={onChange} />
     </div>
   );
 }

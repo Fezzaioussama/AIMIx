@@ -7,6 +7,8 @@ import { StepCard } from '../pipelines/StepEditor';
 
 interface StepDrawerProps {
   step: PipelineStep;
+  /** Every agent of the team, for what a condition may look at and where a review may go. */
+  steps: PipelineStep[];
   inputs: PipelineInput[];
   models: string[];
   tools: AgentTool[];
@@ -59,6 +61,7 @@ type DrawerBodyProps = Omit<StepDrawerProps, 'onClose' | 'className'>;
 /** The scrolling part: a note on saving, and the builder's own editor for the agent. */
 function DrawerBody({
   step,
+  steps,
   inputs,
   models,
   tools,
@@ -76,6 +79,7 @@ function DrawerBody({
       <StepCard
         key={step.order}
         step={step}
+        steps={steps}
         inputs={inputs}
         availableModels={models}
         availableTools={tools}

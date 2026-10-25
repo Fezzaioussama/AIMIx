@@ -1,9 +1,18 @@
 import { motion } from 'motion/react';
 
 import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
-import { GraphNodeCard, GraphTerminal, OutputBadge } from './GraphNodeCard';
+import {
+  ConditionBadge,
+  GraphNodeCard,
+  GraphTerminal,
+  OutputBadge,
+  ReviewBadge,
+} from './GraphNodeCard';
+import { CONNECTOR_WIDTH, columnWidth } from './graphLayout';
+import { LoopRail } from './LoopRail';
 import { buildGraph, type GraphNode, type OutputTarget } from './pipelineGraph';
 import { inputsSummary } from './pipelineInputs';
+import { describeCondition, reviewLoops } from './stepFlow';
 
 /** A node the diagram can open: its output, or the error it stopped on. */
 const SELECTABLE = new Set<GraphNode['status']>(['done', 'failed']);
@@ -59,8 +68,14 @@ export function PipelineGraph({
   nextLabel = '+ Next stage',
 }: PipelineGraphProps) {
   const stages = buildGraph(steps, results, isRunning, liveSteps);
-  const outputCount = stages.flatMap((stage) => stage.items).filter((node) => node.isOutput).length;
+  const nodes = stages.flatMap((stage) => stage.items);
+  const outputCount = nodes.filter((node) => node.isOutput).length;
   const hasRun = results.length > 0;
+  const loops = reviewLoops(steps);
+  const conditionTextOf = (order: number) => {
+    const step = steps.find((candidate) => candidate.order === order);
+    return step ? describeCondition(step, steps, inputs) : null;
+  };
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/50 bg-[radial-gradient(rgba(148,163,184,0.09)_1px,transparent_1px)] bg-[size:18px_18px] p-6">
@@ -69,6 +84,7 @@ export function PipelineGraph({
         in parallel. Mark steps as Output to keep their results.
         {onEditStep && ' Select a step to edit its prompt.'}
       </p>
+      {loops.length > 0 && <LoopRail stages={stages} loops={loops} />}
       <div className="flex min-w-max items-start pt-6" role="list" aria-label="Pipeline diagram">
         <GraphTerminal
           label={inputs.length > 1 ? 'Inputs' : 'Input'}
@@ -81,6 +97,7 @@ export function PipelineGraph({
               stage={stage.stage}
               nodes={stage.items}
               selected={selected}
+              conditionTextOf={conditionTextOf}
               onSelect={onSelect}
               onEditStep={onEditStep}
               onAddParallel={onAddParallel}
@@ -98,7 +115,10 @@ export function PipelineGraph({
           onClick={hasRun && onSelect ? () => onSelect('outputs') : undefined}
         />
       </div>
-      <Legend />
+      <Legend
+        conditions={nodes.some((node) => node.condition !== null)}
+        reviews={loops.length > 0}
+      />
     </div>
   );
 }
@@ -107,6 +127,8 @@ interface StageColumnProps {
   stage: number;
   nodes: GraphNode[];
   selected: OutputTarget | null;
+  /** A step's condition in words, for its node; null for a step without one. */
+  conditionTextOf: (order: number) => string | null;
   onSelect?: (target: OutputTarget) => void;
   onEditStep?: (order: number) => void;
   onAddParallel?: (stage: number) => void;
@@ -119,6 +141,7 @@ function StageColumn({
   stage,
   nodes,
   selected,
+  conditionTextOf,
   onSelect,
   onEditStep,
   onAddParallel,
@@ -127,8 +150,12 @@ function StageColumn({
   nextLabel,
 }: StageColumnProps) {
   return (
-    <motion.div className="flex flex-col gap-3" {...stageEntrance(stage)}>
-      <StageNodes {...{ stage, nodes, selected, onSelect, onEditStep }} />
+    // The width is fixed, so the loop-back lines above the stages line up with it.
+    <motion.div
+      className={`flex flex-col gap-3 ${columnWidth(nodes.length > 1)}`}
+      {...stageEntrance(stage)}
+    >
+      <StageNodes {...{ stage, nodes, selected, conditionTextOf, onSelect, onEditStep }} />
       <StageActions {...{ stage, onAddParallel, onAddAfter, parallelLabel, nextLabel }} />
     </motion.div>
   );
@@ -136,10 +163,17 @@ function StageColumn({
 
 type StageNodesProps = Pick<
   StageColumnProps,
-  'stage' | 'nodes' | 'selected' | 'onSelect' | 'onEditStep'
+  'stage' | 'nodes' | 'selected' | 'conditionTextOf' | 'onSelect' | 'onEditStep'
 >;
 
-function StageNodes({ stage, nodes, selected, onSelect, onEditStep }: StageNodesProps) {
+function StageNodes({
+  stage,
+  nodes,
+  selected,
+  conditionTextOf,
+  onSelect,
+  onEditStep,
+}: StageNodesProps) {
   const parallel = nodes.length > 1;
   return (
     <div className={`relative flex flex-col gap-3 ${parallel ? 'px-3' : ''}`}>
@@ -159,6 +193,7 @@ function StageNodes({ stage, nodes, selected, onSelect, onEditStep }: StageNodes
           key={node.order}
           node={node}
           selected={selected === node.order}
+          conditionText={conditionTextOf(node.order)}
           onClick={
             SELECTABLE.has(node.status) && onSelect
               ? () => onSelect(node.order)
@@ -186,7 +221,7 @@ function StageActions({
 }: StageActionsProps) {
   if (!onAddParallel && !onAddAfter) return null;
   return (
-    <div className="flex gap-2 text-[11px]">
+    <div className="flex flex-wrap gap-2 text-[11px]">
       {onAddParallel && (
         <button
           type="button"
@@ -209,7 +244,7 @@ function StageActions({
   );
 }
 
-function Legend() {
+function Legend({ conditions, reviews }: { conditions: boolean; reviews: boolean }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
       <span className="flex items-center gap-1.5">
@@ -217,6 +252,16 @@ function Legend() {
       </span>
       <span>If no output is marked, the last stage becomes the output.</span>
       <span>Stacked steps run in parallel.</span>
+      {conditions && (
+        <span className="flex items-center gap-1.5">
+          <ConditionBadge /> runs only if its condition holds
+        </span>
+      )}
+      {reviews && (
+        <span className="flex items-center gap-1.5">
+          <ReviewBadge /> can send the work back (the purple line)
+        </span>
+      )}
     </div>
   );
 }
@@ -224,7 +269,7 @@ function Legend() {
 /** Arrow between columns; while a run is in flight a pulse of light travels along it. */
 function Connector({ flowing }: { flowing: boolean }) {
   return (
-    <div className="mt-11 flex w-10 items-center" aria-hidden="true">
+    <div className={`mt-11 flex items-center ${CONNECTOR_WIDTH}`} aria-hidden="true">
       <span
         className={`h-px flex-1 ${
           flowing

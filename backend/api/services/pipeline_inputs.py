@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 
 from api.exceptions import ValidationFailed
 from api.models import (
+    FEEDBACK_PLACEHOLDER,
     PIPELINE_INPUT_NAME_MAX_LENGTH,
     PIPELINE_INPUT_NAME_PATTERN,
     RESERVED_INPUT_NAME,
@@ -17,6 +18,13 @@ from api.services.prompts import merge_input_values
 
 _INPUT_NAME = re.compile(PIPELINE_INPUT_NAME_PATTERN)
 
+#: The names the engine fills itself, each with what it stands for (so a
+#: pipeline cannot declare an input of that name).
+RESERVED_NAMES: dict[str, str] = {
+    RESERVED_INPUT_NAME: f"{{{RESERVED_INPUT_NAME}}} is each stage's input.",
+    FEEDBACK_PLACEHOLDER: f"{{{FEEDBACK_PLACEHOLDER}}} is a reviewer's feedback on the work.",
+}
+
 
 def input_name_error(name: str) -> str | None:
     """Why ``name`` cannot name a pipeline input, or None when it can."""
@@ -24,8 +32,8 @@ def input_name_error(name: str) -> str | None:
         return "An input name starts with a lowercase letter and uses only a-z, 0-9 and _."
     if len(name) > PIPELINE_INPUT_NAME_MAX_LENGTH:
         return f"An input name has at most {PIPELINE_INPUT_NAME_MAX_LENGTH} characters."
-    if name == RESERVED_INPUT_NAME:
-        return f"'{RESERVED_INPUT_NAME}' is reserved: {{input}} is each stage's input."
+    if name in RESERVED_NAMES:
+        return f"'{name}' is reserved: {RESERVED_NAMES[name]}"
     return None
 
 

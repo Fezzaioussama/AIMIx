@@ -63,12 +63,72 @@ describe('pipeline agent fields', () => {
     const saved = await listPipelines();
     const generated = await generatePipeline('Plan something', 'v/m');
 
-    const defaults = { role: '', allowed_tools: null, expected_output: '' };
+    const defaults = {
+      role: '',
+      allowed_tools: null,
+      expected_output: '',
+      condition: null,
+      review: null,
+    };
     expect(saved[0].inputs).toEqual([]);
     expect(saved[0].steps[0]).toMatchObject(defaults);
     expect(generated.generated_pipeline.inputs).toEqual([]);
     expect(generated.generated_pipeline.steps[0]).toMatchObject(defaults);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('conditions and review loops', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('keeps the ones a saved pipeline has', async () => {
+    const condition = { source: 'step:1', operator: 'contains', value: 'blog' };
+    const review = { send_back_to_stage: 1, max_rounds: 2 };
+    const stored = {
+      name: 'Flow',
+      inputs: [],
+      steps: [
+        { order: 1, stage: 1, title: '', is_output: false, prompt: 'a', model: 'v/m' },
+        { order: 2, stage: 2, title: '', is_output: false, prompt: 'b', model: 'v/m', condition },
+        { order: 3, stage: 3, title: '', is_output: false, prompt: 'c', model: 'v/m', review },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([stored]), { headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const [saved] = await listPipelines();
+
+    expect(saved.steps.map((step) => step.condition)).toEqual([null, condition, null]);
+    expect(saved.steps.map((step) => step.review)).toEqual([null, null, review]);
+  });
+
+  it('sends them when a pipeline is saved', async () => {
+    const condition = { source: 'previous_output', operator: 'is_empty' as const, value: '' };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify(pipeline), { headers: { 'Content-Type': 'application/json' } }),
+      );
+    const step = {
+      order: 1,
+      stage: 1,
+      title: '',
+      is_output: false,
+      expected_output: '',
+      prompt: 'p',
+      model: 'v/m',
+      role: '',
+      allowed_tools: null,
+      condition,
+      review: null,
+    };
+
+    await savePipeline({ ...pipeline, steps: [step] });
+
+    const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(sent.steps[0].condition).toEqual(condition);
+    expect(sent.steps[0].review).toBeNull();
   });
 });
 
@@ -99,6 +159,8 @@ describe('revisePipeline', () => {
       role: '',
       allowed_tools: null,
       expected_output: '',
+      condition: null,
+      review: null,
     });
   });
 });

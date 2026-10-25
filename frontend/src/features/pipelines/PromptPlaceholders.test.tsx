@@ -18,6 +18,14 @@ describe('PromptPlaceholders', () => {
     expect(screen.getByText(/Not an input, left as written: \{audeince\}/)).toBeInTheDocument();
   });
 
+  it('lists {feedback} among the placeholders, and does not mistake it for a typo', () => {
+    render(<PromptPlaceholders prompt="Fix it: {feedback}" inputs={[]} />);
+
+    expect(screen.getByText('{feedback}')).toBeInTheDocument();
+    expect(screen.getByText('a reviewer’s feedback when work is sent back')).toBeInTheDocument();
+    expect(screen.queryByText(/Not an input/)).not.toBeInTheDocument();
+  });
+
   it('stays quiet when every placeholder is filled', () => {
     render(<PromptPlaceholders prompt="Summarise {input}" inputs={[]} />);
     expect(screen.queryByText(/Not an input/)).not.toBeInTheDocument();

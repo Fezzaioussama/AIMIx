@@ -17,7 +17,9 @@ How the two versions are lined up:
   with their own steps, and steps only shifted by another step's move are not
   reported. Making "Research B" run alongside "Research A" lists B alone.
 - **Inputs** are paired by name, so a renamed input reads as removed plus added.
-- Text is compared without surrounding whitespace, and tool lists in any order.
+- Text is compared without surrounding whitespace, and tool lists in any order. A
+  step's condition and review are compared whole: any difference in them is one
+  changed field.
 """
 
 from __future__ import annotations
@@ -40,6 +42,8 @@ STEP_FIELDS = (
     "allowed_tools",
     "stage",
     "is_output",
+    "condition",
+    "review",
 )
 #: The input fields a change can name; an input's name is its identity.
 INPUT_FIELDS = ("label", "description")
@@ -86,11 +90,14 @@ def _words(value: object) -> str | None:
 
 
 def _comparable(value: object) -> object:
-    """A field as compared: text without surrounding whitespace, a list in any order."""
+    """A field as compared: text without surrounding whitespace, a list in any
+    order, and an object (a condition, a review) by its entries."""
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, list):
         return tuple(sorted(str(item) for item in value))
+    if isinstance(value, Mapping):
+        return tuple(sorted((str(key), _comparable(item)) for key, item in value.items()))
     return value
 
 

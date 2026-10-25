@@ -97,6 +97,24 @@ function isInput(value: unknown): boolean {
   );
 }
 
+/** A step's condition, when it has one: drafts kept before conditions existed have none. */
+function isCondition(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (isRecord(value) && isString(value.source) && isString(value.operator) && isString(value.value))
+  );
+}
+
+/** A step's review, when it has one: drafts kept before review loops existed have none. */
+function isReview(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (isRecord(value) && isNumber(value.send_back_to_stage) && isNumber(value.max_rounds))
+  );
+}
+
 function isStep(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -104,7 +122,9 @@ function isStep(value: unknown): boolean {
     isNumber(value.stage) &&
     typeof value.is_output === 'boolean' &&
     [value.title, value.expected_output, value.prompt, value.model, value.role].every(isString) &&
-    (value.allowed_tools === null || listOf(isString, value.allowed_tools))
+    (value.allowed_tools === null || listOf(isString, value.allowed_tools)) &&
+    isCondition(value.condition) &&
+    isReview(value.review)
   );
 }
 

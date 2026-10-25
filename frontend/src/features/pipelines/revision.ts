@@ -26,6 +26,8 @@ const FIELD_WORDS: Record<string, string> = {
   allowed_tools: 'tools',
   stage: 'when it runs',
   is_output: 'whether it is an output',
+  condition: 'its condition',
+  review: 'its review loop',
 };
 
 /** "a", "a and b", "a, b and c". */

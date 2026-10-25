@@ -203,3 +203,52 @@ in one transaction (or keep an `occurrences` table and start from it); add an
 schedule after repeated ones; check a pipeline's schedules when it is saved. Moving
 execution to a worker (entry 7) also moves the scheduler there.
 
+### 10. Conditions and review loops: what the first version leaves out
+
+Conditional steps and review loops
+([architecture.md](architecture.md#conditions-and-review-loops)) follow a few
+simple rules and leave some things out:
+
+- **Loops cannot share a stage.** A pipeline whose review loops would run the same
+  stage (a reviewer inside another reviewer's loop, or two reviewers in one stage)
+  is refused when it is saved; loops that follow each other are fine. That is the
+  simplest way to keep one round counter per step and a run's length known from
+  its pipeline (`loops.recursion_limit`). A run whose stored data breaks the rule
+  follows the earlier loop and ignores the later one, with a warning in the log.
+- **A verdict has to be alone on its line.** A reviewer is asked to end with
+  `VERDICT: PASS` or `VERDICT: REVISE`. A verdict inside a sentence, a line with
+  other words, or no verdict at all counts as "carry on", never as an error, so a
+  reviewer that forgets the line cannot stop a run (nor send the work back). The
+  feedback a step receives is the reviewer's whole answer, however long.
+- **The stage after a reviewer gets the reviewer's answer**, as after any step, not
+  the work it judged. Mark the step whose work is reviewed as the output (the
+  planner is told to), or ask the reviewer to repeat the approved work in full.
+- **A skipped last stage leaves nothing to show.** A skipped step is never a
+  deliverable; when every step that makes the outputs is skipped the run still
+  succeeds, with no outputs (the page says why) and the text it was handed as its
+  final answer.
+- **Progress can go back.** "3 of 5 steps done" falls when a step is redone in
+  another round, because the step is running again.
+- **A resumed run can lose one thing.** A step that shares the reviewer's stage and
+  places `{feedback}` in its own prompt is given an empty `{feedback}` when the run
+  stopped after the reviewer began the next round but before that step did (the
+  reviewer's earlier answer is replaced as it starts). Steps in the stage the work
+  goes back to, and in the stages between, are never affected.
+- **Names and numbers, not links.** A condition names a step by its number and a
+  review a stage by its number. The builder follows renumbering and new stages, and
+  a condition whose step was removed is left pointing at "step 0" and flagged, but
+  the planner writes the numbers itself and can get them wrong; the save-time
+  check drops what cannot work from a plan.
+- **`feedback` is a reserved input name**, like `input`. A pipeline saved earlier
+  with an input of that name still runs (its input wins over the reviewer's
+  feedback in that pipeline's prompts), but it has to be renamed to be saved again.
+- **Downgrading the database** (`alembic downgrade`) turns `skipped` steps into
+  `succeeded` ones with an empty output, because the older code has no such status,
+  and drops the conditions, review loops and rounds.
+
+**Fix options:** allow loops inside loops by keeping the round counter per loop
+instead of per step, and size the step limit from the nesting; keep the reviewer's
+answer on the loop instead of in the reviewer's row (a `run_loops` table) so a
+resume never loses it; let a condition and a review name a step by its id, and
+renumber nothing; show a redo as its own count in the run header.
+

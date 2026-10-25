@@ -1,13 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
-import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { OutputCard } from './OutputCard';
 import { PipelineGraph } from './PipelineGraph';
+import { RunFlowContext } from './RunFlowContext';
 import { RunResults } from './RunResults';
+import { RunStats } from './RunStats';
 import { StepHeading } from './StepHeading';
 import type { OutputTarget } from './pipelineGraph';
 import { groupByStage } from './stages';
@@ -56,42 +57,46 @@ export function PipelineRunView({
 }: PipelineRunViewProps) {
   const view = useRunView({ finished, liveSteps, runKey, isRunning });
   const hasResults = liveSteps ? liveSteps.length > 0 : view.results.length > 0 && !isRunning;
+  // The cards of the run's steps read the pipeline it ran (conditions, review rounds).
+  const flow = useMemo(() => ({ steps, inputs: inputs ?? [] }), [steps, inputs]);
 
   return (
-    <section>
-      {diagram && (
-        <PipelineGraph
-          steps={steps}
-          inputs={inputs}
-          results={view.results}
-          liveSteps={liveSteps}
-          isRunning={isRunning}
-          input={input}
-          selected={view.focus}
-          onSelect={view.select}
-          onEditStep={onEditStep}
-          onAddParallel={onAddParallel}
-          onAddAfter={onAddAfter}
-        />
-      )}
+    <RunFlowContext value={flow}>
+      <section>
+        {diagram && (
+          <PipelineGraph
+            steps={steps}
+            inputs={inputs}
+            results={view.results}
+            liveSteps={liveSteps}
+            isRunning={isRunning}
+            input={input}
+            selected={view.focus}
+            onSelect={view.select}
+            onEditStep={onEditStep}
+            onAddParallel={onAddParallel}
+            onAddAfter={onAddAfter}
+          />
+        )}
 
-      {children}
+        {children}
 
-      {isRunning && !liveSteps && (
-        <BusyNotice className="mt-8">
-          Running the pipeline — parallel steps run at the same time…
-        </BusyNotice>
-      )}
+        {isRunning && !liveSteps && (
+          <BusyNotice className="mt-8">
+            Running the pipeline — parallel steps run at the same time…
+          </BusyNotice>
+        )}
 
-      {hasResults && (
-        <ResultsArea
-          view={view}
-          allSteps={liveSteps ?? view.results}
-          isRunning={isRunning}
-          elapsedMs={elapsedMs}
-        />
-      )}
-    </section>
+        {hasResults && (
+          <ResultsArea
+            view={view}
+            allSteps={liveSteps ?? view.results}
+            isRunning={isRunning}
+            elapsedMs={elapsedMs}
+          />
+        )}
+      </section>
+    </RunFlowContext>
   );
 }
 
@@ -170,7 +175,11 @@ function ResultsArea({ view, allSteps, isRunning, elapsedMs }: ResultsAreaProps)
       </div>
 
       {view.tab === 'outputs' ? (
-        <OutputsPanel outputs={view.outputs} focusedStep={focusedStep} />
+        <OutputsPanel
+          outputs={view.outputs}
+          focusedStep={focusedStep}
+          noneBecauseSkipped={!isRunning && allSteps.some(skippedOutput)}
+        />
       ) : (
         <RunResults results={allSteps} focusedStep={focusedStep} runActive={isRunning} />
       )}
@@ -178,18 +187,28 @@ function ResultsArea({ view, allSteps, isRunning, elapsedMs }: ResultsAreaProps)
   );
 }
 
+/** A followed run's output step whose condition was not met: it made nothing. */
+function skippedOutput(step: StepResult | RunStep): boolean {
+  return 'status' in step && step.status === 'skipped' && step.is_output;
+}
+
 function OutputsPanel({
   outputs,
   focusedStep,
+  noneBecauseSkipped,
 }: {
   outputs: StepResult[];
   focusedStep: number | null;
+  /** The run ended and the steps that make the outputs were skipped. */
+  noneBecauseSkipped: boolean;
 }) {
   const stages = groupByStage(outputs, (result) => result.stage);
   if (stages.length === 0) {
     return (
       <p className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-slate-400">
-        No outputs yet. Each one appears here as soon as it is ready.
+        {noneBecauseSkipped
+          ? 'No outputs: the steps that make them were skipped because their condition was not met.'
+          : 'No outputs yet. Each one appears here as soon as it is ready.'}
       </p>
     );
   }
@@ -252,46 +271,5 @@ function TabButton({ value, active, onClick, children }: TabButtonProps) {
       )}
       {children}
     </button>
-  );
-}
-
-interface RunStatsProps {
-  results: StepResult[];
-  outputCount: number;
-  elapsedMs: number | null;
-}
-
-function RunStats({ results, outputCount, elapsedMs }: RunStatsProps) {
-  const stageCount = new Set(results.map((result) => result.stage)).size;
-  const stats = [
-    { value: outputCount, label: outputCount === 1 ? 'output' : 'outputs', decimals: 0 },
-    { value: results.length, label: 'steps', decimals: 0 },
-    { value: stageCount, label: 'stages', decimals: 0 },
-  ];
-  if (elapsedMs !== null) stats.push({ value: elapsedMs / 1000, label: 's', decimals: 1 });
-  const summary = stats
-    .map((stat) => `${stat.value.toFixed(stat.decimals)} ${stat.label}`)
-    .join(' · ');
-
-  // The counting chips are visual; assistive tech reads the one-line summary.
-  return (
-    <div className="text-xs text-slate-400">
-      <p className="sr-only">{summary}</p>
-      <div aria-hidden="true" className="flex flex-wrap gap-2">
-        {stats.map((stat) => (
-          <span
-            key={stat.label}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1"
-          >
-            <CountUp
-              to={stat.value}
-              decimals={stat.decimals}
-              className="font-semibold text-slate-100"
-            />{' '}
-            {stat.label}
-          </span>
-        ))}
-      </div>
-    </div>
   );
 }

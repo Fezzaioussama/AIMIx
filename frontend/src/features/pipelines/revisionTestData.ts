@@ -12,6 +12,8 @@ export function testStep(order: number, stage: number, title: string): PipelineS
     model: 'vendor/model',
     role: '',
     allowed_tools: null,
+    condition: null,
+    review: null,
   };
 }
 

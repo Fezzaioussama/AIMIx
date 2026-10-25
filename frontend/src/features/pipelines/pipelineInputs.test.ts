@@ -34,6 +34,7 @@ describe('inputNameProblem', () => {
     ['2nd', 'Start with a letter'],
     ['_x', 'Start with a letter'],
     ['input', 'reserved'],
+    ['feedback', 'reserved for a reviewer’s feedback'],
   ])('rejects %j', (name, problem) => {
     expect(inputNameProblem(name, [])).toContain(problem);
   });
@@ -57,6 +58,10 @@ describe('unknownPlaceholders', () => {
   it('lists placeholders nothing fills, once each, ignoring other braces', () => {
     const prompt = 'Use {input}, {topic}, {tone} and {tone} with {"a": 1}';
     expect(unknownPlaceholders(prompt, [topic])).toEqual(['tone']);
+  });
+
+  it('knows {feedback}, the reviewer’s feedback, without an input of that name', () => {
+    expect(unknownPlaceholders('Redo it. Reviewer said: {feedback}', [])).toEqual([]);
   });
 });
 

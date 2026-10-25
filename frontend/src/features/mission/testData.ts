@@ -26,6 +26,8 @@ export function planStep(order: number, stage: number, title: string, isOutput: 
     model: 'vendor/fast',
     role: order === 1 ? 'Researcher' : 'Analyst',
     allowed_tools: order === 1 ? [] : null,
+    condition: null,
+    review: null,
   };
   return step;
 }

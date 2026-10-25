@@ -19,6 +19,8 @@ const planned: Pipeline = {
       model: 'v/m',
       role: '',
       allowed_tools: null,
+      condition: null,
+      review: null,
     },
     {
       order: 2,
@@ -30,6 +32,8 @@ const planned: Pipeline = {
       model: 'v/m',
       role: '',
       allowed_tools: null,
+      condition: null,
+      review: null,
     },
   ],
 };

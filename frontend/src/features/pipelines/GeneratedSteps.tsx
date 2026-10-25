@@ -1,6 +1,7 @@
 import type { AgentTool, Pipeline, PipelineInput, PipelineStep } from '../../core/api/types';
 import { PromptPlaceholders } from './PromptPlaceholders';
 import { StepAgentFields } from './StepAgentFields';
+import { StepFlowFields } from './StepFlowFields';
 import { StageArrow } from './StageArrow';
 import { StageHeader } from './StageHeader';
 import { StageInput } from './StageInput';
@@ -38,6 +39,7 @@ export function GeneratedSteps({
               <GeneratedStep
                 key={index}
                 step={step}
+                steps={pipeline.steps}
                 inputs={pipeline.inputs}
                 availableModels={availableModels}
                 availableTools={availableTools}
@@ -56,6 +58,7 @@ export function GeneratedSteps({
 
 interface GeneratedStepProps {
   step: PipelineStep;
+  steps: PipelineStep[];
   inputs: PipelineInput[];
   availableModels: string[];
   availableTools: AgentTool[];
@@ -66,6 +69,7 @@ interface GeneratedStepProps {
 
 function GeneratedStep({
   step,
+  steps,
   inputs,
   availableModels,
   availableTools,
@@ -107,6 +111,7 @@ function GeneratedStep({
           </option>
         ))}
       </select>
+      <StepFlowFields step={step} steps={steps} inputs={inputs} onChange={onChange} />
     </div>
   );
 }

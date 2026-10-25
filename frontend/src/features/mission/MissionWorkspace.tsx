@@ -75,6 +75,7 @@ function EditDrawer({ mission, drawer, models, tools, notice }: EditDrawerProps)
   return (
     <StepDrawer
       step={step}
+      steps={pipeline.steps}
       inputs={pipeline.inputs}
       models={models}
       tools={tools}

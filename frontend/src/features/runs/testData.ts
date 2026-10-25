@@ -20,7 +20,8 @@ export function usageOf(input: number, output: number, cost: number | null): Usa
   return { input_tokens: input, output_tokens: output, cost_usd: cost, cost_complete: true };
 }
 
-/** What a step used: the tokens and cost columns of a run step. */
+/** What a step used: the tokens and cost columns of a run step. (Its review rounds are
+ * the `rounds` and `verdict` of the step itself; override them with `{ ...runStep(...) }`.) */
 export type StepUsage = Pick<RunStep, 'input_tokens' | 'output_tokens' | 'cost_usd'>;
 
 const NO_STEP_USAGE: StepUsage = { input_tokens: 0, output_tokens: 0, cost_usd: null };
@@ -37,6 +38,8 @@ function definitionStep(order: number, stage: number, title: string): PipelineSt
     model: 'vendor/writer',
     role: '',
     allowed_tools: null,
+    condition: null,
+    review: null,
   };
 }
 
@@ -69,6 +72,8 @@ export function runStep(
       status === 'failed' ? { code: 'provider_timeout', detail: 'The agent timed out.' } : null,
     started_at: started,
     finished_at: finished,
+    rounds: 1,
+    verdict: null,
     ...used,
   };
 }

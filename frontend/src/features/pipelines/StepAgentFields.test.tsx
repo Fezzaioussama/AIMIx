@@ -28,6 +28,8 @@ function Harness({ catalog = tools }: { catalog?: AgentTool[] }) {
     model: 'v/m',
     role: '',
     allowed_tools: null,
+    condition: null,
+    review: null,
   });
   return (
     <>

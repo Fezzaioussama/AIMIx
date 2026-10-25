@@ -25,6 +25,7 @@ from api.models import (
 )
 from api.schemas.common import ModelId, NonBlank, UtcDateTime
 from api.schemas.usage import BudgetIn
+from api.services.multiagent.conditions import StepCondition, tidy
 from api.services.pipeline_changes import ChangeKind, ChangeTarget
 from api.services.pipeline_inputs import input_name_error
 
@@ -62,6 +63,30 @@ Inputs = Annotated[
 ]
 
 
+class StepConditionIn(BaseModel):
+    """ "Run this step only if ...": what to look at, how to compare it, and with
+    what, stored tidy. Whether it can work in the pipeline is checked as a whole
+    (``services/pipeline_flow``), which names the step when it cannot."""
+
+    source: Annotated[str, StringConstraints(strip_whitespace=True)]
+    operator: Annotated[str, StringConstraints(strip_whitespace=True)]
+    value: str = ""
+
+    @model_validator(mode="after")
+    def _tidy(self) -> StepConditionIn:
+        self.value = tidy(StepCondition(self.source, self.operator, self.value)).value
+        return self
+
+
+class StepReviewIn(BaseModel):
+    """Makes a step a reviewer that can send the work back for fixes. That the
+    stage is an earlier one that exists, and how many times it may go back, is
+    checked as a whole (``services/pipeline_flow``)."""
+
+    send_back_to_stage: int
+    max_rounds: int
+
+
 class PipelineStepIn(BaseModel):
     order: int = Field(ge=0)
     # Optional so clients that predate parallel stages keep working: a step
@@ -74,6 +99,8 @@ class PipelineStepIn(BaseModel):
     expected_output: str = Field("", max_length=STEP_EXPECTED_OUTPUT_MAX_LENGTH)
     prompt: NonBlank
     model: ModelId
+    condition: StepConditionIn | None = None
+    review: StepReviewIn | None = None
 
     @field_validator("allowed_tools")
     @classmethod
@@ -119,8 +146,20 @@ class PipelinePatch(BaseModel):
     steps: Steps | None = None
 
 
+class StepConditionOut(BaseModel):
+    source: str
+    operator: str
+    value: str
+
+
+class StepReviewOut(BaseModel):
+    send_back_to_stage: int
+    max_rounds: int
+
+
 class StepDefinitionOut(BaseModel):
-    """A step as saved: in a pipeline, or in the snapshot a run executes."""
+    """A step as saved: in a pipeline, or in the snapshot a run executes. A run
+    saved before conditions and review loops existed has neither: both are null."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,6 +172,8 @@ class StepDefinitionOut(BaseModel):
     expected_output: str
     prompt: str
     model: str
+    condition: StepConditionOut | None = None
+    review: StepReviewOut | None = None
 
 
 class PipelineStepOut(StepDefinitionOut):
@@ -180,6 +221,10 @@ class StepResultOut(BaseModel):
     output: str
     is_output: bool
     tool_calls: list[ToolCallOut]
+    #: Its condition did not hold, so it did not run.
+    skipped: bool = False
+    #: The review round it belongs to; above 1 when a review loop redid it.
+    rounds: int = 1
 
 
 class RunResponse(BaseModel):

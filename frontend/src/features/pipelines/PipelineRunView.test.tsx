@@ -17,6 +17,8 @@ function step(order: number, stage: number, title: string, isOutput: boolean): P
     model: 'v/writer',
     role: '',
     allowed_tools: null,
+    condition: null,
+    review: null,
   };
 }
 

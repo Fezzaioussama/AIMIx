@@ -179,8 +179,13 @@ features one step closer to the machinery.
 2. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and the configured MCP tools that need no approval (see [above](#give-chat-and-pipeline-steps-mcp-tools)).
 3. **Pipeline Builder** (`/pipeline`) — use the workflow canvas to add parallel
    steps or insert a new stage. Give each step a role, prompt, model, and tool
-   access; mark deliverables as **Output**. Write prompts using `{input}`,
-   **Save**, then **Run** with an input. The run executes in the background:
+   access; mark deliverables as **Output**. Two folded options change how work
+   flows: **Run this step only if…** skips the step unless something is true, and
+   **Review loop** (from the second stage on) lets a reviewer step send the work
+   back to an earlier stage a few times, with its feedback; the diagram marks both
+   (see [architecture.md](architecture.md#conditions-and-review-loops)). Write
+   prompts using `{input}` (and `{feedback}` in a step a reviewer sends work back
+   to), **Save**, then **Run** with an input. The run executes in the background:
    the diagram shows each step waiting, running, done or failed, outputs appear
    as soon as each step finishes, and **Stop** / **Resume** act on it. Run
    results group deliverables by stage and show each called tool's name and

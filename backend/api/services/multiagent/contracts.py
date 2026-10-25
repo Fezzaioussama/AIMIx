@@ -9,6 +9,8 @@ from typing import Protocol
 
 from api.exceptions import DomainError
 from api.services.agent_types import AgentOutcome, AgentTask, RunStepRef, ToolCallTrace
+from api.services.multiagent.conditions import StepCondition
+from api.services.multiagent.reviews import StepReview, Verdict
 from llm.usage import NO_USAGE, UNMETERED, TokenUsage, UsageMeter
 
 
@@ -38,6 +40,10 @@ class StepSpec:
     allowed_tools: tuple[str, ...] | None
     is_output: bool
     expected_output: str = ""
+    #: The step runs only while this holds; None always runs it.
+    condition: StepCondition | None = None
+    #: Makes the step a reviewer that can send the work back; None for any other step.
+    review: StepReview | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +75,12 @@ class StepResult:
     tool_calls: list[ToolCallTrace] = field(default_factory=list)
     #: What the step's model calls used (``AgentOutcome.usage``).
     usage: TokenUsage = NO_USAGE
+    #: The review round it belongs to: 1, or more for a step a review loop redid.
+    rounds: int = 1
+    #: Its condition did not hold, so it did not run: ``output`` is empty.
+    skipped: bool = False
+    #: What a reviewer decided (its ``output`` is without the verdict line).
+    verdict: Verdict | None = None
 
 
 @dataclass(frozen=True)
@@ -88,9 +100,14 @@ class StepEventKind(str, Enum):
     """A moment in one step's life, in the order the graph reports them."""
 
     STARTED = "started"
+    #: Started again: a review loop sent the work back, so a step that already
+    #: finished (or was skipped) in an earlier round runs once more.
+    RESTARTED = "restarted"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    #: Its condition did not hold; the step is final without having run.
+    SKIPPED = "skipped"
 
 
 @dataclass(frozen=True)
@@ -110,6 +127,8 @@ class StepEvent:
     result: StepResult | None = None
     #: Set when ``kind`` is FAILED.
     error: DomainError | None = None
+    #: The review round the event belongs to (``StepResult.rounds``).
+    round: int = 1
 
 
 class StepObserver(Protocol):
@@ -151,6 +170,10 @@ class RunControl:
     meter: Callable[[int], UsageMeter] = unmetered
     #: The recorded run being executed; None for a run nobody records.
     run_id: int | None = None
+    #: The review round each step's saved row was last in, by step order, for
+    #: every step (not only those in ``completed``): where a resumed run's review
+    #: loops stand. A step missing here was in round 1.
+    rounds: Mapping[int, int] = field(default_factory=dict)
 
     def step_ref(self, order: int) -> RunStepRef | None:
         """Where a step's task runs, for tools that must ask the run's owner first."""

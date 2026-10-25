@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Pipeline } from '../../core/api/types';
 import { finishedStepCount, isActive, isResumable, ranThisVersion } from './runStatus';
-import { makeRun } from './testData';
+import { makeRun, runStep } from './testData';
 
 describe('run statuses', () => {
   it('tells active runs from resumable ones', () => {
@@ -21,6 +21,13 @@ describe('run statuses', () => {
 
   it('counts the steps that are done', () => {
     expect(finishedStepCount(makeRun())).toBe(1);
+  });
+
+  it('counts a skipped step as done: it will not run, and nothing is waiting on it', () => {
+    const run = makeRun({
+      steps: [runStep(1, 'succeeded'), runStep(2, 'skipped'), runStep(3, 'failed')],
+    });
+    expect(finishedStepCount(run)).toBe(2);
   });
 });
 
@@ -49,5 +56,24 @@ describe('ranThisVersion', () => {
     expect(
       ranThisVersion(run, { ...pipeline, inputs: [{ name: 'topic', label: '', description: '' }] }),
     ).toBe(false);
+  });
+
+  it('refuses a version whose condition or review loop was changed since the run', () => {
+    const withCondition = {
+      ...pipeline,
+      steps: pipeline.steps.map((step, index) =>
+        index === 1
+          ? { ...step, condition: { source: 'step:1', operator: 'is_empty' as const, value: '' } }
+          : step,
+      ),
+    };
+    const withReview = {
+      ...pipeline,
+      steps: pipeline.steps.map((step, index) =>
+        index === 2 ? { ...step, review: { send_back_to_stage: 1, max_rounds: 2 } } : step,
+      ),
+    };
+    expect(ranThisVersion(run, withCondition)).toBe(false);
+    expect(ranThisVersion(run, withReview)).toBe(false);
   });
 });

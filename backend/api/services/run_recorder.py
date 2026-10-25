@@ -17,7 +17,7 @@ from time import monotonic
 from typing import Any
 
 from api.db import Database
-from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, StepStatus
+from api.models import ACTIVE_RUN_STATUSES, COMPLETED_STEP_STATUSES, Run, RunStatus, StepStatus
 from api.repositories import runs as repository
 from api.repositories.runs import RunEnding, StepChange
 from api.services.multiagent.contracts import StepEvent, StepEventKind
@@ -38,7 +38,29 @@ def utcnow() -> datetime:
 
 
 def _started(event: StepEvent, now: datetime) -> dict[str, Any]:
-    return {"status": StepStatus.RUNNING, "input_used": event.input_used, "started_at": now}
+    return {
+        "status": StepStatus.RUNNING,
+        "input_used": event.input_used,
+        "started_at": now,
+        "rounds": event.round,
+    }
+
+
+def _restarted(event: StepEvent, now: datetime) -> dict[str, Any]:
+    """A review loop sent the work back: the step runs again in its own row,
+    starting from nothing (its usage, which keeps adding up, stays)."""
+    return {**repository.unstarted_step(), **_started(event, now)}
+
+
+def _skipped(event: StepEvent, now: datetime) -> dict[str, Any]:
+    """Final without having run: nothing to show but that, and when."""
+    return {
+        **repository.unstarted_step(),
+        "status": StepStatus.SKIPPED,
+        "input_used": event.input_used,
+        "rounds": event.round,
+        "finished_at": now,
+    }
 
 
 def _succeeded(event: StepEvent, now: datetime) -> dict[str, Any]:
@@ -48,6 +70,7 @@ def _succeeded(event: StepEvent, now: datetime) -> dict[str, Any]:
         "status": StepStatus.SUCCEEDED,
         "output": result.output,
         "tool_calls": [asdict(call) for call in result.tool_calls],
+        "verdict": None if result.verdict is None else result.verdict.value,
         "finished_at": now,
     }
 
@@ -70,12 +93,16 @@ StepColumns = Callable[[StepEvent, datetime], dict[str, Any]]
 
 #: For each event: the step statuses it applies to, and the columns it sets
 #: (Strategy + Registry, AGENTS.md §5 O). A step already stopped by the user
-#: keeps that status, whatever its agent reports afterwards.
+#: keeps that status, whatever its agent reports afterwards. Only a review loop's
+#: redo takes a step from ``succeeded`` (or ``skipped``) back to ``running``, and
+#: a step is only skipped again while it holds an earlier round's result.
 STEP_CHANGES: dict[StepEventKind, tuple[frozenset[StepStatus], StepColumns]] = {
     StepEventKind.STARTED: (frozenset({StepStatus.PENDING}), _started),
+    StepEventKind.RESTARTED: (COMPLETED_STEP_STATUSES, _restarted),
     StepEventKind.SUCCEEDED: (frozenset({StepStatus.RUNNING}), _succeeded),
     StepEventKind.FAILED: (frozenset({StepStatus.RUNNING}), _failed),
     StepEventKind.CANCELLED: (frozenset({StepStatus.RUNNING}), _cancelled),
+    StepEventKind.SKIPPED: (COMPLETED_STEP_STATUSES | {StepStatus.PENDING}, _skipped),
 }
 
 

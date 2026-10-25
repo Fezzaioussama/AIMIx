@@ -1,11 +1,27 @@
-import type { PipelineStep, RunStep, RunStepStatus, StepResult } from '../../core/api/types';
+import type {
+  PipelineStep,
+  RunStep,
+  RunStepStatus,
+  StepCondition,
+  StepResult,
+  StepReview,
+} from '../../core/api/types';
 import { groupByStage, outputOrders, type StageGroup } from './stages';
+import { roundTotals } from './stepFlow';
 
 /**
  * How the diagram shows a step. `pending` has not run (and will not, for now);
- * `waiting` is queued behind earlier stages of a run in progress.
+ * `waiting` is queued behind earlier stages of a run in progress; `skipped` did not
+ * run because its condition did not hold.
  */
-export type NodeStatus = 'pending' | 'waiting' | 'running' | 'done' | 'failed' | 'stopped';
+export type NodeStatus =
+  | 'pending'
+  | 'waiting'
+  | 'running'
+  | 'done'
+  | 'failed'
+  | 'stopped'
+  | 'skipped';
 
 export interface GraphNode {
   order: number;
@@ -18,6 +34,14 @@ export interface GraphNode {
   /** Length of the step's output once it has run, for the node's summary line. */
   outputLength: number | null;
   isOutput: boolean;
+  /** The step runs only while this holds. */
+  condition: StepCondition | null;
+  /** The step is a reviewer that can send the work back. */
+  review: StepReview | null;
+  /** The review round a followed run's step is in (1 for every other step), and the most
+   * rounds its loop allows; null for a step outside any loop. */
+  round: number;
+  roundTotal: number | null;
 }
 
 const LIVE_STATUS: Record<RunStepStatus, NodeStatus> = {
@@ -26,6 +50,7 @@ const LIVE_STATUS: Record<RunStepStatus, NodeStatus> = {
   succeeded: 'done',
   failed: 'failed',
   cancelled: 'stopped',
+  skipped: 'skipped',
 };
 
 /** A run's step as the diagram shows it; a pending step waits only while its run is active. */
@@ -48,9 +73,11 @@ export function buildGraph(
   const live = liveSteps && new Map(liveSteps.map((step) => [step.step_order, step]));
   // A followed run knows every step's verdict before its result exists.
   const deliverables = deliverableOrders(steps, liveSteps?.length ? liveSteps : results);
+  const totals = roundTotals(steps);
   const nodes = steps.map((step) => {
     const output = outputs.get(step.order);
     const liveStep = live?.get(step.order);
+    const status = liveStep ? liveNodeStatus(liveStep, isRunning) : nodeStatus(output, isRunning);
     return {
       stage: step.stage,
       node: {
@@ -59,9 +86,14 @@ export function buildGraph(
         model: step.model,
         prompt: step.prompt,
         expectedOutput: step.expected_output,
-        status: liveStep ? liveNodeStatus(liveStep, isRunning) : nodeStatus(output, isRunning),
+        status,
         outputLength: output === undefined ? null : output.length,
-        isOutput: deliverables.has(step.order),
+        // A step that was skipped never counts as a deliverable.
+        isOutput: deliverables.has(step.order) && status !== 'skipped',
+        condition: step.condition,
+        review: step.review,
+        round: liveStep?.rounds ?? 1,
+        roundTotal: totals.get(step.order) ?? null,
       },
     };
   });
