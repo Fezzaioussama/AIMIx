@@ -14,6 +14,11 @@ describe('run statuses', () => {
     expect(isResumable('succeeded') || isResumable('running')).toBe(false);
   });
 
+  it('treats a run waiting for an approval as active: stoppable, polled, not resumable', () => {
+    expect(isActive('waiting')).toBe(true);
+    expect(isResumable('waiting')).toBe(false);
+  });
+
   it('counts the steps that are done', () => {
     expect(finishedStepCount(makeRun())).toBe(1);
   });

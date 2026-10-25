@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, MetaData, String, Text, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, MetaData, String, Text, UniqueConstraint, and_
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -32,6 +32,10 @@ INTEGRATION_NAME_MAX_LENGTH = 31
 INTEGRATION_URL_MAX_LENGTH = 2048
 STATUS_MAX_LENGTH = 16
 ERROR_CODE_MAX_LENGTH = 64
+#: Model APIs accept tool names up to 64 characters; longer ones are cut when stored.
+TOOL_NAME_MAX_LENGTH = 64
+#: Where a tool comes from: an integration's name, or a fixed label.
+TOOL_SOURCE_MAX_LENGTH = 64
 
 
 def _utcnow() -> datetime:
@@ -187,14 +191,19 @@ class Integration(Base):
     headers_encrypted: Mapped[str] = mapped_column(Text, default="")
     header_hints: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
     enabled: Mapped[bool] = mapped_column(default=True)
+    #: Its tools wait for the run owner's OK before they act (approval gates).
+    require_approval: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
 
 class RunStatus(str, Enum):
-    """Where a run is. ``queued`` and ``running`` are active; the rest are final."""
+    """Where a run is. ``queued``, ``running`` and ``waiting`` are active; the
+    rest are final."""
 
     QUEUED = "queued"
     RUNNING = "running"
+    #: Running, with a tool call waiting for the owner's approval.
+    WAITING = "waiting"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -203,7 +212,7 @@ class RunStatus(str, Enum):
 
 
 #: A run in one of these has work left to do: it cannot be deleted or resumed.
-ACTIVE_RUN_STATUSES = frozenset({RunStatus.QUEUED, RunStatus.RUNNING})
+ACTIVE_RUN_STATUSES = frozenset({RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING})
 #: A run that stopped before the end can continue from the first unfinished stage.
 RESUMABLE_RUN_STATUSES = frozenset({RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.INTERRUPTED})
 
@@ -216,6 +225,16 @@ class StepStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class ApprovalStatus(str, Enum):
+    """Where a tool call that must ask the run's owner first is. Only ``pending`` changes."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DECLINED = "declined"
+    #: Nobody decided in time, or the run stopped first: the tool did not act.
+    EXPIRED = "expired"
 
 
 def _status_type(statuses: type[Enum]) -> SQLEnum:
@@ -267,6 +286,15 @@ class Run(Base):
         cascade="all, delete-orphan",
         order_by="(RunStep.stage, RunStep.step_order)",
     )
+    #: Tool calls waiting for the owner's decision, oldest first. Read-only:
+    #: approvals are written by ``repositories/approvals`` and deleted with the run.
+    pending_approvals: Mapped[list[RunApproval]] = relationship(
+        primaryjoin=lambda: and_(
+            Run.id == RunApproval.run_id, RunApproval.status == ApprovalStatus.PENDING
+        ),
+        order_by=lambda: RunApproval.id,
+        viewonly=True,
+    )
 
 
 class RunStep(Base):
@@ -301,3 +329,39 @@ class RunStep(Base):
     cost_usd: Mapped[float | None]
 
     run: Mapped[Run] = relationship(back_populates="steps")
+
+
+class RunApproval(Base):
+    """A step's tool call that waits for the run owner's OK before it acts.
+
+    ``arguments`` holds the call's arguments as a JSON object, for the owner to
+    read, shortened to fit APPROVAL_ARGUMENTS_MAX_CHARS (``arguments_truncated``);
+    they are never logged. ``tool_source`` is where the tool comes from (an
+    integration's name, ``MCP`` or ``AIMIx``). ``expires_at`` is when an
+    unanswered request counts as declined.
+    """
+
+    __tablename__ = "run_approvals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    step_order: Mapped[int]
+    tool_name: Mapped[str] = mapped_column(String(TOOL_NAME_MAX_LENGTH))
+    tool_source: Mapped[str] = mapped_column(String(TOOL_SOURCE_MAX_LENGTH), default="")
+    tool_description: Mapped[str] = mapped_column(Text, default="")
+    arguments: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    arguments_truncated: Mapped[bool] = mapped_column(default=False)
+    status: Mapped[ApprovalStatus] = mapped_column(
+        _status_type(ApprovalStatus), default=ApprovalStatus.PENDING
+    )
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    expires_at: Mapped[datetime]
+    decided_at: Mapped[datetime | None]
+
+    def has_expired(self, now: datetime) -> bool:
+        """Whether the time to decide is over. SQLite reads timestamps back
+        without their UTC offset; every one is stored in UTC."""
+        deadline = self.expires_at
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+        return now >= deadline

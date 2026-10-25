@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 from api.deps import current_user
 from api.endpoints import (
     agent_tools,
+    approvals,
     auth,
     chat,
     documents,
@@ -41,6 +42,7 @@ PROTECTED_ROUTERS = (
     files.router,
     runs.router,
     usage.router,
+    approvals.router,
 )
 
 

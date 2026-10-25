@@ -151,9 +151,16 @@ An integration object:
 
 ```json
 { "id": 1, "name": "crm", "url": "https://mcp.crm.example/mcp", "enabled": true,
+  "require_approval": true,
   "headers": [{ "name": "Authorization", "hint": "1234" }],
   "created_at": "2026-10-24T10:00:00Z" }
 ```
+
+`require_approval` ("Ask me before its tools act") is `true` unless you switch it
+off: in a run, each of the integration's tool calls then waits for your
+[approval](#approvals) before it acts. Chat has no run to pause, so it is **not
+offered** the tools of an integration that asks first; switch `require_approval`
+off to use an integration's tools in chat.
 
 **Address rules** (checked when you save, before a test, and again before
 every request agents send): the URL must start with `https` (plain `http` only
@@ -177,8 +184,8 @@ Your integrations, oldest first.
 
 `201` → the integration. `name` is 2–31 characters: a lowercase letter, then
 lowercase letters, digits or `_`; it is unique among your integrations and may
-not be the name of one of the operator's `MCP_SERVERS`. `enabled` defaults to
-`true`. `headers` (at most 10) need a value each; names are HTTP header names,
+not be the name of one of the operator's `MCP_SERVERS`. `enabled` and
+`require_approval` default to `true`. `headers` (at most 10) need a value each; names are HTTP header names,
 unique ignoring case, and `Host`, `Content-Length`, `Transfer-Encoding`,
 `Connection`, `Keep-Alive`, `Upgrade`, `TE`, `Trailer`, `Mcp-Session-Id` and
 `Mcp-Protocol-Version` are set automatically. Values may not contain control
@@ -193,7 +200,8 @@ Any rule broken is a `400 validation_error`.
 ```
 
 Every field is optional; one left out keeps its value, so `{"enabled": false}`
-switches the integration off (agents stop using it) and is safe to send twice.
+switches the integration off (agents stop using it) and `{"require_approval":
+false}` lets its tools act without asking; both are safe to send twice.
 `headers`, when sent, is the complete list: a header left out is removed, and a
 header sent **without** a `value` keeps the value saved under that name (`400`
 if there is none). Saved values only go to the server they were entered for:
@@ -261,7 +269,10 @@ An integration that cannot be reached, or whose address is no longer allowed,
 is left out instead (the server logs `integration.discovery_skipped`), so the
 list still loads; so is an integration tool whose name another tool already
 has or that is not 1–64 letters, digits, `_` or `-`.
-Pipeline steps cannot call the chat-only `run_pipeline` function.
+Pipeline steps cannot call the chat-only `run_pipeline` function. The list does
+not say which tools [ask for approval](#approvals) when a step calls them: that
+depends on the source's setting (`MCP_REQUIRE_APPROVAL`, an integration's
+`require_approval`, `AGENT_APPROVAL_TOOLS`), not on the tool.
 
 The five workspace tools are confined to a private
 `AGENT_WORKSPACE_DIR/user-<id>` directory — the same one the [Files](#files)
@@ -303,11 +314,14 @@ chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`
 (which lists a pipeline's named inputs), and `run_pipeline(pipeline_id,
 input_text, inputs)` for the signed-in user; `inputs` holds the values of a
 pipeline's named inputs, under the same rules as a run request. A run started
-from chat is recorded in the run history like any other. LangGraph
-also loads all tools from `MCP_SERVERS` and from your enabled integrations, and
-keeps tool output out of the text stream. An integration that cannot be
-reached is skipped. The configured provider supplies the model;
-there is no conversation history across requests.
+from chat is recorded in the run history like any other, and its steps ask for
+[approval](#approvals) where their tools require it. LangGraph also loads the
+tools of `MCP_SERVERS` and of your enabled integrations **that need no
+approval**: chat has no run to pause, so a tool that asks first is not offered
+to it (`MCP_REQUIRE_APPROVAL=false` and an integration's `require_approval:
+false` let their tools act at once, in chat too). Tool output stays out of the
+text stream. An integration that cannot be reached is skipped. The configured
+provider supplies the model; there is no conversation history across requests.
 
 A provider or MCP failure **before** the first text chunk returns a normal
 error status (502/503/504), including `502 tool_unavailable` if an MCP server
@@ -626,7 +640,10 @@ resumed), `409 conflict` if the run is stopped from the run history while
 this request waits.
 
 The call takes as long as its stages combined, and a parallel stage takes as
-long as its slowest step. Tool actions have no approval flow.
+long as its slowest step. When a step's tool must [ask for approval](#approvals),
+the call also waits until the run's owner answers (from the Runs page or the
+[approval endpoints](#post-runsidapprovalsapproval_idapprove-and-decline)), or the
+request expires after `APPROVAL_TIMEOUT_SECONDS`.
 
 ## Runs
 
@@ -636,9 +653,12 @@ pipeline as it was when the run started (`definition`), so editing or deleting
 the pipeline later changes nothing about the run.
 
 A run is `queued` (waiting for a free slot: at most `RUN_MAX_CONCURRENT` runs
-execute at once), `running`, then `succeeded`, `failed`, `cancelled` (you
-stopped it) or `interrupted` (the server stopped or restarted during the run).
-Each step is `pending`, `running`, `succeeded`, `failed` or `cancelled`.
+execute at once), `running`, `waiting` (running, but a tool call waits for your
+approval; see [Approvals](#approvals)), then `succeeded`, `failed`, `cancelled`
+(you stopped it) or `interrupted` (the server stopped or restarted during the
+run). `queued`, `running` and `waiting` are active. Each step is `pending`,
+`running`, `succeeded`, `failed` or `cancelled`; the step that asked stays
+`running` while its run is `waiting`.
 
 ### `POST /pipelines/<id>/runs`
 
@@ -672,11 +692,15 @@ The run object:
     "steps": [{ "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash" }, "..."]
   },
   "steps": [
-    { "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123 },
-    { "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004 }
-  ]
+{ "step_order": 1, "stage": 1, "title": "Summary", "model": "deepseek/deepseek-v4-flash", "status": "succeeded", "input_used": "## Article\n\nLong article text...", "output": "Summary ...", "is_output": false, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:01Z", "finished_at": "2026-10-24T10:00:09Z", "input_tokens": 1234, "output_tokens": 567, "cost_usd": 0.0123 },
+{ "step_order": 2, "stage": 2, "title": "Translated summary", "model": "openai/gpt-oss-120b", "status": "running", "input_used": "Summary ...", "output": "", "is_output": true, "tool_calls": [], "error": null, "started_at": "2026-10-24T10:00:09Z", "finished_at": null, "input_tokens": 200, "output_tokens": 20, "cost_usd": 0.0004 }
+],
+"pending_approvals": []
 }
 ```
+
+`pending_approvals` lists the tool calls the run waits on, oldest first (empty
+unless the run is `waiting`); see [Approvals](#approvals).
 
 `input` / `inputs` are what the run was started with. A step's `output` and
 `tool_calls` appear as soon as it succeeds; `final_output` once the run
@@ -733,8 +757,10 @@ cannot stop calls whose cost is unknown; use `max_tokens` for those.
 ### `GET /runs`
 
 Your runs, newest first, one page at a time: `?limit=20&offset=0`, optionally
-`&pipeline_id=7` for one pipeline's runs. `limit` is 1–100 (default 20) and
-`offset` ≥ 0; anything else is a `400`. `200`:
+`&pipeline_id=7` for one pipeline's runs and `&status=waiting` for the runs in
+one status. `limit` is 1–100 (default 20) and `offset` ≥ 0; an unknown `status`
+or anything else out of range is a `400`. `?status=waiting&limit=1` is the cheap
+way to know whether anything waits for you: read `total`. `200`:
 
 ```json
 { "items": [{ "id": 12, "pipeline_id": 7, "pipeline_name": "Summarise then translate", "status": "succeeded", "error": null, "created_at": "...", "started_at": "...", "finished_at": "...", "max_cost_usd": null, "max_tokens": null, "usage": { "input_tokens": 1434, "output_tokens": 587, "cost_usd": 0.0127, "cost_complete": true } }], "total": 42 }
@@ -745,14 +771,15 @@ limits and its `usage` total, so a history can show what each run cost.
 
 ### `GET /runs/<id>`
 
-The whole run. Poll it while it is `queued` or `running` (the app polls every
-1.5 seconds). `404` if it is missing or not yours.
+The whole run. Poll it while it is `queued`, `running` or `waiting` (the app
+polls every 1.5 seconds). `404` if it is missing or not yours.
 
 ### `POST /runs/<id>/cancel`
 
-Stops a queued or running run at once: it becomes `cancelled`, a running
-step `cancelled` (its model call is cut off), pending steps stay `pending`.
-A finished run comes back unchanged, so calling it twice is safe. `200` → the run.
+Stops a queued, running or waiting run at once: it becomes `cancelled`, a
+running step `cancelled` (its model call is cut off), pending steps stay
+`pending`, and the approvals still pending expire. A finished run comes back
+unchanged, so calling it twice is safe. `200` → the run.
 
 ### `POST /runs/<id>/resume`
 
@@ -772,8 +799,57 @@ was. An invalid limit is a `400 validation_error`.
 
 ### `DELETE /runs/<id>`
 
-`204`. Only a finished run can be deleted: a queued or running one is a `409
-conflict` — stop it first.
+`204`. Only a finished run can be deleted: a queued, running or waiting one is a
+`409 conflict` — stop it first.
+
+## Approvals
+
+An agent's tool call can change something outside AIMIx (send an email, update a
+CRM). Inside a run, a tool that **asks first** is held at a gate until you
+approve or decline it:
+
+- every tool of an operator `MCP_SERVERS` entry, unless the operator set
+  `MCP_REQUIRE_APPROVAL=false`;
+- every tool of one of your [integrations](#integrations) whose
+  `require_approval` is `true` (the default);
+- any tool named in the operator's `AGENT_APPROVAL_TOOLS` (built-in tools; none
+  by default).
+
+While a request waits the run is `waiting` and `pending_approvals` lists it. The
+chat has no run to pause, so these tools are not offered to the chat agent; it
+can still start a pipeline run, whose steps ask. An approved call runs. A
+declined one does not run, and the agent receives an error result ("The user
+declined this action…") it can react to; the run goes on. A request nobody
+answers within `APPROVAL_TIMEOUT_SECONDS` (1800 by default) *expires* and counts
+as declined; so does a request of a run that is stopped, fails, or is cut by a
+restart (a resumed run asks again).
+
+A request, as listed in `pending_approvals`:
+
+```json
+{ "id": 31, "step_order": 2, "tool_name": "crm_send_email", "tool_source": "crm",
+  "tool_description": "Send an email to a contact.",
+  "arguments": { "to": "ada@example.com", "subject": "Launch" },
+  "arguments_truncated": false, "status": "pending",
+  "created_at": "2026-10-24T10:00:12Z", "expires_at": "2026-10-24T10:30:12Z" }
+```
+
+`tool_source` is an integration's name, `MCP` (the operator's servers) or `AIMIx`
+(built-in tools). `arguments` are what the agent passed, as JSON, so you can see
+what would happen; a long text value is shortened to keep the whole within
+`APPROVAL_ARGUMENTS_MAX_CHARS` (4000), and `arguments_truncated` says so (the tool
+itself gets the full text). Arguments are never written to the server's logs.
+
+### `POST /runs/<id>/approvals/<approval_id>/approve` and `/decline`
+
+No body. `200` → the run, as `GET /runs/<id>` returns it (`running` again once
+nothing else waits). Answering is idempotent: the same answer twice changes
+nothing. Failures:
+
+| Status | `error` | When |
+|---|---|---|
+| 404 | `not_found` | Not your run, or no such request in it |
+| 409 | `conflict` | The request already got the other answer, or it expired (time is up, or the run stopped); `detail` says which |
 
 ### `POST /pipelines/generate`
 

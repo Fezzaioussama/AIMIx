@@ -126,6 +126,7 @@ def _agent_node(
             allowed_tools=list(step.allowed_tools) if step.allowed_tools is not None else None,
             expected_output=step.expected_output,
             meter=nodes.control.meter(step.order),
+            run_step=nodes.control.step_ref(step.order),
         )
         return {"results": {step.order: await _run_step(step, task, stage_input, nodes)}}
 

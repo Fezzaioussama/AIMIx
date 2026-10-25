@@ -25,6 +25,9 @@ from api.services.agent_runtime import (
 )
 from api.services.agent_tools import native_tools
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.approvals.gate import ApprovalGate
+from api.services.approvals.guard import guard_tools, run_gate
+from api.services.approvals.policy import approval_policy_for
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model, model_info
 from api.services.prompts import step_agent_system_prompt
@@ -50,6 +53,20 @@ class StepAgentDependencies:
     model_info: Callable[[str], ModelInfo | None] = _unlisted
 
 
+@dataclass(frozen=True)
+class StepServices:
+    """What a step agent calls besides its model and tools: the catalogue entry
+    that prices its calls (``info``), and the gate that asks the run's owner
+    before a tool acts (``gate``). Either may be missing: an unpriced call has
+    no cost, and tools that must ask are left out when nobody can be asked."""
+
+    info: ModelInfo | None = None
+    gate: ApprovalGate | None = None
+
+
+NO_SERVICES = StepServices()
+
+
 def _tool_trace(messages: list[BaseMessage]) -> list[ToolCallTrace]:
     """Record tool names and statuses without retaining inputs or outputs."""
     names: dict[str, str] = {}
@@ -73,12 +90,15 @@ class LangGraphStepAgent:
         model: BaseChatModel,
         toolset: AgentToolset,
         limits: AgentLimits,
-        info: ModelInfo | None = None,
+        services: StepServices = NO_SERVICES,
     ) -> None:
+        """``services.gate`` holds the tools that must ask the run's owner first;
+        without one those tools are not offered."""
         self._model = model
         self._toolset = toolset
         self._limits = limits
-        self._info = info
+        self._info = services.info
+        self._gate = services.gate
 
     async def reply(self, task: AgentTask) -> AgentOutcome:
         started = monotonic()
@@ -86,14 +106,18 @@ class LangGraphStepAgent:
         usage = UsageCallback(self._info, task.meter)
         try:
             with anyio.fail_after(self._limits.timeout_seconds):
-                tools = await resolve_tools(
+                resolved = await resolve_tools(
                     self._toolset, task.allowed_tools, self._limits.mcp_timeout_seconds
                 )
+                guarded = guard_tools(self._toolset, resolved, self._gate)
+                tools = guarded.tools
                 system_prompt = step_agent_system_prompt(
                     task.role, has_tools=bool(tools), expected_output=task.expected_output
                 )
                 model = metered(self._model, usage)
-                graph = create_agent(model, tools, system_prompt=system_prompt)
+                graph = create_agent(
+                    model, tools, system_prompt=system_prompt, middleware=guarded.middleware
+                )
                 state = await graph.ainvoke(
                     {"messages": [{"role": "user", "content": task.prompt}]},
                     config={"recursion_limit": self._limits.recursion_limit},
@@ -136,12 +160,16 @@ class PipelineAgentGenerator:
             AgentToolset(
                 mcp_connections_for(self._database, self._user, settings),
                 native_tools(self._database, self._user, settings),
+                approval_policy_for(self._database, self._user, settings),
             ),
             AgentLimits(
                 settings.agent_timeout_seconds,
                 settings.agent_recursion_limit,
                 settings.mcp_timeout_seconds,
             ),
-            self._dependencies.model_info(task.model),
+            StepServices(
+                self._dependencies.model_info(task.model),
+                run_gate(self._database, task.run_step, settings),
+            ),
         )
         return await agent.reply(task)

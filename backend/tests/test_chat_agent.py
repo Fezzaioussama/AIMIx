@@ -19,6 +19,7 @@ from api.services.agent_runtime import AgentLimits, AgentToolset
 from api.services.mcp import connections
 from config.settings import Settings
 from tests.conftest import FakeAgent, use_agent
+from tests.mcp_fakes import fake_tool
 
 
 def test_mcp_servers_are_validated_and_bounded() -> None:
@@ -44,6 +45,7 @@ async def test_agent_streams_model_text_and_hides_tool_output(
     from langchain_core.tools import tool
 
     captured: dict[str, Any] = {}
+    example_tool = fake_tool("example_tool")
 
     @tool
     def local_tool() -> str:
@@ -52,7 +54,7 @@ async def test_agent_streams_model_text_and_hides_tool_output(
 
     async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
         captured["configured"] = configured
-        return [*native, "example_tool"]
+        return [*native, example_tool]
 
     class FakeGraph:
         async def astream(self, state: object, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
@@ -82,7 +84,7 @@ async def test_agent_streams_model_text_and_hides_tool_output(
     monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
     agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
     assert [part async for part in agent.stream("hello")] == ["Hello ", "world"]
-    assert captured["tools"] == [local_tool, "example_tool"]
+    assert captured["tools"] == [local_tool, example_tool]
     assert captured["state"] == {"messages": [{"role": "user", "content": "hello"}]}
     assert captured["kwargs"]["config"] == {"recursion_limit": 9}
 

@@ -13,6 +13,7 @@ from mcp import McpError
 from openrouter.errors import NoResponseError, OpenRouterError
 
 from api.exceptions import DomainError, ProviderTimedOut, ProviderUnavailable, ToolUnavailable
+from api.services.approvals.policy import NO_APPROVALS, ApprovalPolicy
 from api.services.mcp import MCPConnections
 from api.services.mcp_discovery import discover_tools
 
@@ -42,6 +43,8 @@ class AgentLimits:
 class AgentToolset:
     mcp_connections: MCPConnections
     native_tools: list[BaseTool]
+    #: Which of these tools must ask the run's owner first (``approvals.guard``).
+    approvals: ApprovalPolicy = NO_APPROVALS
 
 
 def as_agent_error(cause: Exception) -> DomainError:

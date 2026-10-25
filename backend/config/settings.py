@@ -118,6 +118,22 @@ class Settings(BaseSettings):
     )
     mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
+    # --- Approval gates (api/services/approvals) ------------------------------
+    # Tools of MCP_SERVERS wait for the run owner's OK before they act.
+    mcp_require_approval: bool = Field(True, validation_alias="MCP_REQUIRE_APPROVAL")
+    # Built-in tools (AGENT_BUILTIN_TOOLS names) that wait for the owner's OK too.
+    agent_approval_tools: CommaList = Field([], validation_alias="AGENT_APPROVAL_TOOLS")
+    # An unanswered request expires (counts as declined) after this long; the
+    # step's AGENT_TIMEOUT_SECONDS still bounds the wait.
+    approval_timeout_seconds: float = Field(
+        1800.0, gt=0, validation_alias="APPROVAL_TIMEOUT_SECONDS"
+    )
+    # How often a waiting run checks the database for the owner's decision.
+    approval_poll_seconds: float = Field(1.0, gt=0, validation_alias="APPROVAL_POLL_SECONDS")
+    # A tool call's arguments are kept for the owner to read, cut at this length.
+    approval_arguments_max_chars: int = Field(
+        4000, ge=1, validation_alias="APPROVAL_ARGUMENTS_MAX_CHARS"
+    )
     # --- Users' own MCP servers (Settings page → Integrations) ---------------
     integrations_max_per_user: int = Field(10, ge=0, validation_alias="INTEGRATIONS_MAX_PER_USER")
     # Local development only: let integrations reach loopback and private
@@ -277,6 +293,7 @@ class Settings(BaseSettings):
         "allowed_hosts",
         "cors_allowed_origins",
         "agent_builtin_tools",
+        "agent_approval_tools",
         "workspace_upload_extensions",
         mode="before",
     )

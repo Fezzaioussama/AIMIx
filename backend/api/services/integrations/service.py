@@ -63,6 +63,8 @@ class IntegrationView:
     enabled: bool
     headers: list[HeaderView]
     created_at: datetime
+    #: In a run, its tools wait for the owner's OK before they act.
+    require_approval: bool = True
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,7 @@ class IntegrationDraft:
     url: str
     enabled: bool = True
     headers: list[HeaderInput] = field(default_factory=list)
+    require_approval: bool = True
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ class IntegrationEdit:
     url: str | None = None
     enabled: bool | None = None
     headers: list[HeaderInput] | None = None
+    require_approval: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,7 @@ def _view(integration: Integration) -> IntegrationView:
         enabled=integration.enabled,
         headers=[HeaderView(item["name"], item["hint"]) for item in integration.header_hints],
         created_at=integration.created_at,
+        require_approval=integration.require_approval,
     )
 
 
@@ -130,7 +135,9 @@ def create(access: IntegrationAccess, draft: IntegrationDraft) -> IntegrationVie
     _check_name(access, draft.name)
     _check_address(access, draft.url)
     headers = seal(access.box, merge(draft.headers, {}))
-    changes = IntegrationChanges(draft.name, draft.url, draft.enabled, headers)
+    changes = IntegrationChanges(
+        draft.name, draft.url, draft.enabled, headers, require_approval=draft.require_approval
+    )
     row = repository.create(access.session, access.user, changes)
     # Counts only: neither header values nor their hints reach the logs (§6).
     logger.info(
@@ -175,9 +182,10 @@ def update(
     if edit.url is not None:
         _check_address(access, edit.url)
     headers = _new_headers(access, row, edit)
-    repository.update(
-        access.session, row, IntegrationChanges(edit.name, edit.url, edit.enabled, headers)
+    changes = IntegrationChanges(
+        edit.name, edit.url, edit.enabled, headers, require_approval=edit.require_approval
     )
+    repository.update(access.session, row, changes)
     logger.info(
         "integration.updated user_id=%s integration_id=%s headers_replaced=%s",
         access.user.id,

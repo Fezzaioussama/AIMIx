@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Collection
 
 from langchain_core.tools import BaseTool
 
@@ -25,6 +26,14 @@ def describe(tool: BaseTool, limit: int) -> str:
     return tool.description.strip()[:limit]
 
 
+def source_of(tool: BaseTool, native_names: Collection[str]) -> str:
+    """Where a tool comes from, as people see it: AIMIx (``native_names``), the
+    user's integration, or MCP (the operator's servers)."""
+    if tool.name in native_names:
+        return NATIVE_SOURCE
+    return integration_of(tool) or OPERATOR_MCP_SOURCE
+
+
 class PipelineToolCatalog:
     def __init__(self, database: Database, user: User) -> None:
         self._database = database
@@ -41,13 +50,7 @@ class PipelineToolCatalog:
         native_names = {item.name for item in native}
         limit = settings.agent_tool_description_max_chars
         return [
-            ToolDescriptor(
-                item.name,
-                describe(item, limit),
-                NATIVE_SOURCE
-                if item.name in native_names
-                else integration_of(item) or OPERATOR_MCP_SOURCE,
-            )
+            ToolDescriptor(item.name, describe(item, limit), source_of(item, native_names))
             for item in tools
         ]
 

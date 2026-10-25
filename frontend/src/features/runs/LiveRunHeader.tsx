@@ -15,6 +15,7 @@ import { finishedStepCount, isActive, isResumable } from './runStatus';
 const STATUS_NOTES: Partial<Record<RunStatus, string>> = {
   queued: 'It starts as soon as a slot is free.',
   running: 'It keeps running if you leave this page.',
+  waiting: 'This run is waiting for you. Approve or decline the action below to let it go on.',
   cancelled: 'You stopped this run.',
   interrupted: 'The server restarted while this run was in progress.',
 };

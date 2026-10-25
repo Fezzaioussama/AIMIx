@@ -19,6 +19,7 @@ interface RunHistoryListProps {
 /** How long a listed run took, or that it is still going. */
 function durationText(run: RunSummary): string {
   if (run.status === 'queued') return 'Waiting to start';
+  if (run.status === 'waiting') return 'Needs your OK';
   if (isActive(run.status)) return 'In progress';
   const elapsed = elapsedMs(run.started_at, run.finished_at, Date.now());
   return elapsed === null ? 'Did not start' : formatDuration(elapsed);

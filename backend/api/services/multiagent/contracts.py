@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Protocol
 
 from api.exceptions import DomainError
-from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.agent_types import AgentOutcome, AgentTask, RunStepRef, ToolCallTrace
 from llm.usage import NO_USAGE, UNMETERED, TokenUsage, UsageMeter
 
 
@@ -149,3 +149,9 @@ class RunControl:
     #: Each step's usage meter, by step order: hears the step's model calls and
     #: may refuse one (``run_budget.RunMeter.for_step``).
     meter: Callable[[int], UsageMeter] = unmetered
+    #: The recorded run being executed; None for a run nobody records.
+    run_id: int | None = None
+
+    def step_ref(self, order: int) -> RunStepRef | None:
+        """Where a step's task runs, for tools that must ask the run's owner first."""
+        return None if self.run_id is None else RunStepRef(self.run_id, order)

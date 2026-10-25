@@ -22,6 +22,8 @@ from api.services.agent_runtime import (
     resolve_tools,
 )
 from api.services.agent_tools import PipelineLauncher, built_in_tools
+from api.services.approvals.guard import guard_tools
+from api.services.approvals.policy import approval_policy_for
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model
 from config.settings import get_settings
@@ -38,7 +40,9 @@ class LangGraphChatAgent:
     async def _execute(self, prompt: str, queue: asyncio.Queue[str | None]) -> None:
         started = monotonic()
         with anyio.fail_after(self._limits.timeout_seconds):
-            tools = await resolve_tools(self._toolset, None, self._limits.mcp_timeout_seconds)
+            resolved = await resolve_tools(self._toolset, None, self._limits.mcp_timeout_seconds)
+            # A chat has no run to pause: the tools that must ask first are left out.
+            tools = guard_tools(self._toolset, resolved, None).tools
             graph = create_agent(self._model, tools)
             events = graph.astream(
                 {"messages": [{"role": "user", "content": prompt}]},
@@ -95,6 +99,7 @@ def get_chat_agent(
         AgentToolset(
             mcp_connections_for(database, user, settings),
             built_in_tools(database, user, launch),
+            approval_policy_for(database, user, settings),
         ),
         AgentLimits(
             settings.agent_timeout_seconds,

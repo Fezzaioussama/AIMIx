@@ -34,7 +34,11 @@ def list_integrations(access: Integrations) -> list[IntegrationOut]:
 @router.post("", status_code=201)
 def create_integration(body: IntegrationIn, access: Integrations) -> IntegrationOut:
     draft = service.IntegrationDraft(
-        body.name, body.url, body.enabled, _headers(body.headers) or []
+        body.name,
+        body.url,
+        body.enabled,
+        _headers(body.headers) or [],
+        require_approval=body.require_approval,
     )
     return IntegrationOut.model_validate(service.create(access, draft))
 
@@ -43,7 +47,13 @@ def create_integration(body: IntegrationIn, access: Integrations) -> Integration
 def update_integration(
     integration_id: int, body: IntegrationPatch, access: Integrations
 ) -> IntegrationOut:
-    edit = service.IntegrationEdit(body.name, body.url, body.enabled, _headers(body.headers))
+    edit = service.IntegrationEdit(
+        body.name,
+        body.url,
+        body.enabled,
+        _headers(body.headers),
+        require_approval=body.require_approval,
+    )
     return IntegrationOut.model_validate(service.update(access, integration_id, edit))
 
 

@@ -72,7 +72,9 @@ flowchart LR
     S2 --> Output[Deliverables + tool trace]
 ```
 
-> **Current boundary:** tool actions run without an approval prompt.
+> **Approval gates:** in a run, a call of an MCP tool (the operator's `MCP_SERVERS`
+> and each user's integrations) waits for the run's owner to approve it. Built-in
+> tools act unasked unless `AGENT_APPROVAL_TOOLS` names them.
 
 ## Stack
 
@@ -164,8 +166,9 @@ the same recorded run and waits for it.
 
 The chat endpoint runs a LangGraph agent using the configured provider model.
 Its native tools list, inspect, and run the signed-in user's saved pipelines.
-It also loads all tools from the MCP servers in `MCP_SERVERS` and streams only
-the agent's text. `api/services/chat.py` pulls the first chunk eagerly, so a
+It also loads the tools from the MCP servers in `MCP_SERVERS` that need no
+approval (chat has no run to pause, so tools that ask first are not offered; see
+`MCP_REQUIRE_APPROVAL`) and streams only the agent's text. `api/services/chat.py` pulls the first chunk eagerly, so a
 failure before the response is committed still becomes a proper status code.
 
 On the client, `core/api/client.ts` reads `response.body.getReader()` in a loop
@@ -302,7 +305,10 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 | `RUN_MAX_CONCURRENT` | No | Pipeline runs executing at once; the rest wait queued (default 4) |
-| `MCP_SERVERS` | No | JSON object of MCP servers available to chat and pipeline agents (default `{}`) |
+| `MCP_SERVERS` | No | JSON object of MCP servers available to pipeline agents, and to chat when approval is off (default `{}`) |
+| `MCP_REQUIRE_APPROVAL` | No | `true` (default): a run waits for its owner's OK before an `MCP_SERVERS` tool acts, and chat is not offered those tools |
+| `AGENT_APPROVAL_TOOLS` | No | Comma-separated built-in tools that also wait for approval (default none) |
+| `APPROVAL_TIMEOUT_SECONDS` | No | A request nobody answers expires and counts as declined (default 1800) |
 | `MCP_TIMEOUT_SECONDS` | No | Bounds MCP discovery and tool calls (default 30) |
 | `AGENT_WORKSPACE_DIR` | No | Sandboxed local files available to agents (default `backend/workspace`) |
 | `AGENT_TIMEOUT_SECONDS` | No | Bounds one chat or pipeline step agent run (default 3600) |

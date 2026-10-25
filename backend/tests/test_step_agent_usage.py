@@ -20,6 +20,7 @@ from api.services.multiagent.step_agent import (
     LangGraphStepAgent,
     PipelineAgentGenerator,
     StepAgentDependencies,
+    StepServices,
 )
 from api.services.run_budget import RunBudget, RunMeter
 from llm.catalog import ModelInfo
@@ -68,7 +69,7 @@ def tools_bind_to_the_fake_model(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_step_reports_the_sum_of_every_model_call_it_made() -> None:
-    agent = LangGraphStepAgent(loop_model(), toolset(increment), LIMITS, PRICED)
+    agent = LangGraphStepAgent(loop_model(), toolset(increment), LIMITS, StepServices(PRICED))
 
     outcome = await agent.reply(AgentTask("add", "vendor/priced", "", ["increment"]))
 
@@ -95,7 +96,7 @@ async def test_a_step_on_an_unpriced_model_keeps_its_tokens_and_an_unknown_cost(
 async def test_each_model_call_reaches_the_tasks_meter_as_it_finishes() -> None:
     saved: list[tuple[int, TokenUsage]] = []
     meter = RunMeter(RunBudget(), TokenUsage(), lambda order, usage: saved.append((order, usage)))
-    agent = LangGraphStepAgent(loop_model(), toolset(increment), LIMITS, PRICED)
+    agent = LangGraphStepAgent(loop_model(), toolset(increment), LIMITS, StepServices(PRICED))
     task = AgentTask("add", "vendor/priced", "", ["increment"], meter=meter.for_step(4))
 
     outcome = await agent.reply(task)
@@ -111,7 +112,7 @@ async def test_a_run_that_reached_its_limit_refuses_the_steps_next_call() -> Non
     meter = RunMeter(
         RunBudget(max_tokens=1000), TokenUsage(), lambda order, usage: saved.append((order, usage))
     )
-    agent = LangGraphStepAgent(loop_model(), toolset(increment), LIMITS, PRICED)
+    agent = LangGraphStepAgent(loop_model(), toolset(increment), LIMITS, StepServices(PRICED))
     task = AgentTask("add", "vendor/priced", "", ["increment"], meter=meter.for_step(1))
 
     with pytest.raises(BudgetExceeded) as raised:

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from api.models import RunStatus, StepStatus
+from api.schemas.approvals import RunApprovalOut
 from api.schemas.common import UtcDateTime
 from api.schemas.pipelines import PipelineInputField, StepDefinitionOut, ToolCallOut
 from api.schemas.usage import BudgetIn, UsageOut
@@ -18,11 +19,13 @@ RUN_PAGE_MAX_LIMIT = 100
 
 
 class RunListQuery(BaseModel):
-    """Query of GET /api/runs: one page, newest first, optionally of one pipeline."""
+    """Query of GET /api/runs: one page, newest first, optionally of one
+    pipeline or one status (``?status=waiting&limit=1`` counts what waits for you)."""
 
     limit: int = Field(RUN_PAGE_DEFAULT_LIMIT, ge=1, le=RUN_PAGE_MAX_LIMIT)
     offset: int = Field(0, ge=0)
     pipeline_id: int | None = None
+    status: RunStatus | None = None
 
 
 class RunErrorOut(BaseModel):
@@ -111,6 +114,8 @@ class RunOut(RunSummaryOut):
     final_output: str
     definition: RunDefinitionOut
     steps: list[RunStepOut]
+    #: Tool calls waiting for your answer, oldest first (approval gates).
+    pending_approvals: list[RunApprovalOut]
 
 
 class RunPageOut(BaseModel):

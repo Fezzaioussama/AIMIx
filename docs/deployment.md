@@ -141,6 +141,37 @@ server then opens connections to addresses users choose. The guard, in
 If the platform restricts outbound traffic, allow `https` to the services your
 users connect.
 
+### Approval gates: agents ask before acting on outside systems
+
+An MCP tool can send an email or update a CRM, so in a pipeline run such a call
+waits for the run's owner to approve it (the run shows *Waiting for you* and the
+Runs page offers **Approve** and **Decline**). Settings, all optional:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MCP_REQUIRE_APPROVAL` | `true` | The tools of `MCP_SERVERS` ask first. Set `false` only for servers whose tools are harmless to run unattended (read-only documentation, say) |
+| `AGENT_APPROVAL_TOOLS` | empty | Comma-separated built-in tools that also ask first, for example `save_artifact,run_python` |
+| `APPROVAL_TIMEOUT_SECONDS` | `1800` | A request nobody answers expires after this long and counts as declined; it is never longer than `AGENT_TIMEOUT_SECONDS` (3600), which the wait counts toward |
+| `APPROVAL_POLL_SECONDS` | `1` | How often a waiting run reads the database for the answer |
+| `APPROVAL_ARGUMENTS_MAX_CHARS` | `4000` | How much of a call's arguments the owner can read (long text values are shortened) |
+
+Each user also has an **Ask me before its tools act** switch on every
+integration (on by default, including integrations saved before it existed).
+
+- **Chat does not get tools that ask.** A chat has no run to pause, so the
+  tools that ask first are not offered to it; it can still start a pipeline run,
+  whose steps ask. Operators who gave chat `MCP_SERVERS` tools must set
+  `MCP_REQUIRE_APPROVAL=false` to keep them there, and each user must switch
+  the integration's approval off to use it in chat.
+- **A restart or redeploy expires the requests** of the runs it interrupts; a
+  resumed run asks again. Requests are kept in the database and read by polling,
+  so nothing depends on the process's memory.
+- **Answers are the owner's alone.** Another account's run and requests answer
+  `404`. The arguments a request shows are stored with it (so the owner can read
+  what would happen), and never written to the logs: the app logs
+  `approval.requested` and `approval.decided` with ids, the tool's name and the
+  outcome.
+
 ### Optional: let agents run code (`E2B_API_KEY`)
 
 `run_python` lets agents run Python for data analysis and charts. It is
@@ -206,7 +237,8 @@ Things to know:
   timeout); after a crash or a hard kill, the next start marks them instead.
   The steps they finished are kept, and **Resume** on the Runs screen (or
   `POST /api/runs/<id>/resume`) continues each one where it stopped. Runs still
-  waiting for a slot are interrupted the same way.
+  waiting for a slot, or waiting for an approval, are interrupted the same way
+  (their pending requests expire, and a resumed run asks again).
 - **One Uvicorn worker.** Runs are queued per process (at most
   `RUN_MAX_CONCURRENT` at once). The image starts a single worker; do not add
   `--workers`, or a starting worker would mark the runs of the others as

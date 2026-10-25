@@ -6,6 +6,10 @@ import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
 import { clearTokens, saveTokens } from './core/auth/tokenStorage';
 
+// The pipeline sub-navigation counts waiting runs with a request of its own; these
+// routing tests hand out one canned response per screen.
+vi.mock('./features/runs/useWaitingRuns', () => ({ useWaitingRuns: () => 0 }));
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -24,8 +28,14 @@ describe('App routing', () => {
 
   it('serves the public landing page at the root, without a session', async () => {
     renderAt('/');
+    // The landing page is a lazy chunk with the 3D scene behind it: loading it takes
+    // longer than the default second when the whole suite runs at once, or on a slow CI box.
     expect(
-      await screen.findByRole('heading', { level: 1, name: /multi-agent workflows/i }),
+      await screen.findByRole(
+        'heading',
+        { level: 1, name: /multi-agent workflows/i },
+        { timeout: 8000 },
+      ),
     ).toBeInTheDocument();
   });
 

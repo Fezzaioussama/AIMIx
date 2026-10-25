@@ -12,13 +12,15 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 
-from sqlalchemy import CursorResult, Select, func, inspect, select, update
+from sqlalchemy import Select, func, inspect, select, update
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from api.exceptions import NotFound
 from api.models import ACTIVE_RUN_STATUSES, Run, RunStatus, RunStep, StepStatus, User
+from api.repositories.approvals import expire_pending
+from api.repositories.bulk import changed as _changed
 from llm.usage import TokenUsage
 
 #: What a run summary needs; the long texts (definition, inputs, outputs) stay unloaded.
@@ -70,11 +72,12 @@ class NewRun:
 
 @dataclass(frozen=True)
 class RunQuery:
-    """One page of a user's runs, newest first, optionally of one pipeline."""
+    """One page of a user's runs, newest first, optionally of one pipeline or status."""
 
     limit: int
     offset: int = 0
     pipeline_id: int | None = None
+    status: RunStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -105,7 +108,7 @@ class RunEnding:
 
 
 def _with_steps() -> Select[tuple[Run]]:
-    return select(Run).options(selectinload(Run.steps))
+    return select(Run).options(selectinload(Run.steps), selectinload(Run.pending_approvals))
 
 
 def create(session: Session, user: User, new: NewRun) -> Run:
@@ -144,6 +147,8 @@ def page_for_user(session: Session, user: User, query: RunQuery) -> RunPage:
     filters = [Run.user_id == user.id]
     if query.pipeline_id is not None:
         filters.append(Run.pipeline_id == query.pipeline_id)
+    if query.status is not None:
+        filters.append(Run.status == query.status)
     total = session.scalar(select(func.count()).select_from(Run).where(*filters)) or 0
     rows = session.scalars(
         select(Run)
@@ -155,12 +160,6 @@ def page_for_user(session: Session, user: User, query: RunQuery) -> RunPage:
         .offset(query.offset)
     )
     return RunPage(list(rows), total)
-
-
-def _changed(session: Session, statement: Any) -> int:
-    """Execute a bulk UPDATE; how many rows it changed."""
-    result = session.execute(statement, execution_options={"synchronize_session": False})
-    return cast(CursorResult[Any], result).rowcount
 
 
 def set_status(
@@ -193,7 +192,8 @@ def set_step(session: Session, run_id: int, change: StepChange) -> bool:
 
 def end(session: Session, run_id: int, ending: RunEnding, now: datetime) -> bool:
     """Give the run its final status (compare-and-set) and settle the steps it
-    left running, in one transaction. False when the run had already ended."""
+    left running and the approvals it left pending, in one transaction. False
+    when the run had already ended."""
     ended = _changed(
         session,
         update(Run)
@@ -207,6 +207,7 @@ def end(session: Session, run_id: int, ending: RunEnding, now: datetime) -> bool
             .where(RunStep.run_id == run_id, RunStep.status == StepStatus.RUNNING)
             .values(status=ending.leftover_steps, finished_at=now),
         )
+        expire_pending(session, [run_id], now)
     session.commit()
     return ended == 1
 
@@ -269,9 +270,9 @@ def delete(session: Session, run: Run) -> None:
 
 
 def interrupt_active(session: Session, now: datetime) -> int:
-    """Mark the runs a previous process left queued or running as interrupted,
-    and their running steps as cancelled. A database without the runs table
-    (not migrated yet) has none."""
+    """Mark the runs a previous process left queued, running or waiting as
+    interrupted, their running steps as cancelled and their pending approvals
+    as expired. A database without the runs table (not migrated yet) has none."""
     if not inspect(session.connection()).has_table(Run.__tablename__):
         return 0
     stale = select(Run.id).where(Run.status.in_(ACTIVE_RUN_STATUSES))
@@ -281,6 +282,7 @@ def interrupt_active(session: Session, now: datetime) -> int:
         .where(RunStep.run_id.in_(stale), RunStep.status == StepStatus.RUNNING)
         .values(status=StepStatus.CANCELLED, finished_at=now),
     )
+    expire_pending(session, stale, now)
     interrupted = _changed(
         session,
         update(Run)

@@ -59,6 +59,8 @@ export function RunDetail({ live, onDelete, deleting }: RunDetailProps) {
         run={run}
         onStop={() => void live.stop()}
         onResume={(budget) => void live.resume(budget)}
+        onApprove={(approvalId) => void live.approve(approvalId)}
+        onDecline={(approvalId) => void live.decline(approvalId)}
         busy={live.busy}
         error={live.error}
         actions={

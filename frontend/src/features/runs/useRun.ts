@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { approveToolCall, declineToolCall } from '../../core/api/approvals';
 import { ApiError } from '../../core/api/client';
 import { errorMessage } from '../../core/api/errorMessage';
 import { cancelRun, getRun, resumeRun } from '../../core/api/runs';
@@ -19,6 +20,10 @@ export interface LiveRunState {
   stop: () => Promise<void>;
   /** Continue a stopped run, under new spending limits when given. */
   resume: (budget?: RunBudget) => Promise<void>;
+  /** Let a tool call this run waits on act (`run.pending_approvals`); the run updates at once. */
+  approve: (approvalId: number) => Promise<void>;
+  /** Refuse it: the step's agent is told, and the run goes on. */
+  decline: (approvalId: number) => Promise<void>;
   /** Show a run already in hand (one just started) without waiting for a fetch. */
   adopt: (run: Run) => void;
 }
@@ -30,9 +35,9 @@ interface Failure {
 
 /**
  * Follows one run: fetches it, polls it every RUN_POLL_INTERVAL_MS while it is
- * queued or running, and stops polling once it ends. Unmounting (or switching
- * runs) clears the timer and aborts the request in flight. Stop and resume act
- * on it; a resumed run is polled again.
+ * queued, running or waiting for an approval, and stops polling once it ends.
+ * Unmounting (or switching runs) clears the timer and aborts the request in
+ * flight. Stop, resume, approve and decline act on it; a resumed run is polled again.
  */
 export function useRun(runId: number | null): LiveRunState {
   const [run, setRun] = useState<Run | null>(null);
@@ -100,8 +105,18 @@ export function useRun(runId: number | null): LiveRunState {
     (budget?: RunBudget) => act((id) => resumeRun(id, budget), 'Could not resume this run.'),
     [act],
   );
+  const approve = useCallback(
+    (approvalId: number) =>
+      act((id) => approveToolCall(id, approvalId), 'Could not approve this action.'),
+    [act],
+  );
+  const decline = useCallback(
+    (approvalId: number) =>
+      act((id) => declineToolCall(id, approvalId), 'Could not decline this action.'),
+    [act],
+  );
   const adopt = useCallback((next: Run) => setRun(next), []);
   const error = failure !== null && failure.runId === runId ? failure.message : '';
 
-  return { run: current, error, busy, stop, resume, adopt };
+  return { run: current, error, busy, stop, resume, approve, decline, adopt };
 }

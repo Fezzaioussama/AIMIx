@@ -129,6 +129,17 @@ function mutations({ submit, setIntegrations, setEditing, forget }: MutationCont
           : `${integration.name} is off: your agents will not use it.`,
         'Could not change the integration.',
       ),
+    setRequireApproval: (integration: Integration, required: boolean) =>
+      submit(
+        async () =>
+          replace(
+            await integrationsApi.updateIntegration(integration.id, { require_approval: required }),
+          ),
+        required
+          ? `${integration.name} will ask you before its tools act.`
+          : `${integration.name} will act without asking you first.`,
+        'Could not change the integration.',
+      ),
     remove: (integration: Integration) =>
       submit(
         async () => {
