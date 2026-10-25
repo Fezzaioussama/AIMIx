@@ -1,12 +1,13 @@
 import { API } from './endpoints';
 import { request } from './client';
-import type { PipelineRunRequest, Run, RunPage } from './types';
+import type { PipelineRunRequest, Run, RunPage, RunStatus } from './types';
 
-/** One page of the history, newest first, optionally of one pipeline. */
+/** One page of the history, newest first, optionally of one pipeline or one status. */
 export interface RunListQuery {
   limit: number;
   offset?: number;
   pipelineId?: number;
+  status?: RunStatus;
 }
 
 /** Queue a run of a saved pipeline; it executes on the server, so poll `getRun`. */
@@ -20,7 +21,13 @@ export function listRuns(query: RunListQuery, signal?: AbortSignal): Promise<Run
     offset: String(query.offset ?? 0),
   });
   if (query.pipelineId !== undefined) params.set('pipeline_id', String(query.pipelineId));
+  if (query.status !== undefined) params.set('status', query.status);
   return request<RunPage>(`${API.runs}?${params.toString()}`, { signal });
+}
+
+/** How many of your runs wait for you to approve or decline an action. */
+export async function countWaitingRuns(signal?: AbortSignal): Promise<number> {
+  return (await listRuns({ limit: 1, status: 'waiting' }, signal)).total;
 }
 
 export function getRun(runId: number, signal?: AbortSignal): Promise<Run> {

@@ -6,6 +6,7 @@ export const INTEGRATION: Integration = {
   name: 'crm',
   url: 'https://mcp.crm.example/mcp',
   enabled: true,
+  require_approval: true,
   headers: [{ name: 'Authorization', hint: '1234' }],
   created_at: '2026-10-24T10:00:00Z',
 };

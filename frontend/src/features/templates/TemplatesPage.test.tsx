@@ -8,6 +8,10 @@ import { json } from '../settings/testData';
 import { TemplatesPage } from './TemplatesPage';
 import { TEMPLATES } from './testData';
 
+// The sub-navigation counts waiting runs with a request of its own, and these tests
+// answer fetch calls in order, for the gallery alone.
+vi.mock('../runs/useWaitingRuns', () => ({ useWaitingRuns: () => 0 }));
+
 /** Stands in for the builder, showing the router state it was opened with. */
 function BuilderProbe() {
   const state: unknown = useLocation().state;

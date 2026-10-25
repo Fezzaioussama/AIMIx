@@ -5,6 +5,7 @@ import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { actionButtonClass } from './actionButton';
 import { ConnectionTestResult, toolCount } from './ConnectionTestResult';
 import { hostOf } from './integrationDraft';
+import { SwitchButton } from './SwitchButton';
 import type { ConnectionTest } from './useIntegrations';
 
 interface IntegrationCardProps {
@@ -12,6 +13,7 @@ interface IntegrationCardProps {
   test?: ConnectionTest;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
+  onToggleApproval: (required: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
@@ -28,24 +30,44 @@ function EnabledSwitch({
       <span aria-hidden="true" className="text-xs text-slate-300">
         {enabled ? 'On' : 'Off'}
       </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`Let agents use ${name}`}
+      <SwitchButton
+        checked={enabled}
         disabled={busy}
-        onClick={() => onToggle(!enabled)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-60 ${
-          enabled ? 'border-sky-400/60 bg-sky-500/70' : 'border-white/15 bg-slate-700/70'
-        }`}
-      >
-        <span
-          aria-hidden="true"
-          className={`inline-block size-4 rounded-full bg-white shadow motion-safe:transition-transform ${
-            enabled ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        />
-      </button>
+        onChange={onToggle}
+        label={`Let agents use ${name}`}
+      />
+    </div>
+  );
+}
+
+/** Whether a run stops for the owner's OK before this integration's tools act. */
+function ApprovalSwitch({
+  integration,
+  busy,
+  onToggleApproval,
+}: Pick<IntegrationCardProps, 'integration' | 'busy' | 'onToggleApproval'>) {
+  const labelId = `integration-${integration.id}-approval`;
+  const hintId = `${labelId}-hint`;
+  const asks = integration.require_approval;
+  return (
+    <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2.5">
+      <div className="min-w-0">
+        <p id={labelId} className="text-sm text-slate-100">
+          Ask me before its tools act
+        </p>
+        <p id={hintId} className="mt-0.5 text-xs text-slate-400">
+          {asks
+            ? 'In a run, each action waits for your OK first.'
+            : 'Its tools act without asking you first.'}
+        </p>
+      </div>
+      <SwitchButton
+        checked={asks}
+        disabled={busy}
+        onChange={onToggleApproval}
+        labelledBy={labelId}
+        describedBy={hintId}
+      />
     </div>
   );
 }
@@ -123,6 +145,7 @@ export function IntegrationCard({
   test,
   busy,
   onToggle,
+  onToggleApproval,
   onEdit,
   onDelete,
   onTest,
@@ -140,6 +163,7 @@ export function IntegrationCard({
         busy={busy}
         onToggle={onToggle}
       />
+      <ApprovalSwitch integration={integration} busy={busy} onToggleApproval={onToggleApproval} />
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"

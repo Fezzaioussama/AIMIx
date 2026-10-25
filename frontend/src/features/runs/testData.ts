@@ -1,4 +1,4 @@
-import type { PipelineStep, Run, RunStep, RunStepStatus } from '../../core/api/types';
+import type { PipelineStep, Run, RunApproval, RunStep, RunStepStatus } from '../../core/api/types';
 
 /** Shared by the run tests: a three-step pipeline, stage 2 running two steps in parallel. */
 function definitionStep(order: number, stage: number, title: string): PipelineStep {
@@ -61,6 +61,24 @@ export function makeRun(overrides: Partial<Run> = {}): Run {
       runStep(2, 'running'),
       runStep(3, 'pending'),
     ],
+    pending_approvals: [],
+    ...overrides,
+  };
+}
+
+/** A request for the run's second step to send an email, with a minute to answer. */
+export function makeApproval(overrides: Partial<RunApproval> = {}): RunApproval {
+  return {
+    id: 31,
+    step_order: 2,
+    tool_name: 'crm_send_email',
+    tool_source: 'crm',
+    tool_description: 'Send an email to a contact.',
+    arguments: { to: 'ada@example.com', subject: 'Launch' },
+    arguments_truncated: false,
+    status: 'pending',
+    created_at: '2026-10-24T10:00:00Z',
+    expires_at: '2026-10-24T10:01:00Z',
     ...overrides,
   };
 }

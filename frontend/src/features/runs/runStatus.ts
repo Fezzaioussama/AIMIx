@@ -4,14 +4,14 @@ import type { Pipeline, PipelineStep, Run, RunStatus } from '../../core/api/type
  * What a run's status means for the screens. Mirrors ACTIVE_RUN_STATUSES and
  * RESUMABLE_RUN_STATUSES in backend/api/models.py, which decide for real.
  */
-const ACTIVE: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running']);
+const ACTIVE: ReadonlySet<RunStatus> = new Set<RunStatus>(['queued', 'running', 'waiting']);
 const RESUMABLE: ReadonlySet<RunStatus> = new Set<RunStatus>([
   'failed',
   'cancelled',
   'interrupted',
 ]);
 
-/** Queued or running: it can be stopped, and is worth polling. */
+/** Queued, running or waiting for an approval: it can be stopped, and is worth polling. */
 export function isActive(status: RunStatus): boolean {
   return ACTIVE.has(status);
 }

@@ -6,6 +6,10 @@ import { App } from './App';
 import { AuthProvider } from './core/auth/AuthContext';
 import { clearTokens, saveTokens } from './core/auth/tokenStorage';
 
+// The pipeline sub-navigation counts waiting runs with a request of its own; these
+// routing tests hand out one canned response per screen.
+vi.mock('./features/runs/useWaitingRuns', () => ({ useWaitingRuns: () => 0 }));
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>

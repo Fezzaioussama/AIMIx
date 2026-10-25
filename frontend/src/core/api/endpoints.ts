@@ -20,6 +20,10 @@ export const API = {
   run: (runId: number) => `/api/runs/${runId}`,
   cancelRun: (runId: number) => `/api/runs/${runId}/cancel`,
   resumeRun: (runId: number) => `/api/runs/${runId}/resume`,
+  approveToolCall: (runId: number, approvalId: number) =>
+    `/api/runs/${runId}/approvals/${approvalId}/approve`,
+  declineToolCall: (runId: number, approvalId: number) =>
+    `/api/runs/${runId}/approvals/${approvalId}/decline`,
   extractDocument: '/api/documents/extract',
   files: '/api/files',
   /** One file of the user's workspace, by its '/'-separated path. */

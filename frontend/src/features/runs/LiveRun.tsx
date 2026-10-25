@@ -4,6 +4,7 @@ import type { Run } from '../../core/api/types';
 import { elapsedMs } from '../../core/time';
 import { PipelineRunView } from '../pipelines/PipelineRunView';
 import { LiveRunHeader } from './LiveRunHeader';
+import { PendingApprovals } from './PendingApprovals';
 import { isActive } from './runStatus';
 
 export interface LiveRunProps {
@@ -17,17 +18,32 @@ export interface LiveRunProps {
   error?: string;
   /** More controls next to Stop and Resume (e.g. Delete). */
   actions?: ReactNode;
+  /** Answer a tool call the run waits on (`useRun`'s `approve` and `decline`). Without
+   * both, its requests are shown but cannot be answered here. */
+  onApprove?: (approvalId: number) => void;
+  onDecline?: (approvalId: number) => void;
   /** Shown under the status bar, before the results (e.g. the run's inputs). */
   children?: ReactNode;
 }
 
 /**
  * One run, live: the pipeline it ran (its own snapshot) with each step's
- * status on the diagram, a status bar with Stop and Resume, and every step's
- * output, tool use, time and error as soon as they are saved. Embeddable
- * anywhere: pair it with `useRun(runId)`, which polls while the run is active.
+ * status on the diagram, a status bar with Stop and Resume, a card for each
+ * action waiting for the owner's approval, and every step's output, tool use,
+ * time and error as soon as they are saved. Embeddable anywhere: pair it with
+ * `useRun(runId)`, which polls while the run is active.
  */
-export function LiveRun({ run, onStop, onResume, busy, error, actions, children }: LiveRunProps) {
+export function LiveRun({
+  run,
+  onStop,
+  onResume,
+  busy,
+  error,
+  actions,
+  onApprove,
+  onDecline,
+  children,
+}: LiveRunProps) {
   const active = isActive(run.status);
   return (
     <PipelineRunView
@@ -47,6 +63,7 @@ export function LiveRun({ run, onStop, onResume, busy, error, actions, children 
         error={error}
         actions={actions}
       />
+      <PendingApprovals run={run} onApprove={onApprove} onDecline={onDecline} busy={busy} />
       {children}
     </PipelineRunView>
   );

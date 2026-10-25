@@ -15,7 +15,8 @@ function SectionIntro() {
       <p className="mt-2 mb-6 text-sm text-slate-400">
         Connect a service that gives you an MCP server URL, such as your CRM, a database, your
         company&apos;s tools or an automation hub. Its tools become available to your agents in chat
-        and pipelines. Only your account can use the integrations you add here.
+        and pipelines. Only your account can use the integrations you add here. In a run, its tools
+        ask for your OK before they act, unless you switch that off for an integration.
       </p>
     </>
   );
@@ -44,6 +45,7 @@ function IntegrationList({ integrations, tests, editing, busy, actions }: Integr
           test={tests[integration.id]}
           busy={busy}
           onToggle={(enabled) => void actions.setEnabled(integration, enabled)}
+          onToggleApproval={(required) => void actions.setRequireApproval(integration, required)}
           onEdit={() => actions.startEditing(integration.id)}
           onDelete={() => void actions.remove(integration)}
           onTest={() => void actions.test(integration)}

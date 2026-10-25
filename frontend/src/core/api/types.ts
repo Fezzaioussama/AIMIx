@@ -110,8 +110,18 @@ export interface PipelineRunResponse {
   intermediate_results: StepResult[];
 }
 
-/** Where a run is. `queued` and `running` are active; the rest are final. */
-export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
+/**
+ * Where a run is. `queued`, `running` and `waiting` (a tool call waits for the
+ * owner's approval) are active; the rest are final.
+ */
+export type RunStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
 
 /** Where one step of a run is. */
 export type RunStepStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -127,6 +137,28 @@ export interface RunStep extends StepResult {
   error: RunError | null;
   started_at: string | null;
   finished_at: string | null;
+}
+
+/** Where a tool call that asks the run's owner first is. Only `pending` changes. */
+export type ApprovalStatus = 'pending' | 'approved' | 'declined' | 'expired';
+
+/** A tool call held until the run's owner approves or declines it (`Run.pending_approvals`). */
+export interface RunApproval {
+  id: number;
+  /** The run step whose agent wants to use the tool. */
+  step_order: number;
+  /** The exact tool name, e.g. "crm_send_email". */
+  tool_name: string;
+  /** Where the tool comes from: an integration's name, "MCP" or "AIMIx". */
+  tool_source: string;
+  tool_description: string;
+  /** The call's arguments; long text values may be shortened (`arguments_truncated`). */
+  arguments: Record<string, unknown>;
+  arguments_truncated: boolean;
+  status: ApprovalStatus;
+  created_at: string;
+  /** Unanswered by then, the request expires and the tool does not act. */
+  expires_at: string;
 }
 
 /** A run in the history list (GET /api/runs): no inputs, outputs or steps. */
@@ -152,6 +184,8 @@ export interface Run extends RunSummary {
   /** The pipeline as it was when the run started; later edits never change it. */
   definition: { name: string; inputs: PipelineInput[]; steps: PipelineStep[] };
   steps: RunStep[];
+  /** Tool calls waiting for your answer, oldest first; empty unless the run is `waiting`. */
+  pending_approvals: RunApproval[];
 }
 
 export interface RunPage {
@@ -249,6 +283,8 @@ export interface Integration {
   name: string;
   url: string;
   enabled: boolean;
+  /** In a run, its tools wait for your OK before they act. */
+  require_approval: boolean;
   headers: IntegrationHeader[];
   created_at: string;
 }
@@ -263,6 +299,8 @@ export interface IntegrationInput {
   name: string;
   url: string;
   enabled?: boolean;
+  /** Defaults to true: the integration's tools ask before they act. */
+  require_approval?: boolean;
   headers: IntegrationHeaderInput[];
 }
 
@@ -271,6 +309,7 @@ export interface IntegrationPatch {
   name?: string;
   url?: string;
   enabled?: boolean;
+  require_approval?: boolean;
   headers?: IntegrationHeaderInput[];
 }
 

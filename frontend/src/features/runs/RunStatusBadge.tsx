@@ -12,6 +12,12 @@ export const RUN_STATUS_STYLES: Record<RunStatus, { label: string; badge: string
     badge: 'border-sky-400/40 bg-sky-400/10 text-sky-200',
     dot: 'bg-sky-400 motion-safe:animate-pulse',
   },
+  // Amber and pulsing: the one active status that needs the person, not the server.
+  waiting: {
+    label: 'Waiting for you',
+    badge: 'border-amber-400/50 bg-amber-400/15 text-amber-200',
+    dot: 'bg-amber-400 motion-safe:animate-pulse',
+  },
   succeeded: {
     label: 'Done',
     badge: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-200',
