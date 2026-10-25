@@ -172,6 +172,33 @@ integration (on by default, including integrations saved before it existed).
   `approval.requested` and `approval.decided` with ids, the tool's name and the
   outcome.
 
+### Optional: let agents search the web (`TAVILY_API_KEY`)
+
+Agents can search the web (`web_search`, through [Tavily](https://tavily.com)) and
+read public pages (`fetch_url`). Out of the box **neither is offered**, for two
+separate reasons:
+
+- `web_search` needs `TAVILY_API_KEY`. Without it the tool does not exist.
+- Agents can also read the user's files (the Files page, `read_workspace_file`,
+  `read_csv`...). A web page that tells the agent what to do (a prompt injection)
+  could make it put a file's contents into a search query or a URL, which leaves
+  the server. So whenever file-reading tools are offered, the two web tools are
+  taken away, unless `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true`.
+
+To give agents the web, pick the trade-off you accept:
+
+| Choice | Setting | What it means |
+|---|---|---|
+| Allow both (simple) | `TAVILY_API_KEY=...` and `AGENT_ALLOW_WORKSPACE_NETWORK_ACCESS=true` | Agents search and fetch freely, and can also read files. Only for deployments where you trust what users make agents read |
+| Allow, but ask first | the two settings above plus `AGENT_APPROVAL_TOOLS=web_search,fetch_url` | In a pipeline run each search or fetch waits for the owner's OK on the Runs screen. Chat is not offered tools that must ask, so it has no web |
+| Web without files | `TAVILY_API_KEY=...` and a shorter `AGENT_BUILTIN_TOOLS` without `list_workspace_files`, `read_workspace_file`, `search_workspace_files`, `read_csv` and `run_python` | Agents search the web but cannot read stored files |
+
+`fetch_url` only reaches public addresses (see [architecture.md](architecture.md#built-in-tools)).
+Searches are sent to Tavily, which sees the query text, so they are covered by the
+same trust decision as an LLM provider. Missions that research the market run on
+the model's own knowledge until one of these is set; their prompts tell the
+agents to mark figures as estimates.
+
 ### Optional: let agents run code (`E2B_API_KEY`)
 
 `run_python` lets agents run Python for data analysis and charts. It is
