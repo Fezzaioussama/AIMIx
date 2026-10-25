@@ -225,9 +225,9 @@ database content and no credential but the E2B key itself.
 
 The key is server-wide, like a server-wide LLM key: every user who can run
 agents spends it, and with `ALLOW_PUBLIC_REGISTRATION=true` that is anyone who
-registers. Each call is bounded by `SANDBOX_TIMEOUT_SECONDS` of sandbox time;
-set the key only if you accept that cost, and watch the usage in your E2B
-account.
+registers. Each call is bounded by `SANDBOX_TIMEOUT_SECONDS` of sandbox time
+and each account by `SANDBOX_MAX_CALLS_PER_HOUR` calls (120); set the key only
+if you accept that cost, and watch the usage in your E2B account.
 
 ### Spending limits and usage
 

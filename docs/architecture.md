@@ -426,7 +426,13 @@ that same timeout covers the whole call (creating the sandbox, uploading the
 inputs, running the code, collecting its files); it starts before the sandbox
 exists, so the call, not the sandbox's death, decides when it timed out. The
 sandbox is closed in a shielded `finally`, so an error, a timeout or a
-cancelled agent still destroys it. `code_runner.py` reads the `input_files`
+cancelled agent still destroys it, and creating it is shielded too: a sandbox
+that was being created when the deadline or a cancellation arrived is still
+received, then closed, instead of running unseen until its own lifetime ends.
+Every account may make `SANDBOX_MAX_CALLS_PER_HOUR` calls an hour, counted in
+the database-backed rate-limit table (`agent_tools.sandbox_quota`, applied by
+the `sandbox.metered` opener before a sandbox is created), since each one
+spends the server's E2B key. `code_runner.py` reads the `input_files`
 through `workspace.py` (same confinement and size limit, and a symlink to a
 hidden file stays hidden) into `/home/user/inputs/`, saves what the code
 writes to `/home/user/outputs/` and the PNG charts it displays into a new

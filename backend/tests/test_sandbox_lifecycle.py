@@ -130,3 +130,39 @@ async def test_the_run_is_logged_without_its_code_or_output(
     assert messages[0].startswith("sandbox.run outcome=ok inputs=0 files=0 duration_ms=")
     assert messages[1].startswith("sandbox.run outcome=timeout error=TimeoutError duration_ms=")
     assert "secret" not in caplog.text
+
+
+class SlowCreation:
+    """An opener whose sandbox exists at once (E2B started it) while the answer
+    takes ``seconds`` to arrive."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self.created: list[FakeSandbox] = []
+
+    async def __call__(self) -> FakeSandbox:
+        sandbox = FakeSandbox()
+        self.created.append(sandbox)
+        await anyio.sleep(self.seconds)
+        return sandbox
+
+
+@pytest.mark.asyncio
+async def test_a_sandbox_still_being_created_at_the_deadline_is_closed() -> None:
+    opener = SlowCreation(0.15)
+
+    with pytest.raises(SandboxTimedOut, match=r"within 0\.1 seconds"):
+        await run_in_sandbox(opener, "go()", [], replace(LIMITS, timeout_seconds=0.1))
+
+    assert [sandbox.closed for sandbox in opener.created] == [True]
+
+
+@pytest.mark.asyncio
+async def test_a_sandbox_being_created_when_the_agent_is_cancelled_is_closed() -> None:
+    opener = SlowCreation(0.1)
+
+    with anyio.move_on_after(0.02) as scope:
+        await run_in_sandbox(opener, "go()", [], LIMITS)
+
+    assert scope.cancelled_caught
+    assert [sandbox.closed for sandbox in opener.created] == [True]
