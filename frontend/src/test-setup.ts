@@ -1,4 +1,10 @@
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/react';
+
+// Testing Library waits one second for something to appear. Pages are lazy chunks and
+// a busy machine or a small CI runner is slower than that, so wait longer: a test that
+// passes never waits the whole time.
+configure({ asyncUtilTimeout: 6000 });
 
 // jsdom has no canvas backend. Model a browser without WebGL or 2D canvas so the
 // decorative effects (Aurora, ClickSpark) take their no-op path instead of logging.

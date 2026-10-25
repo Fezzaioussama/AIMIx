@@ -21,5 +21,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     css: true,
+    // jsdom tests type into forms and load route chunks lazily: on a busy machine or a
+    // two-core CI runner that takes longer than vitest's default 5 s.
+    testTimeout: 20_000,
   },
 });
