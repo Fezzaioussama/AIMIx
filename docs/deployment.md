@@ -22,7 +22,7 @@ Railway deploys `main` only once all three jobs pass (see *Wait for CI* below).
 
 - **Pinned.** The `Dockerfile` pins each base image by digest
   (`node:24-alpine@sha256:…`, the tag kept for readers) and `ci.yml` pins each
-  action to a commit (`actions/checkout@<sha> # v4.4.0`); `uv.lock` and
+  action to a commit (`actions/checkout@<sha> # v7.0.1`); `uv.lock` and
   `package-lock.json` pin the packages. A tag that moves changes nothing until a
   pull request says so. The Debian packages (`apt-get install`) come from the
   base image's Debian release when the image is built.
