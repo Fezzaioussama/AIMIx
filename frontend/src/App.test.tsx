@@ -71,7 +71,7 @@ describe('App routing', () => {
     renderAt('/mission');
     expect(screen.getByRole('link', { name: 'Missions' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('heading', { level: 1, name: 'Missions' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Missions' })).toBeInTheDocument();
     expect(
       screen.getByRole('heading', { name: 'What do you want to get done?' }),
     ).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('App routing', () => {
     routeFetch({ ...COMMON_ROUTES, 'GET /api/pipelines/7/': SAVED });
     renderAt('/mission/7');
     expect(screen.getByRole('link', { name: 'Missions' })).toHaveAttribute('aria-current', 'page');
-    const log = screen.getByRole('log', { name: 'Conversation with AIMIx' });
+    const log = await screen.findByRole('log', { name: 'Conversation with AIMIx' });
     expect(await within(log).findByText(/Here’s your “Competitor brief” team/)).toBeInTheDocument();
   });
 
@@ -113,12 +113,12 @@ describe('App routing', () => {
     expect(await screen.findByText('No files yet')).toBeInTheDocument();
   });
 
-  it('keeps Pipelines current on the auto-pipeline screen', () => {
+  it('keeps Pipelines current on the auto-pipeline screen', async () => {
     saveTokens({ access: 'token' });
     renderAt('/auto-pipeline');
     expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
-    expect(screen.getByRole('link', { name: 'Start from a template' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Start from a template' })).toHaveAttribute(
       'href',
       '/templates',
     );
@@ -137,11 +137,14 @@ describe('App routing', () => {
     gallery.mockRestore();
   });
 
-  it('serves a run deep link under Pipelines, with the Runs tab current', () => {
+  it('serves a run deep link under Pipelines, with the Runs tab current', async () => {
     saveTokens({ access: 'token' });
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
     renderAt('/runs/7');
     expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('link', { name: 'Runs' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 });

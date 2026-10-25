@@ -1,5 +1,5 @@
 import { LogOut } from 'lucide-react';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { RequireAuth } from './core/auth/RequireAuth';
@@ -12,21 +12,55 @@ import { PageTransition } from './core/ui/PageTransition';
 import { ScrollToTop } from './core/ui/ScrollToTop';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
-import { ChatPage } from './features/chat/ChatPage';
-import { FilesPage } from './features/files/FilesPage';
-import { MissionPage } from './features/mission/MissionPage';
-import { AutoPipelinePage } from './features/pipelines/AutoPipelinePage';
-import { PipelineBuilderPage } from './features/pipelines/PipelineBuilderPage';
-import { RunsPage } from './features/runs/RunsPage';
 import { SCHEDULES_PATH } from './features/schedules/paths';
-import { SchedulesPage } from './features/schedules/SchedulesPage';
-import { SettingsPage } from './features/settings/SettingsPage';
-import { TemplatesPage } from './features/templates/TemplatesPage';
 
-// The public front page is split out: signed-in users who open the app never download it.
+// Route-level code splitting keeps each feature out of the initial bundle until it is opened.
 const LandingPage = lazy(() =>
   import('./features/landing/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
+const MissionPage = lazy(() =>
+  import('./features/mission/MissionPage').then((module) => ({ default: module.MissionPage })),
+);
+const ChatPage = lazy(() =>
+  import('./features/chat/ChatPage').then((module) => ({ default: module.ChatPage })),
+);
+const PipelineBuilderPage = lazy(() =>
+  import('./features/pipelines/PipelineBuilderPage').then((module) => ({
+    default: module.PipelineBuilderPage,
+  })),
+);
+const AutoPipelinePage = lazy(() =>
+  import('./features/pipelines/AutoPipelinePage').then((module) => ({
+    default: module.AutoPipelinePage,
+  })),
+);
+const TemplatesPage = lazy(() =>
+  import('./features/templates/TemplatesPage').then((module) => ({
+    default: module.TemplatesPage,
+  })),
+);
+const RunsPage = lazy(() =>
+  import('./features/runs/RunsPage').then((module) => ({ default: module.RunsPage })),
+);
+const SchedulesPage = lazy(() =>
+  import('./features/schedules/SchedulesPage').then((module) => ({
+    default: module.SchedulesPage,
+  })),
+);
+const FilesPage = lazy(() =>
+  import('./features/files/FilesPage').then((module) => ({ default: module.FilesPage })),
+);
+const SettingsPage = lazy(() =>
+  import('./features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
+
+function lazyRoute(Page: LazyExoticComponent<ComponentType>) {
+  return (
+    <Suspense fallback={null}>
+      <Page />
+    </Suspense>
+  );
+}
 
 // `paths` lists every route a section owns (and the routes below them), so
 // Pipelines stays lit on /auto-pipeline and /runs/7.
@@ -123,27 +157,20 @@ function AppShell() {
 export function App() {
   return (
     <Routes>
-      <Route
-        path="/"
-        element={
-          <Suspense fallback={null}>
-            <LandingPage />
-          </Suspense>
-        }
-      />
+      <Route path="/" element={lazyRoute(LandingPage)} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<AppShell />}>
-        <Route path={`${HOME_PATH}/:pipelineId?`} element={<MissionPage />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/pipeline" element={<PipelineBuilderPage />} />
-        <Route path="/auto-pipeline" element={<AutoPipelinePage />} />
-        <Route path="/templates" element={<TemplatesPage />} />
-        <Route path="/files" element={<FilesPage />} />
+        <Route path={`${HOME_PATH}/:pipelineId?`} element={lazyRoute(MissionPage)} />
+        <Route path="/chat" element={lazyRoute(ChatPage)} />
+        <Route path="/pipeline" element={lazyRoute(PipelineBuilderPage)} />
+        <Route path="/auto-pipeline" element={lazyRoute(AutoPipelinePage)} />
+        <Route path="/templates" element={lazyRoute(TemplatesPage)} />
+        <Route path="/files" element={lazyRoute(FilesPage)} />
         {/* A fixed path wins over the run id below it. */}
-        <Route path={SCHEDULES_PATH} element={<SchedulesPage />} />
-        <Route path="/runs/:runId?" element={<RunsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path={SCHEDULES_PATH} element={lazyRoute(SchedulesPage)} />
+        <Route path="/runs/:runId?" element={lazyRoute(RunsPage)} />
+        <Route path="/settings" element={lazyRoute(SettingsPage)} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
