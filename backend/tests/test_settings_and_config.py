@@ -114,3 +114,29 @@ def test_production_turns_on_hsts() -> None:
 
     assert settings(app_env="production", secret_key="k").app_env == "production"
     assert "Strict-Transport-Security" in HSTS_HEADER
+
+
+def test_a_run_has_no_cost_limit_unless_one_is_configured() -> None:
+    assert settings().run_default_max_cost_usd is None
+    assert settings(run_default_max_cost_usd=0.5).run_default_max_cost_usd == 0.5
+
+
+def test_the_default_run_limit_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RUN_DEFAULT_MAX_COST_USD", "2.5")
+    assert settings().run_default_max_cost_usd == 2.5
+    # An empty value, as .env.example ships it, means no limit.
+    monkeypatch.setenv("RUN_DEFAULT_MAX_COST_USD", "")
+    assert settings().run_default_max_cost_usd is None
+    monkeypatch.setenv("RUN_DEFAULT_MAX_COST_USD", "  ")
+    assert settings().run_default_max_cost_usd is None
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "lots"])
+def test_a_default_run_limit_that_cannot_be_met_stops_the_server_starting(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("RUN_DEFAULT_MAX_COST_USD", value)
+    with pytest.raises(ValidationError):
+        settings()

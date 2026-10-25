@@ -18,28 +18,27 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Steps recorded before this revision used tokens nobody counted: they start
-    # at zero, with an unknown cost; their runs have no limit.
-    with op.batch_alter_table("run_steps", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("input_tokens", sa.Integer(), server_default="0", nullable=False)
-        )
-        batch_op.add_column(
-            sa.Column("output_tokens", sa.Integer(), server_default="0", nullable=False)
-        )
-        batch_op.add_column(sa.Column("cost_usd", sa.Float(), nullable=True))
-
-    with op.batch_alter_table("runs", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("max_cost_usd", sa.Float(), nullable=True))
-        batch_op.add_column(sa.Column("max_tokens", sa.Integer(), nullable=True))
+    # Plain ALTER TABLE, never a batch: on SQLite a batch rebuilds the table, and
+    # dropping the old `runs` with foreign keys on would cascade-delete every run
+    # step. Steps recorded before this revision used tokens nobody counted: they
+    # start at zero with an unknown cost, and their runs have no limit.
+    op.add_column(
+        "run_steps",
+        sa.Column("input_tokens", sa.Integer(), server_default=sa.text("0"), nullable=False),
+    )
+    op.add_column(
+        "run_steps",
+        sa.Column("output_tokens", sa.Integer(), server_default=sa.text("0"), nullable=False),
+    )
+    op.add_column("run_steps", sa.Column("cost_usd", sa.Float(), nullable=True))
+    op.add_column("runs", sa.Column("max_cost_usd", sa.Float(), nullable=True))
+    op.add_column("runs", sa.Column("max_tokens", sa.Integer(), nullable=True))
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("runs", schema=None) as batch_op:
-        batch_op.drop_column("max_tokens")
-        batch_op.drop_column("max_cost_usd")
-
-    with op.batch_alter_table("run_steps", schema=None) as batch_op:
-        batch_op.drop_column("cost_usd")
-        batch_op.drop_column("output_tokens")
-        batch_op.drop_column("input_tokens")
+    # Also in place (SQLite 3.35 or newer), so the runs and steps stay.
+    op.drop_column("runs", "max_tokens")
+    op.drop_column("runs", "max_cost_usd")
+    op.drop_column("run_steps", "cost_usd")
+    op.drop_column("run_steps", "output_tokens")
+    op.drop_column("run_steps", "input_tokens")
