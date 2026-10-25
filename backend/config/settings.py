@@ -12,6 +12,7 @@ each in its own module: ``llm_settings``, ``agent_settings``,
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Literal
 
@@ -39,6 +40,10 @@ __all__ = [
 
 #: Only acceptable when APP_ENV=local; production refuses to start without a key.
 LOCAL_SECRET_KEY = "insecure-local-development-key-change-me"
+#: Production floors: a guessable SECRET_KEY forges sessions, and a cheap hash
+#: makes a stolen database's passwords cheap to crack (OWASP's PBKDF2 minimum).
+MIN_PRODUCTION_SECRET_KEY_LENGTH = 32
+MIN_PRODUCTION_HASH_ITERATIONS = 600_000
 
 
 class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSettings):
@@ -51,6 +56,9 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     app_env: Literal["local", "production", "test"] = Field("local", validation_alias="APP_ENV")
     debug: bool = Field(False, validation_alias=env_aliases("DEBUG", "DJANGO_DEBUG"))
     secret_key: Secret = Field("", validation_alias=env_aliases("SECRET_KEY", "DJANGO_SECRET_KEY"))
+    # Previous SECRET_KEYs, still accepted while rotating: they verify sessions and
+    # decrypt saved keys; only SECRET_KEY signs and encrypts.
+    secret_key_fallbacks: CommaList = Field([], validation_alias="SECRET_KEY_FALLBACKS")
     allowed_hosts: CommaList = Field(
         ["localhost", "127.0.0.1"],
         validation_alias=env_aliases("ALLOWED_HOSTS", "DJANGO_ALLOWED_HOSTS"),
@@ -65,6 +73,9 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     log_level: str = Field("INFO", validation_alias=env_aliases("LOG_LEVEL", "DJANGO_LOG_LEVEL"))
     # Built React app (frontend/dist) to serve next to /api; empty serves none.
     frontend_dist_dir: str = Field("", validation_alias="FRONTEND_DIST_DIR")
+    # Proxies in front of the app that each append to X-Forwarded-For; the client
+    # is the entry this many from the right. 0 trusts no header: the socket peer.
+    trusted_proxy_hops: int = Field(0, ge=0, validation_alias="TRUSTED_PROXY_HOPS")
 
     jwt_access_minutes: float = Field(60, gt=0, validation_alias="JWT_ACCESS_MINUTES")
     jwt_refresh_days: float = Field(1, gt=0, validation_alias="JWT_REFRESH_DAYS")
@@ -79,6 +90,11 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     auth_rate_limit_requests: int = Field(20, ge=1, validation_alias="AUTH_RATE_LIMIT_REQUESTS")
     auth_rate_limit_window_seconds: int = Field(
         60, ge=1, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    # Failed sign-ins one username may take per window, whatever the client.
+    auth_account_failure_limit: int = Field(10, ge=1, validation_alias="AUTH_ACCOUNT_FAILURE_LIMIT")
+    auth_account_failure_window_seconds: int = Field(
+        900, ge=1, validation_alias="AUTH_ACCOUNT_FAILURE_WINDOW_SECONDS"
     )
     # Per account and route, for requests that make the server spend: model calls,
     # outbound calls, document parsing (api.deps.user_rate_limit).
@@ -96,17 +112,38 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     def _check_environment(self) -> Settings:
         """Fail fast on unsafe production configuration (§6)."""
         if self.app_env == "production":
-            if self.debug:
-                raise ValueError("DEBUG must be false in production.")
-            if not self.secret_key:
-                raise ValueError("SECRET_KEY must be set in production.")
-            if not self.allowed_hosts:
-                raise ValueError("ALLOWED_HOSTS must list at least one host.")
-            if self.integrations_allow_private_network:
-                raise ValueError("INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production.")
+            problems = [message for unsafe, message in PRODUCTION_REFUSALS if unsafe(self)]
+            if problems:
+                raise ValueError(" ".join(problems))
         elif not self.secret_key:
             self.secret_key = LOCAL_SECRET_KEY
         return self
+
+
+#: Each configuration production refuses to start with, and why (§5 O: a new
+#: check is one entry).
+PRODUCTION_REFUSALS: tuple[tuple[Callable[[Settings], bool], str], ...] = (
+    (lambda s: s.debug, "DEBUG must be false in production."),
+    (lambda s: not s.secret_key, "SECRET_KEY must be set in production."),
+    (
+        lambda s: 0 < len(s.secret_key) < MIN_PRODUCTION_SECRET_KEY_LENGTH,
+        f"SECRET_KEY must be at least {MIN_PRODUCTION_SECRET_KEY_LENGTH} characters in production.",
+    ),
+    (
+        lambda s: s.secret_key == LOCAL_SECRET_KEY,
+        "SECRET_KEY must not be the local development key in production.",
+    ),
+    (lambda s: not s.allowed_hosts, "ALLOWED_HOSTS must list at least one host."),
+    (
+        lambda s: s.integrations_allow_private_network,
+        "INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production.",
+    ),
+    (
+        lambda s: s.password_hash_iterations < MIN_PRODUCTION_HASH_ITERATIONS,
+        f"PASSWORD_HASH_ITERATIONS must be at least {MIN_PRODUCTION_HASH_ITERATIONS}"
+        " in production.",
+    ),
+)
 
 
 _pinned: Settings | None = None

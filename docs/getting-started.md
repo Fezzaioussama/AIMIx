@@ -42,7 +42,8 @@ spend it); `make run-llm` always uses it. Otherwise sign in and open
 default model. It is stored encrypted for your account only and used from your
 next request, with no restart. The provider and model you leave unset there fall
 back to `backend/.env`. Saved keys are encrypted with `SECRET_KEY`, so changing
-it means entering them again.
+it means entering them again, unless the old key stays in `SECRET_KEY_FALLBACKS`
+(see [rotating `SECRET_KEY`](backend.md#rotating-secret_key)).
 
 The full variable list, with comments, is `backend/.env.example`. An existing
 `.env` from the Django version keeps working: `DJANGO_SECRET_KEY`,
@@ -146,7 +147,8 @@ accounts, so running it twice is harmless. `db.sqlite3` is only read.
 make run-aimix        # backend :8000 and frontend :4200 in parallel
 ```
 
-Open <http://localhost:4200> and register an account: you are signed in at once and land on Missions.
+Open <http://localhost:4200> and sign in with an account made by `make create-user USERNAME=alice`
+(or set `ALLOW_PUBLIC_REGISTRATION=True` in `backend/.env` and register in the app): you land on Missions.
 
 - The Vite dev server **proxies `/api` to `http://127.0.0.1:8000`**
   (`frontend/vite.config.ts`), so the browser sees one origin and no CORS setup
@@ -232,9 +234,9 @@ See [api-reference.md](api-reference.md) for every endpoint.
 
 | `APP_ENV` | Used by | Behaviour |
 |---|---|---|
-| `local` (default) | `make run-backend` | Throwaway `SECRET_KEY` allowed, `/api/docs` on |
+| `local` (default) | `make run-backend` | Throwaway `SECRET_KEY` allowed (a warning is logged at startup), `/api/docs` on |
 | `test` | `pytest` (pinned in `tests/conftest.py`) | In-memory SQLite, no provider keys, fast hashing |
-| `production` | your deployment | Refuses to start with `DEBUG=true`, no `SECRET_KEY`, or empty `ALLOWED_HOSTS`; HSTS on, `/api/docs` off |
+| `production` | your deployment | Refuses to start with `DEBUG=true`, no `SECRET_KEY` or one under 32 characters, empty `ALLOWED_HOSTS`, or `PASSWORD_HASH_ITERATIONS` under 600,000; HSTS on, `/api/docs` off |
 
 In production run Uvicorn behind a TLS-terminating proxy that also redirects
 HTTP to HTTPS, e.g. `uvicorn api.main:create_app --factory --proxy-headers`.
