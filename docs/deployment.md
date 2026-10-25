@@ -155,7 +155,7 @@ application files change.
 
    | Variable | Value | Why |
    |---|---|---|
-   | `SECRET_KEY` | `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` | Signs JWTs and encrypts saved API keys. Changing it signs everyone out and makes saved keys unreadable. |
+   | `SECRET_KEY` | `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` | Signs JWTs and encrypts saved API keys; at least 32 characters. Changing it signs everyone out and makes saved keys unreadable, unless the old key is kept in `SECRET_KEY_FALLBACKS`. |
    | `ALLOWED_HOSTS` | `${{RAILWAY_PUBLIC_DOMAIN}},healthcheck.railway.app` | Railway's health check calls with host `healthcheck.railway.app`; without it the deploy never turns healthy. |
    | `CORS_ALLOWED_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Same origin, so only for completeness. |
    | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`docker-entrypoint.sh python -m api.cli create-user NAME` in the service shell, which runs it as the app user). Existing accounts are unaffected. |
@@ -399,10 +399,12 @@ the rest wait queued.
 |---|---|---|
 | Deploy stuck on "healthcheck failed", logs show `400` | `healthcheck.railway.app` missing from `ALLOWED_HOSTS` | Add it |
 | Container exits: `SECRET_KEY must be set in production` | Variable missing | Set `SECRET_KEY` |
+| Container exits: `SECRET_KEY must be at least 32 characters in production` (or `must not be the local development key`) | A short or throwaway key | Generate one with `secrets.token_urlsafe(50)`; to keep sessions and saved keys, list the old one in `SECRET_KEY_FALLBACKS` ([rotating `SECRET_KEY`](backend.md#rotating-secret_key)) |
+| Container exits: `PASSWORD_HASH_ITERATIONS must be at least 600000` | A low work factor reached production | Remove the variable (the default is 1,000,000) |
 | `sqlite3.OperationalError: unable to open database file` | No volume at `/data`, or the container was started as a user other than root or 10001 (`--user`), so the entrypoint could not give it the volume | Mount the volume at `/data`; let the container start as root (the default), or make the volume owned by 10001 |
 | Container exits at start: `chown: changing ownership of '/data…': Operation not permitted` | The runtime refused root's `chown` on the volume (a rootless runtime, or a network filesystem that squashes root) | Make the volume owned by uid 10001 and start with `--user 10001` |
 | One user's failed logins rate-limit everyone, or a client dodges the limit by sending its own `X-Forwarded-For` | `TRUSTED_PROXY_HOPS` does not match the proxies in front | Set it as in [Client address behind a proxy](#client-address-behind-a-proxy) |
-| Everyone signed out and saved keys "can no longer be read" | `SECRET_KEY` changed | Keep it stable; users re-enter keys in Settings |
+| Everyone signed out and saved keys "can no longer be read" | `SECRET_KEY` changed | Put the previous key in `SECRET_KEY_FALLBACKS` ([rotating `SECRET_KEY`](backend.md#rotating-secret_key)); without it, users re-enter keys in Settings |
 | Container exits: `FRONTEND_DIST_DIR=… has no index.html` | Image built without the frontend stage | Build with the repository `Dockerfile` |
 | Container exits: `INTEGRATIONS_ALLOW_PRIVATE_NETWORK must be false in production` | A local-development setting reached production | Remove the variable |
 | An integration test says "… is not a public address" | The MCP server's host resolves to a private or internal address | Integrations only reach public `https` servers; publish the server on a public address |
