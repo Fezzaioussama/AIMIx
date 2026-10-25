@@ -50,6 +50,11 @@ def for_user(session: Session, user: User, pipeline_id: int | None = None) -> li
     return list(session.scalars(query.order_by(Schedule.id)))
 
 
+def get(session: Session, schedule_id: int) -> Schedule | None:
+    """A schedule whoever owns it — for code that already checked."""
+    return session.get(Schedule, schedule_id)
+
+
 def get_owned(session: Session, user: User, schedule_id: int) -> Schedule:
     schedule = session.scalar(_owned_by(user).where(Schedule.id == schedule_id))
     if schedule is None:
@@ -137,9 +142,7 @@ def last_runs(session: Session, schedule_ids: Collection[int]) -> dict[int, Run]
     if not schedule_ids:
         return {}
     newest = (
-        select(func.max(Run.id))
-        .where(Run.schedule_id.in_(schedule_ids))
-        .group_by(Run.schedule_id)
+        select(func.max(Run.id)).where(Run.schedule_id.in_(schedule_ids)).group_by(Run.schedule_id)
     )
     rows = session.scalars(
         select(Run).where(Run.id.in_(newest)).options(load_only(*LAST_RUN_COLUMNS))

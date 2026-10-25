@@ -86,12 +86,13 @@ class Scheduler:
         now = self._clock()
         with self._database.session() as session:
             due = repository.due(session, now)
-        return sum(self._fire_guarded(schedule, now) for schedule in due)
+        return sum(self.fire(schedule, now) for schedule in due)
 
-    def _fire_guarded(self, schedule: Schedule, now: datetime) -> bool:
-        """``_fire``, with why it could not start saved on the schedule."""
+    def fire(self, schedule: Schedule, now: datetime) -> bool:
+        """Start the run of one due occurrence, as seen at ``now``: True when
+        this call did. When it cannot start, why is saved on the schedule."""
         try:
-            return self._fire(schedule, now)
+            return self._claim_and_start(schedule, now)
         except DomainError as error:
             logger.warning(
                 "schedule.start_failed schedule_id=%s pipeline_id=%s code=%s",
@@ -107,7 +108,7 @@ class Scheduler:
             self._record(schedule.id, SERVER_ERROR_DETAIL)
         return False
 
-    def _fire(self, schedule: Schedule, now: datetime) -> bool:
+    def _claim_and_start(self, schedule: Schedule, now: datetime) -> bool:
         """Claim this occurrence, then start its run; False when another
         process (or an edit by its owner) took it first."""
         seen = schedule.next_run_at
@@ -117,21 +118,27 @@ class Scheduler:
         with self._database.session() as session:
             if not repository.claim(session, schedule.id, seen, following):
                 return False
-        run = self._start(schedule)
+        run = self._start(schedule.id)
         self._record(schedule.id, "")
         logger.info(
             "schedule.fired schedule_id=%s run_id=%s slot=%s", schedule.id, run.id, seen.isoformat()
         )
         return True
 
-    def _start(self, schedule: Schedule) -> Run:
+    def _start(self, schedule_id: int) -> Run:
+        """Start the run of a claimed schedule, with what is saved now: an edit
+        to its inputs since the tick began applies."""
         with self._database.session() as session:
+            schedule = repository.get(session, schedule_id)
+            if schedule is None:
+                raise NotFound(f"Schedule {schedule_id} no longer exists.")
             owner = users.get(session, schedule.user_id)
             if owner is None:
-                raise NotFound(f"The owner of schedule {schedule.id} no longer exists.")
+                raise NotFound(f"The owner of schedule {schedule_id} no longer exists.")
             pipeline = pipeline_repository.get_owned(session, owner, schedule.pipeline_id)
             agent = self._agents(session, owner)
-        return self._runs.start(owner, pipeline, run_start(schedule), agent).run
+            start = run_start(schedule)
+        return self._runs.start(owner, pipeline, start, agent).run
 
     def _record(self, schedule_id: int, error: str) -> None:
         with self._database.session() as session:

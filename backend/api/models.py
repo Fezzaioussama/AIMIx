@@ -262,9 +262,7 @@ class Run(Base):
     input_text: Mapped[str] = mapped_column(Text, default="")
     input_values: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     #: ``schedule_id`` is the schedule that started it, until that is deleted.
-    trigger: Mapped[RunTrigger] = mapped_column(
-        _status_type(RunTrigger), default=RunTrigger.MANUAL
-    )
+    trigger: Mapped[RunTrigger] = mapped_column(_status_type(RunTrigger), default=RunTrigger.MANUAL)
     schedule_id: Mapped[int | None] = mapped_column(
         ForeignKey("schedules.id", ondelete="SET NULL"), index=True
     )
