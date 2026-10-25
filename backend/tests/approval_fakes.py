@@ -7,6 +7,7 @@ Nothing here waits for real: requests expire in fractions of a second.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Iterator, Sequence
 from concurrent.futures import Future
 from datetime import timedelta
@@ -26,6 +27,7 @@ from api.models import ApprovalStatus, Base, Pipeline, RunApproval, RunStatus, U
 from api.repositories import approvals, pipelines, runs, users
 from api.repositories.pipelines import PipelineChanges
 from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.approvals.decisions import ApprovalAnswer, answer
 from api.services.approvals.gate import ApprovalLimits, RunApprovalGate, ToolRequest
 from api.services.mcp_discovery import INTEGRATION_KEY
 from api.services.run_recorder import utcnow
@@ -37,6 +39,9 @@ T = TypeVar("T")
 
 #: A request's arguments as the tests send them.
 ARGUMENTS = {"to": "ada@example.com", "subject": "Launch"}
+#: What a model passes to the recording tool, and the task of a step's agent.
+SEND = {"to": "ada@example.com"}
+TASK = AgentTask("Send the invitation.", "m", "Sender", None)
 #: A gate that gives an owner a moment, and never a real wait.
 FAST_LIMITS = ApprovalLimits(
     timeout_seconds=5.0, poll_seconds=0.01, arguments_max_chars=200, description_max_chars=300
@@ -118,6 +123,29 @@ def run_status(database: Database, run_id: int) -> RunStatus:
         run = runs.load(session, run_id)
     assert run is not None
     return run.status
+
+
+async def next_request(database: Database, run_id: int) -> RunApproval:
+    """Wait until the step's agent has asked, as a person watching the run would."""
+    for _ in range(500):
+        with database.session() as session:
+            run = runs.load(session, run_id)
+        assert run is not None
+        if run.pending_approvals:
+            assert run.status == RunStatus.WAITING
+            return run.pending_approvals[0]
+        await asyncio.sleep(0.01)
+    raise AssertionError("the agent never asked")
+
+
+async def reply_as(
+    database: Database, owner: User, run_id: int, status: ApprovalStatus
+) -> RunApproval:
+    """The owner's answer to the next request."""
+    approval = await next_request(database, run_id)
+    with database.session() as session:
+        answer(session, owner, ApprovalAnswer(run_id, approval.id, status))
+    return approval
 
 
 class ScriptedGate:

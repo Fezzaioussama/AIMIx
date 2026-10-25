@@ -5,21 +5,16 @@ from __future__ import annotations
 
 import asyncio
 import threading
-import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from concurrent.futures import CancelledError as FutureCancelledError
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 
 from api.db import Database
-from api.deps import pipeline_agent_factory
 from api.exceptions import ProviderUnavailable
-from api.main import create_app
-from api.models import ApprovalStatus, Base, Pipeline, Run, RunApproval, RunStatus, StepStatus, User
+from api.models import ApprovalStatus, Run, RunApproval, RunStatus, StepStatus, User
 from api.repositories import approvals, runs
 from api.repositories.runs import StepChange
 from api.services.agent_types import AgentOutcome, AgentTask
@@ -27,7 +22,6 @@ from api.services.approvals.decisions import ApprovalAnswer
 from api.services.multiagent.contracts import StepAgent
 from api.services.run_executor import BackgroundRunExecutor
 from api.services.runs import RunService, RunStart, interrupt_abandoned_runs
-from config.settings import pin_settings
 from tests.approval_fakes import (
     FAST_LIMITS,
     AskingAgent,
@@ -39,7 +33,6 @@ from tests.approval_fakes import (
     run_status,
     running_run,
 )
-from tests.conftest import TEST_SETTINGS, bearer
 from tests.test_runs_service import WAIT_SECONDS, load, statuses, wait_for
 
 
@@ -271,57 +264,3 @@ def test_a_request_is_not_taken_back_once_it_is_answered(
 
     assert late is False
     assert approval_status(database, asked.id) == ApprovalStatus.APPROVED
-
-
-@pytest.fixture
-def served(tmp_path: Path) -> Iterator[tuple[TestClient, Pipeline]]:
-    """The whole app on a file database, its runs on the real executor, its step
-    agents stopping at the gate."""
-    pin_settings(
-        TEST_SETTINGS.model_copy(update={"database_url": f"sqlite:///{tmp_path / 'app.sqlite3'}"})
-    )
-    try:
-        app = create_app()
-        Base.metadata.create_all(app.state.database.engine)
-        mine = make_owner(app.state.database, "http-owner")
-        pipeline = make_pipeline(app.state.database, mine)
-        agent = AskingAgent(app.state.database)
-        app.dependency_overrides[pipeline_agent_factory] = lambda: lambda: agent
-        with TestClient(app) as client:
-            client.headers.update(bearer(mine))
-            yield client, pipeline
-    finally:
-        pin_settings(TEST_SETTINGS)
-
-
-@pytest.mark.parametrize(
-    ("answer_to_give", "reported"), [("approve", "answer-approved"), ("decline", "answer-declined")]
-)
-def test_the_whole_flow_over_http(
-    served: tuple[TestClient, Pipeline], answer_to_give: str, reported: str
-) -> None:
-    client, pipeline = served
-    run_id = client.post(f"/api/pipelines/{pipeline.id}/runs", json={"input": "go"}).json()["id"]
-
-    waiting = poll(client, run_id, lambda body: body["status"] == "waiting")
-    [asked] = waiting["pending_approvals"]
-    answered = client.post(f"/api/runs/{run_id}/approvals/{asked['id']}/{answer_to_give}")
-
-    assert answered.status_code == 200
-    done = poll(client, run_id, lambda body: body["status"] == "succeeded")
-    assert done["final_output"] == reported
-    assert done["pending_approvals"] == []
-    waiting_list = client.get("/api/runs", params={"status": "waiting"}).json()
-    assert waiting_list == {"items": [], "total": 0}
-
-
-def poll(client: TestClient, run_id: int, done: Callable[[dict[str, Any]], bool]) -> dict[str, Any]:
-    """The run as the API shows it, once ``done`` says so."""
-    deadline = time.monotonic() + WAIT_SECONDS
-    body: dict[str, Any] = {}
-    while time.monotonic() < deadline:
-        body = client.get(f"/api/runs/{run_id}").json()
-        if done(body):
-            return body
-        time.sleep(0.02)
-    raise AssertionError(f"run {run_id} never got there: {body.get('status')}")

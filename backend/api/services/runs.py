@@ -28,6 +28,7 @@ from api.exceptions import Conflict, DomainError, NotFound
 from api.models import (
     ACTIVE_RUN_STATUSES,
     RESUMABLE_RUN_STATUSES,
+    ApprovalStatus,
     Pipeline,
     Run,
     RunStep,
@@ -214,6 +215,9 @@ class RunService:
                 run.pipeline_id,
                 run.status.value,
             )
+            # Stopping expired what the run was waiting on, in one write.
+            for asked in run.pending_approvals:
+                approvals.log_decided(asked, ApprovalStatus.EXPIRED)
         return self._load(run.id)
 
     def delete(self, user: User, run_id: int) -> None:

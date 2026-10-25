@@ -3,9 +3,11 @@ expired request is a 409, and everything is scoped to the run's owner."""
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -143,18 +145,32 @@ def test_a_request_past_its_time_can_no_longer_be_answered(
     assert approval_status(app.state.database, approval_id) == ApprovalStatus.EXPIRED
 
 
-def test_stopping_the_run_expires_its_requests(
-    app: FastAPI, auth_client: TestClient, session: Session, user: User
-) -> None:
-    run_id, approval_id = waiting_run(app, session, user)
+@pytest.fixture
+def waiting(app: FastAPI, session: Session, user: User) -> tuple[int, int]:
+    """The ids of a running run of ``user``'s and the one request it waits on."""
+    return waiting_run(app, session, user)
 
-    stopped = auth_client.post(f"/api/runs/{run_id}/cancel").json()
+
+def test_stopping_the_run_expires_its_requests(
+    app: FastAPI,
+    auth_client: TestClient,
+    waiting: tuple[int, int],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run_id, approval_id = waiting
+
+    with caplog.at_level(logging.INFO):
+        stopped = auth_client.post(f"/api/runs/{run_id}/cancel").json()
     late = auth_client.post(path(run_id, approval_id, "approve"))
 
     assert (stopped["status"], stopped["pending_approvals"]) == ("cancelled", [])
     assert approval_status(app.state.database, approval_id) == ApprovalStatus.EXPIRED
     assert late.status_code == 409
     assert "expired" in late.json()["detail"]
+    # The request that was asked about is accounted for in the log, without its arguments.
+    assert f"approval.decided run_id={run_id} approval_id={approval_id}" in caplog.text
+    assert "outcome=expired" in caplog.text
+    assert "ada@example.com" not in caplog.text
 
 
 def test_a_run_stays_waiting_until_every_request_is_answered(

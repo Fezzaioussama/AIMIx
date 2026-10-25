@@ -62,13 +62,19 @@ def settle(
     other side of the gate got there first); what it is afterwards."""
     ending = repository.Settlement(approval.run_id, approval.id, outcome, now)
     if repository.settle(session, ending):
-        logger.info(
-            "approval.decided run_id=%s approval_id=%s step=%s tool=%s outcome=%s",
-            approval.run_id,
-            approval.id,
-            approval.step_order,
-            approval.tool_name,
-            outcome.value,
-        )
+        log_decided(approval, outcome)
         return outcome
     return repository.status_of(session, approval.id) or ApprovalStatus.EXPIRED
+
+
+def log_decided(approval: RunApproval, outcome: ApprovalStatus) -> None:
+    """``approval.decided`` with ids, step, tool and outcome; the arguments are
+    never logged (AGENTS.md §6)."""
+    logger.info(
+        "approval.decided run_id=%s approval_id=%s step=%s tool=%s outcome=%s",
+        approval.run_id,
+        approval.id,
+        approval.step_order,
+        approval.tool_name,
+        outcome.value,
+    )

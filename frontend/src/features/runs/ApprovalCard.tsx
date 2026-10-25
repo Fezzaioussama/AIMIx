@@ -73,7 +73,7 @@ export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: 
             type="button"
             onClick={() => answer('approve', onApprove)}
             disabled={busy}
-            className={RUN_BUTTON.resume}
+            className={`${RUN_BUTTON.resume} min-h-10`}
           >
             {pending === 'approve' ? 'Approving…' : 'Approve'}
           </button>
@@ -81,7 +81,7 @@ export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: 
             type="button"
             onClick={() => answer('decline', onDecline)}
             disabled={busy}
-            className={RUN_BUTTON.stop}
+            className={`${RUN_BUTTON.stop} min-h-10`}
           >
             {pending === 'decline' ? 'Declining…' : 'Decline'}
           </button>

@@ -409,7 +409,10 @@ the Runs page.
 step, tool name, source, description, the arguments (JSON, long text values
 shortened), status, and `created_at`, `expires_at` and `decided_at`. Arguments
 are for the owner's eyes only: `approval.requested` and `approval.decided` log
-ids, step, tool name and outcome, never the arguments.
+ids, step, tool name and outcome, never the arguments. Stopping a run logs each
+request it was waiting on as `approval.decided … outcome=expired`; after a
+crash, startup recovery logs only how many runs it interrupted
+(`run.interrupted_on_startup`), and their requests expire with them.
 
 ### 2. Stream chat — `POST /api/chat`
 
