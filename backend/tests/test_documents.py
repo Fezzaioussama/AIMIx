@@ -324,7 +324,7 @@ def test_the_size_guard_refuses_a_declared_oversize_body_and_passes_the_rest() -
 
     guarded = Starlette(
         routes=[Route("/", echo, methods=["POST"])],
-        middleware=[Middleware(RequestSizeLimitMiddleware, max_bytes=10)],
+        middleware=[Middleware(RequestSizeLimitMiddleware, max_bytes=10, max_json_bytes=10)],
     )
     client = TestClient(guarded)
     assert client.post("/", content=b"x" * 10).text == "10"
@@ -341,7 +341,9 @@ def test_the_real_app_refuses_an_oversize_upload_before_reading_it() -> None:
         pin_settings(TEST_SETTINGS)
     with TestClient(application) as client:
         response = client.post(
-            "/api/documents/extract", content=b"x" * (100 + MULTIPART_OVERHEAD_BYTES + 1)
+            "/api/documents/extract",
+            content=b"x" * (100 + MULTIPART_OVERHEAD_BYTES + 1),
+            headers={"content-type": "multipart/form-data; boundary=x"},
         )
     assert response.status_code == 413
     assert response.json()["error"] == "request_too_large"

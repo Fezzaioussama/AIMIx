@@ -21,9 +21,7 @@ no wall-clock timeout: a long scan holds a worker for minutes, at worst
 conflicts with AGENTS.md §6 ("no long-running work in the request path"). PDFium
 rendering is serialised across the process (it is not thread-safe) and has no
 time limit of its own, so one slow page to render (heavy vector art) delays every
-other scan being rendered. The request-size guard can only see a declared
-`Content-Length`: a chunked upload is still capped, but only after the framework
-has spooled it.
+other scan being rendered.
 
 Not read at all: legacy binary Office files (`.doc`, `.xls`, `.ppt`), `.xlsm`,
 SmartArt and chart text in slides, handwriting beyond what Tesseract manages,
@@ -50,9 +48,8 @@ flow; a tool interceptor that turns a failed call into an error result; store
 the last test's time and tool count; rate-limit tests like auth requests; pin
 connections to the checked address in a custom httpx transport.
 
-`POST /files` has the same request-size guard and the same chunked-upload caveat,
-and an agent reading a PDF or Word file from its workspace runs the same readers
-in the agent's thread.
+`POST /files` has the same request-size guard, and an agent reading a PDF or
+Word file from its workspace runs the same readers in the agent's thread.
 
 ### 4. Files: no pagination, and a narrow quota race on replacement
 

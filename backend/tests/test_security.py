@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
+import jwt
 import pytest
 
-from api.security import SecretBox, TokenSigner, UnreadableSecret, hash_password, verify_password
+from api.deps import token_signer
+from api.security import (
+    JWT_ALGORITHM,
+    SecretBox,
+    TokenSigner,
+    TokenSubject,
+    UnreadableSecret,
+    hash_iterations,
+    hash_password,
+    secret_box_for,
+    verify_password,
+)
 from api.services import password_policy
+from tests.conftest import TEST_SETTINGS
 
 #: Produced by Django 5.2's PBKDF2PasswordHasher (1,000 iterations), so this
 #: checks compatibility with the previous backend, not with ourselves.
@@ -50,6 +63,7 @@ def test_a_good_password_passes() -> None:
 
 
 KEY = "k" * 32
+MINUTE = timedelta(minutes=1)
 SIGNER = TokenSigner(KEY, timedelta(minutes=5), timedelta(days=1))
 
 
@@ -59,11 +73,37 @@ def test_tokens_carry_the_user_and_their_type() -> None:
     assert SIGNER.user_id(access, "refresh") is None
 
 
+def test_tokens_carry_the_account_token_version() -> None:
+    assert SIGNER.subject(SIGNER.issue(7, "access", 3), "access") == TokenSubject(7, 3)
+    # A token from before versions existed counts as version 0.
+    unversioned = jwt.encode(
+        {"token_type": "access", "user_id": 7, "exp": datetime.now(timezone.utc) + MINUTE},
+        KEY,
+        algorithm=JWT_ALGORITHM,
+    )
+    assert SIGNER.subject(unversioned, "access") == TokenSubject(7, 0)
+
+
 def test_expired_and_foreign_tokens_are_rejected() -> None:
     expired = TokenSigner(KEY, timedelta(seconds=-1), timedelta(days=1)).issue(7, "access")
     foreign = TokenSigner("o" * 32, timedelta(minutes=5), timedelta(days=1)).issue(7, "access")
     assert SIGNER.user_id(expired, "access") is None
     assert SIGNER.user_id(foreign, "access") is None
+
+
+def test_a_token_without_an_expiry_is_rejected() -> None:
+    forever = jwt.encode({"token_type": "access", "user_id": 7}, KEY, algorithm=JWT_ALGORITHM)
+    assert SIGNER.user_id(forever, "access") is None
+
+
+def test_tokens_signed_with_a_previous_key_verify_during_a_rotation() -> None:
+    old = TokenSigner("o" * 32, MINUTE, timedelta(days=1)).issue(7, "access")
+    rotated = TokenSigner(KEY, MINUTE, timedelta(days=1), fallback_keys=("o" * 32,))
+
+    assert rotated.user_id(old, "access") == 7
+    assert SIGNER.user_id(old, "access") is None  # without the fallback it is foreign
+    # New tokens are signed with the current key only.
+    assert SIGNER.user_id(rotated.issue(8, "access"), "access") == 8
 
 
 def test_secrets_round_trip_and_are_not_stored_in_clear() -> None:
@@ -77,3 +117,25 @@ def test_a_secret_sealed_under_another_key_is_unreadable() -> None:
     sealed = SecretBox("old-secret").seal("sk-or-v1-abcdef")
     with pytest.raises(UnreadableSecret):
         SecretBox("new-secret").open(sealed)
+
+
+def test_a_secret_sealed_under_a_previous_key_opens_during_a_rotation() -> None:
+    sealed = SecretBox("old-secret").seal("sk-or-v1-abcdef")
+    rotated = SecretBox("new-secret", fallback_keys=("old-secret",))
+
+    assert rotated.open(sealed) == "sk-or-v1-abcdef"
+    # What it seals now needs only the new key.
+    assert SecretBox("new-secret").open(rotated.seal("sk-new")) == "sk-new"
+
+
+def test_the_app_secret_box_takes_the_fallbacks_from_settings() -> None:
+    sealed = SecretBox("old-secret-" + "x" * 32).seal("sk-or-v1-abcdef")
+    settings = TEST_SETTINGS.model_copy(update={"secret_key_fallbacks": ["old-secret-" + "x" * 32]})
+    assert secret_box_for(settings).open(sealed) == "sk-or-v1-abcdef"
+    assert token_signer(settings).fallback_keys == ("old-secret-" + "x" * 32,)
+
+
+def test_the_work_factor_of_a_hash_is_readable() -> None:
+    assert hash_iterations(DJANGO_HASH) == 1000
+    assert hash_iterations(hash_password("secret-pass", 12)) == 12
+    assert hash_iterations("md5$1$salt$x") is None

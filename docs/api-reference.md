@@ -4,8 +4,8 @@ Base path: `/api`. JSON in and out, except `POST /chat` which streams plain text
 
 **Auth:** every endpoint requires `Authorization: Bearer <access>` unless marked
 **public**. Routes are protected by default (`PROTECTED_ROUTERS` in
-`api/routes.py`); a missing, invalid or expired token is `401 not_authenticated`
-with `WWW-Authenticate: Bearer`.
+`api/routes.py`); a missing, invalid or expired token, or one issued before its
+account signed out, is `401 not_authenticated` with `WWW-Authenticate: Bearer`.
 
 Outside production the OpenAPI schema is served at `/api/openapi.json` and an
 interactive explorer at `/api/docs`.
@@ -13,8 +13,12 @@ interactive explorer at `/api/docs`.
 **Errors:** every error body is `{"error": "<code>", "detail": "<message>"}`.
 The code list is in the [README error contract](../README.md#error-contract);
 other codes you may see are `method_not_allowed` (405), `budget_exceeded` (409,
-a run reached its [spending limit](#spending-limits)) and `server_error` (500,
-an unexpected failure). A validation error's `detail` lists each problem as
+a run reached its [spending limit](#spending-limits)), `request_too_large` (413,
+a body over its cap: `DOCUMENT_MAX_BYTES` plus 1 MB for a multipart upload,
+`REQUEST_MAX_JSON_BYTES` for any other body, counted as it arrives whether or not
+it declares a `Content-Length`, and refused before authentication), `throttled`
+(429, with `Retry-After`) and `server_error` (500, an unexpected failure). A
+validation error's `detail` lists each problem as
 `field: message`, e.g. `"steps.0.model: Unknown model 'x'. Choose one of: ..."`.
 
 ---
@@ -42,8 +46,12 @@ with `ALLOW_PUBLIC_REGISTRATION=true`; otherwise this endpoint returns `403`.
 
 `200` → `{ "access": "<jwt>" }` and sets the refresh token in an `HttpOnly`,
 `SameSite=Strict` cookie. JavaScript and browser storage never receive the
-refresh token. Wrong credentials → `401`. Lifetimes: `JWT_ACCESS_MINUTES` (60),
-`JWT_REFRESH_DAYS` (1).
+refresh token. Wrong credentials → `401`, the same for an unknown username, in
+about the same time. After `AUTH_ACCOUNT_FAILURE_LIMIT` (10) failures for one
+username within `AUTH_ACCOUNT_FAILURE_WINDOW_SECONDS` (900), from any client,
+signing in to it returns `429 throttled` with `Retry-After` until the window
+ends, even with the right password; a successful sign-in clears the count.
+Lifetimes: `JWT_ACCESS_MINUTES` (60), `JWT_REFRESH_DAYS` (1).
 
 ### `POST /token/refresh` — public
 
@@ -52,11 +60,15 @@ invalid. `200` → `{ "access": "<jwt>" }` plus the replacement refresh cookie.
 
 ### `POST /token/logout` — public
 
-Revokes the presented refresh cookie and clears it. Idempotent; returns `204`.
+Revokes the presented refresh cookie and clears it, and ends every access token
+already issued to the account (they return `401` from then on). Idempotent;
+returns `204`.
 
 All public authentication operations are limited per client and operation by
 `AUTH_RATE_LIMIT_REQUESTS` / `AUTH_RATE_LIMIT_WINDOW_SECONDS`; excess requests
-return `429 throttled` with `Retry-After`.
+return `429 throttled` with `Retry-After`. The client is the connection's peer,
+or behind proxies the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` names (see
+[backend.md](backend.md)).
 
 ### `GET /protected`
 
@@ -391,7 +403,7 @@ named as above, so the model knows too.
 |---|---|---|
 | 400 | `validation_error` | No `file` field |
 | 401 | `not_authenticated` | No or invalid token |
-| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request whose declared `Content-Length` is over that plus 1 MB is refused earlier, before it is read, as `request_too_large` |
+| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request body over that plus 1 MB is refused earlier, as `request_too_large`: before it is read when its `Content-Length` says so, else as soon as it passes the cap |
 | 415 | `unsupported_document` | The extension is not supported; `detail` lists the supported ones |
 | 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx`, `.xlsx` or `.pptx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES` (50 MB), an image (or one TIFF page) over `DOCUMENT_MAX_IMAGE_PIXELS` (40 million) checked before it is decoded, an image while OCR is off or not installed, or no text at all (`detail` then says which pages were skipped and why) |
 
@@ -454,7 +466,7 @@ there keeps the files saved before it. The app uploads one file per request.
 |---|---|---|
 | 400 | `validation_error` | No `files` part, a name with nothing left after cleaning, or two files with the same name |
 | 409 | `file_exists` | A file has that name and `replace` was not `true` |
-| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request whose declared `Content-Length` is over that plus 1 MB is refused before it is read, as `request_too_large` |
+| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request body over that plus 1 MB is refused as `request_too_large`: before it is read when its `Content-Length` says so, else as soon as it passes the cap |
 | 413 | `storage_quota_exceeded` | The user's files would take more than `WORKSPACE_MAX_TOTAL_BYTES` (100 MB) |
 | 415 | `unsupported_file_type` | The extension is not in `WORKSPACE_UPLOAD_EXTENSIONS`; `detail` lists the accepted ones |
 

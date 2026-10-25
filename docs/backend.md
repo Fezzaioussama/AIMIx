@@ -33,17 +33,20 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 
 | Setting | Variable (legacy name also accepted) | Default / meaning |
 |---|---|---|
-| `app_env` | `APP_ENV` | `local`, `production` or `test`. Production refuses `DEBUG=true`, an empty `SECRET_KEY` or empty `ALLOWED_HOSTS`, adds HSTS, and turns off `/api/docs` |
-| `secret_key` | `SECRET_KEY` (`DJANGO_SECRET_KEY`) | Signs the JWTs and encrypts saved API keys. Outside production an empty value falls back to a throwaway key |
+| `app_env` | `APP_ENV` | `local`, `production` or `test`. Production refuses `DEBUG=true`, a `SECRET_KEY` that is empty, shorter than 32 characters or the development key, empty `ALLOWED_HOSTS`, `INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true` and `PASSWORD_HASH_ITERATIONS` under 600,000 (`PRODUCTION_REFUSALS`, one entry per check); it adds HSTS and turns off `/api/docs` |
+| `secret_key` | `SECRET_KEY` (`DJANGO_SECRET_KEY`) | Signs the JWTs and encrypts saved API keys. Outside production an empty value falls back to a public development key, and `create_app()` logs `settings.local_secret_key` as a warning |
+| `secret_key_fallbacks` | `SECRET_KEY_FALLBACKS` | Comma-separated previous keys, empty by default. They still verify JWTs and decrypt saved secrets; only `SECRET_KEY` signs and encrypts. See [rotating `SECRET_KEY`](#rotating-secret_key) |
 | `debug` | `DEBUG` (`DJANGO_DEBUG`) | FastAPI debug mode |
 | `allowed_hosts` | `ALLOWED_HOSTS` (`DJANGO_ALLOWED_HOSTS`) | Comma-separated `Host` allowlist (`localhost,127.0.0.1`) |
 | `cors_allowed_origins` | `CORS_ALLOWED_ORIGINS` (`DJANGO_CORS_ALLOWED_ORIGINS`) | Comma-separated origins (the Vite dev server) |
 | `database_url` | `DATABASE_URL` | SQLAlchemy URL; default `backend/aimix.sqlite3` |
 | `log_level` | `LOG_LEVEL` (`DJANGO_LOG_LEVEL`) | `INFO` |
 | `frontend_dist_dir` | `FRONTEND_DIST_DIR` | Built React app to serve next to `/api` (the image sets it); empty serves none |
+| `trusted_proxy_hops` | `TRUSTED_PROXY_HOPS` | How many proxies in front of the app append to `X-Forwarded-For` (0). It picks the client address the auth rate limit counts (`services/rate_limits.client_address`): with 0 the header is ignored and the connection's peer is used (never pair 0 with uvicorn's `--forwarded-allow-ips '*'`, which rewrites the peer from the header); with N, no header means the peer, otherwise the entry N from the right, or the leftmost one when the chain is shorter than N (only trusted proxies wrote it), without a port. A client can prepend entries but not remove the ones proxies append. Railway uses 2 |
+| `request_max_json_bytes` | `REQUEST_MAX_JSON_BYTES` | Largest body other than a multipart upload (5,000,000 bytes: room for run inputs carrying several documents' text); uploads keep `max_request_bytes` |
 | `jwt_access_minutes` / `jwt_refresh_days` | `JWT_ACCESS_MINUTES` / `JWT_REFRESH_DAYS` | 60 minutes / 1 day |
-| auth controls | `ALLOW_PUBLIC_REGISTRATION`, `AUTH_RATE_LIMIT_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`, `REFRESH_COOKIE_NAME` | Public registration is off by default; auth operations are database-throttled; refresh tokens use a rotating HttpOnly cookie |
-| `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default) |
+| auth controls | `ALLOW_PUBLIC_REGISTRATION`, `AUTH_RATE_LIMIT_REQUESTS`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`, `AUTH_ACCOUNT_FAILURE_LIMIT`, `AUTH_ACCOUNT_FAILURE_WINDOW_SECONDS`, `USER_RATE_LIMIT_REQUESTS`, `USER_RATE_LIMIT_WINDOW_SECONDS`, `REFRESH_COOKIE_NAME` | Public registration is off by default; auth operations are database-throttled per client (20 per 60 seconds); one username may fail to sign in 10 times per 900 seconds from any client, then its sign-ins get `429` until the window ends (a success clears the count); routes that make the server spend are throttled per account and route (30 per 60 seconds); refresh tokens use a rotating HttpOnly cookie |
+| `password_hash_iterations` | `PASSWORD_HASH_ITERATIONS` | 1,000,000 (Django's PBKDF2 default); production requires at least 600,000. A successful sign-in re-hashes a password stored at another work factor (an imported Django hash) at this one |
 | `llm_provider` | `LLM_PROVIDER` | `openrouter` (default) or `togetherai`; aliases accepted |
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
 | `llm_max_retries` / `llm_retry_base_delay_seconds` / `llm_retry_max_delay_seconds` | `LLM_MAX_RETRIES` / `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | Retries of a transient model failure (2; at most 10, 0 turns them off) / backoff base and cap in seconds (1 / 20). See [the retry policy](llm-providers.md#retry-policy) |
@@ -67,7 +70,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `run_max_concurrent` / `run_shutdown_grace_seconds` | `RUN_MAX_CONCURRENT` / `RUN_SHUTDOWN_GRACE_SECONDS` | Background runs executing at once in the process; the rest wait queued (4) / how long active runs get on shutdown to record that they were interrupted (5 seconds) |
 | `run_default_max_cost_usd` | `RUN_DEFAULT_MAX_COST_USD` | The cost limit, in USD, of a run whose starter sets none: it stops, failed, once its model calls have cost this much. Empty (the default) is no limit; zero, negative or non-finite values refuse to start the server. See [spending limits](api-reference.md#spending-limits) |
 | `scheduler_enabled` / `scheduler_tick_seconds` / `schedules_max_per_user` | `SCHEDULER_ENABLED` / `SCHEDULER_TICK_SECONDS` / `SCHEDULES_MAX_PER_USER` | Whether this process starts scheduled runs (`true`; `false` keeps schedules saved but starts none) / how often it looks for due schedules, so a run starts at most this late (30 seconds, above 0) / how many schedules one account may have (20; `0` stops new ones) |
-| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES`, `DOCUMENT_MAX_SPREADSHEET_ROWS`, `DOCUMENT_MAX_IMAGE_PIXELS` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages, slides or TIFF pages read (300), what a `.docx`, `.xlsx` or `.pptx` may unpack to (50 MB), workbook rows read across all sheets (5,000; reading also stops past `DOCUMENT_MAX_CHARS` cells) and an image's pixels, checked before decoding (40 million). `DOCUMENT_MAX_BYTES` caps every upload, a run document or a file for the Files page, so `max_request_bytes` (`DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead) is the one request-size bound. The same limits apply when an agent reads a PDF or Word file from its workspace |
+| document limits | `DOCUMENT_MAX_BYTES`, `DOCUMENT_MAX_CHARS`, `DOCUMENT_MAX_PAGES`, `DOCUMENT_MAX_UNPACKED_BYTES`, `DOCUMENT_MAX_SPREADSHEET_ROWS`, `DOCUMENT_MAX_IMAGE_PIXELS` | Bound one uploaded document: its size (10 MB), the text kept (120,000 characters), PDF pages, slides or TIFF pages read (300), what a `.docx`, `.xlsx` or `.pptx` may unpack to (50 MB), workbook rows read across all sheets (5,000; reading also stops past `DOCUMENT_MAX_CHARS` cells) and an image's pixels, checked before decoding (40 million). `DOCUMENT_MAX_BYTES` caps every upload, a run document or a file for the Files page, so `max_request_bytes` (`DOCUMENT_MAX_BYTES` plus 1 MB of multipart overhead) is the one upload request-size bound (other bodies: `REQUEST_MAX_JSON_BYTES`). The same limits apply when an agent reads a PDF or Word file from its workspace |
 | document OCR | `DOCUMENT_OCR_ENABLED`, `DOCUMENT_OCR_LANGUAGES`, `DOCUMENT_OCR_MAX_PAGES`, `DOCUMENT_OCR_TIMEOUT_SECONDS`, `DOCUMENT_OCR_DPI` | Tesseract OCR for images and PDF pages without a text layer: on (`true`), languages `eng+fra` (Tesseract codes joined by `+`, validated), at most 30 pages per document, 15 seconds per page, PDF pages rendered at 300 dpi |
 | `allow_server_llm_key` | `ALLOW_SERVER_LLM_KEY` | Whether an account with no saved key may spend the two keys below (`false`). Off, they serve only the `llm-probe` command and every request needs the user's own key, else `provider_not_configured`. `api/services/llm.py` (`server_key`) is the one gate |
 | `openrouter_api_key` / `togetherai_api_key` | `OPEN_ROUTER_KEY` (or `OPENROUTER_API_KEY`) / `TOGAI_API_KEY` | Credentials; placeholder values such as `your_api_key_here` count as unset |
@@ -109,9 +112,10 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 |---|---|
 | `DbSession` | A SQLAlchemy `Session` for the request, closed afterwards |
 | `AppSettings` | The `Settings` |
-| `Signer` | A `TokenSigner` configured from the settings |
-| `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` |
-| `Secrets` | A `SecretBox` keyed from the settings, for saved API keys |
+| `Signer` | A `TokenSigner` configured from the settings (`SECRET_KEY` plus `SECRET_KEY_FALLBACKS`) |
+| `CurrentUser` | The `User` behind the bearer token, or a 401 `not_authenticated` (also once the account signed out after the token was issued) |
+| `ClientAddress` | The client's address (`request_client`), per `TRUSTED_PROXY_HOPS`; the auth rate limit counts against it |
+| `Secrets` | A `SecretBox` keyed from the settings (`security.secret_box_for`, which the scheduler and the integration connections use too), for saved API keys |
 | `Profile` | The user's `LLMProfile`: provider, default model and saved key (Settings page, else `.env`) |
 | `Providers` | A factory for the user's `LLMProvider`, used by planning |
 | `PipelineAgents` / `PipelineRun` | User-bound pipeline agent factory / run context (user, session, agents, run service) |
@@ -131,7 +135,7 @@ Tests replace any of these with `app.dependency_overrides`.
 
 | Model (table) | Fields | Invariants |
 |---|---|---|
-| `User` (`users`) | `username` (unique), `password_hash`, `created_at`, `llm_provider` (null = `LLM_PROVIDER`) | — |
+| `User` (`users`) | `username` (unique), `password_hash`, `refresh_token_hash`, `token_version`, `created_at`, `llm_provider` (null = `LLM_PROVIDER`) | `token_version` is stamped into access tokens and moves on at sign-out |
 | `ProviderSetting` (`provider_settings`) | `user_id` (FK, cascade), `provider`, `api_key_encrypted`, `api_key_hint`, `default_model` | **unique `(user_id, provider)`**; `""` means not saved |
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
 | `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model`, `condition`, `review` | **unique `(pipeline_id, order)`** |
@@ -280,7 +284,8 @@ Each write commits its own transaction.
 | `integrations/` | Settings → Integrations. `service.py` (list, create, update, delete, `test_connection`), `rules.py` (`IntegrationRules`, `AddressPolicy`: https only, http and private addresses for local development only, `ensure_reachable`), `headers.py` (seal, reveal, hint and merge header values), `connections.py` (`mcp_connections_for`, the one builder of a user's MCP connections, and `GuardedClientFactory`, which re-checks the address before every request). |
 | `tool_catalog.py` | Discovers native read tools, configured MCP tools and the user's integration tools for `GET /agent-tools` and the planner; `describe` cuts a description to `AGENT_TOOL_DESCRIPTION_MAX_CHARS`; `source_of` names where a tool comes from (`AIMIx`, an integration, `MCP`), for the catalogue and for the approval policy alike. |
 | `pipeline_agents.py` | Compatibility re-export of `multiagent.step_agent.PipelineAgentGenerator`. |
-| `accounts.py` | `register` (password policy, unique username), `sign_in` → `TokenPair`, `refresh_access`, `authenticate`. |
+| `accounts.py` | `register` (password policy, unique username), `sign_in(session, signer, Credentials, SignInPolicy)` → `TokenPair`, `refresh_access`, `revoke_refresh`, `authenticate`. `sign_in` refuses a username past `AUTH_ACCOUNT_FAILURE_LIMIT` before checking its password (the counter is keyed on the lower-cased username, HMAC'd), checks an unknown username against a decoy hash at the configured work factor so it costs the same, counts a failure, and on success clears the count and re-hashes a password stored at another work factor. Access tokens carry the account's `token_version`; signing out (`revoke_refresh`) moves it on, so `authenticate` refuses every access token issued before. |
+| `rate_limits.py` | `enforce` (count, or `Throttled`), `ensure_room` (check without counting), `count`, `reset`, over HMAC'd identities; `client_address(forwarded_for, peer, trusted_hops)`, the one rule for the client's address. The repository counts with conditional `UPDATE`s (never past the limit under concurrency), retries once when two first requests race to create a bucket, and deletes the action's ended buckets whenever it creates one. |
 | `password_policy.py` | The four rules Django applied: similarity to the username, minimum length 8, Django's common-password list (`api/data/common-passwords.txt.gz`), entirely numeric. |
 | `llm.py` | **The only reader of provider credentials and transport settings** (timeout, base URL, retry policy). `LLMProfile`, `provider_config(profile)`, `get_provider(profile)`, `get_agent_model(profile, model_id)` and `model_info(profile, model_id)`, a model's catalogue entry for the profile's provider, whose published prices price its calls when the provider reports no cost. A saved key wins over the `.env` one. |
 | `llm_settings.py` | The Settings page: `resolve_profile()` (per request), `read()`, `save()`, `remove_key()`, and `environment_profile()` for the CLI. Keys are sealed with `SecretBox` and only their hint is returned. |
@@ -291,11 +296,26 @@ Each write commits its own transaction.
 
 Pure functions with no web framework. `hash_password` / `verify_password` use
 Django's `pbkdf2_sha256$<iterations>$<salt>$<hash>` format, so accounts imported
-from the old backend keep their passwords. `TokenSigner` issues and reads HS256
-JWTs with `token_type` (`access` or `refresh`) and `user_id` claims.
-`SecretBox` encrypts saved API keys and integration header values with Fernet,
-keyed by HKDF over `SECRET_KEY`; a secret sealed under another `SECRET_KEY`
-raises `UnreadableSecret`.
+from the old backend keep their passwords; `hash_iterations` reads a hash's work
+factor and `verify_nothing` spends a password check's cost on a decoy hash
+(computed once per work factor). `TokenSigner` issues and reads HS256 JWTs with
+`token_type` (`access` or `refresh`), `user_id`, `ver` (the account's token
+version; a token without it counts as 0) and a required `exp`; `subject()`
+returns both ids. `SecretBox` encrypts saved API keys and integration header
+values with Fernet, keyed by HKDF over `SECRET_KEY`; a secret sealed under a key
+that is neither `SECRET_KEY` nor one of `SECRET_KEY_FALLBACKS` raises
+`UnreadableSecret`.
+
+#### Rotating `SECRET_KEY`
+
+1. Add the current key to `SECRET_KEY_FALLBACKS` and set a new `SECRET_KEY`
+   (at least 32 characters); restart. Nobody is signed out: tokens the old key
+   signed still verify, and saved API keys and integration headers still decrypt.
+2. New tokens and newly saved secrets use the new key only.
+3. Remove the old key once every refresh token it signed has expired
+   (`JWT_REFRESH_DAYS`) and users have re-saved the secrets it encrypted; until
+   they do, those are read with it. Never list a key that leaked: that only
+   rotates in name.
 
 ### `exceptions.py`, `errors.py` and `middleware.py`
 
@@ -318,8 +338,11 @@ for files `FileAlreadyExists` (409 `file_exists`), `FileTooLarge` (413),
 - Anything unexpected as 500 `server_error`.
 
 `middleware.py` adds `RequestSizeLimitMiddleware` (answers 413 `request_too_large`
-to a body whose declared `Content-Length` exceeds `max_request_bytes`, before any
-of it is read), the `Host` allowlist, CORS, and security headers
+to a body over its cap: `max_request_bytes` for a multipart upload,
+`REQUEST_MAX_JSON_BYTES` for any other body. A declared `Content-Length` over the
+cap is refused before any of the body is read; a body without one (chunked) is
+counted as it arrives and refused once it passes the cap, before the app parses
+it and before authentication), the `Host` allowlist, CORS, and security headers
 (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`,
 `Cross-Origin-Opener-Policy`, plus HSTS in production).
 
@@ -398,7 +421,10 @@ so tests can never reach a real LLM.
 | `test_endpoints.py` | HTTP behaviour: every non-public route needs auth, auth flows, CRUD, run, generate, chat |
 | `test_errors.py` | The error shape for 400/401/404/405/500 |
 | `test_schemas.py` | Model-id validation, stages, required steps, non-blank fields |
-| `test_security.py` | Django-compatible hashes (checked against a hash Django produced), password policy, tokens |
+| `test_security.py` | Django-compatible hashes (checked against a hash Django produced), password policy, tokens (version claim, required expiry, previous keys during a rotation), `SecretBox` rotation |
+| `test_sign_in.py` | The per-username failure limit (any client, any letter case, cleared by a success, unknown usernames too), the decoy hash check for unknown usernames, hash upgrades at sign-in, sign-out revoking issued access tokens |
+| `test_rate_limits.py` | The counter: limit and retry time, a new window, the bucket-creation race, eight threads never counting past the limit (a file database), pruning ended buckets; `client_address` for every `TRUSTED_PROXY_HOPS` case, and a rotated `X-Forwarded-For` behind uvicorn's proxy-header middleware |
+| `test_request_limits.py` | The body caps on the real app: chunked uploads and chunked JSON over their caps refused before authentication, declared sizes, the JSON cap leaving uploads alone, reading stopping at the cap |
 | `test_database.py` | Migrations match the models and keep existing pipelines, steps, runs and run steps (up and down); the Django import |
 | `test_pipeline_service.py` | `run`, parallel stages, outputs, `parse_plan`, prompts |
 | `test_pipeline_inputs.py` | Named run inputs and expected outputs: binding, placeholder filling, planner sanitising, and the HTTP contract |
@@ -449,7 +475,7 @@ so tests can never reach a real LLM.
 | `test_integration_tools.py` | `mcp_connections_for` (operator servers + enabled integrations, skipped ones), the per-request address guard, discovery that skips a failing integration, tool-name clashes, and the catalogue's source labels |
 | `test_integration_runs.py` | Runs that do or do not need a failing integration, a step getting the integration tools it selected, and `POST /integrations/{id}/test` (tools found, every failure reason, a re-checked address, unreadable headers) |
 | `test_sandbox_tool.py` / `test_sandbox_lifecycle.py` / `test_sandbox_wiring.py` / `test_e2b_sandbox.py` | `run_python` over an in-memory sandbox (`sandbox_fakes.py`): the report, truncation, input confinement, output limits and no overwrites; fresh, always-closed sandboxes, one deadline, the boundary log; the key and data-leak rules; the E2B adapter against a fake SDK (`e2b_fakes.py`: offline creation, error mapping, stream and download budgets) |
-| `test_settings_and_config.py` | Settings parsing, legacy names, production guards, request URLs kept out of the logs |
+| `test_settings_and_config.py` | Settings parsing, legacy names, production guards (each refusal, key length, the development key, the work-factor floor), the startup warning for the development key, request URLs kept out of the logs |
 | `test_documents.py` | Document extraction: text, HTML, PDF and Word, limits, refusals, the HTTP contract and the request-size guard |
 | `test_document_scans.py` | Scanned and mixed PDFs through a fake `OcrEngine`: render resolution and pixel cap, OCR page cap, a page that times out or fails, OCR off |
 | `test_document_images.py` | Every image type, TIFF pages (counted without `n_frames`), transparency, 16-bit scans, EXIF rotation, the pixel cap and decompression bombs, decoders allowed, OCR off |
