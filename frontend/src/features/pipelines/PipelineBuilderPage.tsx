@@ -8,6 +8,7 @@ import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { FollowedRunBar } from '../runs/FollowedRunBar';
 import { useFollowedRun } from '../runs/useFollowedRun';
+import { SchedulePanel } from '../schedules/SchedulePanel';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
 import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
@@ -161,6 +162,7 @@ export function PipelineBuilderPage() {
               disabled={isRunning || isSaving}
               className="mb-6"
             />
+            <SchedulePanel pipeline={pipeline} dirty={dirty} className="mb-6" />
             <PipelineRunView
               steps={pipeline.steps}
               inputs={pipeline.inputs}

@@ -12,9 +12,30 @@ export const RUN_LIST_REFRESH_MS = 5000;
 
 /** The fields a summary shares with a whole run, to keep a listed run up to date. */
 export function summaryOf(run: RunSummary): RunSummary {
-  const { id, pipeline_id, pipeline_name, status, error, created_at, started_at, finished_at } =
-    run;
-  return { id, pipeline_id, pipeline_name, status, error, created_at, started_at, finished_at };
+  const {
+    id,
+    pipeline_id,
+    pipeline_name,
+    trigger,
+    schedule_id,
+    status,
+    error,
+    created_at,
+    started_at,
+    finished_at,
+  } = run;
+  return {
+    id,
+    pipeline_id,
+    pipeline_name,
+    trigger,
+    schedule_id,
+    status,
+    error,
+    created_at,
+    started_at,
+    finished_at,
+  };
 }
 
 /**

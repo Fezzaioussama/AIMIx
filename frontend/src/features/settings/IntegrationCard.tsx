@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 
 import type { Integration } from '../../core/api/types';
+import { ToggleSwitch } from '../../core/ui/ToggleSwitch';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { actionButtonClass } from './actionButton';
 import { ConnectionTestResult, toolCount } from './ConnectionTestResult';
@@ -15,39 +16,6 @@ interface IntegrationCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
-}
-
-function EnabledSwitch({
-  integration,
-  busy,
-  onToggle,
-}: Pick<IntegrationCardProps, 'integration' | 'busy' | 'onToggle'>) {
-  const { enabled, name } = integration;
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <span aria-hidden="true" className="text-xs text-slate-300">
-        {enabled ? 'On' : 'Off'}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`Let agents use ${name}`}
-        disabled={busy}
-        onClick={() => onToggle(!enabled)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-60 ${
-          enabled ? 'border-sky-400/60 bg-sky-500/70' : 'border-white/15 bg-slate-700/70'
-        }`}
-      >
-        <span
-          aria-hidden="true"
-          className={`inline-block size-4 rounded-full bg-white shadow motion-safe:transition-transform ${
-            enabled ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        />
-      </button>
-    </div>
-  );
 }
 
 function headerSummary(integration: Integration): string {
@@ -106,7 +74,12 @@ function CardHeading({ headingId, integration, test, busy, onToggle }: CardHeadi
           </h3>
           <p className="truncate text-xs text-slate-400">{hostOf(integration.url)}</p>
         </div>
-        <EnabledSwitch integration={integration} busy={busy} onToggle={onToggle} />
+        <ToggleSwitch
+          checked={integration.enabled}
+          label={`Let agents use ${integration.name}`}
+          disabled={busy}
+          onChange={onToggle}
+        />
       </div>
       <p className="mt-2 text-xs text-slate-400">
         {headerSummary(integration)}

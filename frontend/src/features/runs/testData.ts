@@ -47,6 +47,8 @@ export function makeRun(overrides: Partial<Run> = {}): Run {
     id: 7,
     pipeline_id: 3,
     pipeline_name: 'Launch kit',
+    trigger: 'manual',
+    schedule_id: null,
     status: 'running',
     error: null,
     created_at: '2026-10-24T10:00:00Z',

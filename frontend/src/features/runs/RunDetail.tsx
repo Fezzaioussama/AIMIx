@@ -6,6 +6,7 @@ import { BusyNotice } from '../../core/ui/BusyNotice';
 import { inputLabel } from '../pipelines/pipelineInputs';
 import { DeleteRunButton } from './DeleteRunButton';
 import { LiveRun } from './LiveRun';
+import { RunTriggerTag } from './RunTriggerTag';
 import { isActive } from './runStatus';
 import type { LiveRunState } from './useRun';
 
@@ -41,6 +42,12 @@ export function RunDetail({ live, onDelete, deleting }: RunDetailProps) {
         </h1>
         <p className="mt-1 text-sm text-slate-400">
           Started {formatDateTime(run.started_at ?? run.created_at)}
+          {run.trigger === 'schedule' && (
+            <>
+              {' · '}
+              <RunTriggerTag trigger={run.trigger} />
+            </>
+          )}
           {run.pipeline_id !== null && (
             <>
               {' · '}

@@ -37,31 +37,12 @@ export function RunInputCard({
   return (
     <SpotlightCard className="mt-8 p-8">
       <h2 className="mb-4 text-xl font-semibold">Run Execution</h2>
-      {inputs.length === 0 ? (
-        <div className="mb-4">
-          <textarea
-            value={draft.text}
-            disabled={isRunning}
-            aria-label="Run input"
-            placeholder="Enter your initial input here..."
-            onChange={(event) => onDraftChange({ ...draft, text: event.target.value })}
-            className={`h-28 ${fieldClass}`}
-          />
-          <AttachDocument
-            disabled={isRunning}
-            onDocument={(document) =>
-              onDraftChange({ ...draft, text: appendDocument(draft.text, document) })
-            }
-          />
-        </div>
-      ) : (
-        <NamedInputFields
-          inputs={inputs}
-          draft={draft}
-          disabled={isRunning}
-          onDraftChange={onDraftChange}
-        />
-      )}
+      <RunInputFields
+        inputs={inputs}
+        draft={draft}
+        disabled={isRunning}
+        onDraftChange={onDraftChange}
+      />
       <GlowButton
         size="lg"
         onClick={onRun}
@@ -83,6 +64,41 @@ interface NamedInputFieldsProps {
   draft: RunDraft;
   disabled: boolean;
   onDraftChange: (draft: RunDraft) => void;
+}
+
+/**
+ * What a run is given: one free-text field (with "Attach a document") for a pipeline without
+ * named inputs, else one labelled field per input. The schedule form asks the same way.
+ */
+export function RunInputFields({ inputs, draft, disabled, onDraftChange }: NamedInputFieldsProps) {
+  if (inputs.length > 0) {
+    return (
+      <NamedInputFields
+        inputs={inputs}
+        draft={draft}
+        disabled={disabled}
+        onDraftChange={onDraftChange}
+      />
+    );
+  }
+  return (
+    <div className="mb-4">
+      <textarea
+        value={draft.text}
+        disabled={disabled}
+        aria-label="Run input"
+        placeholder="Enter your initial input here..."
+        onChange={(event) => onDraftChange({ ...draft, text: event.target.value })}
+        className={`h-28 ${fieldClass}`}
+      />
+      <AttachDocument
+        disabled={disabled}
+        onDocument={(document) =>
+          onDraftChange({ ...draft, text: appendDocument(draft.text, document) })
+        }
+      />
+    </div>
+  );
 }
 
 /** One labelled field per declared input; every one must be filled to run. */
