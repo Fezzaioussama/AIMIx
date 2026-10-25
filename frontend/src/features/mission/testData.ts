@@ -148,6 +148,28 @@ export function hangUntilAborted(init: RequestInit | undefined): Promise<never> 
   });
 }
 
+/** A promise settled by hand, to hold a request open until the test lets it answer. */
+export function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+/** A run of `SAVED` still working: its first agent is done, the second is running. */
+export function runningRun(overrides: Partial<Run> = {}): Run {
+  return finishedRun({
+    status: 'running',
+    finished_at: null,
+    steps: [
+      { ...runStep(1, 'succeeded', 'Research notes'), title: 'Market research', is_output: false },
+      { ...runStep(2, 'running'), title: 'Comparison' },
+    ],
+    ...overrides,
+  });
+}
+
 /** What every mission needs from the server apart from its own routes. */
 export const COMMON_ROUTES: Routes = {
   'GET /api/models': MODELS,

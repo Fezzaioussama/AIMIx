@@ -26,8 +26,8 @@ function TabRunStatus({ status }: { status: RunStatus }) {
   return (
     <span className="flex items-center gap-1 text-[11px] font-normal text-slate-300">
       <span aria-hidden="true" className={`size-1.5 rounded-full ${style.dot}`} />
-      <span className="sr-only">, run </span>
-      {style.label}
+      <span aria-hidden="true">{style.label}</span>
+      <span className="sr-only">{`, run ${style.label.toLowerCase()}`}</span>
     </span>
   );
 }
