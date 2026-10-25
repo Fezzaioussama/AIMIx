@@ -36,6 +36,7 @@ from api.services.llm import provider_config
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.run_executor import RunExecutor
+from api.services.run_policy import run_policy
 from api.services.run_recorder import SERVER_ERROR_DETAIL, utcnow
 from api.services.runs import RunService
 from api.services.schedules.service import run_start, timing_of
@@ -211,7 +212,9 @@ def build_scheduler(database: Database, executor: RunExecutor, settings: Setting
     """The app's scheduler (``create_app``): it starts runs on the app's executor."""
     if not settings.scheduler_enabled:
         return IdleScheduler()
-    runs = RunService(database, executor, settings.pipeline_max_parallel_steps)
+    runs = RunService(
+        database, executor, settings.pipeline_max_parallel_steps, run_policy(settings)
+    )
     scheduler = Scheduler(database, runs, ProfileAgents(database, SecretBox(settings.secret_key)))
     return SchedulerLoop(
         scheduler.tick, settings.scheduler_tick_seconds, settings.run_shutdown_grace_seconds

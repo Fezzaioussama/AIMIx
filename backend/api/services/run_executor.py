@@ -3,9 +3,11 @@
 ``BackgroundRunExecutor`` owns one asyncio event loop on a daemon thread,
 started on first use and stopped by the app's lifespan. At most
 ``max_concurrent`` jobs execute at once; the others wait for a free slot. Jobs
-are keyed by run id, so a request thread can cancel one. ``api/deps.run_executor``
-hands the executor to the run service, so tests can swap in one that runs jobs
-inline (Dependency Injection, §5 D).
+are keyed by run id, so a request thread can cancel one, and can wait for the
+last one under a key to have ended (``settled``): a stopped job may take a
+while to wind down, and must not record its end over the next one's run.
+``api/deps.run_executor`` hands the executor to the run service, so tests can
+swap in one that runs jobs inline (Dependency Injection, §5 D).
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import Awaitable, Callable
-from concurrent.futures import Future
+from concurrent.futures import Future, wait
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Protocol, TypeVar
 
@@ -33,6 +35,11 @@ class RunExecutor(Protocol):
 
     def cancel(self, key: int) -> None:
         """Cancel the job under ``key`` if it is waiting or executing; else do nothing."""
+        ...
+
+    def settled(self, key: int) -> bool:
+        """Whether every job submitted under ``key`` has ended, after waiting a
+        moment (the shutdown grace) for one that is still winding down."""
         ...
 
     def shutdown(self) -> None:
@@ -90,19 +97,40 @@ class BackgroundRunExecutor:
         self._grace_seconds = grace_seconds
         self._lock = threading.Lock()
         self._worker: _Worker | None = None
+        #: The future of the last job submitted under each key, until that job ends.
+        self._live: dict[int, Future[Any]] = {}
 
     def submit(self, key: int, job: Callable[[], Awaitable[T]]) -> Future[T]:
         worker = self._started()
-        return asyncio.run_coroutine_threadsafe(worker.guarded(key, job), worker.loop)
+        future = asyncio.run_coroutine_threadsafe(worker.guarded(key, job), worker.loop)
+        with self._lock:
+            self._live[key] = future
+        # Done once the job's task has ended (nothing cancels this future itself).
+        future.add_done_callback(lambda done: self._ended(key, done))
+        return future
 
     def cancel(self, key: int) -> None:
         worker = self._worker
         if worker is not None:
             worker.loop.call_soon_threadsafe(worker.cancel, key)
 
+    def settled(self, key: int) -> bool:
+        with self._lock:
+            live = self._live.get(key)
+        if live is None:
+            return True
+        wait([live], timeout=self._grace_seconds)
+        return live.done()
+
+    def _ended(self, key: int, future: Future[Any]) -> None:
+        with self._lock:
+            if self._live.get(key) is future:
+                del self._live[key]
+
     def shutdown(self) -> None:
         with self._lock:
             worker, self._worker = self._worker, None
+            self._live.clear()
         if worker is None:
             return
         stopping = asyncio.run_coroutine_threadsafe(worker.cancel_all(), worker.loop)

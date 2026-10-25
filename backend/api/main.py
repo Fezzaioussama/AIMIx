@@ -15,6 +15,7 @@ from api.middleware import install_middleware
 from api.routes import API_PREFIX, api_router
 from api.services.documents.ocr import ocr_config, ocr_engine
 from api.services.run_executor import BackgroundRunExecutor
+from api.services.run_policy import warn_about_unbounded_spending
 from api.services.runs import interrupt_abandoned_runs
 from api.services.schedules.scheduler import build_scheduler
 from config.logging_setup import configure_logging
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
+    warn_about_unbounded_spending(settings)
     # Interactive API docs are a public surface, so they exist only outside production.
     docs = settings.app_env != "production"
     app = FastAPI(

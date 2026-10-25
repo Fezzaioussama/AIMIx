@@ -14,8 +14,9 @@ from api.db import Database
 from api.exceptions import BudgetExceeded
 from api.models import Base, RunStatus, StepStatus, User
 from api.repositories import users
-from api.services.run_budget import NO_BUDGET, RunBudget
+from api.services.run_budget import RunBudget, RunLimits
 from api.services.run_executor import BackgroundRunExecutor
+from api.services.run_policy import RunPolicy
 from api.services.runs import RunService, RunStart
 from api.services.usage import total_usage
 from tests.usage_fakes import (
@@ -52,7 +53,7 @@ def executor() -> Iterator[BackgroundRunExecutor]:
 
 @pytest.fixture
 def service(database: Database, executor: BackgroundRunExecutor) -> RunService:
-    return RunService(database, executor, max_parallel_steps=4, default_limits=NO_BUDGET)
+    return RunService(database, executor, max_parallel_steps=4, policy=RunPolicy())
 
 
 def run_to_the_end(service: RunService, owner: User, database: Database, **start: object) -> int:
@@ -315,7 +316,7 @@ def test_resume_without_a_new_limit_keeps_the_runs_own(
 def test_a_run_started_without_limits_takes_the_servers_default(
     database: Database, owner: User, executor: BackgroundRunExecutor
 ) -> None:
-    service = RunService(database, executor, 4, default_limits=RunBudget(max_cost_usd=0.25))
+    service = RunService(database, executor, 4, RunPolicy(RunLimits(RunBudget(max_cost_usd=0.25))))
     pipeline = staged_pipeline(database, owner, [1])
 
     plain = service.start(owner, pipeline, RunStart("seed"), UsageAgent())
@@ -334,7 +335,7 @@ def test_a_run_started_without_limits_takes_the_servers_default(
 def test_the_default_limit_stops_a_run_that_set_none(
     database: Database, owner: User, executor: BackgroundRunExecutor
 ) -> None:
-    service = RunService(database, executor, 4, default_limits=RunBudget(max_cost_usd=0.25))
+    service = RunService(database, executor, 4, RunPolicy(RunLimits(RunBudget(max_cost_usd=0.25))))
     pipeline = staged_pipeline(database, owner, [1])
 
     started = service.start(owner, pipeline, RunStart("seed"), UsageAgent(calls={"role-1": 50}))

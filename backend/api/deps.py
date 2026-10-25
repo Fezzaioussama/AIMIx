@@ -30,8 +30,8 @@ from api.services.llm import LLMProfile, get_planner_provider
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.rate_limits import RateLimitRequest, enforce
-from api.services.run_budget import default_budget
 from api.services.run_executor import RunExecutor
+from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
 from api.services.runs import RunService, launcher
 from api.services.schedules.service import ScheduleAccess
@@ -227,7 +227,7 @@ def run_service(request: Request, executor: Executor, settings: AppSettings) -> 
         request.app.state.database,
         executor,
         settings.pipeline_max_parallel_steps,
-        default_budget(settings),
+        run_policy(settings),
     )
 
 

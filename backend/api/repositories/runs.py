@@ -14,13 +14,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, func, inspect, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from api.exceptions import NotFound
 from api.models import (
-    ACTIVE_RUN_STATUSES,
     COMPLETED_STEP_STATUSES,
+    RESUMABLE_RUN_STATUSES,
     Run,
     RunStatus,
     RunStep,
@@ -28,6 +28,7 @@ from api.models import (
     StepStatus,
     User,
 )
+from api.repositories import active_runs, quota
 from api.repositories.approvals import expire_pending
 from api.repositories.bulk import changed as _changed
 from llm.usage import TokenUsage
@@ -127,7 +128,10 @@ def _with_steps() -> Select[tuple[Run]]:
     return select(Run).options(selectinload(Run.steps), selectinload(Run.pending_approvals))
 
 
-def create(session: Session, user: User, new: NewRun) -> Run:
+def create(session: Session, user: User, new: NewRun, cap: quota.Quota | None = None) -> Run:
+    """Save a queued run; with ``cap``, only while the user stays within it."""
+    if cap is not None:
+        quota.lock_owner(session, user.id)
     run = Run(
         user_id=user.id,
         pipeline_id=new.pipeline_id,
@@ -143,6 +147,8 @@ def create(session: Session, user: User, new: NewRun) -> Run:
         steps=[RunStep(**unstarted_step(), **step) for step in new.steps],
     )
     session.add(run)
+    if cap is not None:
+        quota.enforce(session, active_runs.count_of(user.id), cap)
     session.commit()
     return run
 
@@ -231,28 +237,31 @@ def end(session: Session, run_id: int, ending: RunEnding, now: datetime) -> bool
 
 
 def reopen(
-    session: Session,
-    run_id: int,
-    resumable: Collection[RunStatus],
-    values: Mapping[str, Any] | None = None,
+    session: Session, run: Run, values: Mapping[str, Any], cap: quota.Quota | None = None
 ) -> bool:
-    """Queue a stopped run again (compare-and-set from ``resumable``), setting
-    ``values`` too (a new spending limit), and reset every step that neither
-    succeeded nor was skipped, in one transaction. A step keeps its usage (that
-    was spent) and the review round it was in."""
+    """Queue a stopped run again (compare-and-set from a resumable status), setting
+    ``values`` too (its spending limits), and reset every step that neither
+    succeeded nor was skipped, in one transaction; with ``cap``, only while its
+    owner stays within it. A step keeps its usage (that was spent) and the
+    review round it was in."""
+    if cap is not None:
+        quota.lock_owner(session, run.user_id)
+    run_id = run.id
     reopened = _changed(
         session,
         update(Run)
-        .where(Run.id == run_id, Run.status.in_(resumable))
+        .where(Run.id == run_id, Run.status.in_(RESUMABLE_RUN_STATUSES))
         .values(
             status=RunStatus.QUEUED,
             final_output="",
             error_code="",
             error_detail="",
             finished_at=None,
-            **(values or {}),
+            **values,
         ),
     )
+    if reopened and cap is not None:
+        quota.enforce(session, active_runs.count_of(run.user_id), cap)
     if reopened:
         _changed(
             session,
@@ -286,27 +295,3 @@ def add_step_usage(session: Session, run_id: int, step_order: int, usage: TokenU
 def delete(session: Session, run: Run) -> None:
     session.delete(run)
     session.commit()
-
-
-def interrupt_active(session: Session, now: datetime) -> int:
-    """Mark the runs a previous process left queued, running or waiting as
-    interrupted, their running steps as cancelled and their pending approvals
-    as expired. A database without the runs table (not migrated yet) has none."""
-    if not inspect(session.connection()).has_table(Run.__tablename__):
-        return 0
-    stale = select(Run.id).where(Run.status.in_(ACTIVE_RUN_STATUSES))
-    _changed(
-        session,
-        update(RunStep)
-        .where(RunStep.run_id.in_(stale), RunStep.status == StepStatus.RUNNING)
-        .values(status=StepStatus.CANCELLED, finished_at=now),
-    )
-    expire_pending(session, stale, now)
-    interrupted = _changed(
-        session,
-        update(Run)
-        .where(Run.status.in_(ACTIVE_RUN_STATUSES))
-        .values(status=RunStatus.INTERRUPTED, finished_at=now),
-    )
-    session.commit()
-    return interrupted

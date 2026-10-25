@@ -10,6 +10,8 @@ sent is never thrown away: it is counted, and its answer kept.
 
 Limits are a cost (USD) and a number of tokens; None is no limit. A call whose
 cost is unknown (a model without a price) counts toward the token limit only.
+The server's ``RunLimits`` give a run that sets no limit of its own the default
+one, and cap every run at a ceiling no caller can raise.
 """
 
 from __future__ import annotations
@@ -17,11 +19,22 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import reduce
+from typing import TypeVar
 
-from api.exceptions import BudgetExceeded
+from api.exceptions import BudgetExceeded, ValidationFailed
 from api.models import Run
 from config.settings import Settings
 from llm.usage import NO_USAGE, TokenUsage, UsageMeter
+
+N = TypeVar("N", int, float)
+
+
+def _lowest(value: N | None, most: N | None) -> N | None:
+    """``value`` cut to ``most``; an unset one on either side takes the other."""
+    if value is None or most is None:
+        return most if value is None else value
+    return min(value, most)
 
 
 @dataclass(frozen=True)
@@ -38,13 +51,20 @@ class RunBudget:
             self.max_tokens if self.max_tokens is not None else fallback.max_tokens,
         )
 
+    def capped(self, ceiling: RunBudget) -> RunBudget:
+        """These limits, each cut to ``ceiling``'s; one left unset takes the ceiling's."""
+        return RunBudget(
+            _lowest(self.max_cost_usd, ceiling.max_cost_usd),
+            _lowest(self.max_tokens, ceiling.max_tokens),
+        )
+
 
 NO_BUDGET = RunBudget()
 
 
 def default_budget(settings: Settings) -> RunBudget:
-    """The limit of a run that sets none of its own (RUN_DEFAULT_MAX_COST_USD)."""
-    return RunBudget(max_cost_usd=settings.run_default_max_cost_usd)
+    """The limits of a run that sets none of its own (RUN_DEFAULT_MAX_*)."""
+    return RunBudget(settings.run_default_max_cost_usd, settings.run_default_max_tokens)
 
 
 def run_budget(run: Run) -> RunBudget:
@@ -108,6 +128,42 @@ def limit_reached(budget: RunBudget, spent: TokenUsage) -> LimitReached | None:
         if allowed is not None and used is not None and used + ROUNDING_SLACK >= allowed:
             return LimitReached(kind.amount(used), kind.limit(allowed))
     return None
+
+
+@dataclass(frozen=True)
+class RunLimits:
+    """The server's limits on every run (§7 Value Object): ``default`` fills a
+    limit the run's starter leaves unset (RUN_DEFAULT_MAX_*), and ``ceiling``
+    is the most any run may have (RUN_MAX_*), whoever starts or resumes it."""
+
+    default: RunBudget = NO_BUDGET
+    ceiling: RunBudget = NO_BUDGET
+
+    def allow(self, requested: RunBudget) -> RunBudget:
+        """``requested``, refused (``ValidationFailed``) when it asks for a limit
+        above the ceiling: a caller is told, never quietly given less."""
+        for kind in LIMITS:
+            asked, most = kind.allowed(requested), kind.allowed(self.ceiling)
+            if asked is not None and most is not None and asked > most:
+                raise ValidationFailed(
+                    f"Runs here may have at most a {kind.limit(most)} limit; "
+                    f"you asked for {kind.amount(asked)}."
+                )
+        return requested
+
+    def applied(self, *budgets: RunBudget) -> RunBudget:
+        """Each limit from the first of ``budgets`` that sets it, else the
+        default, cut to the ceiling; so a run is never without the ceiling's."""
+        return reduce(RunBudget.or_else, (*budgets, self.default)).capped(self.ceiling)
+
+
+NO_LIMITS = RunLimits()
+
+
+def run_limits(settings: Settings) -> RunLimits:
+    return RunLimits(
+        default_budget(settings), RunBudget(settings.run_max_cost_usd, settings.run_max_tokens)
+    )
 
 
 def ensure_room(budget: RunBudget, spent: TokenUsage) -> None:
