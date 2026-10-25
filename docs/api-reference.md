@@ -331,9 +331,13 @@ data-exfiltration risk.
 same rules, copied to `/home/user/inputs/`). Each call runs in a fresh E2B
 sandbox without internet access. Files the code writes to `/home/user/outputs/`
 and the PNG charts it displays are saved to `sandbox/<UTC time>/outputs/` and
-`sandbox/<UTC time>/charts/` in the workspace, never overwriting. It counts as
+`sandbox/<UTC time>/charts/` in the workspace, never overwriting; a `.csv` gets
+the same formula treatment as `save_artifact` (one with nothing to change keeps
+its bytes). It counts as
 a workspace reader for the rule above, but only when it is offered. A failure in the code, a timeout or an unavailable sandbox is an `error`
-tool call that the agent can react to.
+tool call that the agent can react to. Each account may make
+`SANDBOX_MAX_CALLS_PER_HOUR` calls an hour; past that a call is an `error` tool
+call and starts no sandbox.
 
 ---
 

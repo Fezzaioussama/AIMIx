@@ -438,7 +438,8 @@ hidden file stays hidden) into `/home/user/inputs/`, saves what the code
 writes to `/home/user/outputs/` and the PNG charts it displays into a new
 `sandbox/<UTC time>/` workspace folder (`outputs/` and `charts/` inside it; at
 most `SANDBOX_MAX_FILES` files within `WORKSPACE_MAX_FILE_BYTES`, never
-overwriting), and returns the error with a short traceback, the saved files,
+overwriting, a `.csv` through the same formula neutraliser as `save_artifact`),
+and returns the error with a short traceback, the saved files,
 the files not saved and why, the final result, stdout and stderr, cut at
 `SANDBOX_MAX_OUTPUT_CHARS`. Outputs are downloaded as streams and dropped once
 they outgrow the file limit; one that cannot be fetched is reported without
