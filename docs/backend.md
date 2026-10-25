@@ -21,7 +21,14 @@ Outside production the interactive docs are at <http://127.0.0.1:8000/api/docs>.
 ## `config/` — settings and logging
 
 `config/settings.py` defines one typed `Settings` class (pydantic-settings). It
-reads the environment first, then `backend/.env`. `get_settings()` returns the
+reads the environment first, then `backend/.env`. It holds the app and auth
+fields itself and inherits the rest from one model per area:
+`llm_settings.py` (providers and keys), `agent_settings.py` (agents, MCP,
+approvals, integrations, built-in tools, sandbox), `document_settings.py` (the
+user's files and run documents) and `run_settings.py` (runs, budgets,
+schedules). `fields.py` holds the shared field types: `CommaList` (a
+comma-separated variable) and `Secret` (a credential whose placeholder counts as
+unset). Code reads every field through `Settings`. `get_settings()` returns the
 process-wide instance, and `pin_settings()` fixes it for tests and one-off tools.
 
 | Setting | Variable (legacy name also accepted) | Default / meaning |
@@ -353,7 +360,10 @@ rounds) does the same for `pipeline_steps.condition` / `.review` and
 `succeeded` one with no output (the older code does not know the status), and
 `tests/flow/test_migration.py` runs both directions on a database that holds
 pipelines, runs, steps and an approval. The `skipped` status needs no migration:
-statuses are plain `VARCHAR(16)` without a CHECK constraint.
+statuses are plain `VARCHAR(16)` without a CHECK constraint. Revision
+`ee34d4ea46e9` adds `users.token_version` (existing users start at 0, the
+version their unversioned tokens count as) and `schedules.max_cost_usd` /
+`.max_tokens` (empty: the server's default limits), in place as well.
 
 ## `llm/` — provider layer
 

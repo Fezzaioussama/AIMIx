@@ -75,6 +75,8 @@ class User(Base):
     #: SHA-256 of the one currently valid refresh token. Keeping only a hash
     #: makes refresh rotation and logout possible without storing bearer secrets.
     refresh_token_hash: Mapped[str] = mapped_column(String(64), default="")
+    #: Stamped into every access token; bumping it (logout) revokes the ones issued.
+    token_version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     #: The LLM provider this user's requests go to; None means LLM_PROVIDER.
     llm_provider: Mapped[str | None] = mapped_column(String(PROVIDER_NAME_MAX_LENGTH))
@@ -429,7 +431,8 @@ class Schedule(Base):
     name), so a schedule keeps its local time across daylight-saving changes;
     an hourly one uses the minute only. ``weekday`` (0 = Monday) is set for a
     weekly schedule and ``day_of_month`` (1-31) for a monthly one.
-    ``input_text`` / ``input_values`` are what every run is started with.
+    ``input_text`` / ``input_values`` are what every run is started with, and
+    ``max_cost_usd`` / ``max_tokens`` its limits (None: the server's default).
     ``next_run_at`` (UTC) is None while the schedule is off. ``last_error``
     says why its latest occurrence could not start; "" means it started.
     Deleting the pipeline deletes its schedules; their runs stay.
@@ -450,6 +453,8 @@ class Schedule(Base):
     timezone: Mapped[str] = mapped_column(String(TIMEZONE_MAX_LENGTH))
     input_text: Mapped[str] = mapped_column(Text, default="")
     input_values: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    max_cost_usd: Mapped[float | None]
+    max_tokens: Mapped[int | None]
     enabled: Mapped[bool] = mapped_column(default=True)
     next_run_at: Mapped[datetime | None] = mapped_column(index=True)
     last_error: Mapped[str] = mapped_column(Text, default="")

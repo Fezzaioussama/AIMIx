@@ -252,7 +252,7 @@ Example: a hypothetical `groq` provider with an OpenAI-compatible API.
    spellings to `ALIASES`.
 3. `llm/catalog.py`: add a `GroqModels(ModelCatalog)` class and a `CATALOGS`
    entry.
-4. `config/settings.py`: add `groq_api_key`, `groq_base_url` and
+4. `config/llm_settings.py`: add `groq_api_key` (typed `Secret`), `groq_base_url` and
    `groq_default_model` fields, and a `"groq"` entry in the `llm_api_keys`,
    `llm_base_urls` and `llm_default_models` properties; set the empty key in
    `TEST_SETTINGS` (`tests/conftest.py`).
