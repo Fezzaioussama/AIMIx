@@ -82,6 +82,16 @@ def test_files_outside_the_build_are_not_served(site: TestClient) -> None:
     assert "outside the build" not in response.text
 
 
+@pytest.mark.parametrize(
+    "path", ["/%00", "/assets/%00.js", "/" + "a" * 5_000], ids=["nul", "nul-asset", "too-long"]
+)
+def test_a_path_no_file_system_accepts_gets_the_app_shell(site: TestClient, path: str) -> None:
+    """A NUL byte or an over-long name used to crash the lookup (500)."""
+    response = site.get(path)
+    assert response.status_code == 200
+    assert response.text == INDEX_HTML
+
+
 def test_a_missing_build_fails_at_startup(tmp_path: Path) -> None:
     pin_settings(TEST_SETTINGS.model_copy(update={"frontend_dist_dir": str(tmp_path)}))
     try:
