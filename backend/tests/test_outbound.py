@@ -68,6 +68,18 @@ def network_client(network: FakeNetwork, policy: OutboundPolicy) -> httpx.AsyncC
     return guarded_client(guarded_transport(policy, network))
 
 
+def test_the_transport_refuses_to_build_if_httpx_moved_its_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def no_pool(self: httpx.AsyncHTTPTransport, **_: object) -> None:
+        """An httpx release that keeps its pool under another name."""
+
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "__init__", no_pool)
+    # Otherwise the checked network would sit unused and connections go anywhere.
+    with pytest.raises(RuntimeError, match="_pool"):
+        guarded_transport(OutboundPolicy(resolver=resolver), FakeNetwork())
+
+
 @pytest.mark.asyncio
 async def test_a_connection_goes_to_the_address_that_was_checked() -> None:
     network = FakeNetwork()

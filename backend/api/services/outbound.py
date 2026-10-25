@@ -116,6 +116,11 @@ class _ConnectingThrough(httpx.AsyncHTTPTransport):
     def __init__(self, network: httpcore.AsyncNetworkBackend) -> None:
         ssl_context = httpx.create_ssl_context()
         super().__init__(verify=ssl_context)
+        # ``_pool`` is private to httpx: should a release rename it, assigning it
+        # here would change nothing and every connection would bypass the check.
+        # Refuse to build the transport instead (fail closed).
+        if not isinstance(getattr(self, "_pool", None), httpcore.AsyncConnectionPool):
+            raise RuntimeError("httpx no longer keeps its connection pool in _pool.")
         self._pool = httpcore.AsyncConnectionPool(ssl_context=ssl_context, network_backend=network)
 
 
