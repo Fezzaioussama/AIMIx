@@ -372,9 +372,10 @@ suite. Run
   ```
 - [ ] A finished feature or bug fix is committed once its checks pass. Commit only the
       files of your change (`git commit -- <paths>`): the tree may hold someone else's
-      work, staged or not, and a bare `git commit` would take what they staged. The
-      commit message never contains the word "Claude" (or another assistant's name), so no
-      `Co-Authored-By` trailer for an AI agent.
+      work, staged or not, and a bare `git commit` would take what they staged. Neither
+      the commit message nor a pull request's title or description contains the word
+      "Claude" (or another assistant's name): no `Co-Authored-By` trailer and no
+      "Generated with …" line for an AI agent.
 - [ ] Response states the assumptions made (§0.1), which rules were applied, and any
       deviation with its reason.
 
