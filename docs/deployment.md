@@ -353,7 +353,7 @@ Things to know:
 ### Scheduled runs
 
 Users can make a pipeline run by itself (the builder's *Schedule this pipeline*
-panel, listed under *Runs → Schedules*). The scheduler is a thread **inside the
+panel, listed under *Schedules* in the sidebar). The scheduler is a thread **inside the
 API process**: every `SCHEDULER_TICK_SECONDS` it starts the runs that are due, on
 the same executor as manual runs, so `RUN_MAX_CONCURRENT` still bounds them and
 the rest wait queued.

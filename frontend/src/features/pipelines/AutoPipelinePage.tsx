@@ -3,17 +3,15 @@ import { useNavigate } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
-import { BrandMark } from '../../core/ui/BrandMark';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { GlowButton } from '../../core/ui/GlowButton';
+import { Page, PageHeader } from '../../core/ui/Page';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
-import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { StartFromTemplateLink } from '../templates/StartFromTemplateLink';
 import { GeneratedSteps } from './GeneratedSteps';
 import { PipelineGraph } from './PipelineGraph';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
-import { PipelineNav } from './PipelineNav';
 import { RevisePanel } from './RevisePanel';
 import { modelLabel } from './modelLabel';
 import { useAutoPipeline } from './useAutoPipeline';
@@ -44,22 +42,14 @@ export function AutoPipelinePage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-60px)] px-4 py-10 text-slate-50 sm:px-8">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-8">
-          <div className="mb-3 flex items-baseline gap-3">
-            <BrandMark />
-            <ShinyText className="text-sm text-slate-400/70">Auto Pipeline</ShinyText>
-          </div>
-          <PipelineNav />
-          <p className="mt-3 text-sm text-slate-400">
-            Describe your workflow, what you will provide on each run, and the outputs you need.
-            Review the generated inputs and stages before saving. Give each agent a role, the
-            output it must deliver, and the tools it can use.
-          </p>
-          <StartFromTemplateLink className="mt-3" />
-        </header>
-
+    <Page>
+      <PageHeader
+        title="Auto Pipeline"
+        description="Describe your workflow, what you will provide on each run, and the outputs you need. Review the generated inputs and stages before saving. Give each agent a role, the output it must deliver, and the tools it can use."
+      >
+        <StartFromTemplateLink className="mt-3" />
+      </PageHeader>
+      <div className="max-w-4xl">
         <SpotlightCard as="section" className={cardClass}>
           <h2 className="mb-4 text-xl font-semibold">Describe Your Workflow</h2>
           <textarea
@@ -198,6 +188,6 @@ export function AutoPipelinePage() {
           </AnimatedContent>
         )}
       </div>
-    </div>
+    </Page>
   );
 }

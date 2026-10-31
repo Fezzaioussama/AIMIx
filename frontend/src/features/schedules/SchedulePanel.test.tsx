@@ -112,7 +112,7 @@ describe('SchedulePanel', () => {
     expect(textBox()).toHaveValue('');
     expect(screen.getByRole('link', { name: 'See all your schedules' })).toHaveAttribute(
       'href',
-      '/runs/schedules',
+      '/schedules',
     );
   });
 

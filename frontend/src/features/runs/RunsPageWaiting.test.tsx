@@ -28,9 +28,6 @@ function serve(answer: (path: string) => Response | null = () => null) {
       run = going;
       return json(run);
     }
-    if (url.includes('status=waiting')) {
-      return json({ items: [], total: run.status === 'waiting' ? 1 : 0 });
-    }
     if (url.startsWith(`${API.runs}?`)) return json({ items: [summaryOf(run)], total: 1 });
     return url === API.run(7) ? json(run) : json({ error: 'not_found', detail: 'Missing.' }, 404);
   });
@@ -50,16 +47,13 @@ function renderRun() {
 describe('RunsPage with a run that waits for you', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('shows it in the history, on the Runs tab and in its own header', async () => {
+  it('shows it in the history and in its own header', async () => {
     serve();
     renderRun();
 
     const history = await screen.findByRole('navigation', { name: 'Run history' });
     expect(within(history).getByText('Waiting for you')).toBeInTheDocument();
     expect(within(history).getByText('Needs your OK')).toBeInTheDocument();
-    expect(
-      await screen.findByRole('link', { name: 'Runs, 1 waiting for you' }),
-    ).toBeInTheDocument();
     expect(screen.getByText('Run waiting for you. 1 of 3 steps done.')).toBeInTheDocument();
     expect(screen.getByRole('region', CARD)).toBeVisible();
   });

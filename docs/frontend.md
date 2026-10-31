@@ -30,8 +30,8 @@ frontend/src/
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, LiveRun, useRun and the run history
-    schedules/      # the Schedule panel (builder) and the Schedules view of the Runs screen
-    settings/       # SettingsPage: LLM providers, Integrations (users' MCP servers), Usage, Account
+    schedules/      # the Schedule panel (builder) and the Schedules screen
+    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Usage, Account
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -50,26 +50,40 @@ frontend/src/
 | `/templates` | `TemplatesPage` | guarded |
 | `/files` | `FilesPage` | guarded |
 | `/runs`, `/runs/:runId` | `RunsPage` (one route, `/runs/:runId?`) | guarded |
-| `/runs/schedules` | `SchedulesPage` (a fixed path, so it wins over `:runId`; `SCHEDULES_PATH`) | guarded |
-| `/settings` | `SettingsPage` | guarded |
+| `/schedules` | `SchedulesPage` (`SCHEDULES_PATH`) | guarded |
+| `/runs/schedules` | redirect to `/schedules`, its old address (`OLD_SCHEDULES_PATH`; a fixed path, so it wins over `:runId`) | guarded |
+| `/settings`, `/settings/:tab` | `SettingsPage` (one route, `/settings/:tab?`: Providers at `/settings`, then `integrations`, `usage`, `account`; an unknown tab redirects to `/settings`) | guarded |
 | `*` | redirect to `/login` | — |
 
-Guarded routes render inside `AppShell`: a static `AmbientBackdrop`, the fixed
-top nav (its highlight slides between items; "Pipelines" covers the pipeline
-screens, the template gallery and the run history, including the routes below
-them such as `/runs/7` and `/runs/schedules`; "Missions" covers `/mission` and `/mission/7`) and the
-`RequireAuth` outlet, which `PageTransition` eases in when the first path segment
-changes (so `/runs` → `/runs/7` and `/mission` → `/mission/7` keep the page
-mounted). `/mission` is the front door: signing in (`LoginPage`) and "Open the
-app" on the landing page both go to `HOME_PATH` from `core/routes.ts`.
+Guarded routes sit behind `RequireAuth`, then inside `AppShell`: a static
+`AmbientBackdrop` and `AppFrame` (the sidebar, below) around the outlet, which
+`PageTransition` eases in when the first path segment changes (so `/runs` →
+`/runs/7`, `/mission` → `/mission/7` and one Settings tab → another keep the page
+mounted). `AppShell` is inside the guard so the sidebar's waiting-runs count is
+never fetched before sign-in. `/mission` is the front door: signing in
+(`LoginPage`) and "Open the app" on the landing page both go to `HOME_PATH` from
+`core/routes.ts`.
 
-**The nav** holds Missions (first), Chat, Pipelines, Files and Settings. From `sm`
-up it is a row of text. Below `sm` every item is its icon over a 10px label (the
-icon comes from `core/ui/navIcons.ts`, by route, so `NAV_ITEMS` stays plain data;
-an item without an icon gets a generic one) and "Log out" is an icon, still named
-"Log out": five items, the logo and the exit fit 390px and 360px phones. Every item
-keeps its visible text as its accessible name. A sixth item must be checked at
-360px before it is added.
+**The sidebar** lists every section, from `navGroups()` in `App.tsx`: Missions and
+Chat; then **Pipelines**: Builder (`/pipeline`), Auto Pipeline, Templates, Runs and
+Schedules; then **Workspace**: Files and Settings; Log out at its foot. Each item
+owns its route and the routes below it (Runs stays lit on `/runs/7`, Missions on
+`/mission/7`), and its highlight slides between items. Runs carries an amber count
+while runs wait for the person to approve an action (`useWaitingRuns`, polled every
+5 s on every signed-in screen), with the same count in words ("Runs, 2 waiting for
+you"). From `lg` up the sidebar is fixed on the left (224px) and the screens sit
+beside it; below `lg` a 60px top bar holds the logo and a menu button that opens the
+same sidebar as a drawer (`role="dialog"`, focus on Close, Escape or a tap outside
+closes it and hands focus back; following a link closes it; the screen behind is
+`inert`).
+
+**Every standard screen** (Auto Pipeline, Templates, Runs, Schedules, Files,
+Settings) uses `Page` and `PageHeader` from `core/ui/Page.tsx`: the same padding,
+a `max-w-6xl` column and the screen's name (as the sidebar shows it) as its `h1`,
+so titles share one left edge. Forms that read better narrow (Files, Settings, Auto
+Pipeline) cap their body inside it. The full-window screens (Missions, Chat) take
+`FULL_SCREEN_HEIGHT` from `core/ui/screen.ts` and scroll inside themselves; the
+Builder puts its editor beside the canvas from `xl` and above it below `xl`.
 `RequireAuth` checks `hasSession()` from storage directly, so a page reload
 resolves the session before the first render without a redirect flash.
 
@@ -211,7 +225,6 @@ Components here render and animate; they never fetch or touch storage.
 | File | Role |
 |---|---|
 | `brand.ts` | `BRAND_COLORS` (the logo's sky → indigo → purple) for WebGL, canvas and inline gradients |
-| `BrandMark.tsx` | The animated "AIMIx" wordmark used by every header |
 | `GlowButton.tsx` | Primary call to action: brand gradient, StarBorder while usable, ClickSpark, `busy` spinner. One per view. Also exports `glowButtonClass` / `BUTTON_SIZES` (sm, md, lg), the single source for the button look |
 | `GlowLink.tsx` | `GlowButton`'s look on a router `Link`, for navigation that should stay a real link |
 | `TiltCard.tsx` | Leans its children toward the pointer in 3D; flat on touch and under reduced motion |
@@ -219,13 +232,16 @@ Components here render and animate; they never fetch or touch storage.
 | `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers. In a group that moves while it stays on screen (the run tabs under a live status bar), give each item's pill its own `layoutDependency` (its key): it then glides only when the selection changes |
 | `PageTransition.tsx` | Enter-only fade/slide keyed by the route |
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
-| `navIcons.ts` | `navIcon(route)`: the top bar's icon per section, used on a phone above each label |
+| `AppFrame.tsx` | The signed-in frame: the fixed sidebar from `lg` up; below it, the 60px top bar and the menu drawer (see Routing) |
+| `SidebarNav.tsx` | The sections in labelled groups (`NavGroup`, `NavItem` with an optional `badge`), the current one marked `aria-current` and highlighted |
+| `Page.tsx` | `Page` (padding and the `max-w-6xl` column) and `PageHeader` (`h1`, a description, extras under it) for every standard screen |
+| `screen.ts` | `FULL_SCREEN_HEIGHT`: the height of a full-window screen, below the top bar or beside the sidebar |
 | `BusyNotice.tsx`, `Spinner.tsx` | Loading line with shimmer text; the spinner (`decorative` hides it inside a labelled control) |
 | `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 | `SwitchButton.tsx` | The bare `role="switch"` button: `checked`, `disabled`, `onChange(next)`, and its name from `label`, or from the visible text it points to with `labelledBy` and `describedBy`. The one switch every other is built on |
 | `ToggleSwitch.tsx` | A `SwitchButton` with its state in words ("On" / "Off") beside it: `checked`, `label` (its accessible name), `disabled`, `onChange(next)`. Shared by the integrations and the schedules |
 | `AiNotice.tsx` | The one line that says text beside it was written by AI and can be wrong (`AI_NOTICE`, EU AI Act art. 50): under the chat composer, above a pipeline's run results, under the mission's deliverables |
-| `LegalLinks.tsx` | The three legal pages as a row of small links (`LEGAL_LINKS`): on the sign-in and sign-up cards, the Settings page and the legal pages themselves |
+| `LegalLinks.tsx` | The three legal pages as a row of small links (`LEGAL_LINKS`): on the sign-in and sign-up cards, under every Settings tab and on the legal pages themselves |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
 (MIT + Commons Clause — keep `LICENSE.md` next to them): `Aurora` (WebGL2
@@ -405,13 +421,12 @@ server would need a table and endpoints; that is not part of this version.
 | `fieldStyles.ts` | The builder's field looks (`FIELD`, `INLINE_FIELD`, `SMALL_ACTION`) |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
 | `OpenInMissionLink.tsx` | On the builder's title, for a saved pipeline: "Open in mission view" (`/mission/<id>`); with unsaved edits it asks to save first instead |
-| `PipelineNav.tsx` | Switch between Pipeline, Auto Pipeline, Templates and Runs; the Runs tab carries an amber count (and the same in words for screen readers) while runs wait for the person to approve an action (`useWaitingRuns`) |
 | `modelLabel.ts` | Human-friendly label for a model id |
 
 ### `features/templates`
 
-The template gallery at `/templates`, reached from the Templates tab of
-`PipelineNav` and the "Start from a template" link on Auto Pipeline. Using a
+The template gallery at `/templates`, reached from Templates in the sidebar
+and the "Start from a template" link on Auto Pipeline. Using a
 template creates the user's own pipeline on the server, then opens it in the
 builder through the same `{ pipelineId }` router state Auto Pipeline uses
 (the window is scrolled to the top first, since routes keep the scroll).
@@ -457,11 +472,10 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `ResumeControl.tsx` | The Resume button. A run that stopped at its spending limit cannot resume under it, so it shows "Raise the limit to $[ ] Resume" instead, prefilled with double the old limit, saying what the run has used so far and refusing an amount at or below that; the token variant appears when it was a token limit. `onResume(budget?)` carries the new limit |
 | `runBudget.ts` | `limitReached(run)` (which limit a run is at; mirrors the server's rule, rounding slack included), `limitParts`, `suggestedLimit`, `limitBudget` and `limitProblem` for the resume form, and `BUDGET_ERROR_CODE` |
 | `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under its status bar (a polite `aria-live` count), each as an `ApprovalCard`: "Needs your OK", `Allow “Send email”?`, which step and agent role asks and from which integration, the tool's description, what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), the time left (ticking, `useNow`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "No answer counts as a decline". `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`) |
-| `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. `PipelineNav` shows it as a badge on the Runs tab, with the same count in words for screen readers |
+| `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. The sidebar shows it as a badge on Runs, with the same count in words for screen readers |
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount` (succeeded or skipped), and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen, conditions and review loops included |
-| `RunsHeader.tsx` | The header both views of the Runs screen share: brand, the pipeline sub-navigation, and two underline tabs, History (`/runs`) and Schedules (`/runs/schedules`, `aria-current` on the one shown), then a line of text. The sub-navigation is unchanged, so it still fits a phone |
 | `RunTriggerTag.tsx` | A small clock and "Scheduled" for a run a schedule started (`trigger === 'schedule'`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
 | `RunByline.tsx` | The line under a run's title in `RunDetail`: "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a scheduled run, the link only while the pipeline exists) |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
@@ -470,7 +484,7 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 
 Runs that start on their own (`/api/schedules`). Two screens use one form:
 the builder's **Schedule this pipeline** panel creates a schedule, and the
-**Schedules** view of the Runs screen (`/runs/schedules`) lists, switches, edits,
+**Schedules** screen (`/schedules`) lists, switches, edits,
 runs and deletes them.
 
 | File | Role |
@@ -480,9 +494,9 @@ runs and deletes them.
 | `ScheduleForm.tsx` | The form both screens share: the fields, a live `role="status"` summary (the timing in words, then "Next run: …"), the run inputs asked like a manual run's (`RunInputFields`, under a "What each run is given" legend), a problem shown as an alert only after a first try, and an optional `blocked` reason that disables saving. It keeps its own draft, starting from `initial`; give it a `key` to start over |
 | `useSchedulePreview.ts` | `useSchedulePreview(timing \| null)` → `{ nextRunAt, error, loading }`: asks `POST /api/schedules/preview` once the timing has stayed put for `PREVIEW_DELAY_MS` (300 ms), aborts a request a newer timing makes obsolete or the screen leaving, ignores an answer that arrives after its request was dropped, and asks nothing for an incomplete timing |
 | `SchedulePanel.tsx`, `useCreateSchedule.ts` | The builder's foldable panel (built on `FoldablePanel`, mounted under `RevisePanel`). Its body is built when first opened (a page that never opens it asks the server nothing) and starts afresh for another pipeline. An unsaved pipeline is told to save first; unsaved edits disable saving ("a schedule runs the saved version"). `useCreateSchedule(pipelineId, inputs)` → `{ busy, error, created, create }`: after a schedule is created the form is replaced by a fresh one, so one press never saves it twice, and leaving drops the request |
-| `SchedulesPage.tsx`, `useSchedules.ts` | The Schedules view: loading, an empty state that points to the builder, and the list; each outcome appears as a notice above the list, so a refusal is never below the fold. `useSchedules()` → `{ schedules, status, notice, actions }` with `update`, `setEnabled`, `remove` and `runNow` (which resolves to the started run, or `null`), over the settings' `useSubmission` (one busy flag, one notice). The list is fetched again every `ACTIVE_REFRESH_MS` (5 s) while a listed last run is queued or running and every `IDLE_REFRESH_MS` (30 s) otherwise, so a schedule that fires while the page is open shows up; the refresh pauses while a change is being saved (an older refresh can never put the old state back), a failed one is tried again, and everything is cancelled on unmount |
+| `SchedulesPage.tsx`, `useSchedules.ts` | The Schedules screen: loading, an empty state that points to the builder, and the list; each outcome appears as a notice above the list, so a refusal is never below the fold. `useSchedules()` → `{ schedules, status, notice, actions }` with `update`, `setEnabled`, `remove` and `runNow` (which resolves to the started run, or `null`), over the settings' `useSubmission` (one busy flag, one notice). The list is fetched again every `ACTIVE_REFRESH_MS` (5 s) while a listed last run is queued or running and every `IDLE_REFRESH_MS` (30 s) otherwise, so a schedule that fires while the page is open shows up; the refresh pauses while a change is being saved (an older refresh can never put the old state back), a failed one is tried again, and everything is cancelled on unmount |
 | `ScheduleList.tsx`, `ScheduleCard.tsx` | Each schedule as a card — its pipeline (a link to the builder), the timing in words, an on/off `ToggleSwitch`, "Next run" (or "Off. It will not run until you turn it on."), "Last run" (the date and a status badge, a link to the run), why the last time could not start, and Run now / Edit / Delete — or, while being edited, as its form with the pipeline's inputs, across the whole row. Delete asks first, with focus on "Keep it", which gives focus back to Delete; closing the form returns focus to Edit. "Run now" opens the run it started |
-| `paths.ts` | `SCHEDULES_PATH`, the one place the route is written |
+| `paths.ts` | `SCHEDULES_PATH`, the one place the route is written, and `OLD_SCHEDULES_PATH` (`/runs/schedules`), which redirects to it |
 
 ### `features/settings`
 
@@ -491,9 +505,12 @@ runs and deletes them.
   sends only providers whose model changed or whose key was typed, so an
   untouched provider keeps following the server default. A typed key is cleared
   from the form once saved; the API never sends a key back.
-- `SettingsPage` renders the provider picker and one `ProviderCard` (key
-  status, password field, "Remove saved key", default-model select) each,
-  then the Integrations, Usage and Account sections, and the legal links.
+- `SettingsPage` shows one tab at a time, by its address (`TABS`: the slug,
+  the label and the section, a registry rather than a branch per tab): its
+  header, the tab row, the tab's section and the legal links.
+  `ProvidersSection` (Settings → Providers, at `/settings`) renders the provider
+  picker and one `ProviderCard` (key status, password field, "Remove saved
+  key", default-model select) each.
 - `UsageSection` (Settings → Usage) shows the last `USAGE_DAYS` (30) days from
   `useUsage()` (`GET /api/usage`, cancelled on unmount): runs, cost (with the
   token split in its tooltip) and tokens, then a list of pipelines with their
@@ -507,7 +524,7 @@ runs and deletes them.
   `aimix-account-<date>.json`), and "Delete my account", which asks for the
   password and a checked "I understand that this cannot be undone", then goes
   to `/`. Each action has its own `useSubmission`. The page's tests render it
-  signed in through `testRender.tsx` (`renderSettingsPage`).
+  signed in, on its route, through `testRender.tsx` (`renderSettingsPage(path)`).
 - `useSubmission()` is the busy flag, notice and `submit(task, done, failed)`
   every section shares; `NoticeLine` shows the notice (`status`, or `alert` for
   an error).
@@ -634,11 +651,11 @@ For approval gates: `core/api/approvals.test.ts`, `approvalFormat.test.ts`,
 `ApprovalCard.test.tsx` (the words, folded values, the countdown, busy and
 read-only states), `PendingApprovals.test.tsx` (through `LiveRun` too),
 `useRunApprovals.test.tsx` (answering through `useRun`), `RunsPageWaiting.test.tsx`
-(a waiting run in the history, the Runs tab and its detail, approve, decline and a
-refused answer), `useWaitingRuns.test.tsx` and `features/pipelines/PipelineNav.test.tsx`
-(the badge), and `features/settings/IntegrationApproval.test.tsx` (the switch).
-`TemplatesPage.test.tsx` and `App.test.tsx` stub `useWaitingRuns`: they answer
-fetch calls in order, for their own screen.
+(a waiting run in the history and its detail, approve, decline and a
+refused answer), `useWaitingRuns.test.tsx`, `core/ui/SidebarNav.test.tsx` and
+`App.test.tsx` (the badge), and `features/settings/IntegrationApproval.test.tsx` (the switch).
+`App.test.tsx` stubs `useWaitingRuns`: it answers fetch calls in order, for each
+screen alone, and sets the count itself.
 The mission workspace is
 covered by `features/mission/`: the pure modules (`missionIntent.test.ts`,
 `teamBrief.test.ts`, `missionStorage.test.ts`), the hooks (`useMissionTeam.test.tsx`:

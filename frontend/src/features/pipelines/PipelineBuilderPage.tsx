@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
-import { BrandMark } from '../../core/ui/BrandMark';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
 import { FollowedRunBar } from '../runs/FollowedRunBar';
@@ -11,7 +10,6 @@ import { useFollowedRun } from '../runs/useFollowedRun';
 import { SchedulePanel } from '../schedules/SchedulePanel';
 import { OpenInMissionLink } from './OpenInMissionLink';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
-import { PipelineNav } from './PipelineNav';
 import { PipelineRunView } from './PipelineRunView';
 import { RecentPipelines } from './RecentPipelines';
 import { RevisePanel } from './RevisePanel';
@@ -53,20 +51,14 @@ export function PipelineBuilderPage() {
     if (started) followed.follow(started);
   }
 
+  // The editor sits beside the canvas only from `xl`: below it the app sidebar leaves the
+  // canvas too little room, so the editor stacks above it.
   return (
-    <div className="flex min-h-[calc(100vh-60px)] flex-col text-slate-50 lg:h-[calc(100vh-60px)] lg:flex-row">
+    <div className="flex min-h-[calc(100vh-60px)] flex-col text-slate-50 lg:min-h-dvh xl:h-dvh xl:flex-row">
       <aside
         inert={isStarting || isSaving}
-        className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-950/60 p-6 backdrop-blur-xl lg:max-h-none lg:w-[350px] lg:border-r lg:border-b-0"
+        className="flex max-h-[45vh] w-full shrink-0 flex-col overflow-y-auto border-b border-white/10 bg-slate-950/60 p-6 backdrop-blur-xl xl:max-h-none xl:w-[350px] xl:border-r xl:border-b-0"
       >
-        <div className="mb-4 flex items-baseline gap-2">
-          <BrandMark className="text-lg" />
-          <span className="text-lg font-extrabold text-slate-200">Pipeline</span>
-        </div>
-        <div className="mb-6">
-          <PipelineNav />
-        </div>
-
         <button
           type="button"
           onClick={actions.reset}
@@ -134,7 +126,7 @@ export function PipelineBuilderPage() {
         </button>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-8 lg:p-12">
+      <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-8 2xl:p-12">
         <div className="mx-auto max-w-6xl">
           <div className="mb-8">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

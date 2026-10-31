@@ -1,18 +1,29 @@
-import { LogOut } from 'lucide-react';
+import {
+  CalendarClock,
+  FolderOpen,
+  History,
+  LayoutTemplate,
+  MessageSquare,
+  Rocket,
+  Settings,
+  WandSparkles,
+  Workflow,
+} from 'lucide-react';
 import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react';
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import { RequireAuth } from './core/auth/RequireAuth';
 import { useAuth } from './core/auth/AuthContext';
 import { HOME_PATH, LEGAL_LINKS } from './core/routes';
-import { ActivePill } from './core/ui/ActivePill';
 import { AmbientBackdrop } from './core/ui/AmbientBackdrop';
-import { navIcon } from './core/ui/navIcons';
+import { AppFrame } from './core/ui/AppFrame';
 import { PageTransition } from './core/ui/PageTransition';
 import { ScrollToTop } from './core/ui/ScrollToTop';
+import type { NavGroup } from './core/ui/SidebarNav';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
-import { SCHEDULES_PATH } from './features/schedules/paths';
+import { useWaitingRuns } from './features/runs/useWaitingRuns';
+import { OLD_SCHEDULES_PATH, SCHEDULES_PATH } from './features/schedules/paths';
 
 // Route-level code splitting keeps each feature out of the initial bundle until it is opened.
 const LandingPage = lazy(() =>
@@ -65,94 +76,53 @@ function lazyRoute(Page: LazyExoticComponent<ComponentType>) {
   );
 }
 
-// `paths` lists every route a section owns (and the routes below them), so
-// Pipelines stays lit on /auto-pipeline and /runs/7.
-const NAV_ITEMS = [
-  { to: HOME_PATH, label: 'Missions', paths: [HOME_PATH] },
-  { to: '/chat', label: 'Chat', paths: ['/chat'] },
-  {
-    to: '/pipeline',
-    label: 'Pipelines',
-    paths: ['/pipeline', '/auto-pipeline', '/templates', '/runs'],
-  },
-  { to: '/files', label: 'Files', paths: ['/files'] },
-  { to: '/settings', label: 'Settings', paths: ['/settings'] },
-] as const;
-
-function ownsPath(paths: readonly string[], pathname: string): boolean {
-  return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+/** The app's sections as the sidebar groups them; Runs counts the runs waiting for the person. */
+function navGroups(waiting: number): NavGroup[] {
+  return [
+    {
+      items: [
+        { to: HOME_PATH, label: 'Missions', icon: Rocket },
+        { to: '/chat', label: 'Chat', icon: MessageSquare },
+      ],
+    },
+    {
+      label: 'Pipelines',
+      items: [
+        { to: '/pipeline', label: 'Builder', icon: Workflow },
+        { to: '/auto-pipeline', label: 'Auto Pipeline', icon: WandSparkles },
+        { to: '/templates', label: 'Templates', icon: LayoutTemplate },
+        {
+          to: '/runs',
+          label: 'Runs',
+          icon: History,
+          badge: { count: waiting, label: 'waiting for you' },
+        },
+        { to: SCHEDULES_PATH, label: 'Schedules', icon: CalendarClock },
+      ],
+    },
+    {
+      label: 'Workspace',
+      items: [
+        { to: '/files', label: 'Files', icon: FolderOpen },
+        { to: '/settings', label: 'Settings', icon: Settings },
+      ],
+    },
+  ];
 }
 
-// On a phone each item is its icon over a small label, so five items and the logo fit a
-// 390px bar (and 360px); from `sm` up it is the plain text row.
-const navLinkClass = (isActive: boolean) =>
-  [
-    'relative isolate flex flex-col items-center gap-0.5 rounded-lg px-1.5 py-1.5 text-[10px] leading-none font-medium transition-colors sm:flex-row sm:px-4 sm:py-2 sm:text-[0.95rem] sm:leading-normal',
-    isActive ? 'text-white' : 'text-slate-300 hover:text-slate-50 sm:text-slate-400',
-  ].join(' ');
-
-function AppNav() {
-  const { logout } = useAuth();
-  const { pathname } = useLocation();
-
-  return (
-    <nav className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center gap-2 border-b border-white/[0.06] bg-slate-950/70 px-3 backdrop-blur-xl sm:gap-8 sm:px-8">
-      <img src="/logo.png" alt="AIMIx" className="h-8 w-auto sm:h-10" />
-      <div className="flex gap-0.5 sm:gap-2">
-        {NAV_ITEMS.map((item) => {
-          const isActive = ownsPath(item.paths, pathname);
-          const Icon = navIcon(item.to);
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              aria-current={isActive ? 'page' : undefined}
-              className={navLinkClass(isActive)}
-            >
-              {isActive && (
-                <ActivePill
-                  layoutId="app-nav"
-                  className="bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
-                />
-              )}
-              <Icon aria-hidden="true" className="size-5 sm:hidden" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
-      {/* An icon on a phone; the label is its accessible name at every width. */}
-      <button
-        type="button"
-        onClick={() => void logout()}
-        aria-label="Log out"
-        title="Log out"
-        className="ml-auto shrink-0 rounded-lg p-2 text-sm whitespace-nowrap text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-50 sm:px-3"
-      >
-        <LogOut aria-hidden="true" className="size-5 sm:hidden" />
-        <span className="hidden sm:inline">Log out</span>
-      </button>
-      {/* Hairline in the brand gradient along the bottom edge. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent"
-      />
-    </nav>
-  );
-}
-
-/** Wraps the authenticated screens with the fixed nav and its 60px offset. */
+/** Wraps the authenticated screens in the sidebar frame (inside the guard: no poll before sign-in). */
 function AppShell() {
+  const { logout } = useAuth();
+  const waiting = useWaitingRuns();
   return (
     <>
       <ScrollToTop />
       <AmbientBackdrop />
-      <AppNav />
-      <div className="pt-[60px]">
+      <AppFrame groups={navGroups(waiting)} onLogout={() => void logout()}>
         <PageTransition>
-          <RequireAuth />
+          <Outlet />
         </PageTransition>
-      </div>
+      </AppFrame>
     </>
   );
 }
@@ -174,17 +144,20 @@ export function App() {
           }
         />
       ))}
-      <Route element={<AppShell />}>
-        <Route path={`${HOME_PATH}/:pipelineId?`} element={lazyRoute(MissionPage)} />
-        <Route path="/chat" element={lazyRoute(ChatPage)} />
-        <Route path="/pipeline" element={lazyRoute(PipelineBuilderPage)} />
-        <Route path="/auto-pipeline" element={lazyRoute(AutoPipelinePage)} />
-        <Route path="/templates" element={lazyRoute(TemplatesPage)} />
-        <Route path="/files" element={lazyRoute(FilesPage)} />
-        {/* A fixed path wins over the run id below it. */}
-        <Route path={SCHEDULES_PATH} element={lazyRoute(SchedulesPage)} />
-        <Route path="/runs/:runId?" element={lazyRoute(RunsPage)} />
-        <Route path="/settings" element={lazyRoute(SettingsPage)} />
+      <Route element={<RequireAuth />}>
+        <Route element={<AppShell />}>
+          <Route path={`${HOME_PATH}/:pipelineId?`} element={lazyRoute(MissionPage)} />
+          <Route path="/chat" element={lazyRoute(ChatPage)} />
+          <Route path="/pipeline" element={lazyRoute(PipelineBuilderPage)} />
+          <Route path="/auto-pipeline" element={lazyRoute(AutoPipelinePage)} />
+          <Route path="/templates" element={lazyRoute(TemplatesPage)} />
+          <Route path="/files" element={lazyRoute(FilesPage)} />
+          <Route path={SCHEDULES_PATH} element={lazyRoute(SchedulesPage)} />
+          {/* A fixed path wins over the run id below it. */}
+          <Route path={OLD_SCHEDULES_PATH} element={<Navigate to={SCHEDULES_PATH} replace />} />
+          <Route path="/runs/:runId?" element={lazyRoute(RunsPage)} />
+          <Route path="/settings/:tab?" element={lazyRoute(SettingsPage)} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

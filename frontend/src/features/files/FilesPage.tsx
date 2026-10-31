@@ -2,8 +2,7 @@ import { FolderOpen } from 'lucide-react';
 
 import type { FileListing } from '../../core/api/types';
 import { BusyNotice } from '../../core/ui/BusyNotice';
-import { BlurText } from '../../core/ui/reactbits/BlurText';
-import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { Page, PageHeader } from '../../core/ui/Page';
 import { FileRow } from './FileRow';
 import { formatBytes } from './fileFormat';
 import { UploadPanel } from './UploadPanel';
@@ -29,19 +28,12 @@ function StorageUsage({ listing }: { listing: FileListing }) {
 
 function FilesHeader({ listing }: { listing: FileListing | null }) {
   return (
-    <header className="mb-6">
-      <p className="mb-1 text-xs font-semibold tracking-widest uppercase">
-        <ShinyText className="text-sky-400/80">Workspace</ShinyText>
-      </p>
-      <h1 className="text-3xl font-extrabold tracking-tight">
-        <BlurText text="Files" animateBy="letters" delay={40} />
-      </h1>
-      <p className="mt-2 text-sm text-slate-400">
-        Download what your agents save, and add files for them to read. Only you and your agents can
-        see these files.
-      </p>
+    <PageHeader
+      title="Files"
+      description="Download what your agents save, and add files for them to read. Only you and your agents can see these files."
+    >
       {listing && <StorageUsage listing={listing} />}
-    </header>
+    </PageHeader>
   );
 }
 
@@ -112,8 +104,8 @@ export function FilesPage() {
   const { listing, loadError } = state;
 
   return (
-    <div className="min-h-[calc(100vh-60px)] px-4 py-10 text-slate-50">
-      <div className="mx-auto max-w-3xl">
+    <Page>
+      <div className="max-w-3xl">
         <FilesHeader listing={listing} />
         {loadError && (
           <p role="alert" className="text-sm text-red-400">
@@ -123,6 +115,6 @@ export function FilesPage() {
         {!listing && !loadError && <BusyNotice className="py-16">Loading your files…</BusyNotice>}
         {listing && <FilesBody state={{ ...state, listing }} />}
       </div>
-    </div>
+    </Page>
   );
 }

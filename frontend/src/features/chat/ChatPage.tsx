@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { BrandMark } from '../../core/ui/BrandMark';
 import { Aurora } from '../../core/ui/reactbits/Aurora';
-import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { FULL_SCREEN_HEIGHT } from '../../core/ui/screen';
 import { ChatComposer } from './ChatComposer';
 import { ChatSuggestions, MessageBubble, TypingIndicator } from './ChatMessages';
 import { useChatStream } from './useChatStream';
 
-/** Wordmark and the (decorative) online status above the transcript. */
+/** The screen's name and the (decorative) online status above the transcript. */
 function ChatHeader() {
   return (
     <header className="flex items-center justify-between border-b border-white/[0.06] bg-slate-950/30 px-4 py-4 sm:px-8">
-      <div className="flex items-baseline gap-3">
-        <BrandMark />
-        <ShinyText className="text-sm text-slate-400/70">Assistant</ShinyText>
-      </div>
+      <h1 className="text-xl font-extrabold tracking-tight">Chat</h1>
       <div className="flex items-center gap-2 text-sm text-slate-400">
         <span className="relative flex size-2">
           <span className="absolute inline-flex size-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
@@ -53,7 +49,9 @@ export function ChatPage() {
   }
 
   return (
-    <div className="relative isolate flex h-[calc(100vh-60px)] flex-col overflow-hidden text-white">
+    <div
+      className={`relative isolate flex flex-col overflow-hidden text-white ${FULL_SCREEN_HEIGHT}`}
+    >
       <Aurora
         className="inset-x-0 top-0 -z-10 h-3/5 opacity-50"
         height={0.32}

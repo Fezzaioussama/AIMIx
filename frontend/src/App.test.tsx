@@ -7,9 +7,10 @@ import { AuthProvider } from './core/auth/AuthContext';
 import { clearTokens, saveTokens } from './core/auth/tokenStorage';
 import { COMMON_ROUTES, SAVED, routeFetch } from './features/mission/testData';
 
-// The pipeline sub-navigation counts waiting runs with a request of its own; these
-// routing tests hand out one canned response per screen.
-vi.mock('./features/runs/useWaitingRuns', () => ({ useWaitingRuns: () => 0 }));
+// The sidebar counts waiting runs with a request of its own; these routing tests hand
+// out one canned response per screen, so the count is set here instead.
+const waitingRuns = vi.hoisted(() => ({ count: 0 }));
+vi.mock('./features/runs/useWaitingRuns', () => ({ useWaitingRuns: () => waitingRuns.count }));
 
 function renderAt(path: string) {
   return render(
@@ -25,6 +26,7 @@ describe('App routing', () => {
   afterEach(() => {
     clearTokens();
     vi.restoreAllMocks();
+    waitingRuns.count = 0;
   });
 
   it('serves the public landing page at the root, without a session', async () => {
@@ -56,19 +58,40 @@ describe('App routing', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
-  it('lists Missions first in the app nav, then the rest, all reachable by name', () => {
+  it('lists every section in the sidebar, Missions first, in labelled groups', () => {
     saveTokens({ access: 'token' });
     renderAt('/chat');
-    const bar = screen.getAllByRole('link').filter((link) => link.closest('nav'));
-    expect(bar.map((link) => link.textContent)).toEqual([
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual([
       'Missions',
       'Chat',
-      'Pipelines',
+      'Builder',
+      'Auto Pipeline',
+      'Templates',
+      'Runs',
+      'Schedules',
       'Files',
       'Settings',
     ]);
+    const pipelines = within(nav).getByRole('list', { name: 'Pipelines' });
+    expect(within(pipelines).getAllByRole('link')).toHaveLength(5);
+    expect(within(nav).getByRole('list', { name: 'Workspace' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Missions' })).toHaveAttribute('href', '/mission');
+    expect(screen.getByRole('link', { name: 'Schedules' })).toHaveAttribute('href', '/schedules');
     expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument();
+  });
+
+  it('counts the runs waiting for you on Runs, in numbers and in words', () => {
+    saveTokens({ access: 'token' });
+    waitingRuns.count = 2;
+    renderAt('/chat');
+    expect(screen.getByRole('link', { name: 'Runs, 2 waiting for you' })).toHaveTextContent(
+      'Runs2, 2 waiting for you',
+    );
   });
 
   it('serves the mission workspace as the front door, with Missions current', async () => {
@@ -97,15 +120,6 @@ describe('App routing', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
-  it('renders the app nav for an authenticated visitor', () => {
-    saveTokens({ access: 'token' });
-    renderAt('/chat');
-    expect(screen.getByRole('link', { name: 'Chat' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Pipelines' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Files' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
-  });
-
   it('serves the Files screen behind the nav item of the same name', async () => {
     saveTokens({ access: 'token' });
     const empty = { files: [], used_bytes: 0, quota_bytes: 1, max_file_bytes: 1 };
@@ -119,38 +133,52 @@ describe('App routing', () => {
     expect(await screen.findByText('No files yet')).toBeInTheDocument();
   });
 
-  it('keeps Pipelines current on the auto-pipeline screen', async () => {
+  it('marks Auto Pipeline current on its screen', async () => {
     saveTokens({ access: 'token' });
     renderAt('/auto-pipeline');
-    expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Auto Pipeline' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'Builder' })).not.toHaveAttribute('aria-current');
     expect(await screen.findByRole('link', { name: 'Start from a template' })).toHaveAttribute(
       'href',
       '/templates',
     );
   });
 
-  it('serves the template gallery as a pipeline screen', async () => {
+  it('serves the template gallery behind Templates', async () => {
     const gallery = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([]));
     saveTokens({ access: 'token' });
     renderAt('/templates');
     expect(await screen.findByRole('group', { name: 'Filter by category' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Start from a template' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('heading', { level: 1, name: 'Templates' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Templates' })).toHaveAttribute('aria-current', 'page');
     gallery.mockRestore();
   });
 
-  it('serves a run deep link under Pipelines, with the Runs tab current', async () => {
+  it('keeps Runs current on a run deep link', () => {
     saveTokens({ access: 'token' });
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
     renderAt('/runs/7');
-    expect(screen.getByRole('link', { name: 'Pipelines' })).toHaveAttribute('aria-current', 'page');
-    expect(await screen.findByRole('link', { name: 'Runs' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(screen.getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Schedules' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('sends the old Schedules address to the Schedules screen', async () => {
+    saveTokens({ access: 'token' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+    renderAt('/runs/schedules');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Schedules' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Schedules' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Runs' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('opens a Settings tab from its address', async () => {
+    saveTokens({ access: 'token' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+    renderAt('/settings/account');
+    expect(await screen.findByRole('heading', { name: 'Account' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
   });
 });

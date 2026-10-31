@@ -8,10 +8,6 @@ import { json } from '../settings/testData';
 import { TemplatesPage } from './TemplatesPage';
 import { TEMPLATES } from './testData';
 
-// The sub-navigation counts waiting runs with a request of its own, and these tests
-// answer fetch calls in order, for the gallery alone.
-vi.mock('../runs/useWaitingRuns', () => ({ useWaitingRuns: () => 0 }));
-
 /** Stands in for the builder, showing the router state it was opened with. */
 function BuilderProbe() {
   const state: unknown = useLocation().state;
@@ -47,7 +43,7 @@ describe('TemplatesPage', () => {
 
     const card = await findCard('Market research brief');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Start from a template' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Templates' })).toBeVisible();
     expect(within(card).getByText('Market, Your goal')).toBeInTheDocument();
     expect(within(card).getByText('5 agents')).toBeInTheDocument();
     expect(within(card).getByText('3 stages')).toBeInTheDocument();

@@ -4,6 +4,7 @@ import type { AgentTool, PipelineStep } from '../../core/api/types';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { useMediaQuery } from '../../core/hooks/useMediaQuery';
 import { useModels } from '../../core/hooks/useModels';
+import { FULL_SCREEN_HEIGHT } from '../../core/ui/screen';
 import { ConversationPane } from './ConversationPane';
 import { WIDE_LAYOUT, paneIds, type PaneId } from './missionPanes';
 import { restoreMission } from './missionStorage';
@@ -84,7 +85,7 @@ function EditDrawer({ mission, drawer, models, tools, notice }: EditDrawerProps)
       onChange={(patch) => patchStep(step.order, patch)}
       onRemove={() => remove(step.order)}
       onClose={drawer.close}
-      className="absolute inset-y-0 right-0 z-30 w-full xl:w-[26rem]"
+      className="absolute inset-y-0 right-0 z-30 w-full xl:w-[22rem] 2xl:w-[26rem]"
     />
   );
 }
@@ -128,7 +129,7 @@ export function MissionWorkspace({ routeId, onStartOver }: MissionWorkspaceProps
   // is contained by the scrolling areas, decoration is clipped by the panes, and the
   // root clips what is left.
   return (
-    <div className="flex h-[calc(100dvh-60px)] min-h-0 flex-col overflow-clip text-slate-50">
+    <div className={`flex min-h-0 flex-col overflow-clip text-slate-50 ${FULL_SCREEN_HEIGHT}`}>
       <h1 className="sr-only">Missions</h1>
       {!wide && (
         <MissionTabs
@@ -139,7 +140,7 @@ export function MissionWorkspace({ routeId, onStartOver }: MissionWorkspaceProps
       )}
       {/* One row as tall as the screen: without it the row grows with the tallest pane's
           content and the page scrolls, instead of each pane scrolling inside itself. */}
-      <div className="relative flex min-h-0 flex-1 xl:grid xl:grid-cols-[24rem_minmax(0,1fr)_26rem] xl:grid-rows-[minmax(0,1fr)]">
+      <div className="relative flex min-h-0 flex-1 xl:grid xl:grid-cols-[20rem_minmax(0,1fr)_22rem] xl:grid-rows-[minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)_26rem]">
         <Pane pane="chat" active={panes.active === 'chat'} wide={wide}>
           <ConversationPane mission={mission} showPane={panes.show} onStartOver={onStartOver} />
         </Pane>

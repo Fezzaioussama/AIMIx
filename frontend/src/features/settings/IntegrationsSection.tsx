@@ -62,10 +62,7 @@ export function IntegrationsSection() {
   const busy = status !== 'idle';
 
   return (
-    <section
-      aria-labelledby="integrations-heading"
-      className="mt-12 border-t border-white/10 pt-10"
-    >
+    <section aria-labelledby="integrations-heading" className="mt-8">
       <SectionIntro />
       {status === 'loading' && <p className="text-sm text-slate-400">Loading integrations…</p>}
       {integrations && (

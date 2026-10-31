@@ -16,7 +16,7 @@ export function UsageSection() {
   const { report, error, loading } = useUsage(USAGE_DAYS);
 
   return (
-    <section aria-labelledby="usage-heading" className="mt-12 border-t border-white/10 pt-10">
+    <section aria-labelledby="usage-heading" className="mt-8">
       <h2 id="usage-heading" className="text-2xl font-bold tracking-tight">
         Usage
       </h2>

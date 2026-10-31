@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
+import { Page, PageHeader } from '../../core/ui/Page';
 import { RunDetail } from './RunDetail';
 import { RunHistoryList } from './RunHistoryList';
-import { RunsHeader } from './RunsHeader';
 import { useRun } from './useRun';
 import { useRunHistory } from './useRunHistory';
 
@@ -38,53 +38,51 @@ export function RunsPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-60px)] px-4 py-10 text-slate-50 sm:px-8">
-      <div className="mx-auto max-w-7xl">
-        <RunsHeader>
-          Every pipeline run, newest first. Open one to follow it live, stop it, resume it or delete
-          it. Runs keep going when you leave the page.
-        </RunsHeader>
-        {history.error && (
-          <p role="alert" className="mb-4 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {history.error}
-          </p>
-        )}
-        <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div
-            className={`${runId === null ? '' : 'hidden lg:block'} lg:sticky lg:top-[84px] lg:max-h-[calc(100vh-108px)] lg:self-start lg:overflow-y-auto`}
-          >
-            <RunHistoryList
-              items={history.items}
-              total={history.total}
-              selectedId={runId}
-              loading={history.loading}
-              loadingMore={history.loadingMore}
-              onLoadMore={() => void history.loadMore()}
-            />
-          </div>
-          <div className={runId === null ? 'hidden lg:block' : 'min-w-0'}>
-            {runId === null ? (
-              <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">
-                Choose a run to see its steps and results.
-              </p>
-            ) : (
-              <>
-                <Link
-                  to="/runs"
-                  className="mb-4 inline-block text-sm text-sky-300 underline-offset-2 hover:underline lg:hidden"
-                >
-                  ← All runs
-                </Link>
-                <RunDetail
-                  live={live}
-                  onDelete={() => void handleDelete(runId)}
-                  deleting={deleting}
-                />
-              </>
-            )}
-          </div>
+    <Page>
+      <PageHeader
+        title="Runs"
+        description="Every pipeline run, newest first. Open one to follow it live, stop it, resume it or delete it. Runs keep going when you leave the page."
+      />
+      {history.error && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {history.error}
+        </p>
+      )}
+      <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <div
+          className={`${runId === null ? '' : 'hidden lg:block'} lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:self-start lg:overflow-y-auto`}
+        >
+          <RunHistoryList
+            items={history.items}
+            total={history.total}
+            selectedId={runId}
+            loading={history.loading}
+            loadingMore={history.loadingMore}
+            onLoadMore={() => void history.loadMore()}
+          />
+        </div>
+        <div className={runId === null ? 'hidden lg:block' : 'min-w-0'}>
+          {runId === null ? (
+            <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">
+              Choose a run to see its steps and results.
+            </p>
+          ) : (
+            <>
+              <Link
+                to="/runs"
+                className="mb-4 inline-block text-sm text-sky-300 underline-offset-2 hover:underline lg:hidden"
+              >
+                ← All runs
+              </Link>
+              <RunDetail
+                live={live}
+                onDelete={() => void handleDelete(runId)}
+                deleting={deleting}
+              />
+            </>
+          )}
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

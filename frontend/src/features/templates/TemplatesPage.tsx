@@ -2,34 +2,15 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import type { MissionTemplate } from '../../core/api/types';
-import { BrandMark } from '../../core/ui/BrandMark';
 import { BusyNotice } from '../../core/ui/BusyNotice';
+import { Page, PageHeader } from '../../core/ui/Page';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
-import { ShinyText } from '../../core/ui/reactbits/ShinyText';
-import { PipelineNav } from '../pipelines/PipelineNav';
 import { CategoryFilter } from './CategoryFilter';
 import { TemplateCard } from './TemplateCard';
 import { ALL_CATEGORIES, categoryChips, inCategory } from './templateFilters';
 import { useTemplates } from './useTemplates';
 
 const ALERT_CLASS = 'mb-6 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300';
-
-function TemplatesHeader() {
-  return (
-    <header className="mb-8">
-      <div className="mb-3 flex items-baseline gap-3">
-        <BrandMark />
-        <ShinyText className="text-sm text-slate-300/80">Templates</ShinyText>
-      </div>
-      <PipelineNav />
-      <h1 className="mt-6 text-3xl font-extrabold tracking-tight">Start from a template</h1>
-      <p className="mt-2 max-w-2xl text-sm text-slate-400">
-        Ready-made agent teams for common work. Pick one and it opens in the builder as your own
-        pipeline: fill in what it asks for, then run it. You can change any step.
-      </p>
-    </header>
-  );
-}
 
 function LoadFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -95,27 +76,28 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-60px)] px-4 py-10 text-slate-50 sm:px-8">
-      <div className="mx-auto max-w-6xl">
-        <TemplatesHeader />
-        <p aria-live="polite" className="sr-only">
-          {creatingTitle ? `Creating your pipeline from ${creatingTitle}…` : ''}
+    <Page>
+      <PageHeader
+        title="Templates"
+        description="Ready-made agent teams for common work. Pick one and it opens in the builder as your own pipeline: fill in what it asks for, then run it. You can change any step."
+      />
+      <p aria-live="polite" className="sr-only">
+        {creatingTitle ? `Creating your pipeline from ${creatingTitle}…` : ''}
+      </p>
+      {createError && (
+        <p role="alert" className={ALERT_CLASS}>
+          {createError}
         </p>
-        {createError && (
-          <p role="alert" className={ALERT_CLASS}>
-            {createError}
-          </p>
-        )}
-        {status === 'loading' && <BusyNotice className="py-16">Loading templates…</BusyNotice>}
-        {status === 'failed' && <LoadFailure message={loadError} onRetry={actions.reload} />}
-        {status === 'ready' && (
-          <TemplateGrid
-            templates={templates}
-            creating={creating}
-            onUse={(chosen) => void handleUse(chosen)}
-          />
-        )}
-      </div>
-    </div>
+      )}
+      {status === 'loading' && <BusyNotice className="py-16">Loading templates…</BusyNotice>}
+      {status === 'failed' && <LoadFailure message={loadError} onRetry={actions.reload} />}
+      {status === 'ready' && (
+        <TemplateGrid
+          templates={templates}
+          creating={creating}
+          onUse={(chosen) => void handleUse(chosen)}
+        />
+      )}
+    </Page>
   );
 }

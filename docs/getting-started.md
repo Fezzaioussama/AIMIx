@@ -39,7 +39,7 @@ with `provider_not_configured` instead of a confusing upstream 401.
 A key in `.env` is **not used by accounts** unless you also set
 `ALLOW_SERVER_LLM_KEY=True` (only for an instance whose users you all trust to
 spend it); `make run-llm` always uses it. Otherwise sign in and open
-**Settings** in the top bar: pick the provider, paste your API key and choose a
+**Settings** in the sidebar: pick the provider, paste your API key and choose a
 default model. It is stored encrypted for your account only and used from your
 next request, with no restart. The provider and model you leave unset there fall
 back to `backend/.env`. Saved keys are encrypted with `SECRET_KEY`, so changing

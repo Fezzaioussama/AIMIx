@@ -124,11 +124,11 @@ describe('UsageSection', () => {
     expect(screen.queryByText('Loading your usage…')).not.toBeInTheDocument();
   });
 
-  it('is part of the Settings page', async () => {
+  it('is the Usage tab of the Settings page', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       byPath({ [API.llmSettings]: SETTINGS, [API.integrations]: [], [USAGE_PATH]: REPORT }),
     );
-    renderSettingsPage();
+    renderSettingsPage('/settings/usage');
 
     expect(await screen.findByRole('heading', { name: 'Usage' })).toBeInTheDocument();
     expect(await screen.findByText('Launch kit')).toBeInTheDocument();

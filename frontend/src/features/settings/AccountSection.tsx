@@ -162,7 +162,7 @@ export function AccountSection() {
   const account = useAccount();
 
   return (
-    <section aria-labelledby="account-heading" className="mt-12 border-t border-white/10 pt-10">
+    <section aria-labelledby="account-heading" className="mt-8">
       <h2 id="account-heading" className="text-2xl font-bold tracking-tight">
         Account
       </h2>

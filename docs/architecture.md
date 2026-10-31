@@ -388,7 +388,7 @@ sequenceDiagram
   checks them again. While its timing is unchanged, saving keeps the saved
   `next_run_at`, so an occurrence that is due is not postponed by an edit.
 - **In the UI.** The builder's "Schedule this pipeline" panel creates one; the
-  Runs screen has a Schedules view (`/runs/schedules`). Both show the schedule in
+  Schedules screen (`/schedules`) lists them. Both show the schedule in
   plain words, and "next run" comes from `POST /api/schedules/preview`, the same
   `next_run_after` the scheduler uses, so what the form promises is what the
   server does, daylight saving included.

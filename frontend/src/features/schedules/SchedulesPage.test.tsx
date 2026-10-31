@@ -83,20 +83,12 @@ describe('SchedulesPage', () => {
     expect(within(region).getByRole('switch')).not.toBeChecked();
   });
 
-  it('shows the two views of the Runs screen, with Schedules the current one', async () => {
+  it('is a screen of its own, named Schedules', async () => {
     serve({ [LISTING]: [] });
     renderPage();
 
-    const views = await screen.findByRole('navigation', { name: 'Runs views' });
-
-    expect(within(views).getByRole('link', { name: 'Schedules' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
-    expect(within(views).getByRole('link', { name: 'History' })).not.toHaveAttribute(
-      'aria-current',
-    );
-    expect(within(views).getByRole('link', { name: 'History' })).toHaveAttribute('href', '/runs');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Schedules' })).toBeInTheDocument();
+    expect(screen.getByText(/shows up in Runs marked as scheduled/)).toBeInTheDocument();
   });
 
   it('points to the builder when there is nothing scheduled yet', async () => {
