@@ -9,6 +9,7 @@ import {
   appendDocument,
   costLimitProblem,
   inputLabel,
+  inputValue,
   isRunReady,
   type RunDraft,
 } from './pipelineInputs';
@@ -147,7 +148,7 @@ interface NamedInputFieldProps extends Omit<NamedInputFieldsProps, 'inputs'> {
 /** One input: its label, a text area, and a way to fill it from a document. */
 function NamedInputField({ field, draft, disabled, onDraftChange }: NamedInputFieldProps) {
   const id = useId();
-  const value = draft.values[field.name] ?? '';
+  const value = inputValue(field, draft);
   const setValue = (next: string) =>
     onDraftChange({ ...draft, values: { ...draft.values, [field.name]: next } });
 

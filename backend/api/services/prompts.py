@@ -16,7 +16,6 @@ from api.services.flow_prompts import (
     FLOW_PLANNER_GUIDE,
     FLOW_REVISION_RULES,
     NO_FEEDBACK_DETAIL,
-    REVIEWER_RULE,
 )
 
 #: What every planner prompt explains — tools, inputs, step fields, stages and the
@@ -28,10 +27,10 @@ Each step runs as an agent. These tools are currently available to its user:
 {tools}
 
 Give each step a role, a focused goal, and only the tools needed for that goal.
-A step that needs current facts, sources, exact numbers or today's date should get \
-the matching tools from the list rather than rely on the model's memory.
-Use exact tool names from the list. Use [] when a step needs no tools, or null
-to make all available tools accessible. A step's prompt should say when to use
+A step that needs current facts, sources or exact numbers should get the matching \
+tools from the list rather than rely on the model's memory.
+Use exact tool names from the list, and [] when a step needs no tools. Use null (every \
+tool) only when the request asks for it. A step's prompt should say when to use
 its tools and what result to deliver.
 
 The pipeline's inputs are what the user fills in each time it runs. List them in \
@@ -41,6 +40,8 @@ topic and an audience), each with:
 starting with a letter), never "input"
 - "label": a short label for the run form, e.g. "Target audience"
 - "description": one sentence telling the user what to enter
+- "default_value": what the description already gives for it (pasted material copied \
+in full), so the user need not type it again; "" when it gives nothing
 Any step's prompt, in any stage, inserts an input's value with {{name}}, e.g. \
 {{topic}}, so later steps still see the original request. Use [] only when the \
 workflow takes one free-form text.
@@ -48,7 +49,8 @@ workflow takes one free-form text.
 Each step should have:
 1. A clear, specific prompt template. {{input}} stands for the previous stage's \
 output; in the first stage it holds the run's inputs. Insert named inputs as {{name}}.
-2. A recommended model from this list: {models}
+2. "model": {default_model} for every step, unless the request asks for another model \
+from this list: {models}
 3. A unique "order" (1, 2, 3, ...) and a "stage" number
 4. A short "title" of 2-4 words naming what the step produces, e.g. "Tweet draft"
 5. "expected_output": one sentence describing the content and format of the \
@@ -81,7 +83,8 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 {{
   "name": "Pipeline Name",
   "inputs": [
-    {{"name": "topic", "label": "Topic", "description": "What the posts are about"}}
+    {{"name": "topic", "label": "Topic", "description": "What the posts are about", \
+"default_value": "Our new plant-care app"}}
   ],
   "steps": [
     {{"order": 1, "stage": 1, "title": "Key facts", "role": "Researcher", \
@@ -152,29 +155,15 @@ INPUT_HEADING = "## {label}"
 #: ``{name}`` tokens a step template may hold; only names a run fills are replaced.
 PLACEHOLDER = re.compile(rf"\{{({PIPELINE_INPUT_NAME_PATTERN})\}}")
 
-STEP_AGENT_TEMPLATE = (
-    "You are {identity} in an AIMIx pipeline. Your final reply is handed on as the "
-    "result of this step, so make it the complete deliverable, without remarks about "
-    "your process."
-)
-STEP_AGENT_OUTPUT_TEMPLATE = (
-    "Your final reply must match this expected output in content and format: {expected_output}"
-)
-STEP_AGENT_TOOL_GUIDANCE = (
-    "Use your tools whenever the task depends on something you cannot be sure of, such "
-    "as current events, figures, calculations or the content of a web page, instead of "
-    "guessing. Cite the URL of every web source you rely on. When a tool returns an "
-    "error, adapt: try another query or source, or say what could not be verified."
-)
-
 
 def planner_fields(
     available_models: list[str], tools: list[ToolDescriptor] | None
 ) -> dict[str, str]:
     """What ``PIPELINE_PLANNER_GUIDE`` is filled with: the tools on offer, the
-    allowed models, and the heading parallel outputs are joined under."""
+    allowed models (the default first), and the heading parallel outputs are joined under."""
     tool_lines = [f"- {item.name} ({item.source}): {item.description}" for item in tools or []]
     return {
+        "default_model": available_models[0] if available_models else "",
         "models": ", ".join(available_models),
         "heading": PARALLEL_OUTPUT_HEADING.format(order="N"),
         "tools": "\n".join(tool_lines) if tool_lines else "No tools are configured.",
@@ -206,23 +195,6 @@ def fenced(tag: str, text: str) -> str:
     so untrusted content cannot end the block early and pass for instructions."""
     inner = re.sub(rf"<\s*/?\s*{tag}\s*>", "", text, flags=re.IGNORECASE)
     return f"<{tag}>\n{inner}\n</{tag}>"
-
-
-def step_agent_system_prompt(
-    role: str, has_tools: bool, expected_output: str = "", reviewer: bool = False
-) -> str:
-    """The system prompt for one step's agent: its identity, the result it must
-    deliver when the step names one, tool guidance only when it has tools, and,
-    for a reviewer, the rule to end with a verdict line."""
-    identity = f"the {role} agent" if role else "an agent"
-    parts = [STEP_AGENT_TEMPLATE.format(identity=identity)]
-    if expected_output.strip():
-        parts.append(STEP_AGENT_OUTPUT_TEMPLATE.format(expected_output=expected_output.strip()))
-    if has_tools:
-        parts.append(STEP_AGENT_TOOL_GUIDANCE)
-    if reviewer:
-        parts.append(REVIEWER_RULE)
-    return "\n\n".join(parts)
 
 
 @dataclass(frozen=True)

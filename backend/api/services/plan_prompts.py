@@ -20,6 +20,30 @@ description of a workflow, generate a structured multi-step pipeline.
 
 PIPELINE_GENERATION_TEMPLATE = PIPELINE_GENERATION_INTRO + PIPELINE_PLANNER_GUIDE
 
+#: How a new team is shaped; a revision changes only what it is asked to. Each rule answers
+#: a fault judges found in real plans: oversized teams, dependent steps run side by side,
+#: details of the request lost, inputs the user had to type again, unsourced figures.
+TEAM_GUIDE = """\
+How to build a strong team:
+- Keep it as small as the work allows: one agent per distinct deliverable or real specialty, \
+often two to four, plus the final check. Add no step for something trivial: every agent is \
+told today's date and who else is in the team.
+- Put a step in a later stage when it needs another step's result, for example subject lines \
+for an email another step rewrites, or recommendations that build on an analysis. Steps share \
+a stage only when their work is independent. When several agents each write part of one \
+deliverable, first add a step that plans the parts, so they neither repeat nor contradict \
+each other.
+- Carry every detail of the request to the steps that need it: names, facts, numbers, \
+audience, tone, length, format, language and any pasted material. Write it into their \
+prompts or pass it through an input; never drop one.
+- A step that needs current facts, prices or sources gets the web tools from the list when \
+there are any; when there are none, its prompt asks it to mark figures it gives from memory \
+as estimates to check.
+- A step's deliverable is its reply: when a step also saves a file, its prompt still asks \
+for the full deliverable in the reply.
+
+"""
+
 #: Offered only when the planner may ask (Missions), and only before any answer.
 QUESTIONS_GUIDE = f"""\
 Before planning, decide whether the description says enough to build a pipeline that \
@@ -57,11 +81,12 @@ def pipeline_generation_prompt(
     tools: list[ToolDescriptor] | None = None,
     clarification: Clarification = Clarification(),
 ) -> str:
-    """Render the planner prompt for a workflow description: the shared guide, the
-    final reviewer, then the questions it may ask or the answers it got."""
+    """Render the planner prompt for a workflow description: the shared guide, how to
+    shape the team, the final reviewer, then the questions it may ask or the answers it
+    got."""
     header = PIPELINE_GENERATION_TEMPLATE.format(**planner_fields(available_models, tools))
     asking = QUESTIONS_GUIDE if clarification.asking else ""
     return (
-        f"{header}{FINAL_REVIEW_GUIDE}{asking}{_answers_block(clarification)}"
+        f"{header}{TEAM_GUIDE}{FINAL_REVIEW_GUIDE}{asking}{_answers_block(clarification)}"
         f"User's workflow description:\n{description}"
     )

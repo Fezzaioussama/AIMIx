@@ -18,6 +18,10 @@ from api.services.prompts import merge_input_values
 
 _INPUT_NAME = re.compile(PIPELINE_INPUT_NAME_PATTERN)
 
+#: The longest value an input can suggest to the run form (``default_value``), e.g. notes
+#: pasted into a mission's request. Kept in the pipeline, so far below a run's own limit.
+INPUT_DEFAULT_MAX_LENGTH = 20_000
+
 #: The names the engine fills itself, each with what it stands for (so a
 #: pipeline cannot declare an input of that name).
 RESERVED_NAMES: dict[str, str] = {

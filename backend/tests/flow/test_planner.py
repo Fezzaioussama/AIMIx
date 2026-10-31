@@ -213,7 +213,7 @@ def test_the_generation_prompt_tells_the_planner_about_both_fields() -> None:
     assert '"input:<name>"' in prompt and '"step:<order>"' in prompt
     assert "{feedback}" in prompt
     # The reviewer is told to judge the work; the verdict line is the engine's business.
-    assert "verdict line" in prompt and "never write that in the prompt" in prompt
+    assert "verdict line" in prompt and "must not mention a verdict line at all" in prompt
     assert "two review loops must not share a stage" in prompt
     assert "(1 to 5)" in prompt
 

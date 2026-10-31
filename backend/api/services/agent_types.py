@@ -31,6 +31,8 @@ class AgentTask:
     run_step: RunStepRef | None = None
     #: The step judges work and can send it back: its answer ends with a verdict line.
     reviewer: bool = False
+    #: What the agent is told about its team and this run (``agent_prompts.team_brief``).
+    context: str = ""
 
 
 @dataclass(frozen=True)

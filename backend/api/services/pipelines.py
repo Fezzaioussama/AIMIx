@@ -34,7 +34,11 @@ from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
 from api.services.multiagent.reviews import review_from_data
 from api.services.pipeline_flow import ensure_valid_spec, flow_problems, flow_step
-from api.services.pipeline_inputs import bind_run_inputs, input_name_error
+from api.services.pipeline_inputs import (
+    INPUT_DEFAULT_MAX_LENGTH,
+    bind_run_inputs,
+    input_name_error,
+)
 from api.services.plan_prompts import pipeline_generation_prompt
 from api.services.plan_questions import Clarification, ClarifyingQuestion, questions_in
 from config.settings import get_settings
@@ -111,9 +115,10 @@ def generate(
     request: PlanRequest,
     tools: list[ToolDescriptor] | None = None,
 ) -> Plan:
-    """Ask the planner model for a pipeline definition and validate the result; a
-    plan without a reviewer gets the final check. When the planner may ask and
-    replies with questions instead, return those (it asks once)."""
+    """Ask the planner model for a pipeline definition and validate the result; its
+    steps run on the default model unless the request names another, and a plan
+    without a reviewer gets the final check. When the planner may ask and replies
+    with questions instead, return those (it asks once)."""
     clarification = request.clarification
     prompt = pipeline_generation_prompt(request.description, profile.models, tools, clarification)
     raw = _planner_reply(provider, profile, PlannerCall(prompt, request.planner_model))
@@ -121,8 +126,21 @@ def generate(
     if questions:
         return Plan(None, questions)
     plan = parse_plan(raw, profile.models, _tool_names(tools))
+    asked = " ".join([request.description, *(item.answer for item in clarification.answers)])
+    on_default_model(plan["steps"], profile.default_model, asked)
     with_final_check(plan, request.description, clarification.answers, profile.default_model)
     return Plan(plan)
+
+
+def on_default_model(steps: list[dict[str, Any]], default_model: str, asked: str) -> None:
+    """Put every step on the default model, except one whose model the request names
+    (``asked``, matched by the id's last part, e.g. "grok-4.20"): planners scatter the
+    steps of a team over many models, which costs more and fails more, as one model
+    replying with nothing or garbled text stops or spoils the whole run."""
+    request = asked.lower()
+    for step in steps:
+        if step["model"].rsplit("/", 1)[-1].lower() not in request:
+            step["model"] = default_model
 
 
 def ask_planner(
@@ -204,7 +222,8 @@ def _text(value: object, limit: int | None = None) -> str:
 
 def _sanitise_inputs(raw: object) -> list[dict[str, str]]:
     """Keep the planner's inputs that can be saved: objects with a valid name
-    that no earlier input took, at most ``PIPELINE_MAX_INPUTS`` of them.
+    that no earlier input took, at most ``PIPELINE_MAX_INPUTS`` of them, each with
+    the value it suggests to the run form (``default_value``) when it fits.
 
     A name is checked, never shortened, because the prompts refer to it whole.
     """
@@ -215,10 +234,14 @@ def _sanitise_inputs(raw: object) -> list[dict[str, str]]:
         name = _text(item.get("name"))
         if input_name_error(name) or name in inputs:
             continue
+        default = _text(item.get("default_value"))
         inputs[name] = {
             "name": name,
             "label": _text(item.get("label"), PIPELINE_INPUT_LABEL_MAX_LENGTH),
             "description": _text(item.get("description"), PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH),
+            # A value too long to keep is left out rather than cut: half of pasted notes
+            # would mislead more than an empty field.
+            "default_value": default if len(default) <= INPUT_DEFAULT_MAX_LENGTH else "",
         }
     return list(inputs.values())[:PIPELINE_MAX_INPUTS]
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from enum import Enum
 from typing import Protocol
 
@@ -174,6 +175,8 @@ class RunControl:
     #: every step (not only those in ``completed``): where a resumed run's review
     #: loops stand. A step missing here was in round 1.
     rounds: Mapping[int, int] = field(default_factory=dict)
+    #: The day the run works on, which every agent is told; None tells them none.
+    today: date | None = None
 
     def step_ref(self, order: int) -> RunStepRef | None:
         """Where a step's task runs, for tools that must ask the run's owner first."""

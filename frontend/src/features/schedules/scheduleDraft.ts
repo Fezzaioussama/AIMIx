@@ -9,6 +9,7 @@ import type {
 import {
   EMPTY_RUN_DRAFT,
   inputLabel,
+  inputValue,
   isRunReady,
   runRequest,
   type RunDraft,
@@ -237,7 +238,7 @@ export function scheduleProblem(inputs: PipelineInput[], draft: ScheduleDraft): 
   }
   if (isRunReady(inputs, draft.run)) return null;
   if (inputs.length === 0) return 'Say what each run should work on.';
-  const missing = inputs.filter((field) => !(draft.run.values[field.name] ?? '').trim());
+  const missing = inputs.filter((field) => !inputValue(field, draft.run).trim());
   return `Fill in ${missing.map(inputLabel).join(', ')}.`;
 }
 

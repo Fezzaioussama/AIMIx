@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from langchain_core.runnables import Runnable, RunnableLambda
 
 from api.exceptions import DomainError
+from api.services.agent_prompts import TeamView, team_brief
 from api.services.agent_types import AgentOutcome, AgentTask
 from api.services.errors import as_domain_error
 from api.services.multiagent.conditions import ConditionTexts, condition_holds
@@ -46,10 +47,12 @@ def join_node_name(position: int) -> str:
 
 @dataclass(frozen=True)
 class RunNodes:
-    """What every agent node of one run shares."""
+    """What every agent node of one run shares: the agent port, how the run reports and
+    meters, and the team each agent is told about (none for a run built without one)."""
 
     agent: StepAgent
     control: RunControl
+    team: TeamView | None = None
 
 
 @dataclass(frozen=True)
@@ -197,6 +200,7 @@ class StepNode:
             meter=control.meter(step.order),
             run_step=control.step_ref(step.order),
             reviewer=step.review is not None,
+            context=team_brief(self._run.team, step.order) if self._run.team else "",
         )
         return await _run_step(step, task, attempt, self._run)
 

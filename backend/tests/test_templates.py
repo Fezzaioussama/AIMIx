@@ -178,7 +178,7 @@ def test_the_gallery_lists_every_template_with_its_inputs_and_size(
         "title": template.title,
         "category": template.category,
         "description": template.description,
-        "inputs": [asdict(field) for field in template.inputs],
+        "inputs": [{**asdict(field), "default_value": ""} for field in template.inputs],
         "step_count": len(template.steps),
         "stage_count": len({step.stage for step in template.steps}),
     }
@@ -197,7 +197,7 @@ def test_using_a_template_creates_the_callers_pipeline_on_their_default_model(
     assert response.status_code == 201
     body = response.json()
     assert (body["user"], body["name"]) == (user.id, template.title)
-    assert body["inputs"] == [asdict(field) for field in template.inputs]
+    assert body["inputs"] == [{**asdict(field), "default_value": ""} for field in template.inputs]
     assert [step["order"] for step in body["steps"]] == [1, 2, 3, 4, 5]
     assert [step["stage"] for step in body["steps"]] == [step.stage for step in template.steps]
     assert [step["prompt"] for step in body["steps"]] == [s.prompt for s in template.steps]

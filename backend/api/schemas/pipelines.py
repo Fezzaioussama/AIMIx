@@ -35,7 +35,7 @@ from api.schemas.common import (
 )
 from api.schemas.usage import BudgetIn
 from api.services.multiagent.conditions import StepCondition, tidy
-from api.services.pipeline_inputs import input_name_error
+from api.services.pipeline_inputs import INPUT_DEFAULT_MAX_LENGTH, input_name_error
 
 
 def _valid_input_name(name: str) -> str:
@@ -55,6 +55,8 @@ class PipelineInputField(BaseModel):
     name: InputName
     label: str = Field("", max_length=PIPELINE_INPUT_LABEL_MAX_LENGTH)
     description: str = Field("", max_length=PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH)
+    #: What the run form starts with, e.g. the value the mission's request gave.
+    default_value: str = Field("", max_length=INPUT_DEFAULT_MAX_LENGTH)
 
 
 def _unique_inputs(inputs: list[PipelineInputField]) -> list[PipelineInputField]:

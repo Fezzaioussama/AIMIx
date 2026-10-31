@@ -116,7 +116,9 @@ def step_with(**fields: object) -> list[dict[str, object]]:
 
 def test_planned_inputs_are_trimmed() -> None:
     plan = parse(inputs=[{"name": " topic ", "label": " Topic ", "description": 3}])
-    assert plan["inputs"] == [{"name": "topic", "label": "Topic", "description": ""}]
+    assert plan["inputs"] == [
+        {"name": "topic", "label": "Topic", "description": "", "default_value": ""}
+    ]
 
 
 def test_planned_inputs_that_cannot_be_saved_are_dropped() -> None:
@@ -128,7 +130,9 @@ def test_planned_inputs_that_cannot_be_saved_are_dropped() -> None:
         {"name": "topic"},
         {"name": "topic", "label": "Duplicate"},
     ]
-    assert parse(inputs=inputs)["inputs"] == [{"name": "topic", "label": "", "description": ""}]
+    assert parse(inputs=inputs)["inputs"] == [
+        {"name": "topic", "label": "", "description": "", "default_value": ""}
+    ]
 
 
 @pytest.mark.parametrize("inputs", [None, "topic", {"name": "topic"}])
@@ -163,7 +167,7 @@ def test_generate_returns_the_planned_inputs(
     response = auth_client.post("/api/pipelines/generate", json={"description": "posts"})
 
     generated = response.json()["generated_pipeline"]
-    assert generated["inputs"] == plan["inputs"]
+    assert generated["inputs"] == [{**item, "default_value": ""} for item in plan["inputs"]]
     assert generated["steps"][0]["expected_output"] == "A post"
     planner_prompt = provider.calls[0][0]
     assert '"inputs"' in planner_prompt
@@ -192,12 +196,24 @@ def create(client: TestClient, default_model: str, **overrides: object) -> dict[
     return dict(response.json())
 
 
+def test_an_inputs_suggested_value_is_saved_and_returned(
+    auth_client: TestClient, default_model: str
+) -> None:
+    topic = {"name": "topic", "label": "Topic", "description": "", "default_value": "bees"}
+
+    created = create(auth_client, default_model, inputs=[topic])
+
+    assert created["inputs"] == [topic]
+    fetched = auth_client.get(f"/api/pipelines/{created['id']}/").json()
+    assert fetched["inputs"] == [topic]
+
+
 def test_inputs_and_expected_outputs_round_trip(
     auth_client: TestClient, default_model: str
 ) -> None:
     created = create(auth_client, default_model)
     topic = {"name": "topic", "label": "Topic", "description": "What to cover"}
-    assert created["inputs"] == [topic]
+    assert created["inputs"] == [{**topic, "default_value": ""}]
     assert created["steps"][0]["expected_output"] == "One tweet"
 
     path = f"/api/pipelines/{created['id']}/"

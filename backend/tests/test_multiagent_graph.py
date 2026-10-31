@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import ANY
 
 import pytest
 
@@ -207,8 +208,8 @@ def test_each_step_receives_its_own_role_model_and_tool_policy() -> None:
     )
 
     assert tasks == [
-        AgentTask("prompt-1: seed", "model-1", "Researcher", None),
-        AgentTask("prompt-2: model-1", "model-2", "Writer", []),
+        AgentTask("prompt-1: seed", "model-1", "Researcher", None, context=ANY),
+        AgentTask("prompt-2: model-1", "model-2", "Writer", [], context=ANY),
     ]
     assert result.final_output == "model-2"
     assert [item.is_output for item in result.intermediate_results] == [False, True]

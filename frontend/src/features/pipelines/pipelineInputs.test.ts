@@ -7,6 +7,7 @@ import {
   documentSummary,
   inputNameProblem,
   inputsSummary,
+  inputValue,
   isRunReady,
   runRequest,
   toInputName,
@@ -99,6 +100,33 @@ const report: ExtractedDocument = {
   pages: 2,
   truncated: false,
 };
+
+describe('suggested input values', () => {
+  const notes: PipelineInput = {
+    name: 'notes',
+    label: 'Notes',
+    description: '',
+    default_value: 'Sara: 1,240 signups',
+  };
+  const tone: PipelineInput = { name: 'tone', label: 'Tone', description: '' };
+
+  it('starts the form with the value the pipeline suggests, until the person types', () => {
+    expect(inputValue(notes, { text: '', values: {} })).toBe('Sara: 1,240 signups');
+    expect(inputValue(notes, { text: '', values: { notes: 'Other notes' } })).toBe('Other notes');
+    // Clearing the field is a choice too: it stays empty.
+    expect(inputValue(notes, { text: '', values: { notes: '' } })).toBe('');
+    expect(inputValue(tone, { text: '', values: {} })).toBe('');
+  });
+
+  it('sends the suggested value and counts it as filled in', () => {
+    const draft = { text: '', values: { tone: 'warm' } };
+    expect(runRequest([notes, tone], draft)).toEqual({
+      inputs: { notes: 'Sara: 1,240 signups', tone: 'warm' },
+    });
+    expect(isRunReady([notes, tone], draft)).toBe(true);
+    expect(isRunReady([notes, tone], { text: '', values: {} })).toBe(false);
+  });
+});
 
 describe('appendDocument', () => {
   it('starts an empty input with the document, labelled with its source', () => {

@@ -29,8 +29,9 @@ max_rounds (1 to {STEP_REVIEW_MAX_ROUNDS}) times; the steps of the stage it goes
 also get the reviewer's feedback, which a prompt can place with \
 {{{{{FEEDBACK_PLACEHOLDER}}}}}. The reviewer's stage must come after send_back_to_stage, and \
 two review loops must not share a stage. A reviewer's prompt should judge the work it is \
-given ({{{{input}}}}) and say what to fix; AIMIx itself asks it to end with a verdict line, so \
-never write that in the prompt. A reviewer's own answer is feedback: mark the step whose \
+given ({{{{input}}}}) and say what to fix; AIMIx itself tells it how to end with a verdict line, \
+so the prompt must not mention a verdict line at all, neither asking for one nor forbidding \
+one. A reviewer's own answer is feedback: mark the step whose \
 work it reviews as the output (is_output), not the reviewer. A stage after the reviewer \
 receives only the reviewer's answer, so then ask the reviewer to repeat the approved work \
 in full.
@@ -55,9 +56,12 @@ Every new pipeline ends with a check by an orchestrator, unless it already has a
 reviewer. Add one last stage holding a single step with \
 the role "Orchestrator", is_output false and no tools, and a "review" that sends the work \
 back to the stage that makes the deliverables (the earliest one, when several do), with \
-max_rounds 2. Its prompt asks it to check the work it is given ({input}) against the \
-user's request: every deliverable present, complete, correct and in the format asked for, \
-and to say exactly what to fix. Keep is_output on the steps whose work it checks.
+max_rounds 2. Its prompt quotes the user's request in full and asks it to check the work it \
+is given ({input}) against it: every deliverable present in full (not a summary of it, nor a \
+note that it was saved), correct and consistent (figures agree, dates fit today), specific \
+to the request rather than generic, in the format, length, tone and language asked, with no \
+invented sources and no garbled text; and to quote exactly what must change. Keep is_output \
+on the steps whose work it checks.
 
 """
 
@@ -67,15 +71,21 @@ FINAL_CHECK_TITLE = "Final check"
 FINAL_CHECK_EXPECTED_OUTPUT = "What is good, what must be fixed, and the verdict"
 FINAL_CHECK_INTRO = "The user asked for this:"
 FINAL_CHECK_TASK = (
-    "Check the work below against that request: every deliverable present, complete, "
-    "correct and in the format asked for. Say exactly what must be fixed.\n\n{input}"
+    "Check the work below against that request: every deliverable present in full (not a "
+    "summary of it, nor a note that it was saved), correct and consistent (figures agree, "
+    "dates fit today), specific to the request rather than generic, in the format, length, "
+    "tone and language asked, with no invented sources and no garbled text. Quote exactly "
+    "what must be fixed.\n\n{input}"
 )
 
 #: What a reviewer's system prompt adds: judge the work, and end with the verdict line.
 REVIEWER_RULE = (
-    "You are reviewing the work you are given. Say what is good and what must be fixed, "
-    "then end your reply with one final line that holds only 'VERDICT: PASS' when the "
-    "work is good enough, or only 'VERDICT: REVISE' when it needs fixes."
+    "You are reviewing the work you are given, as the person who asked for it would. Say "
+    "what is good and what must be fixed, quoting the exact text to change; never praise "
+    "something that is not there. Garbled text, a missing or partial deliverable, invented "
+    "sources, figures that disagree or a wrong date always need fixes. Then end your reply "
+    "with one final line that holds only 'VERDICT: PASS' when the person could use the work "
+    "as it is, or only 'VERDICT: REVISE' when it needs fixes."
 )
 
 #: What the steps a reviewer sent work back to are told, unless their own prompt

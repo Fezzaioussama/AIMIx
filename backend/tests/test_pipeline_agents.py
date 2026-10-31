@@ -16,10 +16,15 @@ from api.models import Pipeline, User
 from api.repositories import pipelines
 from api.services import agent_runtime
 from api.services import llm as llm_service
+from api.services.agent_prompts import (
+    STEP_AGENT_TOOL_GUIDANCE,
+    STEP_AGENT_WORK_RULES,
+    AgentRole,
+    step_agent_system_prompt,
+)
 from api.services.catalog import default_model_id
 from api.services.llm import LLMProfile
 from api.services.multiagent import step_agent
-from api.services.prompts import STEP_AGENT_TOOL_GUIDANCE, step_agent_system_prompt
 from llm.base import ProviderConfig
 
 
@@ -168,18 +173,28 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
 
 
 def test_step_without_tools_gets_no_tool_guidance() -> None:
-    prompt = step_agent_system_prompt("", has_tools=False)
+    prompt = step_agent_system_prompt(AgentRole(""), has_tools=False)
     assert prompt.startswith("You are an agent in an AIMIx pipeline.")
     assert STEP_AGENT_TOOL_GUIDANCE not in prompt
     assert "expected output" not in prompt
 
 
-def test_expected_output_comes_before_tool_guidance() -> None:
-    prompt = step_agent_system_prompt("Writer", has_tools=True, expected_output=" One tweet ")
-    identity, expected, guidance = prompt.split("\n\n")
+def test_the_prompt_runs_identity_rules_team_expected_output_then_tools() -> None:
+    agent = AgentRole("Writer", " One tweet ", context='You work in the team "Launch".')
+    prompt = step_agent_system_prompt(agent, has_tools=True)
+    identity, rules, team, expected, guidance = prompt.split("\n\n")
     assert identity.startswith("You are the Writer agent")
+    assert rules == STEP_AGENT_WORK_RULES
+    assert team == 'You work in the team "Launch".'
     assert expected.endswith(": One tweet")
     assert guidance == STEP_AGENT_TOOL_GUIDANCE
+
+
+def test_every_agent_is_told_how_to_work_and_a_blank_team_adds_nothing() -> None:
+    prompt = step_agent_system_prompt(AgentRole("Writer", context="  "), has_tools=False)
+    assert prompt.split("\n\n") == [prompt.split("\n\n")[0], STEP_AGENT_WORK_RULES]
+    assert "Never invent facts" in STEP_AGENT_WORK_RULES
+    assert "your reply still holds the full deliverable" in STEP_AGENT_WORK_RULES
 
 
 def test_mcp_discovery_failure_stops_the_pipeline(

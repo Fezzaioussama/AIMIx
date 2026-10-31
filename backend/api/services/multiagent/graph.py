@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import replace
+from datetime import date
 from itertools import groupby
 from operator import attrgetter
 from time import perf_counter
@@ -21,6 +22,7 @@ from time import perf_counter
 from langgraph.graph import END, START, StateGraph
 
 from api.exceptions import DomainError
+from api.services.agent_prompts import TeamMember, TeamView
 from api.services.multiagent.contracts import (
     PipelineSpec,
     RunControl,
@@ -47,6 +49,7 @@ from api.services.multiagent.nodes import (
     join_node_name,
 )
 from api.services.multiagent.state import GraphState
+from api.services.prompts import merge_stage_outputs
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,26 @@ def _marked(result: StepResult, is_output: bool) -> StepResult:
     return replace(result, is_output=is_output and not result.skipped)
 
 
+def _deliverables(results: list[StepResult]) -> str:
+    """The run's result: its output steps' work, joined as a stage's would be; empty
+    when none wrote anything. A final reviewer's verdict is not part of it."""
+    done = [(result.step_order, result.output) for result in results if result.is_output]
+    return merge_stage_outputs([item for item in done if item[1].strip()]) if done else ""
+
+
+def team_view(pipeline: PipelineSpec, inputs: RunInputs, today: date | None) -> TeamView:
+    """What every agent of a run is told about it (``agent_prompts.team_brief``): the
+    team in the order it works, the day, and the values the person gave, or their text
+    when the pipeline takes no named inputs."""
+    ordered = sorted(pipeline.steps, key=attrgetter("stage", "order"))
+    members = tuple(TeamMember(step.order, step.stage, step.role, step.title) for step in ordered)
+    labels = {field.name: field.display_label for field in pipeline.inputs}
+    given = [(labels.get(name, name), value) for name, value in inputs.values.items()]
+    if not given and inputs.text.strip():
+        given = [("Their request", inputs.text)]
+    return TeamView(pipeline.name, members, tuple(item for item in given if item[1].strip()), today)
+
+
 class GraphPipelineRunner:
     """Graph runner with an injectable agent port and concurrency cap."""
 
@@ -138,7 +161,8 @@ class GraphPipelineRunner:
         control = control or RunControl()
         stages = _group_by_stage(steps)
         loops = find_loops(stages)
-        graph = _build_graph(stages, RunNodes(agent, control), loops).compile()
+        team = team_view(pipeline, inputs, control.today)
+        graph = _build_graph(stages, RunNodes(agent, control, team), loops).compile()
         started = perf_counter()
         try:
             state = await graph.ainvoke(
@@ -171,4 +195,4 @@ class GraphPipelineRunner:
             len(loops),
             (perf_counter() - started) * 1000,
         )
-        return RunResult(pipeline.name, state["current_input"], results)
+        return RunResult(pipeline.name, _deliverables(results) or state["current_input"], results)

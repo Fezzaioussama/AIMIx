@@ -146,4 +146,7 @@ def test_a_run_saved_before_the_fields_existed_resumes(
 
     assert agent.calls == [("second", "kept")]
     assert [s.status for s in finished.steps] == [StepStatus.SUCCEEDED] * 2
-    assert load(database, run.id).final_output == "out-second"
+    # The run's result is its deliverables: both steps are outputs.
+    assert load(database, run.id).final_output == (
+        "## Output of step 1\n\nkept\n\n## Output of step 2\n\nout-second"
+    )

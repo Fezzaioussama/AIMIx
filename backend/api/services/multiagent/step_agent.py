@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from time import monotonic
 
@@ -16,6 +17,7 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from api.db import Database
 from api.exceptions import UpstreamResponseInvalid
 from api.models import User
+from api.services.agent_prompts import AgentRole, step_agent_system_prompt
 from api.services.agent_runtime import (
     AGENT_FAILURES,
     AgentLimits,
@@ -30,12 +32,15 @@ from api.services.approvals.guard import guard_tools, run_gate
 from api.services.approvals.policy import approval_policy_for
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model, model_info
-from api.services.prompts import step_agent_system_prompt
 from config.settings import Settings, get_settings
 from llm.catalog import ModelInfo
 from llm.usage import UsageCallback, metered
 
 logger = logging.getLogger(__name__)
+
+#: A model's own control token in its reply (``<|endoftext|>``, ``<|im_end|>``): the
+#: mark of a reply that went off the rails, which must never pass for a deliverable.
+CONTROL_TOKEN = re.compile(r"<\|[a-z_]{2,40}\|>")
 
 
 def _unlisted(model_id: str) -> ModelInfo | None:
@@ -112,10 +117,8 @@ class LangGraphStepAgent:
                 guarded = guard_tools(self._toolset, resolved, self._gate)
                 tools = guarded.tools
                 system_prompt = step_agent_system_prompt(
-                    task.role,
+                    AgentRole(task.role, task.expected_output, task.reviewer, task.context),
                     has_tools=bool(tools),
-                    expected_output=task.expected_output,
-                    reviewer=task.reviewer,
                 )
                 model = metered(self._model, usage)
                 graph = create_agent(
@@ -132,6 +135,8 @@ class LangGraphStepAgent:
         message = messages[-1] if messages else None
         if not isinstance(message, AIMessage) or not message.text.strip():
             raise UpstreamResponseInvalid("The pipeline agent returned no text.")
+        if CONTROL_TOKEN.search(message.text):
+            raise UpstreamResponseInvalid("The pipeline agent returned garbled text.")
         logger.info(
             "pipeline.agent_completed tools=%d duration_ms=%.1f",
             len(tools),
@@ -152,11 +157,23 @@ class PipelineAgentGenerator:
     ) -> None:
         self._database = database
         self._user = user
+        self._default_model = profile.default_model
         self._dependencies = dependencies or StepAgentDependencies(
             partial(get_agent_model, profile), get_settings(), partial(model_info, profile)
         )
 
     async def execute(self, task: AgentTask) -> AgentOutcome:
+        """Run the step; a reply with no text or garbled text gets one more try, on the
+        default model (which often answers when another model failed), before the step
+        fails. The meter counts both tries."""
+        try:
+            return await self._reply(task)
+        except UpstreamResponseInvalid:
+            retry = replace(task, model=self._default_model or task.model)
+            logger.warning("pipeline.agent_retry model=%s retry_model=%s", task.model, retry.model)
+            return await self._reply(retry)
+
+    async def _reply(self, task: AgentTask) -> AgentOutcome:
         settings = self._dependencies.settings
         agent = LangGraphStepAgent(
             self._dependencies.model_factory(task.model),

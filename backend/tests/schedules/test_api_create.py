@@ -126,7 +126,9 @@ def test_a_pipeline_needs_every_one_of_its_named_inputs(
     created = attempt(inputs={"topic": "bees", "tone": "calm"})
     assert created.status_code == 201
     assert created.json()["inputs"] == {"topic": "bees", "tone": "calm"}
-    assert created.json()["pipeline_inputs"] == [topic, tone]
+    assert created.json()["pipeline_inputs"] == [
+        {**field, "default_value": ""} for field in (topic, tone)
+    ]
 
 
 def test_a_pipeline_without_steps_cannot_be_scheduled(

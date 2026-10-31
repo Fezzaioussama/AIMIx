@@ -81,10 +81,18 @@ export function costLimitProblem(draft: RunDraft): string | null {
   return 'Enter an amount above zero, like 0.50, or leave it empty.';
 }
 
+/**
+ * What the run form holds for an input: what the person typed (even if they cleared it),
+ * else the value the pipeline suggests, such as the detail its mission's request gave.
+ */
+export function inputValue(field: PipelineInput, draft: RunDraft): string {
+  return draft.values[field.name] ?? field.default_value ?? '';
+}
+
 export function isRunReady(inputs: PipelineInput[], draft: RunDraft): boolean {
   if (costLimitProblem(draft) !== null) return false;
   if (inputs.length === 0) return draft.text.trim() !== '';
-  return inputs.every((field) => (draft.values[field.name] ?? '').trim() !== '');
+  return inputs.every((field) => inputValue(field, draft).trim() !== '');
 }
 
 /** The run body: the text, or a value for each declared input, and the cost limit if one is set. */
@@ -93,7 +101,7 @@ export function runRequest(inputs: PipelineInput[], draft: RunDraft): PipelineRu
   const budget = limit === null ? {} : { max_cost_usd: limit };
   if (inputs.length === 0) return { input: draft.text, ...budget };
   return {
-    inputs: Object.fromEntries(inputs.map((field) => [field.name, draft.values[field.name] ?? ''])),
+    inputs: Object.fromEntries(inputs.map((field) => [field.name, inputValue(field, draft)])),
     ...budget,
   };
 }

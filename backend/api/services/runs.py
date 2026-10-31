@@ -244,6 +244,7 @@ class RunService:
                 meter=meter.for_step,
                 run_id=run_id,
                 rounds=plan.rounds,
+                today=run.started_at.date() if run.started_at else None,
             )
             result = await runner.arun(plan.spec, agent, plan.inputs, control)
         except asyncio.CancelledError:
