@@ -3,8 +3,26 @@
 **Track:** Startup · **Theme:** Build for Your World · **Team:** Oussama Fezzai
 ([@Fezzaioussama](https://github.com/Fezzaioussama)), solo
 
-**Say what you need, and a team of Meta-powered AI agents plans it, does it, and
-hands you finished files.**
+**Like a workflow builder such as n8n, without the drag and drop: you build your
+AI agents by chatting (or speaking), and an orchestrator agent does the work.**
+
+## The idea
+
+Workflow tools make you draw the automation: drag nodes onto a canvas, wire them,
+configure each one. Most people who need the work done cannot, or do not have the
+time. In AIMIx you just say what you want, in Missions:
+
+1. **You chat, or speak.** "Plan the launch of my bakery's subscription, with a
+   hero picture and a one-page PDF."
+2. **AIMIx asks** what is missing, if anything essential is.
+3. **It builds the team for you:** each agent gets a role, a Meta model and its
+   tools, in stages that run in parallel. You see the team as a graph, and change
+   it by talking to it.
+4. **The orchestrator runs it:** the agents work, an orchestrator checks their
+   results and sends work back for fixes, and you get finished files (PDF, Word,
+   pictures).
+
+The same team stays editable as a pipeline, and can run again or on a schedule.
 
 ## What existed before the event, and what was built during it
 
@@ -34,6 +52,7 @@ from October 26 up to it only edit `AGENTS.md`, the contributor rules.
 | [`f5eaf58`](https://github.com/Fezzaioussama/AIMIx/commit/f5eaf58), [`96007bc`](https://github.com/Fezzaioussama/AIMIx/commit/96007bc) | Missions ask a few questions before planning when the request leaves something essential open; every team ends with a final check that sends work back for fixes |
 | [`81072a8`](https://github.com/Fezzaioussama/AIMIx/commit/81072a8), [`30bdfe4`](https://github.com/Fezzaioussama/AIMIx/commit/30bdfe4), [`f8c1675`](https://github.com/Fezzaioussama/AIMIx/commit/f8c1675) | GDPR self-service (export, delete, password), legal pages, AI-output notices, safer sign-up |
 | [`6bd06a2`](https://github.com/Fezzaioussama/AIMIx/commit/6bd06a2) | Dependency updates for new security advisories |
+| [`7977059`](https://github.com/Fezzaioussama/AIMIx/commit/7977059) | A sidebar for every section, one page frame, Settings in tabs |
 
 ## How Meta's models work together
 
