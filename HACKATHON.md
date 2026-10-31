@@ -25,6 +25,7 @@ from October 26 up to it only edit `AGENTS.md`, the contributor rules.
 | [`5d26d21`](https://github.com/Fezzaioussama/AIMIx/commit/5d26d21) | Meta named in the privacy policy, terms and site copy |
 | [`674d4a4`](https://github.com/Fezzaioussama/AIMIx/commit/674d4a4) | **Build agents by voice.** A microphone in Missions; Muse Voice Transcribe turns the request into text, and the planner builds the team from it |
 | [`03401f1`](https://github.com/Fezzaioussama/AIMIx/commit/03401f1) | **Agents that draw.** A `generate_image` tool on Muse Image; PDF and Word deliverables show the pictures; the results pane previews them |
+| [`fed68fe`](https://github.com/Fezzaioussama/AIMIx/commit/fed68fe) | **Agents that see.** A `find_objects` tool on SAM 3.1 finds and counts every match of a phrase ("loaf of bread", "scratch") in a picture, and saves a copy with the matches numbered for the report |
 
 **Also built during the event, for every model provider:**
 
@@ -42,6 +43,7 @@ flowchart LR
     Text -->|Muse Spark 1.3| Plan["A team of agents,<br/>each with a role, a model and tools"]
     Plan --> Agents["Agents run in stages<br/>(Muse Spark 1.3 / Muse Wonder 1.0)"]
     Agents -->|generate_image: Muse Image| Picture["Pictures"]
+    Photo["Your photos"] -->|find_objects: SAM 3.1| Agents
     Agents --> Docs["PDF / Word deliverables<br/>with the pictures"]
     Picture --> Docs
 ```
@@ -52,6 +54,7 @@ flowchart LR
 | Muse Spark 1.3 | Plans the team (roles, stages, tools, a model per agent), runs most agents, and checks the results |
 | Muse Wonder 1.0 | The planner gives it the steps that need the most reasoning or writing |
 | Muse Image | Draws the pictures an agent asks for; they land in your files and your documents |
+| SAM 3.1 | Finds and counts what an agent names in a photo, and marks each match for the report |
 
 A real run, recorded while building: "launch a bakery's sourdough subscription"
 became a team of three (an illustrator on Muse Wonder with `generate_image`, a
@@ -68,7 +71,7 @@ seconds for $0.11 and produced a one-page PDF launch plan with its hero picture.
 - Privacy by design: recordings are never stored, and the cheaper `-contributor`
   models (which let Meta train on requests) are left out on purpose. Meta marks
   each picture as AI-generated in its metadata, and AIMIx keeps that mark.
-- Every change ships with tests: about 1,770 backend tests (pytest) and 890
+- Every change ships with tests: about 1,790 backend tests (pytest) and 890
   frontend tests (vitest) run on every push, alongside lint, type checks and the build.
 
 ## Run it
