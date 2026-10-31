@@ -3,9 +3,8 @@
  * imported — never redeclared per component).
  */
 
-export interface AuthTokens {
-  access: string;
-}
+// Auth payloads (sign-in tokens, GET /api/protected) live in authTypes.ts.
+export type { AuthTokens, WhoAmI } from './authTypes';
 
 /** How a condition compares text (trimmed, ignoring case); the words are in features/pipelines/stepFlow. */
 export type ConditionOperator =

@@ -13,7 +13,7 @@ frontend/src/
   core/             # cross-feature, the only layer that talks to the backend
     api/            # client.ts, endpoints.ts, types.ts, one module per resource
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
-    hooks/          # useModels.ts, useAgentTools.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts
+    hooks/          # useModels.ts, useAgentTools.ts, useAccountName.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts
     markdown/       # renderMarkdown.ts
     routes.ts       # HOME_PATH (where sign-in lands), missionPath(id), LEGAL_LINKS
     saveBlob.ts     # hands a downloaded Blob to the browser as a file to save
@@ -66,9 +66,13 @@ never fetched before sign-in. `/mission` is the front door: signing in
 
 **The sidebar** lists every section, from `navGroups()` in `App.tsx`: Missions and
 Chat; then **Pipelines**: Builder (`/pipeline`), Auto Pipeline, Templates, Runs and
-Schedules; then **Workspace**: Files and Settings; Log out at its foot. Each item
+Schedules; then **Workspace**: Files and Settings. Above them the logo and the AIMIx
+wordmark lead to Missions; at the foot an account card names the signed-in account
+(`useAccountName`) beside Log out, and the sections scroll above it when the window
+is short. Each item
 owns its route and the routes below it (Runs stays lit on `/runs/7`, Missions on
-`/mission/7`), and its highlight slides between items. Runs carries an amber count
+`/mission/7`), and its highlight, with a bar in the brand gradient on its left edge,
+slides between items. Runs carries an amber count
 while runs wait for the person to approve an action (`useWaitingRuns`, polled every
 5 s on every signed-in screen), with the same count in words ("Runs, 2 waiting for
 you"). From `lg` up the sidebar is fixed on the left (224px) and the screens sit
@@ -93,6 +97,7 @@ resolves the session before the first render without a redirect flash.
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
 | `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary` with its `RunTrigger` and `schedule_id`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, which includes `skipped`, and `RunStep`'s `rounds` and `verdict`, `RunApproval`, `ApprovalStatus`), a step's `condition` and `review` (`StepCondition`, `ConditionOperator`, `StepReview`; every `PipelineStep` has both, `null` when unset), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`) and schedules (`Schedule`, `ScheduleTiming`, `ScheduleFrequency`, `ScheduleInput`, `SchedulePatch`, `SchedulePreview`). |
+| `authTypes.ts` | Auth payloads, re-exported from `types.ts`: `AuthTokens` and `WhoAmI` (`GET /api/protected`, with the `username`). |
 | `planningTypes.ts` | Planning payloads, re-exported from `types.ts`: `GeneratedPipelineResponse`, `MissionPlanResponse` (a team, or the planner's `ClarifyingQuestion`s), `PlanAnswer`, `PipelineChange`, `RevisedPipelineResponse`. |
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request`, `requestBlob` and `streamText` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
@@ -162,6 +167,13 @@ only for the request still current, so a superseded or unmounted one never
 updates state. `useLatest(value)` is a ref that always holds the latest value,
 for async work that must read it when it finishes. `useAttachDocument` and
 `useRevisePipeline` use both.
+
+## `core/hooks/useAccountName.ts`
+
+`useAccountName()` is the signed-in username from `whoAmI()` (`GET /api/protected`),
+fetched once on mount for the sidebar's account card: `null` until it answers and
+when it fails (the name is only shown), and unmounting aborts the request.
+`App.test.tsx` stubs it, as it does `useWaitingRuns`.
 
 ## `core/hooks/useMediaQuery.ts` and `useMountedRef.ts`
 
@@ -596,8 +608,9 @@ throws). What to fill in and what keeps the texts true: [legal.md](legal.md).
 ## Conventions (from AGENTS.md §8)
 
 - No `fetch` in components; no `localStorage` outside `tokenStorage.ts`.
-- Payload types only in `core/api/types.ts` (the planning payloads live in
-  `planningTypes.ts` and are re-exported from it, so imports stay the same).
+- Payload types only in `core/api/types.ts` (the planning and auth payloads live in
+  `planningTypes.ts` and `authTypes.ts` and are re-exported from it, so imports stay
+  the same).
 - Every effect that starts async work cancels it (`active` flag or
   `AbortController`).
 - Tailwind utilities first; Prettier: 100 cols, single quotes.

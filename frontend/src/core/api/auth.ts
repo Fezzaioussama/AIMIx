@@ -1,7 +1,6 @@
 import { API } from './endpoints';
 import { refreshAccessToken, request } from './client';
-import type { WhoAmI } from './authTypes';
-import type { AuthTokens } from './types';
+import type { AuthTokens, WhoAmI } from './types';
 
 export function login(username: string, password: string): Promise<AuthTokens> {
   return request<AuthTokens>(API.login, { method: 'POST', body: { username, password } });
