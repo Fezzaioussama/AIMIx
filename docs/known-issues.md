@@ -236,6 +236,11 @@ simple rules and leave some things out:
 - **The stage after a reviewer gets the reviewer's answer**, as after any step, not
   the work it judged. Mark the step whose work is reviewed as the output (the
   planner is told to), or ask the reviewer to repeat the approved work in full.
+- **The final check sees the last stage only.** The orchestrator every new team
+  ends with receives what the stage before it produced, like any reviewer. When the
+  deliverables are made in several stages, it checks the last ones; the earlier
+  ones still show in the results, unchecked. It sends work back at most twice,
+  so a run of a new team can cost up to three times its deliverable stages.
 - **A skipped last stage leaves nothing to show.** A skipped step is never a
   deliverable; when every step that makes the outputs is skipped the run still
   succeeds, with no outputs (the page says why) and the text it was handed as its

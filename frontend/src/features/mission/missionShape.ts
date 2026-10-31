@@ -3,6 +3,7 @@ import {
   INPUTS_STATES,
   NOTE_TONES,
   PROPOSAL_STATES,
+  QUESTIONS_STATES,
   TEAM_ORIGINS,
   type AimixMessage,
   type MissionMessage,
@@ -61,6 +62,10 @@ function isBrief(value: unknown): boolean {
   );
 }
 
+function isQuestion(value: unknown): boolean {
+  return isRecord(value) && isString(value.question) && listOf(isString, value.options);
+}
+
 function isChange(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -75,6 +80,10 @@ function isChange(value: unknown): boolean {
 const AIMIX_FIELDS: Record<AimixMessage['kind'], (message: Fields) => boolean> = {
   note: (message) => isString(message.text) && oneOf(NOTE_TONES, message.tone),
   team: (message) => oneOf(TEAM_ORIGINS, message.origin) && isBrief(message.brief),
+  questions: (message) =>
+    oneOf(QUESTIONS_STATES, message.state) &&
+    isString(message.description) &&
+    listOf(isQuestion, message.questions),
   proposal: (message) =>
     oneOf(PROPOSAL_STATES, message.state) &&
     listOf(isChange, message.changes) &&

@@ -10,7 +10,8 @@ from typing import Any
 import pytest
 
 from api.services.pipelines import parse_plan, sanitise_step
-from api.services.prompts import pipeline_generation_prompt, pipeline_revision_prompt
+from api.services.plan_prompts import pipeline_generation_prompt
+from api.services.prompts import pipeline_revision_prompt
 
 BLOG_ONLY = {"source": "previous_output", "operator": "contains", "value": "blog"}
 SEND_BACK = {"send_back_to_stage": 2, "max_rounds": 2}

@@ -1,4 +1,4 @@
-import type { PipelineChange } from '../../core/api/types';
+import type { ClarifyingQuestion, PipelineChange } from '../../core/api/types';
 import type { TeamBrief } from './teamBrief';
 
 /**
@@ -71,6 +71,21 @@ export interface InputsMessage {
   state: InputsState;
 }
 
+/** `open` until the person answers the questions, or skips them, or says something else. */
+export const QUESTIONS_STATES = ['open', 'answered', 'skipped', 'closed'] as const;
+export type QuestionsState = (typeof QUESTIONS_STATES)[number];
+
+/** What the planner asked before building the team, kept with the mission they are about. */
+export interface QuestionsMessage {
+  id: string;
+  from: 'aimix';
+  kind: 'questions';
+  state: QuestionsState;
+  /** The mission as the person described it: the answers are planned with it. */
+  description: string;
+  questions: ClarifyingQuestion[];
+}
+
 /** A run started from the conversation; it is shown live while it is the mission's newest. */
 export interface RunMessage {
   id: string;
@@ -79,7 +94,8 @@ export interface RunMessage {
   runId: number;
 }
 
-export type AimixMessage = NoteMessage | TeamMessage | ProposalMessage | InputsMessage | RunMessage;
+export type AimixMessage =
+  NoteMessage | TeamMessage | QuestionsMessage | ProposalMessage | InputsMessage | RunMessage;
 export type MissionMessage = YouMessage | AimixMessage;
 
 /** Unique enough for one conversation; `randomUUID` is missing outside secure contexts. */
@@ -100,6 +116,20 @@ export function note(text: string, tone: NoteMessage['tone'] = 'info'): NoteMess
 
 export function teamReply(brief: TeamBrief, origin: TeamMessage['origin']): TeamMessage {
   return { id: newMessageId(), from: 'aimix', kind: 'team', origin, brief };
+}
+
+export function questionsReply(
+  description: string,
+  questions: ClarifyingQuestion[],
+): QuestionsMessage {
+  return {
+    id: newMessageId(),
+    from: 'aimix',
+    kind: 'questions',
+    state: 'open',
+    description,
+    questions,
+  };
 }
 
 export function pendingProposal(): ProposalMessage {
@@ -134,6 +164,18 @@ export function settleProposal(outcome: ProposalOutcome) {
 export function settleInputs(state: InputsState) {
   return (message: MissionMessage): MissionMessage =>
     message.from === 'aimix' && message.kind === 'inputs' ? { ...message, state } : message;
+}
+
+/** An update for `Conversation.update` that settles the planner's questions. */
+export function settleQuestions(state: QuestionsState) {
+  return (message: MissionMessage): MissionMessage =>
+    message.from === 'aimix' && message.kind === 'questions' ? { ...message, state } : message;
+}
+
+/** The questions still waiting for an answer: the newest message, when it asks them. */
+export function openQuestions(messages: MissionMessage[]): QuestionsMessage | null {
+  const last = messages.at(-1);
+  return last?.from === 'aimix' && last.kind === 'questions' && last.state === 'open' ? last : null;
 }
 
 /** The run form the person can still fill in: the newest open one. */

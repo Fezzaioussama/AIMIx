@@ -47,6 +47,19 @@ every "step:<order>" source and every send_back_to_stage to match. \
 {{{{{FEEDBACK_PLACEHOLDER}}}}} is always a valid placeholder.
 """
 
+#: Only a new pipeline gets it (``plan_prompts``): a revision changes only what it is
+#: asked to. It is appended after ``str.format``, so its braces are literal.
+FINAL_REVIEW_GUIDE = """
+Every new pipeline ends with a check by an orchestrator, unless the description asks for \
+none or the pipeline already has a reviewer. Add one last stage holding a single step with \
+the role "Orchestrator", is_output false and no tools, and a "review" that sends the work \
+back to the stage that makes the deliverables (the earliest one, when several do), with \
+max_rounds 2. Its prompt asks it to check the work it is given ({input}) against the \
+user's request: every deliverable present, complete, correct and in the format asked for, \
+and to say exactly what to fix. Keep is_output on the steps whose work it checks.
+
+"""
+
 #: What a reviewer's system prompt adds: judge the work, and end with the verdict line.
 REVIEWER_RULE = (
     "You are reviewing the work you are given. Say what is good and what must be fixed, "

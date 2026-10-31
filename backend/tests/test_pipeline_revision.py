@@ -18,7 +18,8 @@ from api.services import pipeline_revision as service
 from api.services.agent_types import ToolDescriptor
 from api.services.llm import LLMProfile
 from api.services.pipeline_changes import PipelineChange
-from api.services.prompts import pipeline_generation_prompt, pipeline_revision_prompt
+from api.services.plan_prompts import pipeline_generation_prompt
+from api.services.prompts import pipeline_revision_prompt
 from llm import exceptions as llm_exceptions
 from tests.conftest import FailingProvider, FakeProvider, use_provider
 

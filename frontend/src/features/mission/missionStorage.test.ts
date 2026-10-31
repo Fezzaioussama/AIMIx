@@ -34,6 +34,14 @@ describe('mission storage', () => {
       you('Compare my competitors'),
       note('Something went wrong', 'error'),
       { id: 't', from: 'aimix', kind: 'team', origin: 'generated', brief: describeTeam(PLAN) },
+      {
+        id: 'q',
+        from: 'aimix',
+        kind: 'questions',
+        state: 'open',
+        description: 'Write a report',
+        questions: [{ question: 'Who reads it?', options: ['Students'] }],
+      },
       { id: 'p', from: 'aimix', kind: 'proposal', state: 'applied', changes: [], error: '' },
       { id: 'i', from: 'aimix', kind: 'inputs', state: 'open' },
       { id: 'r', from: 'aimix', kind: 'run', runId: 4 },
@@ -145,6 +153,16 @@ describe('mission storage', () => {
         changes: [{ label: 'x' }],
         error: '',
       },
+      // questions without their suggested answers, or about no mission
+      {
+        id: 'f',
+        from: 'aimix',
+        kind: 'questions',
+        state: 'open',
+        description: 'x',
+        questions: [{ question: 'Who?' }],
+      },
+      { id: 'g', from: 'aimix', kind: 'questions', state: 'open', questions: [] },
       { id: 'e', from: 'aimix', kind: 'note', text: 'kept', tone: 'info' },
     ];
     window.sessionStorage.setItem(

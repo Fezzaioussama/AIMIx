@@ -457,6 +457,10 @@ describe('the mission workspace: running', () => {
     await say(user, 'run it');
 
     await within(log()).findByText(/Here’s the team I put together/);
-    expect(server.to('POST', '/api/pipelines/generate')[0].body).toEqual({ description: 'run it' });
+    expect(server.to('POST', '/api/pipelines/generate')[0].body).toEqual({
+      description: 'run it',
+      may_ask: true,
+      answers: [],
+    });
   });
 });

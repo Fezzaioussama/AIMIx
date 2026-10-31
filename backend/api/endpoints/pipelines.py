@@ -12,6 +12,7 @@ from api.models import Pipeline
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch, RunRequest, RunResponse
 from api.schemas.planning import (
+    ClarifyingQuestionOut,
     GenerateRequest,
     GenerateResponse,
     PipelineChangeOut,
@@ -21,6 +22,7 @@ from api.schemas.planning import (
 from api.services import pipeline_flow
 from api.services import pipeline_revision as revision_service
 from api.services import pipelines as pipeline_service
+from api.services.plan_questions import Answer, Clarification
 from api.services.runs import RunStart
 from api.throttling import user_rate_limit
 
@@ -56,9 +58,15 @@ def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> 
 def generate_pipeline(
     body: GenerateRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
 ) -> GenerateResponse:
-    request = pipeline_service.PlanRequest(body.description, body.planner_model)
+    answers = tuple(Answer(item.question, item.answer) for item in body.answers)
+    clarification = Clarification(body.may_ask, answers)
+    request = pipeline_service.PlanRequest(body.description, body.planner_model, clarification)
     plan = pipeline_service.generate(providers(), profile, request, catalog.available_sync())
-    return GenerateResponse(generated_pipeline=plan, available_models=profile.models)
+    return GenerateResponse(
+        generated_pipeline=plan.pipeline,
+        questions=[ClarifyingQuestionOut.model_validate(asdict(q)) for q in plan.questions],
+        available_models=profile.models,
+    )
 
 
 # Declared before the "/{pipeline_id}/" routes, like /generate, so no id route

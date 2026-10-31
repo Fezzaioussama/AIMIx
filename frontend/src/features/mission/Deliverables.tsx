@@ -42,14 +42,43 @@ function Planned({ team }: { team: Pipeline }) {
   );
 }
 
-/** The run's output steps: each as a card once it is ready, the rest named. */
+/** In the order the steps run: by stage, then by order within a stage. */
+function inRunOrder(steps: RunStep[]): RunStep[] {
+  return [...steps].sort((a, b) => a.stage - b.stage || a.step_order - b.step_order);
+}
+
+/** The finished work of every agent that does not make a deliverable, e.g. a final check. */
+function AgentsWork({ steps }: { steps: RunStep[] }) {
+  return (
+    <section aria-labelledby="mission-agents-work" className="mt-6">
+      <h4 id="mission-agents-work" className="mb-3 text-sm font-semibold text-slate-200">
+        What each other agent did
+      </h4>
+      <div className="space-y-4">
+        {steps.map((step) => (
+          <OutputCard
+            key={step.step_order}
+            heading={<StepHeading result={step} />}
+            output={step.output}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The run's output steps: each as a card once it is ready, the rest named. Below them,
+ * what every other agent produced, so no agent's work is only in the run's details.
+ */
 function Ready({ run }: { run: Run }) {
   // A step that was skipped is not a deliverable, and is not waited for.
   const outputs = run.steps.filter((step) => step.is_output && step.status !== 'skipped');
-  const ready = outputs
-    .filter((step) => step.status === 'succeeded')
-    .sort((a, b) => a.stage - b.stage || a.step_order - b.step_order);
+  const ready = inRunOrder(outputs.filter((step) => step.status === 'succeeded'));
   const waiting = outputs.filter((step) => step.status !== 'succeeded');
+  const work = inRunOrder(
+    run.steps.filter((step) => !step.is_output && step.status === 'succeeded'),
+  );
 
   const flow = { steps: run.definition.steps, inputs: run.definition.inputs };
   return (
@@ -76,6 +105,7 @@ function Ready({ run }: { run: Run }) {
           {isActive(run.status) ? 'Still working on' : 'Not finished'}: {names(waiting)}.
         </p>
       )}
+      {work.length > 0 && <AgentsWork steps={work} />}
     </RunFlowContext>
   );
 }

@@ -1,6 +1,12 @@
 import { API } from './endpoints';
 import { GENERATION_TIMEOUT_MS, request } from './client';
-import type { GeneratedPipelineResponse, Pipeline, RevisedPipelineResponse } from './types';
+import type {
+  GeneratedPipelineResponse,
+  MissionPlanResponse,
+  Pipeline,
+  PlanAnswer,
+  RevisedPipelineResponse,
+} from './types';
 
 export function listPipelines(): Promise<Pipeline[]> {
   return request<Pipeline[]>(API.pipelines).then((pipelines) => pipelines.map(normalizePipeline));
@@ -32,6 +38,29 @@ export function generatePipeline(
   }).then((response) => ({
     ...response,
     generated_pipeline: normalizePipeline(response.generated_pipeline),
+  }));
+}
+
+/**
+ * Plans a mission; nothing is saved. With `mayAsk`, the planner may answer with questions
+ * instead of a team when the description is unclear; once `answers` are given it plans
+ * and asks nothing more.
+ */
+export function planMission(
+  description: string,
+  answers: PlanAnswer[],
+  mayAsk: boolean,
+  signal?: AbortSignal,
+): Promise<MissionPlanResponse> {
+  return request<MissionPlanResponse>(API.generatePipeline, {
+    method: 'POST',
+    body: { description, may_ask: mayAsk, answers },
+    timeoutMs: GENERATION_TIMEOUT_MS,
+    signal,
+  }).then((response) => ({
+    ...response,
+    generated_pipeline:
+      response.generated_pipeline && normalizePipeline(response.generated_pipeline),
   }));
 }
 

@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { generatePipeline, listPipelines, revisePipeline, savePipeline } from './pipelines';
+import {
+  generatePipeline,
+  listPipelines,
+  planMission,
+  revisePipeline,
+  savePipeline,
+} from './pipelines';
 import type { Pipeline } from './types';
 
 const pipeline: Pipeline = { name: 'Drafts', inputs: [], steps: [] };
@@ -75,6 +81,52 @@ describe('pipeline agent fields', () => {
     expect(generated.generated_pipeline.inputs).toEqual([]);
     expect(generated.generated_pipeline.steps[0]).toMatchObject(defaults);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('planMission', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const reply = (body: unknown) =>
+    new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+
+  it('lets the planner ask first, and sends the answers to its questions', async () => {
+    const asked = { question: 'Who reads it?', options: ['Students'] };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        reply({ generated_pipeline: null, questions: [asked], available_models: ['v/m'] }),
+      );
+    const answers = [{ question: 'Who reads it?', answer: 'Students' }];
+
+    const plan = await planMission('A report', answers, false);
+
+    expect(plan).toEqual({
+      generated_pipeline: null,
+      questions: [asked],
+      available_models: ['v/m'],
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(API.generatePipeline);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      description: 'A report',
+      may_ask: false,
+      answers,
+    });
+  });
+
+  it('gives a planned team the defaults of the fields it omits', async () => {
+    const legacy = {
+      name: 'L',
+      steps: [{ order: 1, stage: 1, title: '', prompt: 'p', model: 'v/m' }],
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      reply({ generated_pipeline: legacy, questions: [], available_models: ['v/m'] }),
+    );
+
+    const plan = await planMission('A report', [], true);
+
+    expect(plan.generated_pipeline?.inputs).toEqual([]);
+    expect(plan.generated_pipeline?.steps[0]).toMatchObject({ review: null, condition: null });
   });
 });
 

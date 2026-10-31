@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
@@ -34,7 +34,8 @@ from api.services.multiagent.mapper import snapshot_pipeline
 from api.services.multiagent.reviews import review_from_data
 from api.services.pipeline_flow import ensure_valid_spec, flow_problems, flow_step
 from api.services.pipeline_inputs import bind_run_inputs, input_name_error
-from api.services.prompts import pipeline_generation_prompt
+from api.services.plan_prompts import pipeline_generation_prompt
+from api.services.plan_questions import Clarification, ClarifyingQuestion, questions_in
 from config.settings import get_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
@@ -77,10 +78,21 @@ def run(
 
 @dataclass(frozen=True)
 class PlanRequest:
-    """What to plan; no ``planner_model`` means the profile's default model."""
+    """What to plan; no ``planner_model`` means the profile's default model. The
+    ``clarification`` says whether the planner may ask questions first (Missions),
+    and holds the answers to the ones it asked."""
 
     description: str
     planner_model: str | None = None
+    clarification: Clarification = field(default_factory=Clarification)
+
+
+@dataclass(frozen=True)
+class Plan:
+    """What a generation gave: a pipeline, or else the questions to answer first."""
+
+    pipeline: dict[str, Any] | None
+    questions: tuple[ClarifyingQuestion, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -97,10 +109,16 @@ def generate(
     profile: LLMProfile,
     request: PlanRequest,
     tools: list[ToolDescriptor] | None = None,
-) -> dict[str, Any]:
-    """Ask the planner model for a pipeline definition and validate the result."""
-    prompt = pipeline_generation_prompt(request.description, profile.models, tools)
-    return ask_planner(provider, profile, PlannerCall(prompt, request.planner_model), tools)
+) -> Plan:
+    """Ask the planner model for a pipeline definition and validate the result. When
+    it may ask and replies with questions instead, return those (it asks once)."""
+    clarification = request.clarification
+    prompt = pipeline_generation_prompt(request.description, profile.models, tools, clarification)
+    raw = _planner_reply(provider, profile, PlannerCall(prompt, request.planner_model))
+    questions = questions_in(_decoded(raw)) if clarification.asking else ()
+    if questions:
+        return Plan(None, questions)
+    return Plan(parse_plan(raw, profile.models, _tool_names(tools)))
 
 
 def ask_planner(
@@ -111,13 +129,31 @@ def ask_planner(
 ) -> dict[str, Any]:
     """Send one planner prompt and return its plan, sanitised by ``parse_plan``.
     Generation and revision share it, so both fail and clean up alike (§3)."""
+    raw = _planner_reply(provider, profile, call)
+    return parse_plan(raw, profile.models, _tool_names(tools))
+
+
+def _planner_reply(provider: LLMProvider, profile: LLMProfile, call: PlannerCall) -> str:
+    """The planner model's raw answer to one prompt; a provider failure becomes ours."""
     try:
-        raw = provider.generate(call.prompt, call.model or profile.default_model)
+        return provider.generate(call.prompt, call.model or profile.default_model)
     except llm_exceptions.LLMError as cause:
         raise as_domain_error(cause) from cause
 
-    names = [tool.name for tool in tools] if tools is not None else None
-    return parse_plan(raw, profile.models, names)
+
+def _tool_names(tools: list[ToolDescriptor] | None) -> list[str] | None:
+    return [tool.name for tool in tools] if tools is not None else None
+
+
+def _decoded(raw: str) -> object:
+    """The JSON object a planner reply holds, decoded; failing as ``parse_plan`` does."""
+    match = JSON_OBJECT_PATTERN.search(raw or "")
+    if match is None:
+        raise UpstreamResponseInvalid("The planner did not return a pipeline definition.")
+    try:
+        return json.loads(match.group())
+    except json.JSONDecodeError as cause:
+        raise UpstreamResponseInvalid(f"The planner returned invalid JSON: {cause}") from cause
 
 
 def parse_plan(
@@ -130,15 +166,7 @@ def parse_plan(
     conditions and review loops that could not work. Kept separate from the
     call so it can be tested without a provider.
     """
-    match = JSON_OBJECT_PATTERN.search(raw or "")
-    if match is None:
-        raise UpstreamResponseInvalid("The planner did not return a pipeline definition.")
-
-    try:
-        plan = json.loads(match.group())
-    except json.JSONDecodeError as cause:
-        raise UpstreamResponseInvalid(f"The planner returned invalid JSON: {cause}") from cause
-
+    plan = _decoded(raw)
     if not isinstance(plan, dict) or "name" not in plan or "steps" not in plan:
         raise UpstreamResponseInvalid("The planner returned an incomplete pipeline definition.")
 

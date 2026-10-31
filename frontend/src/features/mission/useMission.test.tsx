@@ -64,6 +64,8 @@ describe('useMission: describing a mission', () => {
     });
     expect(server.to('POST', '/api/pipelines/generate')[0].body).toEqual({
       description: 'Compare my competitors',
+      may_ask: true,
+      answers: [],
     });
     expect(server.to('POST', '/api/pipelines/')).toHaveLength(0);
     expect(result.current.team.unsaved).toBe(true);

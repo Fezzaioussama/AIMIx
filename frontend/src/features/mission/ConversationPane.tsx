@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type Ref, type RefObject } from 'react';
 import { Bubble, Working } from './Bubble';
 import { MessageItem } from './MessageItem';
 import type { MessageContext } from './messageContext';
+import { openQuestions } from './missionMessages';
 import type { PaneId } from './missionPanes';
 import { MissionComposer } from './MissionComposer';
 import { MissionStart } from './MissionStart';
@@ -53,6 +54,8 @@ function contextOf(
     runActive: followed.active,
     showPane,
     focusComposer: () => field.current?.focus(),
+    openQuestionsId: openQuestions(mission.conversation.messages)?.id ?? null,
+    answerQuestions: mission.answer,
   };
 }
 

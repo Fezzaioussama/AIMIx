@@ -275,7 +275,8 @@ describe('the mission workspace: the results pane', () => {
     const deliverables = await screen.findByRole('region', { name: 'Deliverables' });
 
     expect(await within(deliverables).findByText('Comparison table')).toBeInTheDocument();
-    expect(within(deliverables).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+    // The deliverable, then the research agent's notes below it: each can be copied.
+    expect(within(deliverables).getAllByRole('button', { name: 'Copy' })).toHaveLength(2);
     expect(screen.getByText('Run details').closest('details')).not.toHaveAttribute('open');
     const header = screen.getByRole('heading', { name: 'Results', level: 2 })
       .parentElement as HTMLElement;

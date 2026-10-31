@@ -9,12 +9,7 @@ export interface AuthTokens {
 
 /** How a condition compares text (trimmed, ignoring case); the words are in features/pipelines/stepFlow. */
 export type ConditionOperator =
-  | 'contains'
-  | 'not_contains'
-  | 'equals'
-  | 'not_equals'
-  | 'is_empty'
-  | 'not_empty';
+  'contains' | 'not_contains' | 'equals' | 'not_equals' | 'is_empty' | 'not_empty';
 
 /**
  * "Run this step only if ...": the step is skipped when it does not hold. `source` is what
@@ -168,25 +163,14 @@ export interface StepResult {
  * owner's approval) are active; the rest are final.
  */
 export type RunStatus =
-  | 'queued'
-  | 'running'
-  | 'waiting'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled'
-  | 'interrupted';
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
 
 /**
  * Where one step of a run is. `skipped`: its condition did not hold, so it did not run; it is
  * final, like `succeeded`, and a resumed run keeps it.
  */
 export type RunStepStatus =
-  | 'pending'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled'
-  | 'skipped';
+  'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped';
 
 export interface RunError {
   code: string;
@@ -295,29 +279,15 @@ export interface UsageReport {
   pipelines: PipelineUsage[];
 }
 
-export interface GeneratedPipelineResponse {
-  generated_pipeline: Pipeline;
-  available_models: string[];
-}
-
-/** One difference between a draft and its proposed revision (POST /api/pipelines/revise). */
-export interface PipelineChange {
-  target: 'pipeline' | 'input' | 'step';
-  kind: 'added' | 'removed' | 'changed';
-  /** The pipeline's new name, the input's name, or the step's title ("Step N" without one). */
-  label: string;
-  /** A step's order: in the revision when added or changed, in the draft when removed. */
-  order: number | null;
-  /** For a change, the API field names that differ, e.g. "prompt" or "allowed_tools". */
-  fields: string[];
-}
-
-export interface RevisedPipelineResponse {
-  /** The whole revised pipeline; nothing is saved until the user saves it. */
-  revised_pipeline: Pipeline;
-  changes: PipelineChange[];
-  available_models: string[];
-}
+// Planning payloads (POST /api/pipelines/generate and /revise) live in planningTypes.ts.
+export type {
+  ClarifyingQuestion,
+  GeneratedPipelineResponse,
+  MissionPlanResponse,
+  PipelineChange,
+  PlanAnswer,
+  RevisedPipelineResponse,
+} from './planningTypes';
 
 export interface ModelsResponse {
   models: string[];

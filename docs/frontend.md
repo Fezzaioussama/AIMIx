@@ -76,6 +76,7 @@ resolves the session before the first render without a redirect flash.
 |---|---|
 | `endpoints.ts` | `API` object: **every** `/api/...` path. No other file may contain one. |
 | `types.ts` | Payload interfaces: auth, pipelines, agent tools, run results with tool call metadata, runs (`Run` — with `pending_approvals` —, `RunStep` — a `StepResult` plus status, error, times and its tokens and cost — `RunSummary` with its `RunTrigger` and `schedule_id`, `RunPage`, `RunStatus` including `waiting`, `RunStepStatus`, which includes `skipped`, and `RunStep`'s `rounds` and `verdict`, `RunApproval`, `ApprovalStatus`), a step's `condition` and `review` (`StepCondition`, `ConditionOperator`, `StepReview`; every `PipelineStep` has both, `null` when unset), their usage and limits (`Usage`, `RunBudget`) and the usage report (`UsageReport`, `PipelineUsage`) and schedules (`Schedule`, `ScheduleTiming`, `ScheduleFrequency`, `ScheduleInput`, `SchedulePatch`, `SchedulePreview`). |
+| `planningTypes.ts` | Planning payloads, re-exported from `types.ts`: `GeneratedPipelineResponse`, `MissionPlanResponse` (a team, or the planner's `ClarifyingQuestion`s), `PlanAnswer`, `PipelineChange`, `RevisedPipelineResponse`. |
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request`, `requestBlob` and `streamText` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
@@ -306,17 +307,17 @@ server would need a table and endpoints; that is not part of this version.
 |---|---|
 | `MissionPage.tsx`, `useWorkspaceIdentity.ts`, `missionAddress.ts` | The route: reads the id, redirects an address that is not one, and rebuilds the workspace when another mission is opened (not for a new mission's own first save) |
 | `MissionWorkspace.tsx`, `usePanes.ts`, `missionPanes.ts`, `PaneHeader.tsx`, `MissionTabs.tsx` | The three panes and the phone tabs; which pane is in front and where focus goes; the pane title bar (screen readers only on a phone unless it has controls) |
-| `useMission.ts` | The workspace's state, composed from the hooks below; routes what the person sends (describe, run it, or a change); opens the mission in the builder |
+| `useMission.ts` | The workspace's state, composed from the hooks below; routes what the person sends (describe, answer the planner's open questions, run it, or a change); opens the mission in the builder |
 | `useMissionTeam.ts` | The team on screen: loads a saved mission by id, edits (swap, patch or remove an agent), one-at-a-time saving, autosave. Saving keeps the team's identity, so a proposal made for it stays valid |
-| `useTeamGeneration.ts` | Description → team over `POST /api/pipelines/generate`: cancellable, plain words for failures, nothing saved |
+| `useTeamGeneration.ts` | Description → team over `POST /api/pipelines/generate` (`planMission`): the planner may ask questions first (`may_ask`); the answers, or a skip, plan the team without asking again. Cancellable, plain words for failures, nothing saved |
 | `useMissionProposals.ts` | Change requests over `useRevisePipeline`: each gets an answer in the conversation that shows the live proposal and keeps its outcome (applied, discarded, failed, stopped, expired) |
 | `useMissionRun.ts` | "Run it": the inputs form in the conversation, saving then starting a run, following it (`useFollowedRun`) |
-| `useMissionConversation.ts`, `missionMessages.ts`, `missionStorage.ts`, `missionShape.ts` | The conversation as plain JSON data (notes, team descriptions, proposals, forms, runs), its `sessionStorage` copy, and `missionShape`'s checks of what is read back (a message or draft that does not fit is left out, never allowed to break the screen) |
+| `useMissionConversation.ts`, `missionMessages.ts`, `missionStorage.ts`, `missionShape.ts` | The conversation as plain JSON data (notes, team descriptions, the planner's questions, proposals, forms, runs), its `sessionStorage` copy, and `missionShape`'s checks of what is read back (a message or draft that does not fit is left out, never allowed to break the screen) |
 | `missionIntent.ts`, `teamBrief.ts` | Pure: which phrases mean "run it"; a team as words (agents, tasks, tools, what to provide) |
 | `ConversationPane.tsx`, `MissionComposer.tsx`, `MissionStart.tsx`, `useRecentMissions.ts` | The conversation pane: the log, the message box (Enter sends, Shift + Enter adds a line), the empty state with examples, templates and recent missions |
-| `MessageItem.tsx`, `TeamMessageView.tsx`, `ProposalMessageView.tsx`, `InputsMessageView.tsx`, `RunMessageView.tsx`, `Bubble.tsx`, `messageContext.ts` | One view per kind of answer, in a registry (a new kind is a new entry); the context carries the live proposal, form and run each one needs |
+| `MessageItem.tsx`, `TeamMessageView.tsx`, `QuestionsMessageView.tsx`, `ProposalMessageView.tsx`, `InputsMessageView.tsx`, `RunMessageView.tsx`, `Bubble.tsx`, `messageContext.ts` | One view per kind of answer, in a registry (a new kind is a new entry); the context carries the live proposal, form, run and open questions each one needs. The questions view offers each suggested answer as a chip (a radio underneath) beside a field for one's own; a message typed meanwhile answers all of them |
 | `TeamPane.tsx`, `StepDrawer.tsx`, `useStepDrawer.ts` | The team pane and the agent drawer (its editor is the builder's `StepCard`, so it has the two flow sections too, over the team's own steps); the hook follows the team (a removed agent closes it) and gives focus back |
-| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables (a skipped step is never one), the folded live run, the newest files (reloaded when a run ends) |
+| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables (a skipped step is never one) followed by what each other agent produced (e.g. the orchestrator's final check), the folded live run, the newest files (reloaded when a run ends) |
 
 `testData.ts` (fixtures and `routeFetch`, a fetch stand-in that answers
 `"METHOD /api/path"`) and `testRender.tsx` serve the tests.
@@ -531,7 +532,8 @@ goes to `HOME_PATH`, the mission workspace.
 ## Conventions (from AGENTS.md §8)
 
 - No `fetch` in components; no `localStorage` outside `tokenStorage.ts`.
-- Payload types only in `core/api/types.ts`.
+- Payload types only in `core/api/types.ts` (the planning payloads live in
+  `planningTypes.ts` and are re-exported from it, so imports stay the same).
 - Every effect that starts async work cancels it (`active` flag or
   `AbortController`).
 - Tailwind utilities first; Prettier: 100 cols, single quotes.

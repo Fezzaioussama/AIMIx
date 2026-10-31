@@ -19,14 +19,9 @@ from api.services.flow_prompts import (
     REVIEWER_RULE,
 )
 
-PIPELINE_GENERATION_INTRO = """You are an AI pipeline architect. Given a user's \
-description of a workflow, generate a structured multi-step pipeline.
-
-"""
-
 #: What every planner prompt explains — tools, inputs, step fields, stages and the
 #: reply format — shared by generation and revision (§3). ``{tools}``, ``{models}``
-#: and ``{heading}`` are filled per request by ``_planner_fields``.
+#: and ``{heading}`` are filled per request by ``planner_fields``.
 PIPELINE_PLANNER_GUIDE = (
     """\
 Each step runs as an agent. These tools are currently available to its user:
@@ -106,10 +101,6 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 """
 )
 
-PIPELINE_GENERATION_TEMPLATE = (
-    PIPELINE_GENERATION_INTRO + PIPELINE_PLANNER_GUIDE + "\nUser's workflow description:\n"
-)
-
 PIPELINE_REVISION_INTRO = """You are an AI pipeline architect. Revise an existing \
 multi-step pipeline as the user's change request asks, and return the whole revised \
 pipeline.
@@ -177,7 +168,7 @@ STEP_AGENT_TOOL_GUIDANCE = (
 )
 
 
-def _planner_fields(
+def planner_fields(
     available_models: list[str], tools: list[ToolDescriptor] | None
 ) -> dict[str, str]:
     """What ``PIPELINE_PLANNER_GUIDE`` is filled with: the tools on offer, the
@@ -188,14 +179,6 @@ def _planner_fields(
         "heading": PARALLEL_OUTPUT_HEADING.format(order="N"),
         "tools": "\n".join(tool_lines) if tool_lines else "No tools are configured.",
     }
-
-
-def pipeline_generation_prompt(
-    description: str, available_models: list[str], tools: list[ToolDescriptor] | None = None
-) -> str:
-    """Render the planner prompt for a workflow description."""
-    header = PIPELINE_GENERATION_TEMPLATE.format(**_planner_fields(available_models, tools))
-    return f"{header}{description}"
 
 
 def pipeline_revision_prompt(
@@ -210,15 +193,15 @@ def pipeline_revision_prompt(
     Both come from the user, so each sits in its own tagged block that its
     content cannot close: they stay data, never instructions (§6).
     """
-    header = PIPELINE_REVISION_TEMPLATE.format(**_planner_fields(available_models, tools))
+    header = PIPELINE_REVISION_TEMPLATE.format(**planner_fields(available_models, tools))
     pipeline = json.dumps(dict(current), indent=2, ensure_ascii=False)
     return (
-        f"{header}Current pipeline (JSON):\n{_fenced(CURRENT_PIPELINE_TAG, pipeline)}\n\n"
-        f"Change request:\n{_fenced(CHANGE_REQUEST_TAG, instruction.strip())}\n"
+        f"{header}Current pipeline (JSON):\n{fenced(CURRENT_PIPELINE_TAG, pipeline)}\n\n"
+        f"Change request:\n{fenced(CHANGE_REQUEST_TAG, instruction.strip())}\n"
     )
 
 
-def _fenced(tag: str, text: str) -> str:
+def fenced(tag: str, text: str) -> str:
     """``text`` inside a ``<tag>`` block. That tag is removed from the text first,
     so untrusted content cannot end the block early and pass for instructions."""
     inner = re.sub(rf"<\s*/?\s*{tag}\s*>", "", text, flags=re.IGNORECASE)

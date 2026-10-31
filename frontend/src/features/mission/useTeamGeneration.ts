@@ -1,13 +1,14 @@
 import { useCallback, useState } from 'react';
 
 import { ApiError } from '../../core/api/client';
-import { generatePipeline } from '../../core/api/pipelines';
-import type { Pipeline } from '../../core/api/types';
+import { planMission } from '../../core/api/pipelines';
+import type { Pipeline, PlanAnswer } from '../../core/api/types';
 import { useCancellableRequest } from '../../core/hooks/useCancellableRequest';
-import { note, teamReply, type AimixMessage } from './missionMessages';
+import { note, questionsReply, teamReply, type AimixMessage } from './missionMessages';
 import { describeTeam } from './teamBrief';
 
-/** What a description turned into: the team, if one was made, and AIMIx's answer. */
+/** What a description turned into: the team, if one was made, and AIMIx's answer (the
+ * team in words, or the planner's questions when it needs to know more first). */
 export interface Generation {
   team: Pipeline | null;
   reply: AimixMessage;
@@ -34,9 +35,27 @@ export function missionNamed(pipeline: Pipeline, description: string): Pipeline 
   return { ...pipeline, name: description.trim().split(/\s+/).slice(0, NAME_WORDS).join(' ') };
 }
 
-async function plan(description: string, signal: AbortSignal): Promise<Generation> {
+/**
+ * How the planner is asked: `answers` to the questions it asked before, and whether it
+ * may ask (it may not once the person skipped its questions).
+ */
+export interface Briefing {
+  answers: PlanAnswer[];
+  mayAsk: boolean;
+}
+
+const FIRST_ASK: Briefing = { answers: [], mayAsk: true };
+
+async function plan(
+  description: string,
+  briefing: Briefing,
+  signal: AbortSignal,
+): Promise<Generation> {
   try {
-    const response = await generatePipeline(description, undefined, signal);
+    const response = await planMission(description, briefing.answers, briefing.mayAsk, signal);
+    if (response.generated_pipeline === null) {
+      return { team: null, reply: questionsReply(description, response.questions) };
+    }
     const team = missionNamed(response.generated_pipeline, description);
     return { team, reply: teamReply(describeTeam(team), 'generated') };
   } catch (cause) {
@@ -48,8 +67,8 @@ async function plan(description: string, signal: AbortSignal): Promise<Generatio
 }
 
 /**
- * Turns a mission description into a team (POST /api/pipelines/generate); nothing is
- * saved. Stop cancels the request and answers "Stopped."; leaving the screen cancels it
+ * Turns a mission description into a team (POST /api/pipelines/generate), or into the
+ * planner's questions when the description leaves too much open; nothing is saved. Stop cancels the request and answers "Stopped."; leaving the screen cancels it
  * and resolves to null, so nothing is said to a screen that is gone.
  */
 export function useTeamGeneration() {
@@ -57,10 +76,10 @@ export function useTeamGeneration() {
   const { start, cancel, finish } = useCancellableRequest();
 
   const generate = useCallback(
-    async (description: string): Promise<Generation | null> => {
+    async (description: string, briefing = FIRST_ASK): Promise<Generation | null> => {
       const controller = start();
       setGenerating(true);
-      const outcome = await plan(description, controller.signal);
+      const outcome = await plan(description, briefing, controller.signal);
       if (!finish(controller)) return null;
       setGenerating(false);
       return outcome;

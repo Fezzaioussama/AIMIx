@@ -7,6 +7,7 @@ import { InputsMessageView } from './InputsMessageView';
 import type { MessageContext, ViewProps } from './messageContext';
 import type { AimixMessage, MissionMessage } from './missionMessages';
 import { ProposalMessageView } from './ProposalMessageView';
+import { QuestionsMessageView } from './QuestionsMessageView';
 import { RunMessageView } from './RunMessageView';
 import { TeamMessageView } from './TeamMessageView';
 
@@ -18,6 +19,7 @@ function NoteView({ message }: ViewProps<'note'>) {
 const VIEWS: { [K in AimixMessage['kind']]: (props: ViewProps<K>) => ReactNode } = {
   note: NoteView,
   team: TeamMessageView,
+  questions: QuestionsMessageView,
   proposal: ProposalMessageView,
   inputs: InputsMessageView,
   run: RunMessageView,

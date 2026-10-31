@@ -17,9 +17,20 @@ from api.schemas.common import (
 )
 from api.schemas.pipelines import Inputs, PipelineStepIn, valid_steps
 from api.services.pipeline_changes import ChangeKind, ChangeTarget
+from api.services.plan_questions import MAX_QUESTIONS
 
 #: The longest mission a pipeline is planned from.
 PLAN_DESCRIPTION_MAX_LENGTH = 20_000
+#: An answered question: one of the planner's, or all of them when typed as one answer.
+ANSWERED_QUESTION_MAX_LENGTH = 2000
+
+
+class AnswerIn(BaseModel):
+    """What the person answered to a question the planner asked."""
+
+    question: Annotated[NonBlank, Field(max_length=ANSWERED_QUESTION_MAX_LENGTH)]
+    #: Typed in the message box, an answer can say as much as the mission it is about.
+    answer: Annotated[NonBlank, Field(max_length=PLAN_DESCRIPTION_MAX_LENGTH)]
 
 
 class GenerateRequest(BaseModel):
@@ -28,10 +39,25 @@ class GenerateRequest(BaseModel):
     description: Annotated[NonBlank, Field(max_length=PLAN_DESCRIPTION_MAX_LENGTH)]
     #: Omitted means the caller's default model.
     planner_model: ModelId | None = None
+    #: True lets the planner answer with questions instead of a pipeline (Missions).
+    may_ask: bool = False
+    #: The answers to its questions; with them, the planner plans and asks nothing more.
+    answers: Annotated[list[AnswerIn], Field(max_length=MAX_QUESTIONS)] = Field(
+        default_factory=list
+    )
+
+
+class ClarifyingQuestionOut(BaseModel):
+    """A question the planner asks before planning, with answers to pick from."""
+
+    question: str
+    options: list[str]
 
 
 class GenerateResponse(BaseModel):
-    generated_pipeline: dict[str, Any]
+    #: None when the planner asked ``questions`` instead (only ever with ``may_ask``).
+    generated_pipeline: dict[str, Any] | None
+    questions: list[ClarifyingQuestionOut] = Field(default_factory=list)
     available_models: list[str]
 
 

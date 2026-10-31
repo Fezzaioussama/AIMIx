@@ -671,13 +671,17 @@ crash, startup recovery logs only how many runs it interrupted
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 
-1. `GenerateRequest` validates `description` and an optional
-   `planner_model` (defaults to the configured default model).
+1. `GenerateRequest` validates `description`, an optional
+   `planner_model` (defaults to the configured default model), and, from
+   Missions, `may_ask` and the `answers` to questions asked before.
 2. `services/tool_catalog` discovers the native pipeline tools, the
    configured MCP tools and the user's integration tools.
-   `services/pipelines.generate` builds a prompt with
-   their names and descriptions plus the allowed model ids, then calls the
-   direct provider adapter.
+   `services/pipelines.generate` builds a prompt (`services/plan_prompts`) with
+   their names and descriptions plus the allowed model ids, the final check every
+   new team ends with, and either the invitation to ask (`may_ask`, no answers
+   yet) or the fenced answers, then calls the direct provider adapter. When the
+   planner may ask and replies `{"questions": [...]}`, `services/plan_questions`
+   reads them and the endpoint returns them with `generated_pipeline: null`.
 3. `parse_plan` extracts the first `{...}` block, parses JSON, requires `name`
    and a non-empty `steps` list, fills a missing `order`, replaces unknown model
    ids with the default, removes unavailable names from explicit tool

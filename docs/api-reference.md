@@ -1100,7 +1100,27 @@ nothing. Failures:
 ```
 
 `planner_model` is optional (defaults to your default model); `description`
-holds at most 20,000 characters. The planner answers inside the request, so its
+holds at most 20,000 characters. Two optional fields let the planner ask before
+it plans (Missions sends them; the Auto Pipeline page does not):
+
+- `may_ask` (default `false`): when the description leaves something essential
+  open, the planner may answer with up to 4 `questions` instead of a pipeline,
+  each with up to 4 suggested `options` (questions cut to 300 characters, options
+  to 120; blank or repeated ones dropped). `generated_pipeline` is then `null`.
+- `answers` (default `[]`, at most 4): `{ "question", "answer" }` pairs, both
+  non-blank, the question at most 2,000 characters (one typed answer may answer
+  all the questions at once) and the answer at most 20,000. With answers the
+  planner plans and never asks again; they reach its prompt fenced as data. To
+  skip the questions, send `may_ask: false` and no answers.
+
+```json
+{ "generated_pipeline": null,
+  "questions": [
+    { "question": "Who will read the reply?", "options": ["The reviewer", "Every customer"] }
+  ],
+  "available_models": ["deepseek/deepseek-v4-flash", "..."] }
+```
+ The planner answers inside the request, so its
 call times out after `LLM_PLANNER_TIMEOUT_SECONDS` (300; `504 provider_timeout`)
 and may write at most `LLM_PLANNER_MAX_OUTPUT_TOKENS` (32,000) tokens. A provider
 that refuses the call is a `502 provider_unavailable` whose `detail` says only
@@ -1120,11 +1140,16 @@ which can describe the account or echo part of its key, goes to no caller. `200`
       { "order": 3, "stage": 2, "title": "Reply", "role": "Writer", "allowed_tools": [], "is_output": true, "expected_output": "A polite reply under 120 words", "prompt": "Reply to {review} using: {input}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null }
     ]
   },
+  "questions": [],
   "available_models": ["deepseek/deepseek-v4-flash", "..."]
 }
 ```
 
-Nothing is saved. Before planning, AIMIx discovers the same pipeline tool
+Nothing is saved. Every new pipeline is told to end with a final check: one last
+stage holding a reviewer with the role "Orchestrator" that checks the work against
+the request and sends it back, at most twice, to the stage that makes the
+deliverables (unless the description asks for none, or the plan already has a
+reviewer). A revision is never told to add one. Before planning, AIMIx discovers the same pipeline tool
 catalogue as `GET /agent-tools` and gives its names and descriptions to the
 planner. The planner declares the run's named `inputs` and chooses roles,
 expected outputs and tool allowlists for its steps. Unknown tool names are
