@@ -14,15 +14,69 @@ propose the alternative. Deviations are allowed only when stated explicitly in t
 
 ---
 
-## 0. Workflow for every change
+## 0. How to work on every change
 
-1. **Read before writing.** Locate the existing code that already does something similar
-   (`grep` the layer, read the neighbours). Extending existing code beats adding new code.
-2. **Place the change in the right layer** (see §2). A change in the wrong layer is wrong
-   even when it works.
-3. **Smallest diff that fully solves the task.** No unrelated reformatting, no renames that
-   are not required, no speculative abstraction for needs that do not exist yet.
-4. **Check the budgets** (§4) and the **Definition of Done** (§9) before finishing.
+These four habits adapt the guidelines of
+[andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills) (MIT), drawn
+from Andrej Karpathy's notes on how coding agents go wrong, to this repository's rules. They
+bias toward caution over speed: for a typo or an obvious one-liner, skip the ceremony, never
+the checks (§9).
+
+### 0.1 Think before coding — don't assume, don't hide confusion
+
+- **Read before writing.** Locate the existing code that already does something similar
+  (`grep` the layer, read the neighbours). Extending existing code beats adding new code.
+- **State your assumptions.** If the request has more than one reasonable reading, name the
+  readings and ask; do not pick one silently.
+- **Stop when something is unclear.** Say what is unclear and ask before writing code, not
+  after a wrong guess.
+- **Push back when warranted.** If a simpler approach exists, or the request conflicts with
+  these rules, say so (see the preamble for how to state a rule conflict).
+
+### 0.2 Simplicity first — the minimum code that solves the problem
+
+- **Place the change in the right layer** (§2). A change in the wrong layer is wrong even
+  when it works.
+- **Nothing speculative.** No feature, option or "flexibility" that was not asked for, and no
+  error handling for states that cannot happen — validate once, at the boundary (§6). This
+  never overrides §6: URLs, keys, model names, limits and timeouts still come from settings.
+- **No abstraction for a single caller.** This is the other half of DRY's rule of two (§3):
+  extract when the second real use arrives, not before. A pattern earns its place only by
+  removing a present problem (§7).
+- **Short beats clever.** If 200 lines could be 50, rewrite it. The test: would a senior
+  engineer call this overcomplicated?
+
+### 0.3 Surgical changes — touch only what the task needs
+
+- **Smallest diff that fully solves the task.** Every changed line traces to the request.
+- **Leave the neighbours alone.** No "improving" adjacent code, comments or formatting; no
+  renames or refactors of what is not broken. Match the surrounding style, even where you
+  would write it differently.
+- **Clean up only your own mess.** Remove the imports, variables, functions and styles your
+  change made unused. Pre-existing dead code or rule violations you spot: mention them in
+  the response, do not fix them in the same change.
+- **What the rules require is part of the task, not a drive-by:** splitting a file your
+  change pushes past 700 lines (§4), extracting logic you would otherwise copy (§3), and the
+  migration and frontend update a contract change needs (§6).
+
+### 0.4 Goal-driven execution — define success, loop until verified
+
+Turn the task into a check you can run, then iterate until it passes:
+
+| Task | Success criterion |
+|---|---|
+| Fix a bug | a test reproduces it and fails; the fix makes it pass |
+| Add validation | tests for the invalid inputs fail, then pass |
+| Refactor | the suite is green before and after, behaviour unchanged |
+
+For multi-step work, state a short plan with a check per step before starting:
+
+```
+1. [step] → verify: [check, e.g. `uv run pytest backend/tests/<module>.py`]
+2. [step] → verify: [check]
+```
+
+Finish with the budgets (§4) and the **Definition of Done** (§9), `make check` included.
 
 ---
 
@@ -38,6 +92,7 @@ propose the alternative. Deviations are allowed only when stated explicitly in t
 | 6 | System-design boundaries respected | §6 |
 | 7 | Design patterns used deliberately, never decoratively | §7 |
 | 8 | No secrets, URLs, or tuning values hard-coded | env / settings only |
+| 9 | Surgical diffs — every changed line traces to the task | §0.3 |
 
 ---
 
@@ -291,6 +346,8 @@ suite. Run
 
 ## 9. Definition of Done — verify before reporting
 
+- [ ] Diff is surgical: no drive-by edits; orphans your change created are removed;
+      unrelated issues are reported, not fixed (§0.3).
 - [ ] No duplicated logic introduced; reused what already existed (§3).
 - [ ] Every touched file ≤ 700 lines; over-budget files did not grow (§4).
 - [ ] Functions ≤ 50 lines, ≤ 4 params, ≤ 3 nesting levels.
@@ -313,7 +370,8 @@ suite. Run
   cd frontend && npm test
   cd frontend && npm run build
   ```
-- [ ] Response states which rules were applied and any deviation with its reason.
+- [ ] Response states the assumptions made (§0.1), which rules were applied, and any
+      deviation with its reason.
 
 ---
 
@@ -333,3 +391,5 @@ natively and need no extra wiring (Codex, Cursor, Zed, Aider, Jules, Gemini CLI)
 **Rule for entry points:** a pointer file contains only a reference to `AGENTS.md` plus, at
 most, agent-specific mechanics (which command to run, which tool to prefer). Rules content
 duplicated into a pointer file is a DRY violation (§3) and will drift — delete it.
+The same goes for the Karpathy guidelines merged into §0: do not add their `CLAUDE.md`,
+skill or Cursor rule to this repository as a second copy.
