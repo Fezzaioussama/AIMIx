@@ -370,6 +370,11 @@ suite. Run
   cd frontend && npm test
   cd frontend && npm run build
   ```
+- [ ] A finished feature or bug fix is committed once its checks pass. Commit only the
+      files of your change (`git commit -- <paths>`): the tree may hold someone else's
+      work, staged or not, and a bare `git commit` would take what they staged. The
+      commit message never contains the word "Claude" (or another assistant's name), so no
+      `Co-Authored-By` trailer for an AI agent.
 - [ ] Response states the assumptions made (§0.1), which rules were applied, and any
       deviation with its reason.
 
