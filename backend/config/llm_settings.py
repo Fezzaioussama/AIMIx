@@ -36,8 +36,10 @@ class LlmSettings(BaseModel):
         "", validation_alias=env_aliases("OPEN_ROUTER_KEY", "OPENROUTER_API_KEY")
     )
     togetherai_api_key: Secret = Field("", validation_alias="TOGAI_API_KEY")
+    meta_api_key: Secret = Field("", validation_alias="META_API_KEY")
     openrouter_base_url: str = Field("", validation_alias="OPENROUTER_BASE_URL")
     togetherai_base_url: str = Field("", validation_alias="TOGETHERAI_BASE_URL")
+    meta_base_url: str = Field("", validation_alias="META_BASE_URL")
     openrouter_default_model: str = Field(
         "deepseek/deepseek-v4-flash", validation_alias="OPENROUTER_DEFAULT_MODEL"
     )
@@ -45,19 +47,29 @@ class LlmSettings(BaseModel):
         "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
         validation_alias="TOGETHERAI_DEFAULT_MODEL",
     )
+    meta_default_model: str = Field("muse-spark-1.3", validation_alias="META_DEFAULT_MODEL")
 
     # Provider-keyed views, so provider lookups stay one dict access (§5 O).
     @property
     def llm_api_keys(self) -> dict[str, str]:
-        return {"openrouter": self.openrouter_api_key, "togetherai": self.togetherai_api_key}
+        return {
+            "openrouter": self.openrouter_api_key,
+            "togetherai": self.togetherai_api_key,
+            "meta": self.meta_api_key,
+        }
 
     @property
     def llm_base_urls(self) -> dict[str, str]:
-        return {"openrouter": self.openrouter_base_url, "togetherai": self.togetherai_base_url}
+        return {
+            "openrouter": self.openrouter_base_url,
+            "togetherai": self.togetherai_base_url,
+            "meta": self.meta_base_url,
+        }
 
     @property
     def llm_default_models(self) -> dict[str, str]:
         return {
             "openrouter": self.openrouter_default_model,
             "togetherai": self.togetherai_default_model,
+            "meta": self.meta_default_model,
         }

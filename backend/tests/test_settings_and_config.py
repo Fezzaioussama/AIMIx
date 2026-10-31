@@ -39,7 +39,7 @@ def test_no_provider_base_url_is_hard_coded_outside_the_provider_module() -> Non
 def test_provider_settings_come_from_configuration() -> None:
     assert isinstance(TEST_SETTINGS.llm_timeout_seconds, float)
     assert TEST_SETTINGS.llm_timeout_seconds > 0
-    assert set(TEST_SETTINGS.llm_api_keys) == {"openrouter", "togetherai"}
+    assert set(TEST_SETTINGS.llm_api_keys) == {"openrouter", "togetherai", "meta"}
 
 
 def test_the_error_handler_is_wired_in(app: FastAPI) -> None:

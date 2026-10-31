@@ -90,10 +90,13 @@ TEST_SETTINGS = Settings(
     document_ocr_enabled=False,
     openrouter_api_key="",
     togetherai_api_key="",
+    meta_api_key="",
     openrouter_base_url="",
     togetherai_base_url="",
+    meta_base_url="",
     openrouter_default_model="deepseek/deepseek-v4-flash",
     togetherai_default_model="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    meta_default_model="muse-spark-1.3",
 )
 pin_settings(TEST_SETTINGS)
 #: The workspace of toolbox configs built at import time. It cannot be created,

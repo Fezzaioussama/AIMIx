@@ -12,7 +12,7 @@ import pytest
 
 from llm.base import OpenAICompatibleProvider, ProviderConfig
 from llm.exceptions import ProviderNotConfigured, ProviderRequestError, ProviderTimeout
-from llm.providers import openrouter, together
+from llm.providers import meta, openrouter, together
 from llm.registry import FACTORIES, canonical_name, create_provider, supported_providers
 
 CONFIG = ProviderConfig(api_key="key", default_model="vendor/model", timeout_seconds=7.5)
@@ -104,6 +104,7 @@ def test_missing_model_is_rejected() -> None:
 def test_registry_resolves_aliases() -> None:
     assert canonical_name("OpenRouter") == "openrouter"
     assert canonical_name("together_ai") == "togetherai"
+    assert canonical_name("Meta_AI") == "meta"
 
 
 def test_registry_rejects_unknown_providers() -> None:
@@ -115,7 +116,7 @@ def test_every_registered_provider_is_reachable_by_name() -> None:
     assert supported_providers() == sorted(FACTORIES)
 
 
-@pytest.mark.parametrize("module", [openrouter, together])
+@pytest.mark.parametrize("module", [openrouter, together, meta])
 def test_providers_refuse_to_build_without_a_key(module: Any) -> None:
     with pytest.raises(ProviderNotConfigured):
         module.build(ProviderConfig(api_key="", default_model="m", timeout_seconds=1.0))
@@ -151,3 +152,17 @@ def test_together_passes_transport_settings_to_its_client(
 
     assert captured["timeout"] == 7.5
     assert captured["base_url"] == together.DEFAULT_BASE_URL
+
+
+def test_meta_passes_transport_settings_to_its_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_openai(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return _Client(_Response("x"))
+
+    monkeypatch.setattr("llm.providers.meta.OpenAI", fake_openai)
+    create_provider("meta", CONFIG)
+
+    assert (captured["timeout"], captured["max_retries"]) == (7.5, 0)
+    assert captured["base_url"] == "https://api.meta.ai/v1"

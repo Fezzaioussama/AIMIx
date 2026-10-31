@@ -13,10 +13,11 @@ llm/
   usage.py         # TokenUsage, cost sources, UsageCallback, metered: what each model call used and cost
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
   registry.py      # FACTORIES, ALIASES, canonical_name, create_provider
-  catalog.py       # ModelInfo, ModelCatalog, OpenRouterModels, TogetherAIModels, CATALOGS
+  catalog.py       # ModelInfo, ModelCatalog, OpenRouterModels, TogetherAIModels, MetaModels, CATALOGS
   providers/
     openrouter.py  # builds an openai.OpenAI client with the OpenRouter base URL
     together.py    # builds an openai.OpenAI client with the Together base URL
+    meta.py        # builds an openai.OpenAI client with the Meta Model API base URL
 ```
 
 ## The contract
@@ -47,9 +48,9 @@ traceback-printed config never shows the key.
 
 ## `OpenAICompatibleProvider`
 
-Both OpenRouter and TogetherAI expose an OpenAI-shaped
+OpenRouter, TogetherAI and the Meta Model API all expose an OpenAI-shaped
 `client.chat.completions.create(model=..., messages=[...], stream=...)`, so one
-class implements the transport for both:
+class implements the transport for all three:
 
 - `_resolve_model` — explicit model, else `config.default_model`, else error.
 - `_create` — the SDK call; `generate` and `stream` run it under the retry
@@ -148,8 +149,12 @@ default model the user saved on the Settings page, else `LLM_PROVIDER` and its
 `get_provider(profile)` builds an SDK client for pipeline planning. Chat and pipeline
 steps use `get_agent_model()` and the `agent_models.py` registry to construct a
 LangChain model for the configured provider; steps pass their selected model id.
-LangGraph then orchestrates MCP tool calls. Both model adapters set explicit
-request timeouts, switch their SDK's retries off and follow the retry policy.
+LangGraph then orchestrates MCP tool calls. Every model adapter sets explicit
+request timeouts, switches its SDK's retries off and follows the retry policy.
+The Meta Model API has no LangChain integration of its own, so its adapter is
+`ChatOpenAI` on Meta's base URL, with `stream_usage=True`: `ChatOpenAI` asks for
+a stream's usage only from OpenAI itself, and without it a chat message's calls
+would go uncounted.
 
 ## The model catalogue
 
@@ -196,7 +201,7 @@ each answer in `AIMessage.usage_metadata`; the pieces are:
 | Source | When |
 |---|---|
 | What the provider reports it charged | OpenRouter returns `usage.cost` with every answer, "the total amount charged to your account"; `langchain-openrouter` hands it on as `response_metadata["cost"]`. OpenRouter's credits are denominated in US dollars and its API prices are in dollars, so the value is read as USD. Nothing has to be requested: its docs say full usage details are always included, and the older switches for them (`usage: {include: true}`, `stream_options.include_usage`) are deprecated and have no effect. |
-| The model's published price | `ModelInfo.price(input, output)`, from `input_price_per_million` and `output_price_per_million`. TogetherAI reports no cost, so its calls are priced this way. |
+| The model's published price | `ModelInfo.price(input, output)`, from `input_price_per_million` and `output_price_per_million`. TogetherAI and the Meta Model API report no cost, so their calls are priced this way. |
 | Unknown | The call's cost is `None`; its tokens are still counted. |
 
 A reported cost that is negative, not finite or not a number is ignored. A
@@ -208,10 +213,15 @@ Prices are filled in only where the provider's own page was read, and each one
 carries a comment naming the page and the date. A model without one has an
 unknown cost on a provider that does not report it; nothing is ever guessed.
 
-| Provider | Model | Input / output per 1M tokens | Source (checked 2026-10-24) |
+| Provider | Model | Input / output per 1M tokens | Source (checked) |
 |---|---|---|---|
-| TogetherAI | `openai/gpt-oss-120b` | $0.15 / $0.60 | together.ai/models/gpt-oss-120b and together.ai/pricing |
-| OpenRouter | `nvidia/nemotron-3-super-120b-a12b:free` | $0 / $0 | OpenRouter's "Free variant" docs: `:free` models are free |
+| TogetherAI | `openai/gpt-oss-120b` | $0.15 / $0.60 | together.ai/models/gpt-oss-120b and together.ai/pricing (2026-10-24) |
+| OpenRouter | `nvidia/nemotron-3-super-120b-a12b:free` | $0 / $0 | OpenRouter's "Free variant" docs: `:free` models are free (2026-10-24) |
+| Meta | `muse-spark-1.3` | $1.25 / $4.25 | dev.meta.ai/docs/pricing-rate-limits (2026-10-31) |
+| Meta | `muse-wonder-1.0` | $4.00 / $20.00 | dev.meta.ai/docs/pricing-rate-limits (2026-10-31) |
+
+Meta's cheaper `-contributor` variants are left out of the catalogue on purpose:
+choosing one lets Meta train on the requests, which carry the users' data.
 
 The other TogetherAI models have no price here: its pricing page listed neither
 Kimi K2 Thinking nor Qwen3 Coder 480B A35B, and showed Llama 4 Maverick only

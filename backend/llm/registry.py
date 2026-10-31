@@ -9,17 +9,20 @@ from collections.abc import Callable
 
 from llm.base import LLMProvider, ProviderConfig
 from llm.exceptions import ProviderNotConfigured
-from llm.providers import openrouter, together
+from llm.providers import meta, openrouter, together
 
 ProviderFactory = Callable[[ProviderConfig], LLMProvider]
 
 FACTORIES: dict[str, ProviderFactory] = {
     openrouter.NAME: openrouter.build,
     together.NAME: together.build,
+    meta.NAME: meta.build,
 }
 
 #: Spellings accepted for each canonical provider name.
 ALIASES: dict[str, str] = {
+    "meta": meta.NAME,
+    "meta_ai": meta.NAME,
     "open_router": openrouter.NAME,
     "openrouter": openrouter.NAME,
     "together": together.NAME,

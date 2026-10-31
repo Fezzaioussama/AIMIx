@@ -39,7 +39,7 @@ catalogue. A streaming **chat** agent can call native pipeline functions and
 configured MCP tools, including the MCP servers each user connects on the
 Settings page (**integrations**). A pipeline can also run **on a schedule**
 (every hour, day, week or month) with nobody starting it. The FastAPI backend owns auth, persistence, and calls to
-OpenRouter or TogetherAI; the React frontend provides the builder.
+OpenRouter, TogetherAI or the Meta Model API; the React frontend provides the builder.
 
 ## Keeping these docs current
 

@@ -64,7 +64,7 @@ def test_a_new_user_sees_the_environment_defaults(
 ) -> None:
     body = auth_client.get(SETTINGS_URL).json()
     assert body["provider"] == "openrouter"
-    assert [entry["name"] for entry in body["providers"]] == ["openrouter", "togetherai"]
+    assert [entry["name"] for entry in body["providers"]] == ["meta", "openrouter", "togetherai"]
     entry = provider_entry(body, "openrouter")
     assert (entry["key_source"], entry["key_hint"]) == ("none", "")
     assert entry["default_model"] == default_model

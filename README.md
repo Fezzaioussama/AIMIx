@@ -29,8 +29,8 @@ design and execution approachable.
 
 ## Quick start
 
-You need Python 3.10+, `uv`, Node.js 20+, npm, `make`, and an OpenRouter or
-TogetherAI key. See the [complete setup guide](docs/getting-started.md) for
+You need Python 3.10+, `uv`, Node.js 20+, npm, `make`, and an OpenRouter,
+TogetherAI or Meta Model API key. See the [complete setup guide](docs/getting-started.md) for
 environment options and troubleshooting.
 
 ```bash
@@ -88,7 +88,7 @@ flowchart LR
 |---|---|
 | Backend | FastAPI + Uvicorn, SQLAlchemy 2.0 + Alembic, pydantic-settings, PyJWT |
 | Frontend | React 19 + Vite, React Router, Tailwind CSS 4, Marked |
-| Agents and LLMs | LangGraph with OpenRouter (default) or TogetherAI models; MCP tools |
+| Agents and LLMs | LangGraph with OpenRouter (default), TogetherAI or Meta Model API models; MCP tools |
 | Database | SQLite |
 | Tooling | `uv` (Python), npm |
 
@@ -312,10 +312,11 @@ The full list, with every route that can return each code, is in [docs/api-refer
 | `SECRET_KEY` | In production | Signs the JWTs; production refuses to start without one of at least 32 characters |
 | `APP_ENV` | No | `local` (default) or `production` |
 | `DATABASE_URL` | No | SQLAlchemy URL (default `backend/aimix.sqlite3`) |
-| `LLM_PROVIDER` | No | `openrouter` (default) or `togetherai` |
+| `LLM_PROVIDER` | No | `openrouter` (default), `togetherai` or `meta` |
 | `ALLOW_SERVER_LLM_KEY` | No | `false` (default): accounts need their own key from Settings; `true`: accounts without one spend the keys below |
 | `OPEN_ROUTER_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `TOGAI_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
+| `META_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 | `RUN_MAX_CONCURRENT` | No | Pipeline runs executing at once; the rest wait queued (default 4) |

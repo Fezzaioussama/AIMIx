@@ -191,9 +191,43 @@ class OpenRouterModels(ModelCatalog):
     )
 
 
+class MetaModels(ModelCatalog):
+    """Meta's own models through the Meta Model API.
+
+    The API does not report what a call cost, so a call is priced from the
+    prices below. The cheaper ``-contributor`` variants are left out on purpose:
+    they let Meta train on the requests, which carry the users' data.
+    """
+
+    # Prices: dev.meta.ai/docs/pricing-rate-limits, checked 2026-10-31.
+    Muse_Spark_1_3 = ModelInfo(
+        provider="meta",
+        model_id="muse-spark-1.3",
+        context_window=1_048_576,
+        supports_tools=True,
+        supports_reasoning=True,
+        supports_vision=True,
+        description="Meta's agentic model; reads images, video and PDFs.",
+        input_price_per_million=1.25,
+        output_price_per_million=4.25,
+    )
+    Muse_Wonder_1_0 = ModelInfo(
+        provider="meta",
+        model_id="muse-wonder-1.0",
+        context_window=1_048_576,
+        supports_tools=True,
+        supports_reasoning=True,
+        supports_vision=True,
+        description="Meta's largest model, for frontier agent work.",
+        input_price_per_million=4.00,
+        output_price_per_million=20.00,
+    )
+
+
 CATALOGS: dict[str, type[ModelCatalog]] = {
     "openrouter": OpenRouterModels,
     "togetherai": TogetherAIModels,
+    "meta": MetaModels,
 }
 
 

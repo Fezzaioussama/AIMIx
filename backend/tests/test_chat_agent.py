@@ -146,6 +146,7 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
 
 
 def test_agent_model_factories_build_offline() -> None:
+    from langchain_openai import ChatOpenAI
     from langchain_openrouter import ChatOpenRouter
     from langchain_together import ChatTogether
 
@@ -156,6 +157,10 @@ def test_agent_model_factories_build_offline() -> None:
     config = ProviderConfig(api_key="test-key", default_model="test/model", timeout_seconds=1.5)
     assert isinstance(create_agent_model("openrouter", config), ChatOpenRouter)
     assert isinstance(create_agent_model("togetherai", config), ChatTogether)
+    meta_model: Any = create_agent_model("meta", config)
+    assert isinstance(meta_model, ChatOpenAI)
+    # Asked for explicitly, or a streamed chat message's calls would go uncounted.
+    assert meta_model.stream_usage is True
     with pytest.raises(ProviderNotConfigured):
         create_agent_model(
             "openrouter", ProviderConfig(api_key="", default_model="test/model", timeout_seconds=1)

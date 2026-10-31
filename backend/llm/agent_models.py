@@ -14,13 +14,14 @@ from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackMana
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
+from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from langchain_together import ChatTogether
 from pydantic import Field
 
 from llm.base import ProviderConfig
 from llm.exceptions import ProviderNotConfigured
-from llm.providers import openrouter, together
+from llm.providers import meta, openrouter, together
 from llm.registry import canonical_name
 from llm.retry import Retrier
 
@@ -96,6 +97,11 @@ class RetryingChatTogether(RetryingChatModel, ChatTogether):
     """ChatTogether under the retry policy; ``max_retries=0`` is the openai SDK's off switch."""
 
 
+class RetryingChatMeta(RetryingChatModel, ChatOpenAI):
+    """ChatOpenAI pointed at the Meta Model API (it has no LangChain integration of
+    its own) under the retry policy; ``max_retries=0`` is the openai SDK's off switch."""
+
+
 def _retrier(provider: str, config: ProviderConfig) -> Retrier:
     return Retrier(config.retry, provider, config.default_model)
 
@@ -127,9 +133,26 @@ def _together(config: ProviderConfig) -> BaseChatModel:
     )
 
 
+def _meta(config: ProviderConfig) -> BaseChatModel:
+    if not config.api_key:
+        raise ProviderNotConfigured("META_API_KEY is not set.")
+    return RetryingChatMeta(
+        model=config.default_model,
+        api_key=config.api_key,
+        base_url=config.base_url or meta.DEFAULT_BASE_URL,
+        timeout=config.timeout_seconds,
+        max_retries=0,
+        # The API sends a stream's usage only when asked, and ChatOpenAI asks only
+        # OpenAI itself: without this a chat message's calls would go uncounted.
+        stream_usage=True,
+        retrier=_retrier(meta.NAME, config),
+    )
+
+
 AGENT_MODELS: dict[str, Callable[[ProviderConfig], BaseChatModel]] = {
     openrouter.NAME: _openrouter,
     together.NAME: _together,
+    meta.NAME: _meta,
 }
 
 

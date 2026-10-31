@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from llm.catalog import CATALOGS, ModelInfo, OpenRouterModels, TogetherAIModels
+from llm.catalog import CATALOGS, MetaModels, ModelInfo, OpenRouterModels, TogetherAIModels
 
 
 def test_each_catalogue_lists_only_its_own_models() -> None:
@@ -45,6 +45,12 @@ def test_every_registered_provider_has_a_catalogue() -> None:
     from llm.registry import FACTORIES
 
     assert set(FACTORIES) <= set(CATALOGS)
+
+
+def test_meta_models_carry_prices_because_the_api_reports_no_cost() -> None:
+    assert all(model.price(1, 1) is not None for model in MetaModels.all().values())
+    # $1.25 in and $4.25 out per million tokens.
+    assert MetaModels.Muse_Spark_1_3.price(1_000_000, 1_000_000) == 5.5
 
 
 def test_the_stale_model_that_caused_silent_empty_output_is_absent() -> None:

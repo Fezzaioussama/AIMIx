@@ -6,7 +6,7 @@
 graph LR
     Browser["React SPA<br/>Vite :4200"] -->|"/api/* + Bearer JWT<br/>(proxied in dev)"| API["FastAPI + Uvicorn<br/>:8000"]
     API -->|SQLAlchemy| DB[("SQLite")]
-    API -->|"HTTPS, API key,<br/>LLM_TIMEOUT_SECONDS"| LLM["OpenRouter / TogetherAI"]
+    API -->|"HTTPS, API key,<br/>LLM_TIMEOUT_SECONDS"| LLM["OpenRouter / TogetherAI / Meta"]
     API -->|"configured MCP tools<br/>MCP_TIMEOUT_SECONDS"| MCP["MCP servers<br/>(MCP_SERVERS)"]
     API -->|"streamable HTTP, https,<br/>public addresses only"| Own["Each user's MCP servers<br/>(Settings → Integrations)"]
 ```

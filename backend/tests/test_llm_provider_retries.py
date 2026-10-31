@@ -170,7 +170,8 @@ def test_retry_settings_reach_the_provider_config() -> None:
 
 
 @pytest.mark.parametrize(
-    ("provider_name", "module"), [("openrouter", "openrouter"), ("togetherai", "together")]
+    ("provider_name", "module"),
+    [("openrouter", "openrouter"), ("togetherai", "together"), ("meta", "meta")],
 )
 def test_the_config_policy_reaches_both_call_paths(
     monkeypatch: pytest.MonkeyPatch, provider_name: str, module: str

@@ -1,6 +1,6 @@
-"""The provider contract and the one implementation both providers share.
+"""The provider contract and the one implementation every provider shares.
 
-OpenRouter and TogetherAI both expose an OpenAI-compatible
+OpenRouter, TogetherAI and the Meta Model API all expose an OpenAI-compatible
 ``chat.completions.create``, so the transport lives here once (AGENTS.md §3)
 and each provider module only supplies a configured client.
 """

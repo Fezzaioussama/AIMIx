@@ -18,6 +18,7 @@ import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from langchain_together import ChatTogether
 from openrouter.errors import OpenRouterError
@@ -52,13 +53,15 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_agent_models_switch_their_sdk_retries_off() -> None:
     openrouter_model: Any = create_agent_model("openrouter", CONFIG)
     together_model: Any = create_agent_model("togetherai", CONFIG)
+    meta_model: Any = create_agent_model("meta", CONFIG)
     # Left alone, the openrouter SDK retries 5xx and timeouts for up to an hour.
     assert openrouter_model.client.sdk_configuration.retry_config is None
-    assert together_model.root_client.max_retries == 0
-    assert together_model.root_async_client.max_retries == 0
+    for openai_model in (together_model, meta_model):
+        assert openai_model.root_client.max_retries == 0
+        assert openai_model.root_async_client.max_retries == 0
 
 
-@pytest.mark.parametrize("integration", [ChatOpenRouter, ChatTogether])
+@pytest.mark.parametrize("integration", [ChatOpenRouter, ChatTogether, ChatOpenAI])
 def test_each_integration_implements_every_call_path(integration: type[BaseChatModel]) -> None:
     """Otherwise BaseChatModel's async fallback would run the retrying sync
     method inside the retrying async one, and the retries would multiply."""
@@ -87,6 +90,7 @@ class Sdk:
 SDKS = [
     Sdk("openrouter", httpx.AsyncClient, _busy_over_httpx, OpenRouterError),
     Sdk("togetherai", httpx2.AsyncClient, _busy_over_httpx2, openai.InternalServerError),
+    Sdk("meta", httpx2.AsyncClient, _busy_over_httpx2, openai.InternalServerError),
 ]
 
 

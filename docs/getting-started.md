@@ -8,7 +8,7 @@
 | [uv](https://docs.astral.sh/uv/) | recent | Python venv + dependency manager (`uv.lock`) |
 | Node.js + npm | Node 20+ (tested on 24) | Frontend (Vite, React 19) |
 | make | any | All commands are wrapped in the root `Makefile` |
-| An LLM API key | — | OpenRouter (default) or TogetherAI |
+| An LLM API key | — | OpenRouter (default), TogetherAI or the Meta Model API |
 | Tesseract (optional) | 4+, with the `eng` and `fra` languages | OCR of attached images and scanned PDFs, e.g. `apt install tesseract-ocr tesseract-ocr-fra`. Without it, everything else works; images are refused and scanned pages skipped, with a message saying OCR is not available |
 
 ## First-time setup
@@ -25,9 +25,10 @@ make run-llm                           # smoke test: prints the model list
 Open `backend/.env` and set at least:
 
 ```dotenv
-LLM_PROVIDER=openrouter          # or togetherai
+LLM_PROVIDER=openrouter          # or togetherai, or meta
 OPEN_ROUTER_KEY=sk-or-...        # when LLM_PROVIDER=openrouter
 TOGAI_API_KEY=...                # when LLM_PROVIDER=togetherai
+META_API_KEY=...                 # when LLM_PROVIDER=meta
 ```
 
 Everything else has a working default for local development. Placeholder values
