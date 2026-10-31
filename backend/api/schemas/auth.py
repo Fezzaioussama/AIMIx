@@ -30,3 +30,4 @@ class AccessTokenResponse(BaseModel):
 class WhoAmIResponse(BaseModel):
     message: str
     user_id: int
+    username: str

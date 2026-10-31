@@ -54,10 +54,11 @@ function NavItemLink({ item, active, pillId }: { item: NavItem; active: boolean;
   const Icon = item.icon;
   return (
     <Link to={item.to} aria-current={active ? 'page' : undefined} className={itemClass(active)}>
+      {/* The highlight carries a bar in the brand gradient along its left edge. */}
       {active && (
         <ActivePill
           layoutId={pillId}
-          className="bg-white/[0.08] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+          className="bg-white/[0.07] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)] before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-gradient-to-b before:from-sky-400 before:via-indigo-500 before:to-purple-500"
         />
       )}
       <Icon aria-hidden="true" className={`size-4 shrink-0 ${active ? 'text-sky-300' : ''}`} />
@@ -78,7 +79,7 @@ export function SidebarNav({ groups, pillId }: SidebarNavProps) {
   const { pathname } = useLocation();
   const baseId = useId();
   return (
-    <nav aria-label="Main" className="flex flex-col gap-6">
+    <nav aria-label="Main" className="flex flex-col gap-5">
       {groups.map((group, index) => {
         const headingId = `${baseId}-${index}`;
         return (

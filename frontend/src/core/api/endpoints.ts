@@ -7,6 +7,7 @@ export const API = {
   register: '/api/register',
   refresh: '/api/token/refresh',
   logout: '/api/token/logout',
+  whoAmI: '/api/protected',
   changePassword: '/api/account/password',
   exportAccount: '/api/account/export',
   deleteAccount: '/api/account/delete',

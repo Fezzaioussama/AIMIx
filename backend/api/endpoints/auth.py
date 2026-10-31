@@ -87,5 +87,9 @@ def logout(request: Request, response: Response, auth: Auth) -> None:
 
 @router.get("/protected")
 def protected(user: CurrentUser) -> WhoAmIResponse:
-    """Cheap way for the client to confirm a token is still valid."""
-    return WhoAmIResponse(message=f"Hello {user.username}, your token is valid.", user_id=user.id)
+    """Cheap way for the client to confirm a token is still valid, and whose it is."""
+    return WhoAmIResponse(
+        message=f"Hello {user.username}, your token is valid.",
+        user_id=user.id,
+        username=user.username,
+    )

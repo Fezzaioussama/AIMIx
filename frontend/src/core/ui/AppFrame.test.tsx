@@ -13,10 +13,10 @@ const GROUPS: NavGroup[] = [
 ];
 
 // jsdom answers no media query, so the frame is in its phone layout: the menu opens the nav.
-function renderFrame(onLogout = vi.fn()) {
+function renderFrame(onLogout = vi.fn(), name: string | null = 'alice') {
   render(
     <MemoryRouter initialEntries={['/mission']}>
-      <AppFrame groups={GROUPS} onLogout={onLogout}>
+      <AppFrame groups={GROUPS} name={name} onLogout={onLogout}>
         <Routes>
           <Route path="/mission" element={<button type="button">On the mission</button>} />
           <Route path="/files" element={<p>The files</p>} />
@@ -66,6 +66,25 @@ describe('AppFrame', () => {
 
     expect(await screen.findByText('The files')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('names the signed-in account beside Log out, and leads home from the logo', async () => {
+    const user = userEvent.setup();
+    renderFrame();
+    await user.click(menuButton());
+
+    const menu = screen.getByRole('dialog');
+    expect(within(menu).getByText('alice')).toBeInTheDocument();
+    expect(within(menu).getByText('Signed in as')).toHaveClass('sr-only');
+    expect(within(menu).getByRole('link', { name: 'AIMIx' })).toHaveAttribute('href', '/mission');
+  });
+
+  it('says "Your account" until the name is known', async () => {
+    const user = userEvent.setup();
+    renderFrame(vi.fn(), null);
+    await user.click(menuButton());
+
+    expect(within(screen.getByRole('dialog')).getByText('Your account')).toBeInTheDocument();
   });
 
   it('logs out from the menu', async () => {

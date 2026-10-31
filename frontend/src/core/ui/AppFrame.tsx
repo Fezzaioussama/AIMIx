@@ -1,9 +1,11 @@
-import { LogOut, Menu, X } from 'lucide-react';
+import { LogOut, Menu, UserRound, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { HOME_PATH } from '../routes';
+import { GradientText } from './reactbits/GradientText';
 import { SidebarNav, type NavGroup } from './SidebarNav';
 
 /** From this width (Tailwind's `lg`) the sidebar is always shown; below it, a menu opens it. */
@@ -13,29 +15,65 @@ const SLIDE = { duration: 0.25, ease: [0.16, 1, 0.3, 1] } as const;
 const FOCUS_RING =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400';
 
-function Logo() {
-  return <img src="/logo.png" alt="AIMIx" className="h-9 w-auto" />;
+/** The logo and the wordmark, leading to Missions, the app's front door. */
+function Brand() {
+  return (
+    <Link to={HOME_PATH} className={`flex items-center gap-2.5 rounded-lg ${FOCUS_RING}`}>
+      <img src="/logo.png" alt="" className="h-10 w-auto" />
+      <GradientText className="text-xl font-extrabold tracking-tight">AIMIx</GradientText>
+    </Link>
+  );
 }
 
-interface SidebarBodyProps {
-  groups: readonly NavGroup[];
-  pillId: string;
+interface AccountProps {
+  /** The signed-in username; null until it is known. */
+  name: string | null;
   onLogout: () => void;
 }
 
-/** The sections, then Log out at the foot: the same in the sidebar and in the phone menu. */
-function SidebarBody({ groups, pillId, onLogout }: SidebarBodyProps) {
+/** Who is signed in, with Log out beside the name. */
+function AccountCard({ name, onLogout }: AccountProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-between gap-6 overflow-y-auto px-3 pt-2 pb-4">
-      <SidebarNav groups={groups} pillId={pillId} />
+    <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-2 pl-2.5">
+      <span
+        aria-hidden="true"
+        className="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-400 via-indigo-500 to-purple-500 text-sm font-semibold text-white uppercase"
+      >
+        {name ? name.charAt(0) : <UserRound className="size-4" />}
+      </span>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-200" title={name ?? ''}>
+        <span className="sr-only">Signed in as </span>
+        {name ?? 'Your account'}
+      </p>
       <button
         type="button"
         onClick={onLogout}
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-white/[0.04] hover:text-slate-50 ${FOCUS_RING}`}
+        aria-label="Log out"
+        title="Log out"
+        className={`shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-50 ${FOCUS_RING}`}
       >
         <LogOut aria-hidden="true" className="size-4" />
-        Log out
       </button>
+    </div>
+  );
+}
+
+interface SidebarBodyProps extends AccountProps {
+  groups: readonly NavGroup[];
+  pillId: string;
+}
+
+/**
+ * The sections, scrolling when the window is short, then the account card pinned at the
+ * foot: the same in the sidebar and in the phone menu.
+ */
+function SidebarBody({ groups, pillId, ...account }: SidebarBodyProps) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pt-2 pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <SidebarNav groups={groups} pillId={pillId} />
+      </div>
+      <AccountCard {...account} />
     </div>
   );
 }
@@ -72,7 +110,7 @@ function MenuDrawer({ closeRef, onClose, ...body }: MenuDrawerProps) {
         className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-white/[0.08] bg-slate-950"
       >
         <div className="flex h-[60px] shrink-0 items-center justify-between px-4">
-          <Logo />
+          <Brand />
           <button
             ref={closeRef}
             type="button"
@@ -125,7 +163,7 @@ function TopBar({ menu }: { menu: ReturnType<typeof useMenu> }) {
       inert={menu.open}
       className="fixed inset-x-0 top-0 z-40 flex h-[60px] items-center justify-between border-b border-white/[0.06] bg-slate-950/70 px-4 backdrop-blur-xl lg:hidden"
     >
-      <Logo />
+      <Brand />
       <button
         ref={menu.menuRef}
         type="button"
@@ -141,9 +179,8 @@ function TopBar({ menu }: { menu: ReturnType<typeof useMenu> }) {
   );
 }
 
-interface AppFrameProps {
+interface AppFrameProps extends AccountProps {
   groups: readonly NavGroup[];
-  onLogout: () => void;
   children: ReactNode;
 }
 
@@ -152,15 +189,15 @@ interface AppFrameProps {
  * it, a 60px top bar whose menu button opens the same sidebar as a drawer. The screen
  * itself is inert while the drawer is open.
  */
-export function AppFrame({ groups, onLogout, children }: AppFrameProps) {
+export function AppFrame({ groups, children, ...account }: AppFrameProps) {
   const menu = useMenu();
   return (
     <>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-white/[0.06] bg-slate-950/70 backdrop-blur-xl lg:flex">
-        <div className="flex h-16 shrink-0 items-center px-6">
-          <Logo />
+        <div className="flex h-16 shrink-0 items-center px-5">
+          <Brand />
         </div>
-        <SidebarBody groups={groups} pillId="app-nav" onLogout={onLogout} />
+        <SidebarBody groups={groups} pillId="app-nav" {...account} />
         {/* Hairline in the brand gradient along the right edge. */}
         <span
           aria-hidden="true"
@@ -173,7 +210,7 @@ export function AppFrame({ groups, onLogout, children }: AppFrameProps) {
           <MenuDrawer
             groups={groups}
             pillId="app-nav-menu"
-            onLogout={onLogout}
+            {...account}
             closeRef={menu.closeRef}
             onClose={menu.close}
           />

@@ -87,7 +87,7 @@ or behind proxies the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` names (see
 
 ### `GET /protected`
 
-`200` → `{ "message": "Hello alice, your token is valid.", "user_id": 1 }`.
+`200` → `{ "message": "Hello alice, your token is valid.", "user_id": 1, "username": "alice" }`. The app reads `username` once to name the account at the foot of the sidebar.
 
 ---
 

@@ -11,6 +11,8 @@ import { COMMON_ROUTES, SAVED, routeFetch } from './features/mission/testData';
 // out one canned response per screen, so the count is set here instead.
 const waitingRuns = vi.hoisted(() => ({ count: 0 }));
 vi.mock('./features/runs/useWaitingRuns', () => ({ useWaitingRuns: () => waitingRuns.count }));
+// So does the account name at the foot of the sidebar.
+vi.mock('./core/hooks/useAccountName', () => ({ useAccountName: () => 'alice' }));
 
 function renderAt(path: string) {
   return render(

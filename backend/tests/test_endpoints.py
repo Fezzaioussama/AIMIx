@@ -135,6 +135,7 @@ def test_login_returns_a_token_pair_that_can_be_refreshed(
     assert client.cookies["aimix_refresh"] != original_refresh
     who = client.get("/api/protected", headers={"Authorization": f"Bearer {access}"})
     assert who.json()["user_id"] == user.id
+    assert who.json()["username"] == user.username
 
 
 def test_login_rejects_a_wrong_password(client: TestClient, user: User) -> None:

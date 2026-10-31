@@ -14,6 +14,7 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import { RequireAuth } from './core/auth/RequireAuth';
 import { useAuth } from './core/auth/AuthContext';
+import { useAccountName } from './core/hooks/useAccountName';
 import { HOME_PATH, LEGAL_LINKS } from './core/routes';
 import { AmbientBackdrop } from './core/ui/AmbientBackdrop';
 import { AppFrame } from './core/ui/AppFrame';
@@ -114,11 +115,12 @@ function navGroups(waiting: number): NavGroup[] {
 function AppShell() {
   const { logout } = useAuth();
   const waiting = useWaitingRuns();
+  const name = useAccountName();
   return (
     <>
       <ScrollToTop />
       <AmbientBackdrop />
-      <AppFrame groups={navGroups(waiting)} onLogout={() => void logout()}>
+      <AppFrame groups={navGroups(waiting)} name={name} onLogout={() => void logout()}>
         <PageTransition>
           <Outlet />
         </PageTransition>

@@ -1,5 +1,6 @@
 import { API } from './endpoints';
 import { refreshAccessToken, request } from './client';
+import type { WhoAmI } from './authTypes';
 import type { AuthTokens } from './types';
 
 export function login(username: string, password: string): Promise<AuthTokens> {
@@ -16,4 +17,9 @@ export function restoreSession(): Promise<AuthTokens> {
 
 export function logout(): Promise<void> {
   return request<void>(API.logout, { method: 'POST' });
+}
+
+/** Whose session this is; also confirms the access token is still valid. */
+export function whoAmI(signal?: AbortSignal): Promise<WhoAmI> {
+  return request<WhoAmI>(API.whoAmI, { signal });
 }
