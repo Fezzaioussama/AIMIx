@@ -53,6 +53,9 @@ class LlmSettings(BaseModel):
     voice_timeout_seconds: float = Field(60.0, gt=0, validation_alias="VOICE_TIMEOUT_SECONDS")
     # A bigger clip is refused before it is sent: 10 MB is about 5 minutes of 16 kHz WAV.
     voice_max_bytes: int = Field(10_000_000, ge=1, validation_alias="VOICE_MAX_BYTES")
+    # The generate_image agent tool: Muse Image, on the Meta key ($0.01 an image).
+    image_model: str = Field("muse-image-1.0", validation_alias="IMAGE_MODEL")
+    image_timeout_seconds: float = Field(120.0, gt=0, validation_alias="IMAGE_TIMEOUT_SECONDS")
 
     # Provider-keyed views, so provider lookups stay one dict access (§5 O).
     @property

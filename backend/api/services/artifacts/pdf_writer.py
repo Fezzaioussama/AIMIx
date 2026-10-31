@@ -22,6 +22,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFError, TTFont
 from reportlab.platypus import (
@@ -34,6 +35,7 @@ from reportlab.platypus import (
     Spacer,
     TableStyle,
 )
+from reportlab.platypus import Image as PdfImage
 from reportlab.platypus import Paragraph as PdfParagraph
 from reportlab.platypus import Table as PdfTable
 
@@ -44,11 +46,13 @@ from api.services.artifacts.markdown import (
     Heading,
     ListBlock,
     Paragraph,
+    Picture,
     Quote,
     Rule,
     Span,
     Spans,
     Table,
+    load_pictures,
     parse_markdown,
     plain_text,
     web_link,
@@ -57,6 +61,12 @@ from api.services.artifacts.markdown import (
 logger = logging.getLogger(__name__)
 
 MARGIN = 20 * mm
+#: ReportLab's frame keeps this much space inside the margins, on each side.
+FRAME_PADDING = 6
+#: A picture fits the text column, and stays short enough to share a page with
+#: its heading; a small one keeps its size (a pixel as a point).
+PICTURE_MAX_WIDTH = A4[0] - 2 * (MARGIN + FRAME_PADDING)
+PICTURE_MAX_HEIGHT = 170 * mm
 BODY_SIZE = 10.5
 INDENT = 18
 #: Code lines longer than this wrap, so they never run off the page.
@@ -91,7 +101,7 @@ class _Styles:
 def render_pdf(content: str, options: RenderOptions) -> bytes:
     """The Markdown ``content`` as an A4 PDF."""
     styles = _styles(_fonts(options.pdf_font, options.pdf_bold_font))
-    blocks = parse_markdown(content)
+    blocks = load_pictures(parse_markdown(content), options.pictures)
     title = next((plain_text(block.spans) for block in blocks if isinstance(block, Heading)), "")
     buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -233,6 +243,13 @@ def _code(block: CodeBlock, styles: _Styles) -> list[Flowable]:
 @_flow.register
 def _quote(block: Quote, styles: _Styles) -> list[Flowable]:
     return [Indenter(left=INDENT), *_flows(block.blocks, styles), Indenter(left=-INDENT)]
+
+
+@_flow.register
+def _picture(block: Picture, styles: _Styles) -> list[Flowable]:
+    width, height = ImageReader(BytesIO(block.data)).getSize()
+    scale = min(PICTURE_MAX_WIDTH / width, PICTURE_MAX_HEIGHT / height, 1.0)
+    return [PdfImage(BytesIO(block.data), width * scale, height * scale), Spacer(0, 8)]
 
 
 @_flow.register

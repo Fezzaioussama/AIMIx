@@ -10,6 +10,7 @@ llm/
   base.py          # ProviderConfig, LLMProvider Protocol, OpenAICompatibleProvider, normalised_failures
   agent_models.py  # LangChain model factory registry for LangGraph chat, with retries
   speech.py        # Transcript, Transcriber Protocol, MetaTranscriber: speech to text
+  images.py        # GeneratedImage, ImageGenerator Protocol, MetaImageGenerator: pictures
   retry.py         # RetryPolicy, Retrier: bounded retries for transient failures
   usage.py         # TokenUsage, cost sources, UsageCallback, metered: what each model call used and cost
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
@@ -35,6 +36,19 @@ The openai SDK sends a multipart body only when a request carries
 without a `transcript` string is a `ProviderRequestError`.
 `api/services/llm.get_transcriber` builds it with the speech model and timeout of
 `VOICE_MODEL` and `VOICE_TIMEOUT_SECONDS`; `api/services/voice.py` checks the clip.
+
+## Image generation
+
+`llm/images.py` backs the `generate_image` agent tool. `MetaImageGenerator` calls
+Muse Image through the same Meta client (`client.images.generate`, which the
+API answers OpenAI-style): one picture, `response_format="b64_json"`,
+`output_format="jpeg"` (a PNG of the same picture measured 2.7 MB, over the
+2 MB `WORKSPACE_MAX_FILE_BYTES`; the JPEG 0.6 MB), and a `size` per shape
+(`SIZES`: square, landscape, portrait), which Meta reads as an aspect ratio. A
+refusal such as `content_policy_violation` (HTTP 400) or an answer without a
+decodable image is a `ProviderRequestError`. `api/services/llm.get_image_generator`
+builds it with `IMAGE_MODEL` and `IMAGE_TIMEOUT_SECONDS`; the toolbox's
+`ImageStudio` saves the picture (`api/services/toolbox/images.py`).
 
 ## The contract
 

@@ -15,9 +15,11 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from io import BytesIO
 from pathlib import Path
 
 from langchain_core.tools import ToolException
+from PIL import Image
 
 from api.exceptions import DomainError, FileTooLarge
 from api.services.artifacts.contracts import RenderOptions
@@ -30,6 +32,8 @@ from api.services.files.storage import WorkspaceStorage
 #: readers (PDF, Word, ...), which refuse what they cannot read.
 TEXT_SUFFIXES = frozenset({".csv", ".html", ".json", ".md", ".txt", ".yaml", ".yml"})
 CSV_SUFFIX = ".csv"
+#: The pictures a saved .docx or .pdf may show: what python-docx and ReportLab both embed.
+PICTURE_FORMATS = ("PNG", "JPEG")
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,15 @@ def _spreadsheet_safe(path: str, content: bytes, options: RenderOptions) -> byte
         text = body.decode("latin-1")
     rendered = render_artifact(CSV_SUFFIX, text, options)
     return content if rendered == text.encode("utf-8") else bom + rendered
+
+
+def _is_picture(data: bytes, max_pixels: int) -> bool:
+    """Whether ``data`` is a PNG or JPEG of at most ``max_pixels``, from its header."""
+    try:
+        with Image.open(BytesIO(data), formats=PICTURE_FORMATS) as image:
+            return image.width * image.height <= max_pixels
+    except (OSError, Image.DecompressionBombError):  # not a picture, or a pixel bomb
+        return False
 
 
 @contextmanager
@@ -121,7 +134,8 @@ class LocalWorkspace:
         with _tool_errors():
             target = self._storage.writable(path)
             self._check_artifact_size(len(content.encode("utf-8", errors="replace")))
-            data = render_artifact(target.suffix.lower(), content, self._render)
+            options = replace(self._render, pictures=self._picture)
+            data = render_artifact(target.suffix.lower(), content, options)
             return f"Saved {self._store(path, data)}"
 
     def read_bytes(self, path: str) -> bytes:
@@ -190,6 +204,15 @@ class LocalWorkspace:
         if path.stat().st_size > self._limits.max_file_bytes:
             raise ToolException("The file is larger than the configured limit.")
         return path
+
+    def _picture(self, path: str) -> bytes | None:
+        """A PNG or JPEG of the workspace for a document to show, within the file and
+        pixel limits; None for anything else (a web address is never fetched)."""
+        try:
+            data = self._within_size_limit(self._storage.existing(path)).read_bytes()
+        except (DomainError, ToolException, OSError):
+            return None
+        return data if _is_picture(data, self._limits.documents.max_image_pixels) else None
 
     def _document_text(self, path: Path) -> str:
         """A PDF, Word or other document as text, cut at the output limit."""

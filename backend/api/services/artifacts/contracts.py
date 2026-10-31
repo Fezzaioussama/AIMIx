@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+#: The bytes of a picture a document shows, by the path its Markdown gives
+#: (``![alt](images/chart.png)``); None when there is no such picture to show.
+PictureLoader = Callable[[str], bytes | None]
 
 
 @dataclass(frozen=True)
@@ -15,6 +19,9 @@ class RenderOptions:
     #: that covers Western European text only.
     pdf_font: Path
     pdf_bold_font: Path
+    #: Where a document's pictures come from (the user's workspace); None shows
+    #: every picture as its alt text.
+    pictures: PictureLoader | None = field(default=None, compare=False, repr=False)
 
 
 #: The agent's text in, the file's bytes out.

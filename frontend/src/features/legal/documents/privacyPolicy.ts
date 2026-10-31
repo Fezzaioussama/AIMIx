@@ -86,9 +86,11 @@ planifiez une équipe ou dictez une demande :
   modèle. Avec votre propre clé, il les traite dans le cadre de votre compte chez lui et de ses
   conditions, qui peuvent prévoir la conservation ou l'utilisation de ces données : consultez
   ses réglages de confidentialité.
-- *La transcription vocale* (Meta, avec votre clé Meta), lorsque vous dictez une demande, reçoit
-  l'enregistrement de votre voix et le traite dans le cadre de votre compte chez Meta et de ses
-  conditions.
+- *La transcription vocale et la création d'images* (Meta, avec votre clé Meta) reçoivent
+  l'enregistrement de votre voix lorsque vous dictez une demande, et la description d'une image
+  lorsqu'un agent en dessine une ; Meta les traite dans le cadre de votre compte chez lui et de
+  ses conditions. Une image créée est enregistrée dans vos fichiers, marquée comme générée par
+  l'IA dans ses métadonnées.
 - *Le service de recherche web* (Tavily), lorsque vos agents utilisent la recherche web, reçoit
   leurs requêtes de recherche, qu'il peut transmettre à des moteurs de recherche tiers.
 - *Le bac à sable d'exécution de code* (E2B), lorsque vos agents exécutent du Python, reçoit le

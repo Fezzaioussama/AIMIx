@@ -77,6 +77,7 @@ class AgentSettings(BaseModel):
             "read_csv",
             "save_artifact",
             "run_python",
+            "generate_image",
         ],
         validation_alias="AGENT_BUILTIN_TOOLS",
     )

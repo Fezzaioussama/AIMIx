@@ -2,12 +2,34 @@ import { FolderOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import type { WorkspaceFile } from '../../core/api/types';
-import { fileIcon, fileName, folderOf, formatBytes, formatDate } from '../files/fileFormat';
+import { useImagePreview } from '../../core/hooks/useImagePreview';
+import {
+  fileIcon,
+  fileName,
+  folderOf,
+  formatBytes,
+  formatDate,
+  isPicture,
+} from '../files/fileFormat';
 import { useRecentFiles } from './useRecentFiles';
 
 /** Whether a run is still working, folded into a key that changes when it ends. */
 export function filesRefreshKey(runId: number | null, active: boolean): string {
   return `${runId ?? 'none'}-${active ? 'active' : 'ended'}`;
+}
+
+/** A picture an agent drew or a user uploaded, shown above its name once loaded. */
+function PicturePreview({ path }: { path: string }) {
+  const src = useImagePreview(path);
+  if (!src) return null;
+  // The name follows right under it, so the image itself is not announced again.
+  return (
+    <img
+      src={src}
+      alt=""
+      className="mb-2 max-h-48 w-full rounded-lg border border-white/10 object-cover"
+    />
+  );
 }
 
 function FileRows({ files }: { files: WorkspaceFile[] }) {
@@ -17,16 +39,19 @@ function FileRows({ files }: { files: WorkspaceFile[] }) {
         const Icon = fileIcon(file.type);
         const folder = folderOf(file.path);
         return (
-          <li key={file.path} className="flex items-center gap-3 px-3 py-2.5">
-            <Icon aria-hidden="true" className="size-4 shrink-0 text-sky-300" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-slate-100" title={file.path}>
-                {fileName(file.path)}
-              </p>
-              <p className="text-xs break-words text-slate-400">
-                {folder && `${folder} · `}
-                {formatBytes(file.size)} · {formatDate(file.modified_at)}
-              </p>
+          <li key={file.path} className="px-3 py-2.5">
+            {isPicture(file.type) && <PicturePreview path={file.path} />}
+            <div className="flex items-center gap-3">
+              <Icon aria-hidden="true" className="size-4 shrink-0 text-sky-300" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-100" title={file.path}>
+                  {fileName(file.path)}
+                </p>
+                <p className="text-xs break-words text-slate-400">
+                  {folder && `${folder} · `}
+                  {formatBytes(file.size)} · {formatDate(file.modified_at)}
+                </p>
+              </div>
             </div>
           </li>
         );

@@ -16,6 +16,8 @@ from urllib.parse import urlsplit
 from markdown_it import MarkdownIt
 from markdown_it.tree import SyntaxTreeNode
 
+from api.services.artifacts.contracts import PictureLoader
+
 
 @dataclass(frozen=True)
 class Span:
@@ -74,7 +76,17 @@ class Rule:
     """A thematic break, ``---``."""
 
 
-Block = Heading | Paragraph | ListBlock | Table | CodeBlock | Quote | Rule
+@dataclass(frozen=True)
+class Picture:
+    """An image on a line of its own, ``![alt](path)``. ``data`` holds its bytes once
+    ``load_pictures`` found them; the writers only ever see loaded pictures."""
+
+    src: str
+    alt: str
+    data: bytes = b""
+
+
+Block = Heading | Paragraph | ListBlock | Table | CodeBlock | Quote | Rule | Picture
 InlineHandler = Callable[[SyntaxTreeNode, Span, list[Span]], None]
 
 #: Link targets a document keeps as links; any other link stays plain text.
@@ -88,6 +100,23 @@ def parse_markdown(text: str) -> tuple[Block, ...]:
     """CommonMark plus tables and strikethrough, with HTML kept as text."""
     parser = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
     return _blocks(SyntaxTreeNode(parser.parse(_UNPRINTABLE.sub("", text))).children)
+
+
+def load_pictures(blocks: tuple[Block, ...], load: PictureLoader | None) -> tuple[Block, ...]:
+    """Each picture with its bytes, or its alt text as a paragraph when ``load`` has
+    none to give: a picture the document cannot show still says what it showed."""
+    return tuple(_loaded(block, load) for block in blocks)
+
+
+def _loaded(block: Block, load: PictureLoader | None) -> Block:
+    if isinstance(block, Quote):
+        return Quote(load_pictures(block.blocks, load))
+    if isinstance(block, ListBlock):
+        return replace(block, items=tuple(load_pictures(item, load) for item in block.items))
+    if not isinstance(block, Picture):
+        return block
+    data = load(block.src) if load else None
+    return replace(block, data=data) if data else Paragraph((Span(block.alt),))
 
 
 def plain_text(spans: Spans) -> str:
@@ -119,9 +148,19 @@ def _table(node: SyntaxTreeNode) -> Block:
     return Table((), tuple(rows))
 
 
+def _paragraph(node: SyntaxTreeNode) -> Block:
+    """A paragraph that is only an image is a picture; an image within text keeps
+    only its alt text."""
+    parts = node.children[0].children if node.children else []
+    if len(parts) == 1 and parts[0].type == "image":
+        image = parts[0]
+        return Picture(str(image.attrs.get("src", "")), plain_text(_spans(image)))
+    return Paragraph(_spans(node))
+
+
 _BLOCKS: dict[str, Callable[[SyntaxTreeNode], Block]] = {
     "heading": lambda node: Heading(int(node.tag[1:]), _spans(node)),
-    "paragraph": lambda node: Paragraph(_spans(node)),
+    "paragraph": _paragraph,
     "bullet_list": lambda node: _list(node, ordered=False),
     "ordered_list": lambda node: _list(node, ordered=True),
     "table": _table,
@@ -181,6 +220,6 @@ _INLINE: dict[str, InlineHandler] = {
     "em": _styled(italic=True),
     "s": _styled(),
     "link": _link,
-    # An image cannot be shown in the document; its alt text is.
+    # An image within a line of text cannot be laid out there; its alt text is.
     "image": _styled(),
 }

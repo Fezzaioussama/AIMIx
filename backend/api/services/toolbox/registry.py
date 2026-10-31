@@ -16,11 +16,13 @@ from api.services.files.storage import WorkspaceStorage
 from api.services.toolbox.code_runner import CodeRunner
 from api.services.toolbox.config import ToolboxConfig
 from api.services.toolbox.e2b_sandbox import E2BSandboxOpener
+from api.services.toolbox.images import ImageStudio
 from api.services.toolbox.sandbox import SandboxLimits, SandboxOpener, metered
 from api.services.toolbox.tools import (
     CALCULATOR,
     CURRENT_DATETIME,
     FETCH_URL,
+    GENERATE_IMAGE,
     LIST_WORKSPACE_FILES,
     READ_CSV,
     READ_WORKSPACE_FILE,
@@ -31,6 +33,7 @@ from api.services.toolbox.tools import (
     calculator_tool,
     current_datetime_tool,
     fetch_url_tool,
+    generate_image_tool,
     list_workspace_files_tool,
     read_csv_tool,
     read_workspace_file_tool,
@@ -100,6 +103,14 @@ def _run_python(config: ToolboxConfig) -> BaseTool | None:
     return run_python_tool(_code_runner(workspace, config)) if workspace else None
 
 
+def _generate_image(config: ToolboxConfig) -> BaseTool | None:
+    """Offered only with a Meta key (``config.images``) and a usable workspace."""
+    if config.images is None:
+        return None
+    workspace = _workspace(config)
+    return generate_image_tool(ImageStudio(config.images, workspace)) if workspace else None
+
+
 TOOLBOX: dict[str, ToolBuilder] = {
     WEB_SEARCH: _web_search,
     FETCH_URL: lambda config: fetch_url_tool(WebGateway(config)),
@@ -111,6 +122,7 @@ TOOLBOX: dict[str, ToolBuilder] = {
     READ_CSV: lambda config: _workspace_tool(config, read_csv_tool),
     SAVE_ARTIFACT: lambda config: _workspace_tool(config, save_artifact_tool),
     RUN_PYTHON: _run_python,
+    GENERATE_IMAGE: _generate_image,
 }
 
 # run_python reads workspace files (its input_files), so it counts as a reader.

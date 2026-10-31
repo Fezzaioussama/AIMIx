@@ -295,6 +295,9 @@ def test_a_name_with_nothing_left_is_refused(raw: str) -> None:
 def test_media_types_are_fixed_per_extension() -> None:
     assert media_type("Report.PDF") == "application/pdf"
     assert media_type("page.html") == "text/html"
+    assert media_type("images/hero.JPG") == "image/jpeg"
+    # An SVG can carry script: it stays a plain download.
+    assert media_type("logo.svg") == BINARY
     assert media_type("tool.exe") == BINARY
     assert (file_type("a/b/Report.PDF"), file_type("README")) == ("pdf", "")
 

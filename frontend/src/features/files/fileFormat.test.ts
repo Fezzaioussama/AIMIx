@@ -1,4 +1,4 @@
-import { File as FileIcon, FileSpreadsheet, FileText } from 'lucide-react';
+import { File as FileIcon, FileImage, FileSpreadsheet, FileText } from 'lucide-react';
 import { describe, expect, it } from 'vitest';
 
 import type { FileListing, WorkspaceFile } from '../../core/api/types';
@@ -8,6 +8,7 @@ import {
   fileName,
   folderOf,
   formatBytes,
+  isPicture,
   withFile,
   withoutFile,
 } from './fileFormat';
@@ -55,7 +56,14 @@ describe('fileFormat', () => {
   it('picks an icon per type, and a plain file for the rest', () => {
     expect(fileIcon('pdf')).toBe(FileText);
     expect(fileIcon('csv')).toBe(FileSpreadsheet);
+    expect(fileIcon('jpg')).toBe(FileImage);
     expect(fileIcon('exe')).toBe(FileIcon);
+  });
+
+  it('knows which files a browser shows as pictures', () => {
+    expect(['jpg', 'jpeg', 'png', 'webp', 'gif'].every(isPicture)).toBe(true);
+    expect(isPicture('pdf')).toBe(false);
+    expect(isPicture('svg')).toBe(false);
   });
 
   it('keeps the used storage equal to the sum of the listed sizes', () => {

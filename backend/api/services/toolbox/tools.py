@@ -14,6 +14,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from api.services.toolbox.calculator import evaluate
 from api.services.toolbox.code_runner import OUTPUT_FOLDER, CodeRunner
+from api.services.toolbox.images import ImageStudio
 from api.services.toolbox.sandbox import INPUT_DIR, OUTPUT_DIR
 from api.services.toolbox.web import WebGateway
 from api.services.toolbox.workspace import LocalWorkspace
@@ -29,6 +30,7 @@ SEARCH_WORKSPACE_FILES = "search_workspace_files"
 READ_CSV = "read_csv"
 SAVE_ARTIFACT = "save_artifact"
 RUN_PYTHON = "run_python"
+GENERATE_IMAGE = "generate_image"
 
 TRUNCATED_NOTE = "\n\n[Truncated: the page continues beyond this point.]"
 
@@ -148,8 +150,21 @@ def save_artifact_tool(workspace: LocalWorkspace) -> BaseTool:
         "Save a new file in the user's workspace; they can download it from their Files "
         "page. The extension sets the format: .txt, .md, .json, .csv or .html are saved as "
         "written. For .docx or .pdf, write Markdown (headings, lists, bold, italic, tables): "
-        "it becomes a formatted document. Never overwrites.",
+        "it becomes a formatted document; a line holding only ![description](path) shows "
+        "that PNG or JPEG of the workspace. Never overwrites.",
         func=workspace.save_artifact,
+    )
+
+
+def generate_image_tool(studio: ImageStudio) -> BaseTool:
+    return make_tool(
+        GENERATE_IMAGE,
+        "Draw a picture with Meta's Muse Image model and save it as a new JPEG in the user's "
+        "workspace (they see it on their Files page). description: the subject, style, "
+        "colours, composition and any text to show, in detail. path: e.g. "
+        "images/launch-hero.jpg. shape: square, landscape or portrait. Each picture costs "
+        "money: draw only the ones the task needs.",
+        func=studio.create,
     )
 
 

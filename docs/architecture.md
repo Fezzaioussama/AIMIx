@@ -443,6 +443,17 @@ pieces (any other encoding is refused), so a compressed bomb stops at
 call, redirects included, at `WEB_FETCH_MAX_SECONDS`, with no retries. A page
 whose charset is not a text codec (`zlib`, `idna`) is read as UTF-8.
 
+`generate_image` draws a picture with Meta's Muse Image (`llm/images.py`,
+through the Meta client) and saves it as a new JPEG of the workspace, offered
+only to a user with a Meta key: `agent_tools.image_generator` resolves the key
+like dictation does, and the toolbox leaves the tool out without one. Meta marks
+each picture as AI-made in its XMP metadata (IPTC `trainedAlgorithmicMedia`),
+and the file is saved unchanged, so the mark stays. A `.docx` or `.pdf` that
+`save_artifact` saves shows such a picture where its Markdown has
+`![alt](path)` on a line of its own: `LocalWorkspace` hands the writers a loader
+that returns only a PNG or JPEG of the user's own workspace, within the file and
+pixel limits (a web address is never fetched); anything else stays its alt text.
+
 `run_python` lets an agent run code for data analysis and charts, offered only
 when `E2B_API_KEY` is set. Code never runs in the web process: `sandbox.py`
 defines the `CodeSandbox` port (Adapter) and one call's lifecycle, and

@@ -18,6 +18,7 @@ from llm import exceptions as llm_exceptions
 from llm.agent_models import create_agent_model
 from llm.base import LLMProvider, ProviderConfig
 from llm.catalog import CATALOGS, ModelInfo
+from llm.images import ImageGenerator, MetaImageGenerator
 from llm.registry import create_provider
 from llm.retry import RetryPolicy
 from llm.speech import MetaTranscriber, Transcriber
@@ -117,6 +118,17 @@ def get_transcriber(profile: LLMProfile) -> Transcriber:
         timeout_seconds=settings.voice_timeout_seconds,
     )
     return MetaTranscriber(config)
+
+
+def get_image_generator(profile: LLMProfile) -> ImageGenerator:
+    """Image generation on the profile's key (a Meta profile): its calls use IMAGE_MODEL
+    and time out after IMAGE_TIMEOUT_SECONDS."""
+    settings = get_settings()
+    config = replace(
+        provider_config(profile, settings.image_model),
+        timeout_seconds=settings.image_timeout_seconds,
+    )
+    return MetaImageGenerator(config)
 
 
 def model_info(profile: LLMProfile, model_id: str) -> ModelInfo | None:

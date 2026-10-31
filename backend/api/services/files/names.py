@@ -12,17 +12,24 @@ from api.services.files.storage import NAME_MAX_BYTES, UNSAFE_NAME_CHARACTERS
 _SPACES = re.compile(r"\s+")
 
 #: Media type per extension, so a download is labelled the same on every server
-#: (the system's mime.types differs between images). Anything else is binary.
+#: (the system's mime.types differs between images). Anything else is binary. The
+#: pictures let the app preview one (Missions' recent files); SVG stays binary, as
+#: it can carry script.
 MEDIA_TYPES = {
     ".csv": "text/csv",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".gif": "image/gif",
     ".htm": "text/html",
     ".html": "text/html",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
     ".json": "application/json",
     ".markdown": "text/markdown",
     ".md": "text/markdown",
     ".pdf": "application/pdf",
+    ".png": "image/png",
     ".txt": "text/plain",
+    ".webp": "image/webp",
     ".xml": "application/xml",
     ".yaml": "application/yaml",
     ".yml": "application/yaml",

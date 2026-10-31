@@ -158,6 +158,14 @@ answer (jsdom), so tests render the narrow layout unless they stub `matchMedia`.
 answer of a request that cannot be cancelled (a save), which is then dropped
 instead of updating state after the screen is gone.
 
+## `core/hooks/useImagePreview.ts`
+
+`useImagePreview(path)` fetches a picture of the user's workspace with the session
+header (`core/api/files.downloadFile`: a token never goes in a URL) and returns it
+as a `data:` URL, which the Content-Security-Policy's `img-src 'self' data:` lets an
+`<img>` show; `null` while it loads or if it cannot. Unmounting cancels the download.
+The server labels JPEG, PNG, WebP and GIF downloads with their image type.
+
 ## `core/hooks/useNow.ts` and `core/time.ts`
 
 `useNow(ticking)` returns the current time, refreshed every second
@@ -339,7 +347,7 @@ server would need a table and endpoints; that is not part of this version.
 | `ConversationPane.tsx`, `MissionComposer.tsx`, `MissionStart.tsx`, `useRecentMissions.ts` | The conversation pane: the log, the message box (Enter sends, Shift + Enter adds a line), the empty state with examples, templates and recent missions |
 | `MessageItem.tsx`, `TeamMessageView.tsx`, `QuestionsMessageView.tsx`, `ProposalMessageView.tsx`, `InputsMessageView.tsx`, `RunMessageView.tsx`, `Bubble.tsx`, `messageContext.ts` | One view per kind of answer, in a registry (a new kind is a new entry); the context carries the live proposal, form, run and open questions each one needs. The questions view offers each suggested answer as a chip (a radio underneath) beside a field for one's own; a message typed meanwhile answers all of them |
 | `TeamPane.tsx`, `StepDrawer.tsx`, `useStepDrawer.ts` | The team pane and the agent drawer (its editor is the builder's `StepCard`, so it has the two flow sections too, over the team's own steps); the hook follows the team (a removed agent closes it) and gives focus back |
-| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables (a skipped step is never one) followed by what each other agent produced (e.g. the orchestrator's final check), the folded live run, the newest files (reloaded when a run ends) |
+| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables (a skipped step is never one) followed by what each other agent produced (e.g. the orchestrator's final check), the folded live run, the newest files (reloaded when a run ends; a picture, such as one `generate_image` drew, shows above its name through `useImagePreview`) |
 
 `testData.ts` (fixtures and `routeFetch`, a fetch stand-in that answers
 `"METHOD /api/path"`) and `testRender.tsx` serve the tests.

@@ -16,7 +16,7 @@ from docx.document import Document as WordDocument
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Emu, Inches, Pt, RGBColor
 from docx.text.paragraph import Paragraph as WordParagraph
 
 from api.services.artifacts.contracts import AI_GENERATED_KEYWORD, AI_GENERATED_NOTE, RenderOptions
@@ -26,10 +26,12 @@ from api.services.artifacts.markdown import (
     Heading,
     ListBlock,
     Paragraph,
+    Picture,
     Quote,
     Rule,
     Spans,
     Table,
+    load_pictures,
     parse_markdown,
     web_link,
 )
@@ -41,6 +43,8 @@ CODE_FONT = "Courier New"
 CODE_SIZE = Pt(9.5)
 LINK_COLOR = RGBColor(0x1D, 0x4E, 0xD8)
 RULE_COLOR = "A0AEC0"
+#: A wider picture is scaled down to the template's text width (Letter, 1-inch margins).
+PICTURE_WIDTH = Inches(6.5)
 
 
 @dataclass(frozen=True)
@@ -54,13 +58,14 @@ class _Place:
 
 
 def render_docx(content: str, options: RenderOptions) -> bytes:
-    """The Markdown ``content`` as a .docx file. ``options`` concern PDFs only."""
+    """The Markdown ``content`` as a .docx file. Of ``options``, only the pictures
+    matter: the fonts are the PDF's."""
     document = Document()
     properties = document.core_properties
     properties.author = "AIMIx"
     properties.comments = AI_GENERATED_NOTE
     properties.keywords = AI_GENERATED_KEYWORD
-    for block in parse_markdown(content):
+    for block in load_pictures(parse_markdown(content), options.pictures):
         _write(block, document, _Place())
     buffer = BytesIO()
     document.save(buffer)
@@ -129,6 +134,14 @@ def _table(block: Table, document: WordDocument, place: _Place) -> None:
         # A short row leaves its last cells empty.
         for cell, spans in zip(word_row.cells, row, strict=False):
             _add_spans(cell.paragraphs[0], spans, bold=bool(block.header) and index == 0)
+
+
+@_write.register
+def _picture(block: Picture, document: WordDocument, place: _Place) -> None:
+    shape = document.add_picture(BytesIO(block.data))
+    if shape.width > PICTURE_WIDTH:
+        shape.height = Emu(int(shape.height * PICTURE_WIDTH / shape.width))
+        shape.width = PICTURE_WIDTH
 
 
 @_write.register

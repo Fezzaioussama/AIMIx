@@ -1,6 +1,7 @@
 import {
   File as FileIcon,
   FileCode,
+  FileImage,
   FileJson,
   FileSpreadsheet,
   FileText,
@@ -20,7 +21,14 @@ const ICONS: Record<string, LucideIcon> = {
   yaml: FileJson,
   yml: FileJson,
   html: FileCode,
+  jpg: FileImage,
+  jpeg: FileImage,
+  png: FileImage,
+  webp: FileImage,
 };
+
+/** The types a browser shows as a picture: what generate_image saves (JPEG), and more. */
+const PICTURE_TYPES = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
 
 /** How the upload hint names each type, for people rather than for file systems, in
  *  the order it lists them: the most common first. */
@@ -38,6 +46,10 @@ const TYPE_NAMES: Record<string, string> = {
 
 export function fileIcon(type: string): LucideIcon {
   return ICONS[type] ?? FileIcon;
+}
+
+export function isPicture(type: string): boolean {
+  return PICTURE_TYPES.has(type);
 }
 
 /** The last part of a path: "reports/q3.pdf" → "q3.pdf". */

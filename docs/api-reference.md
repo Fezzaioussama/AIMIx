@@ -360,13 +360,19 @@ Every integration route answers `404` for another account's integration.
   { "name": "search_workspace_files", "description": "Search local text files...", "source": "AIMIx" },
   { "name": "read_csv", "description": "Read a local CSV as structured rows...", "source": "AIMIx" },
   { "name": "save_artifact", "description": "Save a new file in the user's workspace...", "source": "AIMIx" },
-  { "name": "run_python", "description": "Run Python in a fresh sandbox without internet...", "source": "AIMIx" }
+  { "name": "run_python", "description": "Run Python in a fresh sandbox without internet...", "source": "AIMIx" },
+  { "name": "generate_image", "description": "Draw a picture with Meta's Muse Image model...", "source": "AIMIx" }
 ]
 ```
 
 The built-in tools are the ones enabled by `AGENT_BUILTIN_TOOLS`; `web_search`
-is listed only when `TAVILY_API_KEY` is set, and `run_python` only when
-`E2B_API_KEY` is set. Configured MCP tools also appear with `source: "MCP"` and names prefixed by
+is listed only when `TAVILY_API_KEY` is set, `run_python` only when
+`E2B_API_KEY` is set, and `generate_image` only when the user has a Meta key
+(saved on the Settings page, or `META_API_KEY` shared by `ALLOW_SERVER_LLM_KEY`).
+`generate_image` takes `description`, `path` and `shape` (`square`, `landscape`
+or `portrait`) and saves a new JPEG; a `.docx` or `.pdf` that `save_artifact`
+saves shows any PNG or JPEG of the workspace written as `![alt](path)` on a line
+of its own. Configured MCP tools also appear with `source: "MCP"` and names prefixed by
 their server name. Tools of your enabled [integrations](#integrations) appear
 with the integration's name as `source` (e.g. `"crm"`) and as their name prefix.
 Use the exact `name` values in a step's `allowed_tools`.
