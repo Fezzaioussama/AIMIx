@@ -41,11 +41,17 @@ per account (ids in the path share one counter); past it, `429 throttled` with
 ```
 
 `201` → `{ "username": "alice" }`. The username is up to 150 letters, digits and
-`@ . + - _`. The password must pass the same rules the Django version applied
-(at least 8 characters, not a common password, not all numeric, not similar to
-the username) or a `400 validation_error` lists what is wrong. A taken username
-is also a `400`. Production deployments must explicitly enable public sign-up
-with `ALLOW_PUBLIC_REGISTRATION=true`; otherwise this endpoint returns `403`.
+`@ . + - _`. The password must be at least 12 characters, not a common password,
+not all numeric and not similar to the username, or a `400 validation_error`
+lists what is wrong. A taken username is also a `400`. Production deployments
+must explicitly enable public sign-up with `ALLOW_PUBLIC_REGISTRATION=true`;
+otherwise this endpoint returns `403`. One client may create
+`REGISTRATION_RATE_LIMIT_REQUESTS` (5) accounts per
+`REGISTRATION_RATE_LIMIT_WINDOW_SECONDS` (3600); past it, `429 throttled`. Each
+attempt takes its place before the account is made, so sign-ups sent at once
+cannot pass the limit; a refused attempt gives its place back. The new account starts with an empty file space and a random token version,
+even if its id once belonged to a deleted account: that account's tokens never
+open it.
 
 ### `POST /login` — public
 
@@ -82,6 +88,71 @@ or behind proxies the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` names (see
 ### `GET /protected`
 
 `200` → `{ "message": "Hello alice, your token is valid.", "user_id": 1 }`.
+
+---
+
+## Account
+
+The signed-in user's own account: its password, a copy of everything it holds,
+and its deletion (the rights of access, portability and erasure, GDPR art. 15,
+17 and 20). Each route checks a password or reads all of the account's data, so
+all three share the per-account rate limit (`USER_RATE_LIMIT_*`).
+
+### `POST /account/password`
+
+```json
+{ "current_password": "the-old-one-123", "new_password": "a-new-long-pass-456" }
+```
+
+`200` → `{ "access": "<jwt>" }` plus a new refresh cookie. Every other session of
+the account ends: access tokens issued before return `401`, and the previous
+refresh token is refused. A wrong current password is a `400 validation_error`
+(`current_password: …`), never a `401`, so the session goes on; a new password
+that breaks the rules of `POST /register` is a `400` (`new_password: …`). A wrong
+password here, and in `POST /account/delete`, counts as a failed sign-in: past
+`AUTH_ACCOUNT_FAILURE_LIMIT` both routes, and signing in, answer `429 throttled`
+until the window ends.
+
+### `GET /account/export`
+
+`200` → a JSON file (`Content-Disposition: attachment`,
+`aimix-account-<date>.json`, `Cache-Control: no-store`):
+
+```json
+{
+  "exported_at": "2026-10-31T10:00:00Z",
+  "account": { "username": "alice", "created_at": "…", "llm_provider": "openrouter" },
+  "provider_settings": [{ "provider": "openrouter", "default_model": "", "api_key_hint": "9xyz" }],
+  "pipelines": [ /* as GET /pipelines/ */ ],
+  "runs": [ /* as GET /runs/<id>, newest first */ ],
+  "approvals": [ /* every approval request, any status, with run_id and decided_at */ ],
+  "schedules": [ /* the saved schedule: frequency, hour, minute, timezone, inputs, … */ ],
+  "integrations": [ /* name, url, enabled, require_approval, headers (name and hint), created_at */ ],
+  "files": [ /* as GET /files: path, size, modified_at, type */ ],
+  "note": "Saved API keys and integration header values are secrets: …"
+}
+```
+
+Secrets never leave the server: saved API keys and integration header values
+appear only as their hints. Files are listed; each is downloaded with
+`GET /files/<path>`. The copy is built in memory, so an account holding more than
+`ACCOUNT_EXPORT_MAX_CHARS` (30,000,000) characters of runs, run steps and
+pipeline prompts gets `422 export_too_large`, measured before anything is loaded,
+and the server builds one copy at a time: another request meanwhile gets
+`503 exports_busy`. The operator's `export-user` command has neither bound.
+
+### `POST /account/delete`
+
+```json
+{ "password": "the-account-password" }
+```
+
+`204`, and the refresh cookie is cleared. Deletes the account's files, then the
+account and every row it owns (pipelines, runs with their steps and approvals,
+schedules, integrations, saved keys); its access tokens return `401` from then
+on and the username can be registered again. A wrong password is a
+`400 validation_error`; an account with a queued, running or waiting run is
+`409 conflict` ("Stop your active runs before deleting your account.").
 
 ---
 
@@ -537,6 +608,7 @@ the route is rate-limited per account (`USER_RATE_LIMIT_REQUESTS` per
 | 413 | `storage_quota_exceeded` | The user's files would take more than `WORKSPACE_MAX_TOTAL_BYTES` (100 MB), or a new file would make more than `WORKSPACE_MAX_FILES` (2,000) files and folders |
 | 415 | `unsupported_file_type` | The extension is not in `WORKSPACE_UPLOAD_EXTENSIONS`; `detail` lists the accepted ones |
 | 429 | `throttled` | The account sent more than `USER_RATE_LIMIT_REQUESTS` uploads in `USER_RATE_LIMIT_WINDOW_SECONDS`; `Retry-After` says when to try again |
+| 507 | `storage_full` | The write would leave less than `WORKSPACE_MIN_FREE_BYTES` (500 MB, or a tenth of the disk when that is less) free on the disk every account and the database share. The same refusal stops an agent's `save_artifact`, and starting or resuming a run, saving a pipeline (`POST`, `PUT`, `PATCH /pipelines/…`) and `POST /templates/<slug>/use`: they all grow the database |
 
 ### `GET /files/<path>`
 

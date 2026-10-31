@@ -24,6 +24,7 @@ If you are new to the repository, read these in order:
 | 7 | [development-guide.md](development-guide.md) | Daily workflow, recipes for common changes, testing, quality gates |
 | 8 | [deployment.md](deployment.md) | CI, the production image, and deploying to Railway |
 | 9 | [known-issues.md](known-issues.md) | Current gaps and technical debt, with suggested fixes |
+| 10 | [legal.md](legal.md) | The legal pages, the operator facts to fill in, and answering data-protection requests |
 
 ## What AIMIx is, in one paragraph
 

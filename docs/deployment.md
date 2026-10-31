@@ -164,6 +164,8 @@ application files change.
    | `TRUSTED_PROXY_HOPS` | unset (the image sets `2`) | Where the rate limits find the client's address; see [Client address behind a proxy](#client-address-behind-a-proxy). |
    | `RUN_DEFAULT_MAX_COST_USD` | optional (default empty: no limit) | A spending limit, in US dollars, for every run whose starter sets none: the run stops, failed, once its model calls have cost this much. A user can set a different limit on any run, higher or lower, and raise it to resume a run that stopped; see [Spending limits](#spending-limits-and-usage). |
    | `WORKSPACE_MAX_TOTAL_BYTES` | optional (default `100000000`) | The storage limit of one user's files. Uploads (each capped at `DOCUMENT_MAX_BYTES`, 10 MB) and agent artifacts both count. |
+   | `WORKSPACE_MIN_FREE_BYTES` | optional (default `500000000`) | Free space no write may go below on the volume. The database shares it with every user's files: past this (or a tenth of the volume, when that is less), uploads, saved artifacts, new or resumed runs and saved pipelines are refused (`507 storage_full`) instead of SQLite running out of room; reading and deleting still work. Watch the volume's usage. |
+   | `REGISTRATION_RATE_LIMIT_REQUESTS` | optional (default `5`, per `REGISTRATION_RATE_LIMIT_WINDOW_SECONDS`, `3600`) | Accounts one client may create per window when sign-up is open; each account brings its own storage quota. |
    | `WORKSPACE_UPLOAD_EXTENSIONS` | optional | The file types the Files page accepts (default `.pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.yaml,.yml,.html`). Downloads are always attachments, so allowing more types does not let them run in the app. |
 
    `RAILWAY_RUN_UID` is no longer needed: the image hands the root-owned volume
@@ -281,7 +283,12 @@ To give agents the web, pick the trade-off you accept:
 
 `fetch_url` only reaches public addresses (see [architecture.md](architecture.md#built-in-tools)).
 Searches are sent to Tavily, which sees the query text, so they are covered by the
-same trust decision as an LLM provider. Missions that research the market run on
+same trust decision as an LLM provider. Unlike a user's own provider key, this key
+is the operator's: Tavily processes the queries for you. Its terms (checked
+31 October 2026) allow it to use customer input for training and to pass queries
+to third-party search engines; get its DPA, and an opt-out from training, before
+you set the key on a public instance, and keep the privacy policy's recipients
+in step ([legal.md](legal.md)). Missions that research the market run on
 the model's own knowledge until one of these is set; their prompts tell the
 agents to mark figures as estimates.
 
@@ -307,7 +314,9 @@ The key is server-wide, like a server-wide LLM key: every user who can run
 agents spends it, and with `ALLOW_PUBLIC_REGISTRATION=true` that is anyone who
 registers. Each call is bounded by `SANDBOX_TIMEOUT_SECONDS` of sandbox time
 and each account by `SANDBOX_MAX_CALLS_PER_HOUR` calls (120); set the key only
-if you accept that cost, and watch the usage in your E2B account.
+if you accept that cost, and watch the usage in your E2B account. E2B processes
+the code and files for you (it is your processor): sign its DPA (trust.e2b.dev)
+and note where its sandboxes run; an EU region is available on request.
 
 ### Spending limits and usage
 
@@ -404,6 +413,14 @@ the rest wait queued.
 - **Schedules fire only while the process is up** (see
   [Scheduled runs](#scheduled-runs)); a time missed during a deploy is run once
   afterwards, not replayed.
+- **Backups are yours to set up.** Nothing in the image backs up the volume:
+  turn on Railway's volume backups (or copy `/data` elsewhere) and decide how
+  long they are kept. A deleted account stays in the backups for that long; the
+  privacy policy states it ([legal.md](legal.md)).
+- **Data-protection requests** from someone who cannot sign in are answered with
+  `python -m api.cli export-user NAME` and `delete-user NAME` in the service
+  shell (through `docker-entrypoint.sh`, as for `create-user`); see
+  [legal.md](legal.md#answering-a-data-protection-request).
 
 ## Troubleshooting
 

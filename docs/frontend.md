@@ -15,7 +15,8 @@ frontend/src/
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
     hooks/          # useModels.ts, useAgentTools.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts
     markdown/       # renderMarkdown.ts
-    routes.ts       # HOME_PATH (where sign-in lands) and missionPath(id)
+    routes.ts       # HOME_PATH (where sign-in lands), missionPath(id), LEGAL_LINKS
+    saveBlob.ts     # hands a downloaded Blob to the browser as a file to save
     time.ts         # elapsedMs, formatDuration, formatDateTime
     usageFormat.ts  # formatCost, formatTokens, parseCost, describeCost: tokens and costs in words
     ui/             # shared presentational components and motion (no data access)
@@ -24,12 +25,13 @@ frontend/src/
     auth/           # LoginPage, RegisterPage, AuthCard, AuthLayout
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
     chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
-    files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat, saveBlob
+    files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat
+    legal/          # LegalPage: /legal, /privacy, /terms (French), operator facts
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, LiveRun, useRun and the run history
     schedules/      # the Schedule panel (builder) and the Schedules view of the Runs screen
-    settings/       # SettingsPage: LLM providers, Integrations (users' MCP servers) and Usage
+    settings/       # SettingsPage: LLM providers, Integrations (users' MCP servers), Usage, Account
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -40,6 +42,7 @@ frontend/src/
 | `/` | `LandingPage` (lazy-loaded) | public |
 | `/login` | `LoginPage` | public |
 | `/register` | `RegisterPage` (creates the account, signs the person in and goes to `/mission`; if only that sign-in fails it goes to `/login`) | public |
+| `/legal`, `/privacy`, `/terms` | `LegalPage` (lazy-loaded; one route per entry of `LEGAL_LINKS` in `core/routes.ts`) | public |
 | `/mission`, `/mission/:pipelineId` | `MissionPage` (one route, `/mission/:pipelineId?`) | guarded |
 | `/chat` | `ChatPage` | guarded |
 | `/pipeline` | `PipelineBuilderPage` | guarded |
@@ -120,7 +123,7 @@ Branch on `error.code`, never on `error.message`.
 | File | Role |
 |---|---|
 | `tokenStorage.ts` | The access token, in memory only (the refresh token is an HttpOnly cookie; nothing goes to browser storage). `endSession()` drops it and notifies `subscribeToSessionEnd()` listeners (Observer): on logout, and when the server refuses the session. |
-| `AuthContext.tsx` | `AuthProvider` + `useAuth()` → `{ isAuthenticated, isReady, login, register, logout }`. It subscribes to the session's end and then signs out (a guarded screen goes to `/login`; a public page stays where it is, so nothing loops). Its `forgetAccountData` prop runs at each session end and on signing in; `main.tsx` passes the mission storage's `forgetAllMissions`. |
+| `AuthContext.tsx` | `AuthProvider` + `useAuth()` → `{ isAuthenticated, isReady, login, register, logout, changePassword, deleteAccount }`. `changePassword` keeps this tab signed in with the new token (the server ends every other session); `deleteAccount` ends the session once the account is gone. It subscribes to the session's end and then signs out (a guarded screen goes to `/login`; a public page stays where it is, so nothing loops). Its `forgetAccountData` prop runs at each session end and on signing in; `main.tsx` passes the mission storage's `forgetAllMissions`. |
 | `RequireAuth.tsx` | Route guard; redirects to `/login` with `state.from`. |
 
 ## `core/hooks/useModels.ts`
@@ -196,6 +199,8 @@ Components here render and animate; they never fetch or touch storage.
 | `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 | `SwitchButton.tsx` | The bare `role="switch"` button: `checked`, `disabled`, `onChange(next)`, and its name from `label`, or from the visible text it points to with `labelledBy` and `describedBy`. The one switch every other is built on |
 | `ToggleSwitch.tsx` | A `SwitchButton` with its state in words ("On" / "Off") beside it: `checked`, `label` (its accessible name), `disabled`, `onChange(next)`. Shared by the integrations and the schedules |
+| `AiNotice.tsx` | The one line that says text beside it was written by AI and can be wrong (`AI_NOTICE`, EU AI Act art. 50): under the chat composer, above a pipeline's run results, under the mission's deliverables |
+| `LegalLinks.tsx` | The three legal pages as a row of small links (`LEGAL_LINKS`): on the sign-in and sign-up cards, the Settings page and the legal pages themselves |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
 (MIT + Commons Clause — keep `LICENSE.md` next to them): `Aurora` (WebGL2
@@ -406,9 +411,8 @@ to read (`/api/files`).
 | `FilesPage.tsx` | Header with the storage used (text and a bar), the upload panel, an `aria-live` status line, then the list or the empty state ("Files your agents save appear here. Agents with file tools can also read the files you upload.") |
 | `UploadPanel.tsx` | Drop zone plus a "Choose files" `GlowButton` that opens a hidden multi-file input (`accept` from the server's `allowed_extensions`), the accepted types in plain words and the size cap, and each refused file with its reason; a taken name offers "Replace". A window-level guard keeps a file dropped beside the zone from replacing the page |
 | `FileRow.tsx` | One file: type icon (lucide), name, folder, size, date, download and delete buttons with a spinner while busy; delete asks first (focus starts on Cancel, Escape cancels) and errors show under the row |
-| `useFiles.ts` | State + transport: loads the listing, uploads one file per request (so each refusal is reported against its file), replace/dismiss, download (then `saveBlob`) and delete (a 404 counts as deleted). One `AbortController` per mount cancels everything on unmount |
+| `useFiles.ts` | State + transport: loads the listing, uploads one file per request (so each refusal is reported against its file), replace/dismiss, download (then `saveBlob` from `core/saveBlob.ts`, shared with the account export) and delete (a 404 counts as deleted). One `AbortController` per mount cancels everything on unmount |
 | `fileFormat.ts` | Pure helpers: `formatBytes` (decimal units like the server's limits), `formatDate`, `fileName`, `folderOf`, `fileIcon`, `describeTypes`, and `withFile` / `withoutFile`, which keep `used_bytes` equal to the sum of the sizes |
-| `saveBlob.ts` | Hands a downloaded `Blob` to the browser as a file save through an object URL |
 
 ### `features/runs`
 
@@ -464,7 +468,7 @@ runs and deletes them.
   from the form once saved; the API never sends a key back.
 - `SettingsPage` renders the provider picker and one `ProviderCard` (key
   status, password field, "Remove saved key", default-model select) each,
-  then the Integrations section and the Usage section.
+  then the Integrations, Usage and Account sections, and the legal links.
 - `UsageSection` (Settings → Usage) shows the last `USAGE_DAYS` (30) days from
   `useUsage()` (`GET /api/usage`, cancelled on unmount): runs, cost (with the
   token split in its tooltip) and tokens, then a list of pipelines with their
@@ -472,8 +476,15 @@ runs and deletes them.
   so when there were no runs, and that the real cost is higher when some model
   has no known cost. A load failure is an alert; the section never blocks the
   rest of the page.
+- `AccountSection` (Settings → Account), through `useAccount()`: change the
+  password (current, new, and the new one again; "Your other devices were
+  signed out"), "Download my data" (`GET /api/account/export`, saved as
+  `aimix-account-<date>.json`), and "Delete my account", which asks for the
+  password and a checked "I understand that this cannot be undone", then goes
+  to `/`. Each action has its own `useSubmission`. The page's tests render it
+  signed in through `testRender.tsx` (`renderSettingsPage`).
 - `useSubmission()` is the busy flag, notice and `submit(task, done, failed)`
-  both sections share; `NoticeLine` shows the notice (`status`, or `alert` for
+  every section shares; `NoticeLine` shows the notice (`status`, or `alert` for
   an error).
 
 Integrations (the user's own MCP servers):
@@ -527,7 +538,18 @@ canvas, because the headline sits on top of it.
 `LoginPage` and `RegisterPage` share the `AuthCard` (glass `SpotlightCard`,
 `BlurText` title, `GlowButton` submit) inside `AuthLayout` (full-screen
 `Aurora` plus the hero with `RotatingText`) and call `useAuth()`. A successful sign-in
-goes to `HOME_PATH`, the mission workspace.
+goes to `HOME_PATH`, the mission workspace. The card ends with `LegalLinks`; its
+`notice` prop puts a line above the button, which `RegisterPage` uses to name the
+terms of use and the privacy policy before the account is created.
+
+### `features/legal`
+
+The three public legal pages, in French: `LegalPage` picks the document by path
+and renders it through `renderMarkdown`, with a "Version provisoire" note while
+an operator fact is missing. `operator.ts` holds those facts (`null` shows as a
+visible "[à compléter : …]" marker), `documents/` the Markdown texts with
+`{{fact}}` placeholders, `fillFacts.ts` the substitution (an unknown placeholder
+throws). What to fill in and what keeps the texts true: [legal.md](legal.md).
 
 ## Conventions (from AGENTS.md §8)
 
