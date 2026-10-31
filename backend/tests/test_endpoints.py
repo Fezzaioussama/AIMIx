@@ -412,6 +412,7 @@ def test_a_signed_in_user_is_greeted(client: TestClient, user: User) -> None:
     assert response.json() == {
         "message": "Hello tester, your token is valid.",
         "user_id": user.id,
+        "username": "tester",
     }
 
 
