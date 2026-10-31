@@ -205,14 +205,20 @@ class LocalWorkspace:
             raise ToolException("The file is larger than the configured limit.")
         return path
 
+    def read_picture(self, path: str) -> bytes:
+        """A PNG or JPEG of the workspace, within the file and pixel limits."""
+        data = self.read_bytes(path)
+        if not _is_picture(data, self._limits.documents.max_image_pixels):
+            raise ToolException("The file is not a PNG or JPEG picture of a size that can be read.")
+        return data
+
     def _picture(self, path: str) -> bytes | None:
-        """A PNG or JPEG of the workspace for a document to show, within the file and
-        pixel limits; None for anything else (a web address is never fetched)."""
+        """A picture for a document to show, or None for anything else (a web address
+        is never fetched)."""
         try:
-            data = self._within_size_limit(self._storage.existing(path)).read_bytes()
-        except (DomainError, ToolException, OSError):
+            return self.read_picture(path)
+        except ToolException:
             return None
-        return data if _is_picture(data, self._limits.documents.max_image_pixels) else None
 
     def _document_text(self, path: Path) -> str:
         """A PDF, Word or other document as text, cut at the output limit."""

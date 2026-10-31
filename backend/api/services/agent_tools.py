@@ -17,15 +17,14 @@ from api.repositories import pipelines as repository
 from api.security import secret_box_for
 from api.services import llm_settings
 from api.services.files.storage import user_workspace_dir
-from api.services.llm import get_image_generator
+from api.services.llm import get_image_generator, get_object_finder
 from api.services.multiagent.contracts import RunResult
 from api.services.rate_limits import RateLimitRequest, enforce
 from api.services.runs import RunStart
-from api.services.toolbox.config import SandboxQuota, toolbox_config
+from api.services.toolbox.config import MetaTools, SandboxQuota, toolbox_config
 from api.services.toolbox.registry import toolbox_tools
 from config.settings import Settings, get_settings
-from llm.images import PROVIDER as IMAGE_PROVIDER
-from llm.images import ImageGenerator
+from llm.providers import meta
 
 logger = logging.getLogger(__name__)
 
@@ -107,15 +106,15 @@ def sandbox_quota(database: Database, user: User, settings: Settings) -> Sandbox
     return spend
 
 
-def image_generator(database: Database, user: User, settings: Settings) -> ImageGenerator | None:
-    """Muse Image on the user's Meta key, or the server's when ALLOW_SERVER_LLM_KEY
-    shares it; None without one, so generate_image is not offered."""
+def meta_tools(database: Database, user: User, settings: Settings) -> MetaTools | None:
+    """Muse Image and SAM 3.1 on the user's Meta key, or the server's when
+    ALLOW_SERVER_LLM_KEY shares it; None without one, so their tools are not offered."""
     with database.session() as session:
         try:
             profile = llm_settings.provider_profile(
-                session, user, secret_box_for(settings), IMAGE_PROVIDER
+                session, user, secret_box_for(settings), meta.NAME
             )
-            return get_image_generator(profile)
+            return MetaTools(get_image_generator(profile), get_object_finder(profile))
         except ProviderNotConfigured:
             return None
 
@@ -125,10 +124,10 @@ def native_tools(database: Database, user: User, settings: Settings) -> list[Bas
     built-in toolbox (web search, page fetch, calculator, clock, pictures)."""
     workspace = user_workspace_dir(settings.workspace_dir, user.id)
     quota = sandbox_quota(database, user, settings)
-    images = image_generator(database, user, settings)
+    models = meta_tools(database, user, settings)
     return [
         *read_only_tools(database, user),
-        *toolbox_tools(toolbox_config(settings, workspace, quota, images)),
+        *toolbox_tools(toolbox_config(settings, workspace, quota, models)),
     ]
 
 

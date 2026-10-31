@@ -11,6 +11,7 @@ llm/
   agent_models.py  # LangChain model factory registry for LangGraph chat, with retries
   speech.py        # Transcript, Transcriber Protocol, MetaTranscriber: speech to text
   images.py        # GeneratedImage, ImageGenerator Protocol, MetaImageGenerator: pictures
+  vision.py        # Box, Detection, ObjectFinder Protocol, MetaObjectFinder: finding objects
   retry.py         # RetryPolicy, Retrier: bounded retries for transient failures
   usage.py         # TokenUsage, cost sources, UsageCallback, metered: what each model call used and cost
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
@@ -49,6 +50,19 @@ refusal such as `content_policy_violation` (HTTP 400) or an answer without a
 decodable image is a `ProviderRequestError`. `api/services/llm.get_image_generator`
 builds it with `IMAGE_MODEL` and `IMAGE_TIMEOUT_SECONDS`; the toolbox's
 `ImageStudio` saves the picture (`api/services/toolbox/images.py`).
+
+## Finding objects
+
+`llm/vision.py` backs the `find_objects` agent tool. `MetaObjectFinder` sends SAM 3.1
+one user message on the Responses endpoint (`client.responses.create`): an
+`input_text` naming what to find and an `input_image` data URL, with
+`metadata={"include_confidence": "true", "mask_encoding": "one_bit"}`. The answer
+is one line of text with a box and a mask per match
+(`<|box;x1=..;y1=..;x2=..;y2=..;w=..;h=..;c=..|><|mask;...|>`); only the boxes are
+read, and a box missing a corner is a `ProviderRequestError`. No match is an empty
+`Detection`. `api/services/llm.get_object_finder` builds it with `VISION_MODEL` and
+`VISION_TIMEOUT_SECONDS`; the toolbox's `ObjectSpotter` marks and saves the result
+(`api/services/toolbox/vision.py`).
 
 ## The contract
 

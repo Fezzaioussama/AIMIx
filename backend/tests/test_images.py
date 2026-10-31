@@ -1,6 +1,6 @@
-"""Image generation: the Muse Image adapter's request and failure contract, the
-generate_image tool, and when it is offered. Offline: the openai client and the
-generator are fakes."""
+"""Image generation: the Muse Image adapter's request and failure contract, and the
+generate_image tool (when it is offered: test_vision.py). Offline: the openai client
+and the generator are fakes."""
 
 from __future__ import annotations
 
@@ -11,20 +11,15 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from langchain_core.tools import ToolException
 
-from api.models import User
-from api.services import agent_tools
 from api.services.toolbox.images import ImageStudio
-from api.services.toolbox.registry import toolbox_tools
 from llm.base import ProviderConfig
 from llm.exceptions import ProviderRequestError, ProviderTimeout
 from llm.images import GeneratedImage, MetaImageGenerator
 from llm.retry import RetryPolicy
 from tests.retry_fakes import INSTANT, openai_status, openai_timeout
-from tests.test_toolbox import CONFIG, local_workspace
+from tests.test_toolbox import local_workspace
 
 JPEG = b"\xff\xd8\xff\xe0fake"
 NO_RETRIES = replace(INSTANT, retry=RetryPolicy(0, 0.0, 0.0))
@@ -153,36 +148,3 @@ def test_the_tool_never_overwrites_a_file(tmp_path: Path) -> None:
     with pytest.raises(ToolException):
         ImageStudio(FakeGenerator(), local_workspace(tmp_path)).create("A fox", "fox.jpg")
     assert (tmp_path / "fox.jpg").read_bytes() == b"the user's own"
-
-
-def test_the_tool_is_offered_only_with_a_meta_key(tmp_path: Path) -> None:
-    config = replace(CONFIG, enabled=("generate_image",), workspace_dir=tmp_path)
-
-    assert toolbox_tools(config) == []
-    assert [tool.name for tool in toolbox_tools(replace(config, images=FakeGenerator()))] == [
-        "generate_image"
-    ]
-
-
-def test_an_account_with_a_saved_meta_key_gets_the_tool(
-    app: FastAPI, auth_client: TestClient, user: User, tmp_path: Path
-) -> None:
-    settings = agent_tools.get_settings().model_copy(
-        update={"workspace_dir": tmp_path, "agent_builtin_tools": ["generate_image"]}
-    )
-
-    def names() -> list[str]:
-        return [tool.name for tool in agent_tools.native_tools(app.state.database, user, settings)]
-
-    assert "generate_image" not in names()
-    saved = auth_client.put(
-        "/api/llm-settings",
-        json={
-            "provider": "openrouter",
-            "providers": [
-                {"name": "meta", "default_model": "muse-spark-1.3", "api_key": "meta-key"}
-            ],
-        },
-    )
-    assert saved.status_code == 200
-    assert "generate_image" in names()

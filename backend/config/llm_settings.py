@@ -56,6 +56,9 @@ class LlmSettings(BaseModel):
     # The generate_image agent tool: Muse Image, on the Meta key ($0.01 an image).
     image_model: str = Field("muse-image-1.0", validation_alias="IMAGE_MODEL")
     image_timeout_seconds: float = Field(120.0, gt=0, validation_alias="IMAGE_TIMEOUT_SECONDS")
+    # The find_objects agent tool: SAM 3.1, on the Meta key ($0.0025 a picture).
+    vision_model: str = Field("sam-3.1", validation_alias="VISION_MODEL")
+    vision_timeout_seconds: float = Field(60.0, gt=0, validation_alias="VISION_TIMEOUT_SECONDS")
 
     # Provider-keyed views, so provider lookups stay one dict access (§5 O).
     @property

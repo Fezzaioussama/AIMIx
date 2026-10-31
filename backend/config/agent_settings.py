@@ -78,6 +78,7 @@ class AgentSettings(BaseModel):
             "save_artifact",
             "run_python",
             "generate_image",
+            "find_objects",
         ],
         validation_alias="AGENT_BUILTIN_TOOLS",
     )

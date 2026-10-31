@@ -14,7 +14,7 @@ from langchain_core.tools import BaseTool
 from api.services.artifacts.contracts import RenderOptions
 from api.services.files.storage import WorkspaceStorage
 from api.services.toolbox.code_runner import CodeRunner
-from api.services.toolbox.config import ToolboxConfig
+from api.services.toolbox.config import MetaTools, ToolboxConfig
 from api.services.toolbox.e2b_sandbox import E2BSandboxOpener
 from api.services.toolbox.images import ImageStudio
 from api.services.toolbox.sandbox import SandboxLimits, SandboxOpener, metered
@@ -22,6 +22,7 @@ from api.services.toolbox.tools import (
     CALCULATOR,
     CURRENT_DATETIME,
     FETCH_URL,
+    FIND_OBJECTS,
     GENERATE_IMAGE,
     LIST_WORKSPACE_FILES,
     READ_CSV,
@@ -33,6 +34,7 @@ from api.services.toolbox.tools import (
     calculator_tool,
     current_datetime_tool,
     fetch_url_tool,
+    find_objects_tool,
     generate_image_tool,
     list_workspace_files_tool,
     read_csv_tool,
@@ -42,6 +44,7 @@ from api.services.toolbox.tools import (
     search_workspace_files_tool,
     web_search_tool,
 )
+from api.services.toolbox.vision import ObjectSpotter
 from api.services.toolbox.web import WebGateway
 from api.services.toolbox.workspace import LocalWorkspace, WorkspaceLimits
 
@@ -103,12 +106,22 @@ def _run_python(config: ToolboxConfig) -> BaseTool | None:
     return run_python_tool(_code_runner(workspace, config)) if workspace else None
 
 
-def _generate_image(config: ToolboxConfig) -> BaseTool | None:
-    """Offered only with a Meta key (``config.images``) and a usable workspace."""
-    if config.images is None:
+def _meta_tool(
+    config: ToolboxConfig, build: Callable[[MetaTools, LocalWorkspace], BaseTool]
+) -> BaseTool | None:
+    """Offered only with a Meta key (``config.meta``) and a usable workspace."""
+    if config.meta is None:
         return None
     workspace = _workspace(config)
-    return generate_image_tool(ImageStudio(config.images, workspace)) if workspace else None
+    return build(config.meta, workspace) if workspace else None
+
+
+def _image_tool(meta: MetaTools, workspace: LocalWorkspace) -> BaseTool:
+    return generate_image_tool(ImageStudio(meta.images, workspace))
+
+
+def _vision_tool(meta: MetaTools, workspace: LocalWorkspace) -> BaseTool:
+    return find_objects_tool(ObjectSpotter(meta.vision, workspace))
 
 
 TOOLBOX: dict[str, ToolBuilder] = {
@@ -122,7 +135,8 @@ TOOLBOX: dict[str, ToolBuilder] = {
     READ_CSV: lambda config: _workspace_tool(config, read_csv_tool),
     SAVE_ARTIFACT: lambda config: _workspace_tool(config, save_artifact_tool),
     RUN_PYTHON: _run_python,
-    GENERATE_IMAGE: _generate_image,
+    GENERATE_IMAGE: lambda config: _meta_tool(config, _image_tool),
+    FIND_OBJECTS: lambda config: _meta_tool(config, _vision_tool),
 }
 
 # run_python reads workspace files (its input_files), so it counts as a reader.

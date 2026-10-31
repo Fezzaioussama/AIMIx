@@ -94,10 +94,10 @@ Tools of MCP servers and integrations (and the built-in tools in
 - **Built-in tools do not ask by default.** `web_search`, `fetch_url`,
   `save_artifact`, `run_python`, `generate_image` and the workspace tools act
   unattended unless `AGENT_APPROVAL_TOOLS` names them.
-- **A picture's price is not in the run's cost.** `generate_image` spends $0.01 of
-  the user's Meta credit per picture, but only model tokens count toward a run's
-  `cost_usd` and its spending limit; the agent's recursion limit is what bounds
-  how many pictures one step can draw.
+- **A picture's price is not in the run's cost.** `generate_image` spends $0.01 and
+  `find_objects` $0.0025 of the user's Meta credit per picture, but only model
+  tokens count toward a run's `cost_usd` and its spending limit; the agent's
+  recursion limit is what bounds how many pictures one step can use.
 - **A step cannot be approved ahead of time**, and the builder does not mark
   which tools will ask. The wait counts toward the step's `AGENT_TIMEOUT_SECONDS`,
   and a restart expires the requests (a resumed run asks again).

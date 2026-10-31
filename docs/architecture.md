@@ -445,8 +445,11 @@ whose charset is not a text codec (`zlib`, `idna`) is read as UTF-8.
 
 `generate_image` draws a picture with Meta's Muse Image (`llm/images.py`,
 through the Meta client) and saves it as a new JPEG of the workspace, offered
-only to a user with a Meta key: `agent_tools.image_generator` resolves the key
-like dictation does, and the toolbox leaves the tool out without one. Meta marks
+only to a user with a Meta key: `agent_tools.meta_tools` resolves the key like
+dictation does, and the toolbox leaves the tool out without one. `find_objects`,
+on the same key, has SAM 3.1 find every match of a noun phrase ("loaf of bread",
+"scratch") in a PNG or JPEG of the workspace, returns the count with a box and a
+confidence each, and saves a copy with the boxes numbered for a report. Meta marks
 each picture as AI-made in its XMP metadata (IPTC `trainedAlgorithmicMedia`),
 and the file is saved unchanged, so the mark stays. A `.docx` or `.pdf` that
 `save_artifact` saves shows such a picture where its Markdown has

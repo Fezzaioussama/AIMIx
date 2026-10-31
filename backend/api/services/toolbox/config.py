@@ -10,10 +10,20 @@ from api.services.documents.contracts import ExtractionLimits
 from api.services.documents.extraction import extraction_limits
 from config.settings import Settings
 from llm.images import ImageGenerator
+from llm.vision import ObjectFinder
 
 #: Spends one run_python call of the user's hourly allowance, or raises
 #: ``ToolException`` once it is used up (built in ``agent_tools.native_tools``).
 SandboxQuota = Callable[[], None]
+
+
+@dataclass(frozen=True)
+class MetaTools:
+    """The models behind the tools that spend the user's Meta key: generate_image
+    (Muse Image) and find_objects (SAM 3.1)."""
+
+    images: ImageGenerator
+    vision: ObjectFinder
 
 
 @dataclass(frozen=True)
@@ -55,16 +65,16 @@ class ToolboxConfig:
     sandbox_api_key: str = field(default="", repr=False)
     #: None: run_python calls are not counted (tests, tools never offered).
     sandbox_quota: SandboxQuota | None = field(default=None, repr=False, compare=False)
-    #: Muse Image on the user's Meta key; None (no key) means generate_image is not
-    #: configured.
-    images: ImageGenerator | None = field(default=None, repr=False, compare=False)
+    #: The user's Meta models; None (no Meta key) means generate_image and
+    #: find_objects are not configured.
+    meta: MetaTools | None = field(default=None, repr=False, compare=False)
 
 
 def toolbox_config(
     settings: Settings,
     workspace_dir: Path,
     sandbox_quota: SandboxQuota | None = None,
-    images: ImageGenerator | None = None,
+    meta: MetaTools | None = None,
 ) -> ToolboxConfig:
     """The toolbox of one user: ``workspace_dir`` is their folder
     (``files.storage.user_workspace_dir``), required so a caller can never fall
@@ -97,5 +107,5 @@ def toolbox_config(
         search_api_key=settings.tavily_api_key,
         sandbox_api_key=settings.e2b_api_key,
         sandbox_quota=sandbox_quota,
-        images=images,
+        meta=meta,
     )

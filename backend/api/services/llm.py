@@ -22,6 +22,7 @@ from llm.images import ImageGenerator, MetaImageGenerator
 from llm.registry import create_provider
 from llm.retry import RetryPolicy
 from llm.speech import MetaTranscriber, Transcriber
+from llm.vision import MetaObjectFinder, ObjectFinder
 
 
 @dataclass(frozen=True)
@@ -129,6 +130,17 @@ def get_image_generator(profile: LLMProfile) -> ImageGenerator:
         timeout_seconds=settings.image_timeout_seconds,
     )
     return MetaImageGenerator(config)
+
+
+def get_object_finder(profile: LLMProfile) -> ObjectFinder:
+    """Object finding on the profile's key (a Meta profile): its calls use VISION_MODEL
+    and time out after VISION_TIMEOUT_SECONDS."""
+    settings = get_settings()
+    config = replace(
+        provider_config(profile, settings.vision_model),
+        timeout_seconds=settings.vision_timeout_seconds,
+    )
+    return MetaObjectFinder(config)
 
 
 def model_info(profile: LLMProfile, model_id: str) -> ModelInfo | None:

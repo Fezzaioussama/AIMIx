@@ -87,9 +87,9 @@ planifiez une équipe ou dictez une demande :
   conditions, qui peuvent prévoir la conservation ou l'utilisation de ces données : consultez
   ses réglages de confidentialité.
 - *La transcription vocale et la création d'images* (Meta, avec votre clé Meta) reçoivent
-  l'enregistrement de votre voix lorsque vous dictez une demande, et la description d'une image
-  lorsqu'un agent en dessine une ; Meta les traite dans le cadre de votre compte chez lui et de
-  ses conditions. Une image créée est enregistrée dans vos fichiers, marquée comme générée par
+  l'enregistrement de votre voix lorsque vous dictez une demande, la description d'une image
+  lorsqu'un agent en dessine une, et une image de vos fichiers lorsqu'un agent y cherche des
+  objets ; Meta les traite dans le cadre de votre compte chez lui et de ses conditions. Une image créée est enregistrée dans vos fichiers, marquée comme générée par
   l'IA dans ses métadonnées.
 - *Le service de recherche web* (Tavily), lorsque vos agents utilisent la recherche web, reçoit
   leurs requêtes de recherche, qu'il peut transmettre à des moteurs de recherche tiers.

@@ -16,6 +16,7 @@ from api.services.toolbox.calculator import evaluate
 from api.services.toolbox.code_runner import OUTPUT_FOLDER, CodeRunner
 from api.services.toolbox.images import ImageStudio
 from api.services.toolbox.sandbox import INPUT_DIR, OUTPUT_DIR
+from api.services.toolbox.vision import ObjectSpotter
 from api.services.toolbox.web import WebGateway
 from api.services.toolbox.workspace import LocalWorkspace
 
@@ -31,6 +32,7 @@ READ_CSV = "read_csv"
 SAVE_ARTIFACT = "save_artifact"
 RUN_PYTHON = "run_python"
 GENERATE_IMAGE = "generate_image"
+FIND_OBJECTS = "find_objects"
 
 TRUNCATED_NOTE = "\n\n[Truncated: the page continues beyond this point.]"
 
@@ -165,6 +167,18 @@ def generate_image_tool(studio: ImageStudio) -> BaseTool:
         "images/launch-hero.jpg. shape: square, landscape or portrait. Each picture costs "
         "money: draw only the ones the task needs.",
         func=studio.create,
+    )
+
+
+def find_objects_tool(spotter: ObjectSpotter) -> BaseTool:
+    return make_tool(
+        FIND_OBJECTS,
+        "Find and count every object of one kind in a PNG or JPEG picture of the user's "
+        "workspace with Meta's SAM 3.1 vision model. what: a short noun phrase naming one "
+        "kind of thing, e.g. 'loaf of bread' or 'scratch'. Returns how many it found, with "
+        "a box and a confidence for each, and saves a copy of the picture with the boxes "
+        "numbered, ready for a report.",
+        func=spotter.find,
     )
 
 
