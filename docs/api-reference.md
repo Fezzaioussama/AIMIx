@@ -1148,8 +1148,12 @@ which can describe the account or echo part of its key, goes to no caller. `200`
 Nothing is saved. Every new pipeline is told to end with a final check: one last
 stage holding a reviewer with the role "Orchestrator" that checks the work against
 the request and sends it back, at most twice, to the stage that makes the
-deliverables (unless the description asks for none, or the plan already has a
-reviewer). A revision is never told to add one. Before planning, AIMIx discovers the same pipeline tool
+deliverables, unless the plan already has a reviewer. When the planner leaves it
+out anyway, AIMIx adds it as the last step itself: role "Orchestrator", title "Final
+check", the default model, no tools, a prompt that quotes the request (the
+description and any answers, braces made round, at most 20,000 characters), and a
+review back to the earliest stage holding an output step (the first stage when
+none does). A revision is never told to add one, and gets none added. Before planning, AIMIx discovers the same pipeline tool
 catalogue as `GET /agent-tools` and gives its names and descriptions to the
 planner. The planner declares the run's named `inputs` and chooses roles,
 expected outputs and tool allowlists for its steps. Unknown tool names are

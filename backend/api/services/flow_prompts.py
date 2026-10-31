@@ -48,10 +48,11 @@ every "step:<order>" source and every send_back_to_stage to match. \
 """
 
 #: Only a new pipeline gets it (``plan_prompts``): a revision changes only what it is
-#: asked to. It is appended after ``str.format``, so its braces are literal.
+#: asked to. It is appended after ``str.format``, so its braces are literal. When the
+#: planner leaves the check out anyway, ``final_check`` adds the one below.
 FINAL_REVIEW_GUIDE = """
-Every new pipeline ends with a check by an orchestrator, unless the description asks for \
-none or the pipeline already has a reviewer. Add one last stage holding a single step with \
+Every new pipeline ends with a check by an orchestrator, unless it already has a \
+reviewer. Add one last stage holding a single step with \
 the role "Orchestrator", is_output false and no tools, and a "review" that sends the work \
 back to the stage that makes the deliverables (the earliest one, when several do), with \
 max_rounds 2. Its prompt asks it to check the work it is given ({input}) against the \
@@ -59,6 +60,16 @@ user's request: every deliverable present, complete, correct and in the format a
 and to say exactly what to fix. Keep is_output on the steps whose work it checks.
 
 """
+
+#: The final check AIMIx adds itself to a new plan that has no reviewer. The request
+#: is quoted between the intro and the task; ``{input}`` is the work to check.
+FINAL_CHECK_TITLE = "Final check"
+FINAL_CHECK_EXPECTED_OUTPUT = "What is good, what must be fixed, and the verdict"
+FINAL_CHECK_INTRO = "The user asked for this:"
+FINAL_CHECK_TASK = (
+    "Check the work below against that request: every deliverable present, complete, "
+    "correct and in the format asked for. Say exactly what must be fixed.\n\n{input}"
+)
 
 #: What a reviewer's system prompt adds: judge the work, and end with the verdict line.
 REVIEWER_RULE = (

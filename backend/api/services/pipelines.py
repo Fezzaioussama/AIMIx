@@ -25,6 +25,7 @@ from api.models import (
 )
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
+from api.services.final_check import with_final_check
 from api.services.llm import LLMProfile
 from api.services.multiagent.conditions import condition_from_data
 from api.services.multiagent.contracts import PipelineSpec, RunInputs, RunResult
@@ -110,15 +111,18 @@ def generate(
     request: PlanRequest,
     tools: list[ToolDescriptor] | None = None,
 ) -> Plan:
-    """Ask the planner model for a pipeline definition and validate the result. When
-    it may ask and replies with questions instead, return those (it asks once)."""
+    """Ask the planner model for a pipeline definition and validate the result; a
+    plan without a reviewer gets the final check. When the planner may ask and
+    replies with questions instead, return those (it asks once)."""
     clarification = request.clarification
     prompt = pipeline_generation_prompt(request.description, profile.models, tools, clarification)
     raw = _planner_reply(provider, profile, PlannerCall(prompt, request.planner_model))
     questions = questions_in(_decoded(raw)) if clarification.asking else ()
     if questions:
         return Plan(None, questions)
-    return Plan(parse_plan(raw, profile.models, _tool_names(tools)))
+    plan = parse_plan(raw, profile.models, _tool_names(tools))
+    with_final_check(plan, request.description, clarification.answers, profile.default_model)
+    return Plan(plan)
 
 
 def ask_planner(

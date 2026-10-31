@@ -23,11 +23,11 @@ PIPELINE_GENERATION_TEMPLATE = PIPELINE_GENERATION_INTRO + PIPELINE_PLANNER_GUID
 #: Offered only when the planner may ask (Missions), and only before any answer.
 QUESTIONS_GUIDE = f"""\
 Before planning, decide whether the description says enough to build a pipeline that \
-delivers what the user wants. When something essential is missing or could be read in \
-very different ways (for example who the result is for, its format or length, or which \
-sources to use), do not guess: reply ONLY with this JSON instead of a pipeline, holding \
-1 to {MAX_QUESTIONS} short questions in the language of the description, each with 2 to \
-{MAX_OPTIONS} likely answers the user can pick:
+delivers what the user wants. When something essential is missing (above all what the \
+work is about) or could be read in very different ways (for example who the result is \
+for, its format or length, or which sources to use), do not guess: reply ONLY with this \
+JSON instead of a pipeline, holding 1 to {MAX_QUESTIONS} short questions in the language \
+of the description, each with 2 to {MAX_OPTIONS} likely answers the user can pick:
 {{"questions": [{{"question": "Who will read the report?", \
 "options": ["Executives", "Engineers", "Customers"]}}]}}
 Ask only what changes the plan. When the description is clear enough, build the \

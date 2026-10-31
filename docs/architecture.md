@@ -681,7 +681,8 @@ crash, startup recovery logs only how many runs it interrupted
    new team ends with, and either the invitation to ask (`may_ask`, no answers
    yet) or the fenced answers, then calls the direct provider adapter. When the
    planner may ask and replies `{"questions": [...]}`, `services/plan_questions`
-   reads them and the endpoint returns them with `generated_pipeline: null`.
+   reads them and the endpoint returns them with `generated_pipeline: null`. A
+   plan with no reviewer gets the final check added (`services/final_check`).
 3. `parse_plan` extracts the first `{...}` block, parses JSON, requires `name`
    and a non-empty `steps` list, fills a missing `order`, replaces unknown model
    ids with the default, removes unavailable names from explicit tool
