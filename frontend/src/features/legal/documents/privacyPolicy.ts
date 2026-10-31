@@ -28,8 +28,9 @@ modèles choisi. Votre mot de passe n'est jamais conservé en clair : seule une 
 renouvellement dans un cookie (voir « Cookies et stockage local »). Le serveur ne garde qu'une
 empreinte du jeton de renouvellement.
 
-**Vos clés d'API.** Les clés OpenRouter ou TogetherAI que vous enregistrez sont chiffrées sur le
-serveur et ne vous sont jamais renvoyées ; seuls leurs quatre derniers caractères sont affichés.
+**Vos clés d'API.** Les clés OpenRouter, TogetherAI ou Meta que vous enregistrez sont chiffrées
+sur le serveur et ne vous sont jamais renvoyées ; seuls leurs quatre derniers caractères sont
+affichés.
 
 **Vos contenus.** Ce que vous créez et faites dans le Service : vos pipelines (noms, rôles,
 consignes, modèles), vos exécutions (entrées, documents joints, résultats de chaque étape,
@@ -75,7 +76,7 @@ de l'éditeur, et transmises aux prestataires suivants, dans la limite de ce qui
 **Services utilisés à votre demande.** Lorsque vous exécutez un pipeline, discutez dans le chat
 ou planifiez une équipe :
 
-- *Le fournisseur de modèles que vous choisissez* (OpenRouter ou TogetherAI) reçoit les
+- *Le fournisseur de modèles que vous choisissez* (OpenRouter, TogetherAI ou Meta) reçoit les
   consignes, entrées, documents et résultats intermédiaires nécessaires à chaque appel de
   modèle. Avec votre propre clé, il les traite dans le cadre de votre compte chez lui et de ses
   conditions, qui peuvent prévoir la conservation ou l'utilisation de ces données : consultez

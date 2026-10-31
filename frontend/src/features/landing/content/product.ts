@@ -45,7 +45,7 @@ export interface Stat {
 export const STATS: readonly Stat[] = [
   { value: 3, label: 'workspaces', detail: 'Chat, Pipeline Builder and Auto Pipeline' },
   { value: 9, label: 'toolbox functions', detail: 'plus any MCP server you connect' },
-  { value: 2, label: 'model providers', detail: 'OpenRouter and TogetherAI' },
+  { value: 3, label: 'model providers', detail: 'OpenRouter, TogetherAI and Meta' },
 ];
 
 export interface Feature {
@@ -86,7 +86,7 @@ export const PLATFORM_FEATURES: readonly Feature[] = [
   {
     title: 'Bring your own keys',
     detail:
-      'Add your OpenRouter or TogetherAI key in Settings. It is encrypted at rest and never shown again.',
+      'Add your OpenRouter, TogetherAI or Meta key in Settings. It is encrypted at rest and never shown again.',
     icon: KeyRound,
   },
 ];

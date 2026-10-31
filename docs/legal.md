@@ -30,7 +30,7 @@ never ships.
 | `dataLocation` | Where the Railway service, its volume (the SQLite database and users' files) and any backup are. Railway offers an EU West (Amsterdam) region; a volume stays in its service's region |
 | `dataProtectionOfficer` | GDPR art. 13: the DPO's contact, or a sentence saying none is designated |
 | `serverLogRetention`, `backupRetention` | GDPR art. 13 and 5(1)(e): how long Railway keeps the access logs Uvicorn writes (IP address, path, status) and how long backups keep deleted data |
-| `transferSafeguards` | GDPR art. 44–49: OpenRouter, Together AI, Tavily, E2B and Railway process data in the US. Name the safeguard for each (EU-US Data Privacy Framework certification, or standard contractual clauses in its DPA) |
+| `transferSafeguards` | GDPR art. 44–49: OpenRouter, Together AI, Meta, Tavily, E2B and Railway process data in the US. Name the safeguard for each (EU-US Data Privacy Framework certification, or standard contractual clauses in its DPA) |
 | `pricing` | Price, billing, renewal, or that the service is free. Paid consumer contracts bring the pre-contract information, the 14-day withdrawal right with its online withdrawal function, and the online cancellation function (Code de la consommation L221-5, L221-18, L221-21, L215-1-1) |
 | `minimumAge` | Who may open an account (18 is the prudent default for a contract) |
 | `consumerMediator` | A consumer mediator is required when consumers are customers (L612-1, L616-1). The EU ODR-platform link is no longer required |

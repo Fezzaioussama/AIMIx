@@ -62,6 +62,7 @@ export const TECH_STACK: readonly string[] = [
   'Model Context Protocol',
   'OpenRouter',
   'TogetherAI',
+  'Meta Model API',
   'FastAPI',
   'React 19',
   'SQLAlchemy',

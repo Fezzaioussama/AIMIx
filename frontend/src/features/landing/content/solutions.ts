@@ -138,12 +138,12 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
   {
     question: 'Which models can I use?',
     answer:
-      'Any model in the OpenRouter or TogetherAI catalogue. Pick one per agent, and set a default in Settings.',
+      'Any model in the OpenRouter, TogetherAI or Meta catalogue. Pick one per agent, and set a default in Settings.',
   },
   {
     question: 'Do I need my own API key?',
     answer:
-      'You bring your own: add an OpenRouter or TogetherAI key in Settings. It is encrypted at rest and never shown again.',
+      'You bring your own: add an OpenRouter, TogetherAI or Meta key in Settings. It is encrypted at rest and never shown again.',
   },
   {
     question: 'Do pipeline runs stream?',

@@ -34,7 +34,7 @@ au moins {{minimumAge}}.
 {{pricing}}
 
 Les appels de modèles sont facturés par le fournisseur de modèles dont vous enregistrez la clé
-(OpenRouter ou TogetherAI), selon ses tarifs et dans le cadre de votre compte chez lui. Vous
+(OpenRouter, TogetherAI ou Meta), selon ses tarifs et dans le cadre de votre compte chez lui. Vous
 pouvez fixer des plafonds de dépense par exécution.
 
 ## 5. Services tiers
