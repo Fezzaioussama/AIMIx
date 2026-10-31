@@ -89,6 +89,14 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
         1_000_000, ge=1, validation_alias="PASSWORD_HASH_ITERATIONS"
     )
     allow_public_registration: bool = Field(False, validation_alias="ALLOW_PUBLIC_REGISTRATION")
+    # Accounts one client may create per window, on top of the auth rate limit: each
+    # account brings a storage quota, so a script must not open them by the thousand.
+    registration_rate_limit_requests: int = Field(
+        5, ge=1, validation_alias="REGISTRATION_RATE_LIMIT_REQUESTS"
+    )
+    registration_rate_limit_window_seconds: int = Field(
+        3600, ge=1, validation_alias="REGISTRATION_RATE_LIMIT_WINDOW_SECONDS"
+    )
     auth_rate_limit_requests: int = Field(20, ge=1, validation_alias="AUTH_RATE_LIMIT_REQUESTS")
     auth_rate_limit_window_seconds: int = Field(
         60, ge=1, validation_alias="AUTH_RATE_LIMIT_WINDOW_SECONDS"
@@ -97,6 +105,12 @@ class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSe
     auth_account_failure_limit: int = Field(10, ge=1, validation_alias="AUTH_ACCOUNT_FAILURE_LIMIT")
     auth_account_failure_window_seconds: int = Field(
         900, ge=1, validation_alias="AUTH_ACCOUNT_FAILURE_WINDOW_SECONDS"
+    )
+    # Characters of stored text (runs, their steps, pipeline prompts) past which
+    # GET /account/export is refused: the copy is built in memory. The operator's
+    # `export-user` command has no such bound.
+    account_export_max_chars: int = Field(
+        30_000_000, ge=1, validation_alias="ACCOUNT_EXPORT_MAX_CHARS"
     )
     # Per account and route, for requests that make the server spend: model calls,
     # outbound calls, document parsing (api.throttling.user_rate_limit).

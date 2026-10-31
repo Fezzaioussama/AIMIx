@@ -17,7 +17,11 @@ from pypdf import PdfReader
 
 from api.exceptions import UnsupportedFileType, ValidationFailed
 from api.services.artifacts import pdf_writer, registry
-from api.services.artifacts.contracts import RenderOptions
+from api.services.artifacts.contracts import (
+    AI_GENERATED_KEYWORD,
+    AI_GENERATED_NOTE,
+    RenderOptions,
+)
 from api.services.artifacts.markdown import (
     CodeBlock,
     Heading,
@@ -221,6 +225,16 @@ def test_characters_no_document_can_hold_are_dropped() -> None:
 def test_empty_content_still_makes_valid_documents() -> None:
     assert len(PdfReader(BytesIO(render_artifact(".pdf", "", NO_FONT))).pages) == 1
     assert Document(BytesIO(render_artifact(".docx", "", NO_FONT))).paragraphs == []
+
+
+def test_saved_documents_say_in_their_metadata_that_ai_made_them() -> None:
+    """EU AI Act art. 50(2): machine-readable, whatever the agent wrote."""
+    pdf = PdfReader(BytesIO(render_artifact(".pdf", REPORT, NO_FONT))).metadata
+    word = Document(BytesIO(render_artifact(".docx", REPORT, NO_FONT))).core_properties
+
+    assert pdf is not None
+    assert (pdf["/Subject"], pdf["/Keywords"]) == (AI_GENERATED_NOTE, AI_GENERATED_KEYWORD)
+    assert (word.comments, word.keywords) == (AI_GENERATED_NOTE, AI_GENERATED_KEYWORD)
 
 
 # --- the registry --------------------------------------------------------------

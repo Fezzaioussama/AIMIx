@@ -1,4 +1,5 @@
-"""Password rules for new accounts: the four checks the Django backend applied.
+"""Password rules for new passwords: the four checks the Django backend applied,
+with a longer minimum (MIN_LENGTH).
 
 The common-password list is Django's (BSD-licensed), copied to
 ``api/data/common-passwords.txt.gz`` so the check survives the migration.
@@ -13,7 +14,10 @@ from difflib import SequenceMatcher
 from functools import lru_cache
 from pathlib import Path
 
-MIN_LENGTH = 8
+#: Twelve characters even from lower-case letters alone is over 50 bits, what the
+#: CNIL asks of a password behind a lockout (deliberation 2022-100); no mix of
+#: character classes is required. Applies to new passwords only.
+MIN_LENGTH = 12
 MAX_SIMILARITY = 0.7
 COMMON_PASSWORDS_FILE = Path(__file__).resolve().parents[1] / "data" / "common-passwords.txt.gz"
 

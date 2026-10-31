@@ -172,6 +172,30 @@ class StorageQuotaExceeded(DomainError):
     status_code = 413
 
 
+class ExportTooLarge(DomainError):
+    """The account holds more than ACCOUNT_EXPORT_MAX_CHARS: a copy is built in
+    memory, so it is refused rather than allowed to exhaust the server."""
+
+    code = "export_too_large"
+    status_code = 422
+
+
+class ExportsBusy(DomainError):
+    """Another account copy is being built in this process: one at a time, since
+    each holds a whole account in memory."""
+
+    code = "exports_busy"
+    status_code = 503
+
+
+class ServerStorageFull(DomainError):
+    """The disk every account shares is nearly full (WORKSPACE_MIN_FREE_BYTES):
+    writes stop before the database runs out of room."""
+
+    code = "storage_full"
+    status_code = 507
+
+
 class UnsupportedFileType(DomainError):
     code = "unsupported_file_type"
     status_code = 415

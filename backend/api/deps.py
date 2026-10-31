@@ -17,13 +17,15 @@ from api.exceptions import NotAuthenticated
 from api.models import User
 from api.security import SecretBox, TokenSigner, secret_box_for
 from api.services import accounts, llm_settings
+from api.services.account_data import workspace_of
 from api.services.addresses import Resolver, resolve_host
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.documents.contracts import ExtractionLimits, OcrEngine
 from api.services.documents.extraction import extraction_limits
+from api.services.files.disk import disk_reserve
 from api.services.files.service import UploadPolicy
-from api.services.files.storage import WorkspaceStorage, user_workspace_dir
+from api.services.files.storage import WorkspaceStorage
 from api.services.integrations.rules import IntegrationRules, rules_from
 from api.services.integrations.service import IntegrationAccess
 from api.services.llm import LLMProfile, get_planner_provider
@@ -113,13 +115,36 @@ CurrentUser = Annotated[User, Depends(current_user)]
 
 def user_files(user: CurrentUser, settings: AppSettings) -> WorkspaceStorage:
     """The signed-in user's private directory, the one their agents use too."""
-    directory = user_workspace_dir(settings.workspace_dir, user.id)
-    return WorkspaceStorage(
-        directory, settings.workspace_max_total_bytes, settings.workspace_max_files
-    )
+    return workspace_of(settings, user.id)
 
 
 UserFiles = Annotated[WorkspaceStorage, Depends(user_files)]
+
+
+def disk_room(settings: AppSettings) -> None:
+    """Refuse a request that saves a pipeline while the disk the database shares
+    with every account's files is nearly full (507). Add it to the route's
+    ``dependencies``; runs and files check the same reserve themselves."""
+    disk_reserve(settings).ensure_room()
+
+
+@dataclass(frozen=True)
+class AccountAccess:
+    """The signed-in account, with what its own data lives in."""
+
+    user: User
+    session: Session
+    files: WorkspaceStorage
+    settings: Settings
+
+
+def account_access(
+    user: CurrentUser, session: DbSession, files: UserFiles, settings: AppSettings
+) -> AccountAccess:
+    return AccountAccess(user, session, files, settings)
+
+
+Account = Annotated[AccountAccess, Depends(account_access)]
 
 
 def upload_policy(settings: AppSettings) -> UploadPolicy:

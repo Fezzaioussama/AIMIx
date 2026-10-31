@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import time
 from collections.abc import Iterator
@@ -22,6 +23,7 @@ from uuid import uuid4
 
 from api.exceptions import FileAlreadyExists, NotFound, StorageQuotaExceeded, ValidationFailed
 from api.services.documents.extraction import megabytes
+from api.services.files.disk import DiskReserve
 
 #: Longest file or folder name most filesystems store, in UTF-8 bytes.
 NAME_MAX_BYTES = 255
@@ -61,12 +63,17 @@ class WorkspaceUsage:
 
 class WorkspaceStorage:
     """Confined access to one directory, holding at most ``max_total_bytes`` in at
-    most ``max_files`` files and folders."""
+    most ``max_files`` files and folders. A write is also refused when it would
+    leave less than ``min_free_bytes`` free on the disk, which every account and
+    the database share."""
 
-    def __init__(self, root: Path, max_total_bytes: int, max_files: int) -> None:
+    def __init__(
+        self, root: Path, max_total_bytes: int, max_files: int, *, min_free_bytes: int = 0
+    ) -> None:
         self._root = root.resolve()
         self._max_total_bytes = max_total_bytes
         self._max_files = max_files
+        self._disk = DiskReserve(self._root, min_free_bytes)
 
     @property
     def root(self) -> Path:
@@ -80,6 +87,12 @@ class WorkspaceStorage:
         """Create the directory, readable by the server's own user only."""
         self._root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._root.chmod(0o700)
+
+    def remove(self) -> None:
+        """Delete the directory and everything in it; links inside are removed,
+        never followed. Nothing to do when it does not exist."""
+        if self._root.exists():
+            shutil.rmtree(self._root)
 
     def relative_path(self, path: Path) -> str:
         """``path`` as the user names it: relative, with ``/`` separators."""
@@ -186,6 +199,7 @@ class WorkspaceStorage:
                 f"Your workspace would hold more than {self._max_files:,} files and "
                 "folders. Delete some files first."
             )
+        self._disk.ensure_room(max(extra_bytes, 0))
 
     def _create(self, target: Path, data: bytes, relative: str) -> None:
         """Write a new file, then count the quota with it (and any folder made for

@@ -45,6 +45,11 @@ def count(session: Session, secret_key: str, request: RateLimitRequest) -> None:
     repository.consume(session, _attempt(secret_key, request), _now())
 
 
+def release(session: Session, secret_key: str, request: RateLimitRequest) -> None:
+    """Give back one request ``enforce`` counted."""
+    repository.release(session, _attempt(secret_key, request))
+
+
 def reset(session: Session, secret_key: str, request: RateLimitRequest) -> None:
     repository.clear(session, _attempt(secret_key, request))
 

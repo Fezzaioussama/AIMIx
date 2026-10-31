@@ -67,12 +67,18 @@ class FileDownload:
     media_type: str
 
 
+def entries(storage: WorkspaceStorage) -> list[FileEntry]:
+    """Every file, newest first."""
+    found = [_entry(storage, path, info) for path, info in storage.files()]
+    found.sort(key=lambda entry: (-entry.modified_at.timestamp(), entry.path))
+    return found
+
+
 def list_files(storage: WorkspaceStorage, policy: UploadPolicy) -> FileListing:
-    entries = [_entry(storage, path, info) for path, info in storage.files()]
-    entries.sort(key=lambda entry: (-entry.modified_at.timestamp(), entry.path))
+    files = entries(storage)
     return FileListing(
-        files=entries,
-        used_bytes=sum(entry.size for entry in entries),
+        files=files,
+        used_bytes=sum(entry.size for entry in files),
         quota_bytes=storage.max_total_bytes,
         max_file_bytes=policy.max_file_bytes,
         allowed_extensions=sorted(policy.allowed_extensions),

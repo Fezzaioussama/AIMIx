@@ -166,6 +166,12 @@ def load(session: Session, run_id: int) -> Run | None:
     return session.scalar(_with_steps().where(Run.id == run_id))
 
 
+def all_for_user(session: Session, user: User) -> list[Run]:
+    """Every run of ``user``'s with its steps, newest first (their data export)."""
+    query = _with_steps().where(Run.user_id == user.id)
+    return list(session.scalars(query.order_by(Run.created_at.desc(), Run.id.desc())))
+
+
 def page_for_user(session: Session, user: User, query: RunQuery) -> RunPage:
     """Summaries of ``user``'s runs, newest first, and how many there are in all."""
     filters = [Run.user_id == user.id]

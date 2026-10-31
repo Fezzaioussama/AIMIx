@@ -1,4 +1,4 @@
-"""Accounts: registration, sign-in and token exchange.
+"""Accounts: registration, sign-in, token exchange and password changes.
 
 Takes and returns plain values; hashing and signing come from api.security and
 storage from the users repository, so each piece has one reason to change (§5 S).
@@ -48,6 +48,14 @@ class Credentials:
 
 
 @dataclass(frozen=True)
+class GivenPassword:
+    """A password asked again before a sensitive change, and the field it came in."""
+
+    password: str
+    field: str = "password"
+
+
+@dataclass(frozen=True)
 class SignInPolicy:
     """What a sign-in costs and how many failures one username may take."""
 
@@ -66,6 +74,14 @@ class SignInPolicy:
             self.failure_window_seconds,
             ACCOUNT_THROTTLED,
         )
+
+
+@dataclass(frozen=True)
+class PasswordChange:
+    current: str
+    new: str
+    #: The new hash's work factor, and the failures a wrong current password counts in.
+    policy: SignInPolicy
 
 
 def sign_in_policy(settings: Settings) -> SignInPolicy:
@@ -113,6 +129,39 @@ def sign_in(
         )
     tokens = _issue(signer, user)
     repository.set_refresh_token(session, user, _token_hash(tokens.refresh))
+    return tokens
+
+
+def confirm_password(
+    session: Session, user: User, given: GivenPassword, policy: SignInPolicy
+) -> None:
+    """Refuse a sensitive change unless ``given`` is the account's password. A
+    wrong one counts as a failed sign-in and a locked account is refused first,
+    so a stolen session guesses no faster here than at sign-in. A 400 naming the
+    field, never a 401: the session itself is still valid."""
+    failures = policy.failures(user.username)
+    rate_limits.ensure_room(session, policy.secret_key, failures)
+    if not verify_password(given.password, user.password_hash):
+        rate_limits.count(session, policy.secret_key, failures)
+        raise ValidationFailed(f"{given.field}: The password is not correct.")
+
+
+def change_password(
+    session: Session, signer: TokenSigner, user: User, change: PasswordChange
+) -> TokenPair:
+    """Replace the password after checking the current one. Every session ends
+    (another device holding the old password is signed out); this one goes on
+    with the new token pair returned."""
+    current = GivenPassword(change.current, "current_password")
+    confirm_password(session, user, current, change.policy)
+    problems = password_policy.problems(change.new, user.username)
+    if problems:
+        raise ValidationFailed(f"new_password: {' '.join(problems)}")
+    new_hash = hash_password(change.new, change.policy.hash_iterations)
+    repository.replace_password(session, user, new_hash)
+    tokens = _issue(signer, user)
+    repository.set_refresh_token(session, user, _token_hash(tokens.refresh))
+    logger.info("accounts.password_changed user_id=%s", user.id)
     return tokens
 
 

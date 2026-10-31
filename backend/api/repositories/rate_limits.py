@@ -53,6 +53,17 @@ def retry_after(session: Session, attempt: RateLimitAttempt, now: datetime) -> i
     return max(1, int(remaining)) if remaining > 0 else None
 
 
+def release(session: Session, attempt: RateLimitAttempt) -> None:
+    """Give back one request ``consume`` counted (it was refused for another reason)."""
+    session.execute(
+        update(RateLimitBucket)
+        .where(_key(attempt), RateLimitBucket.hits > 0)
+        .values(hits=RateLimitBucket.hits - 1)
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+
+
 def clear(session: Session, attempt: RateLimitAttempt) -> None:
     """Forget the bucket: the next request starts a new window."""
     session.execute(delete(RateLimitBucket).where(_key(attempt)))

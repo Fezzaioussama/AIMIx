@@ -156,10 +156,11 @@ def test_signing_out_with_a_rotated_refresh_token_changes_nothing(
     client.post("/api/login", json={"username": user.username, "password": password})
     previous = client.cookies["aimix_refresh"]
     client.post("/api/token/refresh")
+    version = user.token_version
 
     with TestClient(app) as replay_client:
         replay_client.cookies.set("aimix_refresh", previous, path="/api/token")
         assert replay_client.post("/api/token/logout").status_code == 204
 
     session.refresh(user)
-    assert user.token_version == 0
+    assert user.token_version == version

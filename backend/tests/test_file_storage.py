@@ -8,10 +8,17 @@ import stat
 import time
 import unicodedata
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from api.exceptions import FileAlreadyExists, NotFound, StorageQuotaExceeded, ValidationFailed
+from api.exceptions import (
+    FileAlreadyExists,
+    NotFound,
+    ServerStorageFull,
+    StorageQuotaExceeded,
+    ValidationFailed,
+)
 from api.services.files.names import BINARY, file_type, media_type, safe_filename
 from api.services.files.storage import (
     NAME_MAX_BYTES,
@@ -290,3 +297,39 @@ def test_media_types_are_fixed_per_extension() -> None:
     assert media_type("page.html") == "text/html"
     assert media_type("tool.exe") == BINARY
     assert (file_type("a/b/Report.PDF"), file_type("README")) == ("pdf", "")
+
+
+def test_remove_deletes_the_directory_and_never_follows_a_link(
+    storage: WorkspaceStorage, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("not the user's")
+    storage.save("a/b.txt", b"x")
+    (storage.root / "link").symlink_to(outside)
+
+    storage.remove()
+    storage.remove()  # nothing left: still fine
+
+    assert not storage.root.exists()
+    assert outside.read_text() == "not the user's"
+
+
+def test_a_write_that_would_leave_the_disk_too_full_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every account's files and the database share one disk: past the reserve,
+    a write is refused before the database runs out of room."""
+    reserve = 1_000_000
+    disk = SimpleNamespace(total=10**12, used=0, free=reserve + 100)
+    monkeypatch.setattr("api.services.files.disk.shutil.disk_usage", lambda _path: disk)
+    shared = WorkspaceStorage(tmp_path / "user-2", 10_000, MAX_FILES, min_free_bytes=reserve)
+    shared.save("fits.txt", b"x" * 50)
+    disk.free = reserve - 1
+
+    with pytest.raises(ServerStorageFull):
+        shared.save("too-much.txt", b"x" * 50)
+    with pytest.raises(ServerStorageFull):
+        shared.save("fits.txt", b"x" * 60, replace=True)
+
+    assert names(shared) == ["fits.txt"]
+    assert (shared.root / "fits.txt").read_bytes() == b"x" * 50

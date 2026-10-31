@@ -19,7 +19,7 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 from docx.text.paragraph import Paragraph as WordParagraph
 
-from api.services.artifacts.contracts import RenderOptions
+from api.services.artifacts.contracts import AI_GENERATED_KEYWORD, AI_GENERATED_NOTE, RenderOptions
 from api.services.artifacts.markdown import (
     Block,
     CodeBlock,
@@ -56,6 +56,10 @@ class _Place:
 def render_docx(content: str, options: RenderOptions) -> bytes:
     """The Markdown ``content`` as a .docx file. ``options`` concern PDFs only."""
     document = Document()
+    properties = document.core_properties
+    properties.author = "AIMIx"
+    properties.comments = AI_GENERATED_NOTE
+    properties.keywords = AI_GENERATED_KEYWORD
     for block in parse_markdown(content):
         _write(block, document, _Place())
     buffer = BytesIO()

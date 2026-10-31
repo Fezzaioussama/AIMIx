@@ -21,6 +21,12 @@ class DocumentSettings(BaseModel):
     # Files and folders one user may keep, however small: each costs an inode and
     # makes every later write scan longer.
     workspace_max_files: int = Field(2_000, ge=1, validation_alias="WORKSPACE_MAX_FILES")
+    # Free disk space no write may go below. Every account's files and the SQLite
+    # database share one volume: past this, writes are refused (507) instead of
+    # the database running out of room. 0 turns the check off.
+    workspace_min_free_bytes: int = Field(
+        500_000_000, ge=0, validation_alias="WORKSPACE_MIN_FREE_BYTES"
+    )
     # What the Files page accepts; each upload is capped at DOCUMENT_MAX_BYTES.
     workspace_upload_extensions: CommaList = Field(
         [

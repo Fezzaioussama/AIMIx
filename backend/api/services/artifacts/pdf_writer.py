@@ -37,7 +37,7 @@ from reportlab.platypus import (
 from reportlab.platypus import Paragraph as PdfParagraph
 from reportlab.platypus import Table as PdfTable
 
-from api.services.artifacts.contracts import RenderOptions
+from api.services.artifacts.contracts import AI_GENERATED_KEYWORD, AI_GENERATED_NOTE, RenderOptions
 from api.services.artifacts.markdown import (
     Block,
     CodeBlock,
@@ -103,6 +103,8 @@ def render_pdf(content: str, options: RenderOptions) -> bytes:
         bottomMargin=MARGIN,
         title=title,
         creator="AIMIx",
+        subject=AI_GENERATED_NOTE,
+        keywords=[AI_GENERATED_KEYWORD],
         initialFontName=styles.fonts.regular,
     )
     document.build(_flows(blocks, styles) or [Spacer(0, 0)])

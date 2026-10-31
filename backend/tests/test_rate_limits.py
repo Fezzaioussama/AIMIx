@@ -3,12 +3,14 @@ and which client address a request is counted against."""
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -18,9 +20,11 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from api.db import Database
 from api.deps import app_settings
+from api.main import create_app
 from api.models import Base, RateLimitBucket, User
 from api.repositories.rate_limits import RateLimitAttempt, consume
 from api.services.rate_limits import client_address
+from config.settings import pin_settings
 from tests.conftest import TEST_SETTINGS
 
 T0 = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)
@@ -179,3 +183,38 @@ def test_a_rotated_forwarded_for_does_not_reset_the_login_limit(app: FastAPI, us
 
     assert statuses == [401, 401, 429]
     assert other_client.status_code == 401
+
+
+def test_sign_ups_sent_at_once_cannot_pass_the_registration_limit(tmp_path: Path) -> None:
+    """Each attempt takes its place before the account is made (a slow password
+    hash widens the window), so parallel sign-ups never all get through."""
+    chosen = TEST_SETTINGS.model_copy(
+        update={
+            "database_url": f"sqlite:///{tmp_path / 'race.sqlite3'}",
+            "workspace_dir": tmp_path / "workspace",
+            "password_hash_iterations": 100_000,
+            "registration_rate_limit_requests": 2,
+        }
+    )
+    pin_settings(chosen)
+    try:
+        app = create_app()
+        Base.metadata.create_all(app.state.database.engine)
+
+        async def sign_up_at_once() -> list[int]:
+            transport = httpx.ASGITransport(app=app)
+            base = "http://testserver"
+            async with httpx.AsyncClient(transport=transport, base_url=base) as client:
+
+                async def one(n: int) -> int:
+                    payload = {"username": f"user{n}", "password": "a-strong-pass-9182"}
+                    return (await client.post("/api/register", json=payload)).status_code
+
+                return list(await asyncio.gather(*(one(n) for n in range(8))))
+
+        statuses = asyncio.run(sign_up_at_once())
+        app.state.database.engine.dispose()
+    finally:
+        pin_settings(TEST_SETTINGS)
+
+    assert sorted(statuses) == [201, 201, 429, 429, 429, 429, 429, 429]

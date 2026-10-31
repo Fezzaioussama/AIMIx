@@ -7,7 +7,15 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Response
 
-from api.deps import CurrentUser, DbSession, PipelineRun, Profile, Providers, ToolCatalog
+from api.deps import (
+    CurrentUser,
+    DbSession,
+    PipelineRun,
+    Profile,
+    Providers,
+    ToolCatalog,
+    disk_room,
+)
 from api.models import Pipeline
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch, RunRequest, RunResponse
@@ -48,7 +56,11 @@ def list_pipelines(user: CurrentUser, session: DbSession) -> list[PipelineOut]:
     return [PipelineOut.model_validate(p) for p in repository.for_user(session, user)]
 
 
-@router.post("/", status_code=201)
+#: Routes that save a pipeline: refused while the disk is nearly full (deps.disk_room).
+SAVES = [Depends(disk_room)]
+
+
+@router.post("/", status_code=201, dependencies=SAVES)
 def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> PipelineOut:
     pipeline = repository.create_with_steps(session, user, _changes(body))
     return PipelineOut.model_validate(pipeline)
@@ -91,7 +103,7 @@ def get_pipeline(pipeline_id: int, user: CurrentUser, session: DbSession) -> Pip
     return PipelineOut.model_validate(repository.get_owned(session, user, pipeline_id))
 
 
-@router.put("/{pipeline_id}/")
+@router.put("/{pipeline_id}/", dependencies=SAVES)
 def replace_pipeline(
     pipeline_id: int, body: PipelineIn, user: CurrentUser, session: DbSession
 ) -> PipelineOut:
@@ -100,7 +112,7 @@ def replace_pipeline(
     return PipelineOut.model_validate(updated)
 
 
-@router.patch("/{pipeline_id}/")
+@router.patch("/{pipeline_id}/", dependencies=SAVES)
 def update_pipeline(
     pipeline_id: int, body: PipelinePatch, user: CurrentUser, session: DbSession
 ) -> PipelineOut:

@@ -19,7 +19,7 @@ from sqlalchemy import Select, exists, select, update
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotFound
-from api.models import ApprovalStatus, Run, RunApproval, RunStatus
+from api.models import ApprovalStatus, Run, RunApproval, RunStatus, User
 from api.repositories.bulk import changed
 
 _PENDING = ApprovalStatus.PENDING
@@ -69,6 +69,17 @@ def ask(session: Session, new: NewApproval) -> RunApproval | None:
     session.add(approval)
     session.commit()
     return approval
+
+
+def for_user(session: Session, user: User) -> list[RunApproval]:
+    """Every approval request, answered or not, of ``user``'s runs, oldest first."""
+    query = (
+        select(RunApproval)
+        .join(Run, Run.id == RunApproval.run_id)
+        .where(Run.user_id == user.id)
+        .order_by(RunApproval.id)
+    )
+    return list(session.scalars(query))
 
 
 def get_in_run(session: Session, run_id: int, approval_id: int) -> RunApproval:

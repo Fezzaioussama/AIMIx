@@ -161,6 +161,29 @@ def test_authentication_requests_are_rate_limited_across_attempts(
     assert int(blocked.headers["retry-after"]) > 0
 
 
+def test_one_client_may_create_only_so_many_accounts(app: FastAPI, client: TestClient) -> None:
+    from tests.conftest import TEST_SETTINGS
+
+    limited = TEST_SETTINGS.model_copy(update={"registration_rate_limit_requests": 2})
+    app.dependency_overrides[app_settings] = lambda: limited
+
+    def register(username: str, password: str = "a-strong-pass-9182") -> int:
+        payload = {"username": username, "password": password}
+        return client.post("/api/register", json=payload).status_code
+
+    # A refused attempt (a weak password) does not use the allowance up.
+    assert [register("first", "123"), register("first"), register("second")] == [400, 201, 201]
+    blocked = client.post(
+        "/api/register", json={"username": "third", "password": "a-strong-pass-9182"}
+    )
+
+    assert blocked.status_code == 429
+    assert "Too many accounts" in blocked.json()["detail"]
+    # Signing in is not held back by it.
+    signed_in = client.post("/api/login", json={"username": "first", "password": "nope"})
+    assert signed_in.status_code == 401
+
+
 def test_costly_routes_are_rate_limited_per_account_and_route_template(
     app: FastAPI, client: TestClient, user: User, session: Session
 ) -> None:

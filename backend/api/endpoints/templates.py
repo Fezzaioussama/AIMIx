@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api.deps import TemplateUse
+from api.deps import TemplateUse, disk_room
 from api.schemas.pipelines import PipelineOut
 from api.schemas.templates import TemplateOut, TemplateUseIn
 from api.services.templates import registry
@@ -23,7 +23,9 @@ def list_templates() -> list[TemplateOut]:
     ]
 
 
-@router.post("/{slug}/use", status_code=201, dependencies=[Depends(user_rate_limit)])
+@router.post(
+    "/{slug}/use", status_code=201, dependencies=[Depends(user_rate_limit), Depends(disk_room)]
+)
 def create_from_template(
     slug: str, context: TemplateUse, body: TemplateUseIn | None = None
 ) -> PipelineOut:

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 
 from api.deps import current_user
 from api.endpoints import (
+    account,
     agent_tools,
     approvals,
     auth,
@@ -32,6 +33,7 @@ API_PREFIX = "/api"
 PUBLIC_ROUTERS = (auth.public_router, health.router)
 PROTECTED_ROUTERS = (
     auth.router,
+    account.router,
     chat.router,
     models.router,
     pipelines.router,

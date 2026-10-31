@@ -105,6 +105,7 @@ class RunService:
         prepared = prepare_run(pipeline, start.text, start.values)
         limits = self._policy.limits
         limited = replace(start, budget=limits.applied(limits.allow(start.budget)))
+        self._ensure_disk_room()
         with self._database.session() as session:
             row = new_run(pipeline.id, prepared, limited)
             run = repository.create(session, user, row, self._active_cap())
@@ -204,7 +205,13 @@ class RunService:
         limits = self._policy.limits
         chosen = limits.applied(limits.allow(budget), run_budget(run))
         ensure_room(chosen, total_usage(run.steps))
+        self._ensure_disk_room()
         return repository.reopen(session, run, asdict(chosen), self._active_cap())
+
+    def _ensure_disk_room(self) -> None:
+        """A run grows the database: none starts or resumes past the disk reserve."""
+        if self._policy.disk is not None:
+            self._policy.disk.ensure_room()
 
     def _active_cap(self) -> Quota | None:
         """RUN_MAX_ACTIVE_PER_USER, as the quota a start or a resume must fit in."""

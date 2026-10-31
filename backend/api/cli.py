@@ -2,7 +2,12 @@
 
 llm-probe [PROMPT] [--model ID] [--list-models]   smoke-test provider credentials
 create-user USERNAME                              add an account (asks for the password)
+export-user USERNAME                              print everything an account holds (JSON)
+delete-user USERNAME                              delete an account and all its data
 import-django-db PATH                             copy data from the old Django database
+
+export-user and delete-user answer a data-protection request made outside the
+app (someone who can no longer sign in): check who is asking first.
 """
 
 from __future__ import annotations
@@ -13,12 +18,18 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from sqlalchemy.orm import Session
+
 from api.db import Database
-from api.exceptions import DomainError
+from api.exceptions import DomainError, NotFound
+from api.models import User
+from api.repositories import users
 from api.repositories.legacy_import import import_django_database
-from api.services import accounts
+from api.schemas.account import AccountExportOut
+from api.services import account_data, accounts
 from api.services.llm import get_provider
 from api.services.llm_settings import environment_profile
+from api.services.run_recorder import utcnow
 from config.settings import get_settings
 
 
@@ -41,10 +52,38 @@ def create_user(args: argparse.Namespace) -> None:
         raise DomainError("The passwords do not match.")
     settings = get_settings()
     with Database(settings.database_url).session() as session:
-        user = accounts.register(
-            session, args.username, password, settings.password_hash_iterations
-        )
+        credentials = accounts.Credentials(args.username, password)
+        user = account_data.open_account(session, settings, credentials)
     print(f"Created user {user.username} (id {user.id}).")
+
+
+def export_user(args: argparse.Namespace) -> None:
+    settings = get_settings()
+    with Database(settings.database_url).session() as session:
+        user = _account(session, args.username)
+        files = account_data.workspace_of(settings, user.id)
+        export = account_data.export_account(
+            session, user, files, account_data.ExportOptions(utcnow())
+        )
+        print(AccountExportOut.model_validate(export).model_dump_json(indent=2))
+
+
+def delete_user(args: argparse.Namespace) -> None:
+    prompt = f"Type {args.username} to delete this account, its files and all its data: "
+    if input(prompt) != args.username:
+        raise DomainError("Nothing was deleted.")
+    settings = get_settings()
+    with Database(settings.database_url).session() as session:
+        user = _account(session, args.username)
+        account_data.delete_account(session, user, account_data.workspace_of(settings, user.id))
+    print(f"Deleted user {args.username} and all of its data.")
+
+
+def _account(session: Session, username: str) -> User:
+    user = users.get_by_username(session, username)
+    if user is None:
+        raise NotFound(f"There is no account named {username}.")
+    return user
 
 
 def import_django_db(args: argparse.Namespace) -> None:
@@ -66,6 +105,14 @@ def _parser() -> argparse.ArgumentParser:
     user = commands.add_parser("create-user", help="Create an account.")
     user.add_argument("username")
     user.set_defaults(handler=create_user)
+
+    export = commands.add_parser("export-user", help="Print everything an account holds.")
+    export.add_argument("username")
+    export.set_defaults(handler=export_user)
+
+    delete = commands.add_parser("delete-user", help="Delete an account and all its data.")
+    delete.add_argument("username")
+    delete.set_defaults(handler=delete_user)
 
     legacy = commands.add_parser("import-django-db", help="Copy the old Django database in.")
     legacy.add_argument("path", help="Path to the old db.sqlite3.")

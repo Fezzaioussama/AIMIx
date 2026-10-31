@@ -51,7 +51,10 @@ def _web_search(config: ToolboxConfig) -> BaseTool | None:
 
 def _workspace(config: ToolboxConfig) -> LocalWorkspace | None:
     storage = WorkspaceStorage(
-        config.workspace_dir, config.workspace_max_total_bytes, config.workspace_max_files
+        config.workspace_dir,
+        config.workspace_max_total_bytes,
+        config.workspace_max_files,
+        min_free_bytes=config.workspace_min_free_bytes,
     )
     try:
         storage.prepare()

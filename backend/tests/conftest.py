@@ -83,6 +83,9 @@ TEST_SETTINGS = Settings(
     # drives ticks itself, with its own clock.
     scheduler_enabled=False,
     schedules_max_per_user=3,
+    # No free-disk reserve: a full disk on a developer's machine must not fail the
+    # suite. test_file_storage.py checks the reserve with a faked disk.
+    workspace_min_free_bytes=0,
     # Never the real binary: OCR tests inject a fake engine (or skip without one).
     document_ocr_enabled=False,
     openrouter_api_key="",
@@ -242,7 +245,8 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 
 def bearer(user: User) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token_signer(TEST_SETTINGS).issue(user.id, 'access')}"}
+    token = token_signer(TEST_SETTINGS).issue(user.id, "access", user.token_version)
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture

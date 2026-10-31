@@ -3,7 +3,8 @@
 ``RunService`` applies it on every path that starts or resumes a run (the Runs
 screen, the compatibility endpoint, schedules, chat's ``run_pipeline`` tool):
 the spending limits (``RunLimits``), how many runs one account may have active,
-and how long a caller that waits for a run's end waits at most.
+how long a caller that waits for a run's end waits at most, and the free disk
+space a run must leave (a run's inputs and outputs grow the database).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from api.services.files.disk import DiskReserve, disk_reserve
 from api.services.run_budget import NO_LIMITS, RunLimits, run_limits
 from config.settings import Settings
 
@@ -27,11 +29,16 @@ class RunPolicy:
     max_active_per_user: int | None = None
     #: How long ``RunService.run_to_end`` waits for the end (RUN_WAIT_MAX_SECONDS).
     wait_seconds: float | None = None
+    #: Free disk space a run must leave to start or resume (WORKSPACE_MIN_FREE_BYTES).
+    disk: DiskReserve | None = None
 
 
 def run_policy(settings: Settings) -> RunPolicy:
     return RunPolicy(
-        run_limits(settings), settings.run_max_active_per_user, settings.run_wait_max_seconds
+        run_limits(settings),
+        settings.run_max_active_per_user,
+        settings.run_wait_max_seconds,
+        disk_reserve(settings),
     )
 
 

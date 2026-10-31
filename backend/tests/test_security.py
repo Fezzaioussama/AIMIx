@@ -62,6 +62,11 @@ def test_a_good_password_passes() -> None:
     assert password_policy.problems("a-strong-pass-9182", "newcomer") == []
 
 
+def test_a_new_password_needs_twelve_characters_of_any_kind() -> None:
+    assert any("too short" in m for m in password_policy.problems("plum-violin", "newcomer"))
+    assert password_policy.problems("plumviolinoak", "newcomer") == []
+
+
 KEY = "k" * 32
 MINUTE = timedelta(minutes=1)
 SIGNER = TokenSigner(KEY, timedelta(minutes=5), timedelta(days=1))
