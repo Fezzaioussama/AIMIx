@@ -1,7 +1,7 @@
 """Start a pipeline from a template: the use case behind POST /templates/<slug>/use.
 
 The template's steps go through the planner's own sanitiser
-(``pipelines.sanitise_step``), so every step gets the owner's default model and
+(``plan_parsing.sanitise_step``), so every step gets the owner's default model and
 keeps only the tools the owner can use, by the same rule as a generated plan.
 """
 
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.services.agent_types import ToolDescriptor
-from api.services.pipelines import sanitise_step
+from api.services.plan_parsing import sanitise_step
 from api.services.templates.contracts import MissionTemplate
 from api.services.templates.registry import get_template
 

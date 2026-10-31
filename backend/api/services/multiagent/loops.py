@@ -46,6 +46,10 @@ class ReviewLoop:
     max_rounds: int
     #: The orders of every step in the loop's stages.
     members: frozenset[int]
+    #: The deliverables (output steps) of the loop's stages before the one just before
+    #: the reviewer's, and the steps of that one: what the reviewer judges.
+    earlier_outputs: frozenset[int] = frozenset()
+    handed_on: frozenset[int] = frozenset()
 
     @property
     def rounds(self) -> int:
@@ -78,7 +82,11 @@ def _works(span: ReviewSpan, positions: dict[int, int]) -> bool:
 def _loop(span: ReviewSpan, stages: list[list[StepSpec]], positions: dict[int, int]) -> ReviewLoop:
     first, last = positions[span.first], positions[span.last]
     members = frozenset(step.order for stage in stages[first : last + 1] for step in stage)
-    return ReviewLoop(span.reviewer, first, last, span.max_rounds, members)
+    earlier = frozenset(
+        step.order for stage in stages[first : last - 1] for step in stage if step.is_output
+    )
+    handed_on = frozenset(step.order for step in stages[last - 1])
+    return ReviewLoop(span.reviewer, first, last, span.max_rounds, members, earlier, handed_on)
 
 
 def loop_covering(loops: list[ReviewLoop], position: int) -> ReviewLoop | None:

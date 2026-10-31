@@ -7,45 +7,32 @@ objects (AGENTS.md §2).
 
 from __future__ import annotations
 
-import json
-import re
-from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
-from typing import Any
+import logging
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any, TypeVar
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
-from api.models import (
-    PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH,
-    PIPELINE_INPUT_LABEL_MAX_LENGTH,
-    PIPELINE_MAX_INPUTS,
-    STEP_EXPECTED_OUTPUT_MAX_LENGTH,
-    STEP_ROLE_MAX_LENGTH,
-    STEP_TITLE_MAX_LENGTH,
-    Pipeline,
-)
+from api.models import Pipeline
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
 from api.services.final_check import with_final_check
 from api.services.llm import LLMProfile
-from api.services.multiagent.conditions import condition_from_data
 from api.services.multiagent.contracts import PipelineSpec, RunInputs, RunResult
 from api.services.multiagent.contracts import StepAgent as StepGenerator
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
-from api.services.multiagent.reviews import review_from_data
-from api.services.pipeline_flow import ensure_valid_spec, flow_problems, flow_step
-from api.services.pipeline_inputs import (
-    INPUT_DEFAULT_MAX_LENGTH,
-    bind_run_inputs,
-    input_name_error,
-)
+from api.services.pipeline_flow import ensure_valid_spec
+from api.services.pipeline_inputs import bind_run_inputs
+from api.services.plan_parsing import decoded, on_default_model, parse_plan
 from api.services.plan_prompts import pipeline_generation_prompt
 from api.services.plan_questions import Clarification, ClarifyingQuestion, questions_in
 from config.settings import get_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
 
-JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
+logger = logging.getLogger(__name__)
+_Reply = TypeVar("_Reply")
 
 
 @dataclass(frozen=True)
@@ -121,26 +108,23 @@ def generate(
     with questions instead, return those (it asks once)."""
     clarification = request.clarification
     prompt = pipeline_generation_prompt(request.description, profile.models, tools, clarification)
-    raw = _planner_reply(provider, profile, PlannerCall(prompt, request.planner_model))
-    questions = questions_in(_decoded(raw)) if clarification.asking else ()
-    if questions:
-        return Plan(None, questions)
-    plan = parse_plan(raw, profile.models, _tool_names(tools))
+    call = PlannerCall(prompt, request.planner_model)
+
+    def ask() -> Plan:
+        raw = _planner_reply(provider, profile, call)
+        questions = questions_in(decoded(raw)) if clarification.asking else ()
+        if questions:
+            return Plan(None, questions)
+        return Plan(parse_plan(raw, profile.models, _tool_names(tools)))
+
+    answer = _asked_twice_at_most(ask)
+    plan = answer.pipeline
+    if plan is None:
+        return answer
     asked = " ".join([request.description, *(item.answer for item in clarification.answers)])
     on_default_model(plan["steps"], profile.default_model, asked)
     with_final_check(plan, request.description, clarification.answers, profile.default_model)
     return Plan(plan)
-
-
-def on_default_model(steps: list[dict[str, Any]], default_model: str, asked: str) -> None:
-    """Put every step on the default model, except one whose model the request names
-    (``asked``, matched by the id's last part, e.g. "grok-4.20"): planners scatter the
-    steps of a team over many models, which costs more and fails more, as one model
-    replying with nothing or garbled text stops or spoils the whole run."""
-    request = asked.lower()
-    for step in steps:
-        if step["model"].rsplit("/", 1)[-1].lower() not in request:
-            step["model"] = default_model
 
 
 def ask_planner(
@@ -151,8 +135,20 @@ def ask_planner(
 ) -> dict[str, Any]:
     """Send one planner prompt and return its plan, sanitised by ``parse_plan``.
     Generation and revision share it, so both fail and clean up alike (§3)."""
-    raw = _planner_reply(provider, profile, call)
-    return parse_plan(raw, profile.models, _tool_names(tools))
+    names = _tool_names(tools)
+    return _asked_twice_at_most(
+        lambda: parse_plan(_planner_reply(provider, profile, call), profile.models, names)
+    )
+
+
+def _asked_twice_at_most(ask: Callable[[], _Reply]) -> _Reply:
+    """The planner's answer, asked for once more when it cannot be used (not JSON, or no
+    whole pipeline): models slip now and then, and one slip must not stop a mission."""
+    try:
+        return ask()
+    except UpstreamResponseInvalid as cause:
+        logger.warning("pipeline.plan_retry reason=%s", cause.detail)
+        return ask()
 
 
 def _planner_reply(provider: LLMProvider, profile: LLMProfile, call: PlannerCall) -> str:
@@ -165,127 +161,6 @@ def _planner_reply(provider: LLMProvider, profile: LLMProfile, call: PlannerCall
 
 def _tool_names(tools: list[ToolDescriptor] | None) -> list[str] | None:
     return [tool.name for tool in tools] if tools is not None else None
-
-
-def _decoded(raw: str) -> object:
-    """The JSON object a planner reply holds, decoded; failing as ``parse_plan`` does."""
-    match = JSON_OBJECT_PATTERN.search(raw or "")
-    if match is None:
-        raise UpstreamResponseInvalid("The planner did not return a pipeline definition.")
-    try:
-        return json.loads(match.group())
-    except json.JSONDecodeError as cause:
-        raise UpstreamResponseInvalid(f"The planner returned invalid JSON: {cause}") from cause
-
-
-def parse_plan(
-    raw: str, available_models: list[str], available_tools: list[str] | None = None
-) -> dict[str, Any]:
-    """Extract the JSON pipeline from a model response and sanitise it.
-
-    ``available_models`` lists the default first; a step naming any other
-    model gets it. Inputs that could not be saved are dropped, and so are the
-    conditions and review loops that could not work. Kept separate from the
-    call so it can be tested without a provider.
-    """
-    plan = _decoded(raw)
-    if not isinstance(plan, dict) or "name" not in plan or "steps" not in plan:
-        raise UpstreamResponseInvalid("The planner returned an incomplete pipeline definition.")
-
-    steps = plan.get("steps")
-    if not isinstance(steps, list) or not steps:
-        raise UpstreamResponseInvalid("The planner returned a pipeline with no steps.")
-
-    for index, step in enumerate(steps, start=1):
-        if not isinstance(step, dict):
-            raise UpstreamResponseInvalid("The planner returned a malformed step.")
-        sanitise_step(step, index, available_models, available_tools)
-
-    plan["inputs"] = _sanitise_inputs(plan.get("inputs"))
-    _drop_unusable_flow(steps, plan["inputs"])
-    return plan
-
-
-def _drop_unusable_flow(steps: list[dict[str, Any]], inputs: list[dict[str, str]]) -> None:
-    """Set aside each condition and review loop that cannot work in this plan
-    (the checks a save makes): a planner's slip never fails the request, it
-    only leaves that step without the field."""
-    problems = flow_problems([item["name"] for item in inputs], [flow_step(s) for s in steps])
-    for problem in problems:
-        steps[problem.order - 1][problem.field] = None  # orders are the positions, from 1
-
-
-def _text(value: object, limit: int | None = None) -> str:
-    """A planner value as trimmed text cut to ``limit``; a non-string becomes ``""``."""
-    return value.strip()[:limit] if isinstance(value, str) else ""
-
-
-def _sanitise_inputs(raw: object) -> list[dict[str, str]]:
-    """Keep the planner's inputs that can be saved: objects with a valid name
-    that no earlier input took, at most ``PIPELINE_MAX_INPUTS`` of them, each with
-    the value it suggests to the run form (``default_value``) when it fits.
-
-    A name is checked, never shortened, because the prompts refer to it whole.
-    """
-    inputs: dict[str, dict[str, str]] = {}
-    for item in raw if isinstance(raw, list) else []:
-        if not isinstance(item, dict):
-            continue
-        name = _text(item.get("name"))
-        if input_name_error(name) or name in inputs:
-            continue
-        default = _text(item.get("default_value"))
-        inputs[name] = {
-            "name": name,
-            "label": _text(item.get("label"), PIPELINE_INPUT_LABEL_MAX_LENGTH),
-            "description": _text(item.get("description"), PIPELINE_INPUT_DESCRIPTION_MAX_LENGTH),
-            # A value too long to keep is left out rather than cut: half of pasted notes
-            # would mislead more than an empty field.
-            "default_value": default if len(default) <= INPUT_DEFAULT_MAX_LENGTH else "",
-        }
-    return list(inputs.values())[:PIPELINE_MAX_INPUTS]
-
-
-def sanitise_step(
-    step: dict[str, Any],
-    index: int,
-    available_models: list[str],
-    available_tools: list[str] | None,
-) -> None:
-    """Make a planner step storable: unique order, a valid stage, a known model,
-    a short title, role and expected output, a boolean output flag, and a
-    condition and review in their stored form (or None). Mission templates
-    reuse it, so their steps get models and tools by the same rule.
-
-    ``order`` is renumbered by position because planners that group steps into
-    parallel stages tend to repeat it; a missing or invalid stage falls back to
-    the step's own position, i.e. sequential.
-    """
-    step["order"] = index
-    stage = step.get("stage")
-    if isinstance(stage, bool) or not isinstance(stage, int) or stage < 1:
-        step["stage"] = index
-    if step.get("model") not in available_models:
-        step["model"] = available_models[0] if available_models else ""
-    step["title"] = _text(step.get("title"), STEP_TITLE_MAX_LENGTH)
-    step["role"] = _text(step.get("role"), STEP_ROLE_MAX_LENGTH)
-    step["expected_output"] = _text(step.get("expected_output"), STEP_EXPECTED_OUTPUT_MAX_LENGTH)
-    selected = step.get("allowed_tools")
-    if isinstance(selected, list) and available_tools is not None:
-        step["allowed_tools"] = list(
-            dict.fromkeys(
-                name for name in selected if isinstance(name, str) and name in available_tools
-            )
-        )
-    else:
-        step["allowed_tools"] = None
-    step["is_output"] = step.get("is_output") is True
-    condition, review = (
-        condition_from_data(step.get("condition")),
-        review_from_data(step.get("review")),
-    )
-    step["condition"] = None if condition is None else asdict(condition)
-    step["review"] = None if review is None else asdict(review)
 
 
 def ensure_runnable(pipeline: Pipeline) -> None:

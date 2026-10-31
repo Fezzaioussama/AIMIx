@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from api.services.pipelines import parse_plan, sanitise_step
+from api.services.plan_parsing import parse_plan, sanitise_step
 from api.services.plan_prompts import pipeline_generation_prompt
 from api.services.prompts import pipeline_revision_prompt
 

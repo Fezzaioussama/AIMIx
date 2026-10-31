@@ -32,7 +32,8 @@ told today's date and who else is in the team.
 for an email another step rewrites, or recommendations that build on an analysis. Steps share \
 a stage only when their work is independent. When several agents each write part of one \
 deliverable, first add a step that plans the parts, so they neither repeat nor contradict \
-each other.
+each other. Before you answer, check every stage: a step that should build on another \
+step of the same stage moves to a later stage.
 - Carry every detail of the request to the steps that need it: names, facts, numbers, \
 audience, tone, length, format, language and any pasted material. Write it into their \
 prompts or pass it through an input; never drop one.

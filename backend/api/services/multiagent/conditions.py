@@ -4,7 +4,7 @@ A step's condition compares one piece of text with the text the person typed.
 It is read when the step is about to start; when it does not hold the step is
 skipped. Pure functions over plain values, so the rules are tested on their own
 and shared by the engine (``graph``), the save-time checks (``pipeline_flow``)
-and the planner's sanitiser (``pipelines.sanitise_step``).
+and the planner's sanitiser (``plan_parsing.sanitise_step``).
 
 What a condition may look at (``CONDITION_SOURCES``, one entry per kind):
 

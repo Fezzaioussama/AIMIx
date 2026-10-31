@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from operator import attrgetter
 
 from langchain_core.runnables import Runnable, RunnableLambda
 
@@ -146,12 +147,30 @@ class StepNode:
             return {"results": {step.order: saved}}
         # A row that holds an earlier round's result is redone in place.
         again = saved is not None or step.order in state["results"]
-        attempt = _Attempt(state["current_input"], round_, again)
+        attempt = _Attempt(self._work(state), round_, again)
         if self._holds(state):
             result = await self._execute(state, loop_state, attempt)
         else:
             result = await self._skip(attempt)
         return {"results": {step.order: result}}
+
+    def _work(self, state: GraphState) -> str:
+        """What the step works on: the previous stage's output. A reviewer whose loop
+        made deliverables before that stage gets them too, with that stage's work, so
+        it judges every deliverable it can send back instead of reporting one missing."""
+        step, loop = self._step, self._loop
+        if loop is None or loop.reviewer != step.order or not loop.earlier_outputs:
+            return state["current_input"]
+        results = state["results"]
+        handed_on = [results[order] for order in loop.handed_on if order in results]
+        if all(result.skipped for result in handed_on):
+            return state["current_input"]
+        wanted = loop.earlier_outputs | loop.handed_on
+        work = sorted(
+            (result for order, result in results.items() if order in wanted and not result.skipped),
+            key=attrgetter("stage", "step_order"),
+        )
+        return merge_stage_outputs([(result.step_order, result.output) for result in work])
 
     def _loop_state(self, state: GraphState) -> LoopState:
         if self._loop is None:
@@ -212,7 +231,7 @@ class StepNode:
                 loop_state.feedback, round_, loop.rounds, block=self._position == loop.first
             )
         fills = PromptFills(
-            state["current_input"],
+            self._work(state),
             state["values"],
             first_stage=self._position == 0,
             feedback=feedback,

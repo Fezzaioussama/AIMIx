@@ -1,5 +1,8 @@
 import type { Pipeline, Run, RunStep } from '../../core/api/types';
 import { AiNotice } from '../../core/ui/AiNotice';
+import { CostText } from '../../core/ui/CostText';
+import { describeCost, usageOfStep } from '../../core/usageFormat';
+import { modelLabel } from '../pipelines/modelLabel';
 import { OutputCard } from '../pipelines/OutputCard';
 import { RunFlowContext } from '../pipelines/RunFlowContext';
 import { stepLabel } from '../pipelines/stages';
@@ -43,6 +46,31 @@ function Planned({ team }: { team: Pipeline }) {
   );
 }
 
+/**
+ * A deliverable's heading: what it is first, then who made it, and quietly the model and
+ * what it cost (the builder's headings lead with those details instead).
+ */
+function DeliverableHeading({ step, role }: { step: RunStep; role: string }) {
+  const by = [role.trim(), modelLabel(step.model)].filter(Boolean).join(' · ');
+  const cost = describeCost(usageOfStep(step));
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="font-semibold text-slate-50">
+        {stepLabel({ order: step.step_order, title: step.title })}
+      </span>
+      <span className="text-xs text-slate-400">
+        {by}
+        {cost && (
+          <>
+            {' · '}
+            <CostText view={cost} compact />
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
 /** In the order the steps run: by stage, then by order within a stage. */
 function inRunOrder(steps: RunStep[]): RunStep[] {
   return [...steps].sort((a, b) => a.stage - b.stage || a.step_order - b.step_order);
@@ -82,6 +110,7 @@ function Ready({ run }: { run: Run }) {
   );
 
   const flow = { steps: run.definition.steps, inputs: run.definition.inputs };
+  const roles = new Map(run.definition.steps.map((step) => [step.order, step.role]));
   return (
     <RunFlowContext value={flow}>
       {ready.length === 0 && (
@@ -95,7 +124,7 @@ function Ready({ run }: { run: Run }) {
         {ready.map((step) => (
           <OutputCard
             key={step.step_order}
-            heading={<StepHeading result={step} />}
+            heading={<DeliverableHeading step={step} role={roles.get(step.step_order) ?? ''} />}
             output={step.output}
             foldable={ready.length > 1}
           />

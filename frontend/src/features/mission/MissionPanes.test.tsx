@@ -283,7 +283,7 @@ describe('the mission workspace: the results pane', () => {
     expect(within(header).getByText('Done')).toBeInTheDocument();
     // The team on the centre pane shows what the run did.
     expect(
-      teamPane().getByRole('button', { name: /Comparison, .*, output, Done/ }),
+      teamPane().getByRole('button', { name: /Comparison, .*, deliverable, Done/ }),
     ).toBeInTheDocument();
   });
 

@@ -4,9 +4,10 @@ import { Link } from 'react-router-dom';
 import { HOME_PATH } from '../../core/routes';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { SECONDARY_BUTTON } from '../pipelines/buttonStyles';
-import { PipelineGraph } from '../pipelines/PipelineGraph';
+import { inputLabel } from '../pipelines/pipelineInputs';
 import { PaneHeader } from './PaneHeader';
 import { countOf } from './teamBrief';
+import { TeamRoster } from './TeamRoster';
 import type { Mission } from './useMission';
 import type { MissionTeam } from './useMissionTeam';
 
@@ -77,13 +78,16 @@ function TeamBody({ mission, selected, onEditStep }: TeamPaneProps) {
           {team.error}
         </p>
       )}
-      <div className="mt-4">
-        <PipelineGraph
+      {pipeline.inputs.length > 0 && (
+        <p className="mt-2 text-sm text-slate-300">
+          You provide: {pipeline.inputs.map(inputLabel).join(', ')}
+        </p>
+      )}
+      <div className="mt-5">
+        <TeamRoster
           steps={pipeline.steps}
-          inputs={pipeline.inputs}
           liveSteps={followed.shown?.steps}
-          isRunning={followed.shownActive}
-          input={followed.shown?.input ?? ''}
+          runActive={followed.shownActive}
           selected={selected}
           onEditStep={editable ? onEditStep : undefined}
         />
@@ -97,7 +101,7 @@ function TeamBody({ mission, selected, onEditStep }: TeamPaneProps) {
   );
 }
 
-/** The team at the centre: its graph (live while a run works) and "Open in builder". */
+/** The team at the centre: its agents (live while a run works) and "Open in builder". */
 export function TeamPane(props: TeamPaneProps) {
   const { mission } = props;
   const { team } = mission;

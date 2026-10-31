@@ -135,7 +135,7 @@ describe('the mission workspace: describing a mission', () => {
     // The team pane and the results pane know it too.
     expect(screen.getByRole('heading', { name: 'Competitor brief', level: 3 })).toBeInTheDocument();
     expect(screen.getByText('Saved when you first run it')).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'Pipeline diagram' })).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Your team' })).toBeInTheDocument();
     expect(screen.getByText('When your team has run, you get this:')).toBeInTheDocument();
     expect(composer()).toHaveAccessibleName('Message AIMIx about your team');
     expect(screen.getByRole('button', { name: 'Run it' })).toBeInTheDocument();
@@ -349,7 +349,8 @@ describe('the mission workspace: running', () => {
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
     // Editing waits: the agents on the team pane cannot be opened mid-run.
     const team = within(screen.getByRole('tabpanel', { name: 'Team' }));
-    expect(team.getByRole('button', { name: /Market research, .*, Done/ })).toBeDisabled();
+    expect(team.getByRole('group', { name: /Market research, .*, Done/ })).toBeInTheDocument();
+    expect(team.queryByRole('button', { name: /Market research/ })).not.toBeInTheDocument();
     expect(team.getByText(/Your team is working/)).toBeInTheDocument();
 
     // One poll later the run is done: its deliverables lead the results.

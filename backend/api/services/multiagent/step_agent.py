@@ -163,14 +163,22 @@ class PipelineAgentGenerator:
         )
 
     async def execute(self, task: AgentTask) -> AgentOutcome:
-        """Run the step; a reply with no text or garbled text gets one more try, on the
-        default model (which often answers when another model failed), before the step
-        fails. The meter counts both tries."""
+        """Run the step; a reply with no text or garbled text gets one more try before the
+        step fails, on the default model (which often answers when another model failed),
+        or, when that model is the one that failed, without tools (which some models trip
+        over). The meter counts both tries."""
         try:
             return await self._reply(task)
         except UpstreamResponseInvalid:
             retry = replace(task, model=self._default_model or task.model)
-            logger.warning("pipeline.agent_retry model=%s retry_model=%s", task.model, retry.model)
+            if retry.model == task.model and task.allowed_tools != []:
+                retry = replace(retry, allowed_tools=[])
+            logger.warning(
+                "pipeline.agent_retry model=%s retry_model=%s without_tools=%s",
+                task.model,
+                retry.model,
+                retry.allowed_tools == [] and task.allowed_tools != [],
+            )
             return await self._reply(retry)
 
     async def _reply(self, task: AgentTask) -> AgentOutcome:
