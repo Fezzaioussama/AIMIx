@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from '../../core/api/endpoints';
 import type { UsageReport } from '../../core/api/types';
-import { SettingsPage } from './SettingsPage';
 import { UsageSection } from './UsageSection';
 import { SETTINGS, byPath, json } from './testData';
+import { renderSettingsPage } from './testRender';
 import { USAGE_DAYS, useUsage } from './useUsage';
 
 const USAGE_PATH = `${API.usage}?days=${USAGE_DAYS}`;
@@ -128,7 +128,7 @@ describe('UsageSection', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       byPath({ [API.llmSettings]: SETTINGS, [API.integrations]: [], [USAGE_PATH]: REPORT }),
     );
-    render(<SettingsPage />);
+    renderSettingsPage();
 
     expect(await screen.findByRole('heading', { name: 'Usage' })).toBeInTheDocument();
     expect(await screen.findByText('Launch kit')).toBeInTheDocument();

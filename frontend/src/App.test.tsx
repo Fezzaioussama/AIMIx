@@ -45,6 +45,12 @@ describe('App routing', () => {
     expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
   });
 
+  it.each(['/legal', '/privacy', '/terms'])('serves %s without a session', async (path) => {
+    renderAt(path);
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Welcome back' })).toBeNull();
+  });
+
   it('redirects an unauthenticated visitor away from a protected route', async () => {
     renderAt('/pipeline');
     expect(await screen.findByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();

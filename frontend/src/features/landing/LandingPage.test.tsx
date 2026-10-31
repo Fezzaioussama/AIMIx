@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { AuthProvider } from '../../core/auth/AuthContext';
 import { clearTokens, saveTokens } from '../../core/auth/tokenStorage';
+import { LEGAL_LINKS } from '../../core/routes';
 import { NAV_LINKS, RELEASE_STAGE } from './content/site';
 import { LandingPage } from './LandingPage';
 
@@ -95,6 +96,15 @@ describe('LandingPage', () => {
 
   // This version of AIMIx is closed source: the public page must not advertise a licence,
   // a repository or how to install it, and must not send visitors off-site.
+  it('reaches every legal page from the footer', () => {
+    renderLanding();
+    const legal = screen.getByRole('navigation', { name: 'Legal' });
+    const links = within(legal).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(
+      LEGAL_LINKS.map((link) => link.path),
+    );
+  });
+
   it('makes no open-source or self-install claims and links nowhere off-site', () => {
     renderLanding();
     expect(document.body.textContent).not.toMatch(

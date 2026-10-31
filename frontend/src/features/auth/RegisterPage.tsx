@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { AuthCard, AuthField } from './AuthCard';
 import { useAuth } from '../../core/auth/AuthContext';
-import { HOME_PATH } from '../../core/routes';
+import { HOME_PATH, PRIVACY_PATH, TERMS_PATH } from '../../core/routes';
+
+const NOTICE_LINK = 'text-sky-400 underline-offset-2 hover:text-sky-300 hover:underline';
 
 export function RegisterPage() {
   const { register, login } = useAuth();
@@ -56,6 +58,19 @@ export function RegisterPage() {
       isSubmitting={isSubmitting}
       errorMessage={errorMessage}
       onSubmit={handleSubmit}
+      notice={
+        <>
+          By creating an account, you accept the{' '}
+          <Link to={TERMS_PATH} className={NOTICE_LINK}>
+            terms of use
+          </Link>{' '}
+          and have read the{' '}
+          <Link to={PRIVACY_PATH} className={NOTICE_LINK}>
+            privacy policy
+          </Link>
+          .
+        </>
+      }
       footer={{ prompt: 'Already have an account?', to: '/login', label: 'Log in' }}
     >
       <AuthField

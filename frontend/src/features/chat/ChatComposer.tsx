@@ -1,5 +1,6 @@
 import type { Ref } from 'react';
 
+import { AiNotice } from '../../core/ui/AiNotice';
 import { ClickSpark } from '../../core/ui/reactbits/ClickSpark';
 
 interface ChatComposerProps {
@@ -45,6 +46,7 @@ export function ChatComposer({ value, disabled, onChange, onSend, ref }: ChatCom
           </button>
         </ClickSpark>
       </div>
+      <AiNotice className="mx-auto mt-2 max-w-4xl justify-center" />
     </div>
   );
 }

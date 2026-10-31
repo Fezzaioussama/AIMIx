@@ -27,7 +27,7 @@ export const HERO_STEPS: readonly HeroStep[] = [
   {
     id: 'act',
     label: 'Act',
-    detail: 'Give each agent a tool policy: research, calculation, local files, artifacts or MCP.',
+    detail: 'Give each agent a tool policy: research, calculation, your files, artifacts or MCP.',
   },
   {
     id: 'review',

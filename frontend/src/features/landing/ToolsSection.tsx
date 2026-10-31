@@ -14,7 +14,7 @@ export function ToolsSection() {
       id="tools"
       eyebrow="Tools"
       title="Give every agent the right tools"
-      description="Research the web, calculate, work with sandboxed local files and save artifacts. Connect an MCP server when you need more."
+      description="Research the web, calculate, work with the files you uploaded and save artifacts. Connect an MCP server when you need more."
     >
       {/* Flex, not grid: five cards leave a short last row, and it should sit centred. */}
       <ul className="flex flex-wrap justify-center gap-4">

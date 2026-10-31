@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { GlowButton } from '../../core/ui/GlowButton';
+import { LegalLinks } from '../../core/ui/LegalLinks';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { BlurText } from '../../core/ui/reactbits/BlurText';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
@@ -20,6 +21,8 @@ interface AuthCardProps {
   errorMessage: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   children: ReactNode;
+  /** What the person should know before submitting, shown above the button. */
+  notice?: ReactNode;
   /** "Don't have an account? Create one" — the link to the other screen. */
   footer: { prompt: string; to: string; label: string };
 }
@@ -32,6 +35,7 @@ export function AuthCard({
   errorMessage,
   onSubmit,
   children,
+  notice,
   footer,
 }: AuthCardProps) {
   return (
@@ -45,12 +49,14 @@ export function AuthCard({
           <p className="mt-2 mb-8 text-sm text-slate-400">{subtitle}</p>
           <form onSubmit={onSubmit} noValidate>
             {children}
+            {notice && <p className="mt-2 text-xs text-slate-400">{notice}</p>}
             <GlowButton type="submit" block busy={isSubmitting} className="mt-6">
               {isSubmitting ? 'Please wait…' : submitLabel}
             </GlowButton>
             <AuthError message={errorMessage} />
             <AuthFooter {...footer} />
           </form>
+          <LegalLinks className="mt-6 justify-center" />
         </SpotlightCard>
       </AnimatedContent>
     </AuthLayout>

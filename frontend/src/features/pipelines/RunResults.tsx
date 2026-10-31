@@ -1,4 +1,5 @@
 import type { RunStep, StepResult } from '../../core/api/types';
+import { AiNotice } from '../../core/ui/AiNotice';
 import { OutputCard } from './OutputCard';
 import { StageArrow } from './StageArrow';
 import { StageHeader } from './StageHeader';
@@ -26,6 +27,7 @@ export function RunResults({ results, focusedStep, runActive = false }: RunResul
 
   return (
     <div>
+      {results.some((result) => !inProgress(result)) && <AiNotice className="mb-4" />}
       {stages.map((group, position) => (
         <div key={group.stage}>
           <StageHeader stage={group.stage} stepCount={group.items.length} />

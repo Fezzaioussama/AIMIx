@@ -9,7 +9,7 @@ export function SecuritySection() {
       id="security"
       eyebrow="Security"
       title="Your keys. Your pipelines. Your account."
-      description="What you build in AIMIx stays private to you."
+      description="What you build in AIMIx is private to your account."
     >
       <ul className="grid gap-4 md:grid-cols-3">
         {SECURITY_POINTS.map((point, index) => (

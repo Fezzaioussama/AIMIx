@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../core/api/client';
 import { deleteFile, downloadFile, listFiles } from '../../core/api/files';
 import type { FileListing, WorkspaceFile } from '../../core/api/types';
+import { saveBlob } from '../../core/saveBlob';
 import { fileName, withoutFile } from './fileFormat';
-import { saveBlob } from './saveBlob';
 import { messageOf, useFileUploads, type Lifetime, type SetListing } from './useFileUploads';
 
 /** What is running on one file's row. */

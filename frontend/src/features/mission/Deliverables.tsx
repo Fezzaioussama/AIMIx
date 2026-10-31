@@ -1,4 +1,5 @@
 import type { Pipeline, Run, RunStep } from '../../core/api/types';
+import { AiNotice } from '../../core/ui/AiNotice';
 import { OutputCard } from '../pipelines/OutputCard';
 import { RunFlowContext } from '../pipelines/RunFlowContext';
 import { stepLabel } from '../pipelines/stages';
@@ -100,6 +101,7 @@ function Ready({ run }: { run: Run }) {
           />
         ))}
       </div>
+      {ready.length > 0 && <AiNotice className="mt-3" />}
       {waiting.length > 0 && ready.length > 0 && (
         <p className="mt-3 text-sm text-slate-300">
           {isActive(run.status) ? 'Still working on' : 'Not finished'}: {names(waiting)}.

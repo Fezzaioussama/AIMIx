@@ -88,8 +88,9 @@ export const TOOLS: readonly ToolCard[] = [
     kind: 'Built-in',
   },
   {
-    name: 'Local workspace',
-    detail: 'List, search and read local files, inspect CSV data, and save new artifacts safely.',
+    name: 'Your files',
+    detail:
+      'List, search and read the files you uploaded, inspect CSV data, and save new artifacts.',
     icon: Files,
     kind: 'Built-in',
   },
@@ -147,12 +148,17 @@ export const FAQ_ITEMS: readonly FaqItem[] = [
   {
     question: 'Do pipeline runs stream?',
     answer:
-      'Chat streams token by token. A pipeline run returns once every stage has finished, so a long run keeps one request open. Run history and resumable checkpoints are not built yet.',
+      'Chat streams token by token. A pipeline run works in the background: follow each step live, stop or resume it, and find it later in the run history, where it stays until you delete it.',
   },
   {
     question: 'Which tools can agents use?',
     answer:
-      'Nine toolbox functions cover web research, calculation, time, local files, CSV data and saved artifacts, plus anything you connect over MCP. You choose the tools per agent.',
+      'Built-in tools cover web research, calculation, time, your files, CSV data, saved artifacts and Python in an isolated cloud sandbox, plus anything you connect over MCP. You choose the tools per agent.',
+  },
+  {
+    question: 'Where does my data go?',
+    answer:
+      'Your pipelines, runs and files are kept on the AIMIx servers, private to your account, until you delete them or your account. What an agent works on is sent to the model provider you chose, under your own key; web searches go to a search service, and Python code with its input files to a sandbox service. The privacy policy names them.',
   },
   {
     question: 'Can a pipeline read my documents?',

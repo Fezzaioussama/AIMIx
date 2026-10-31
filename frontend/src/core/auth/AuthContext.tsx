@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import * as accountApi from '../api/account';
 import * as authApi from '../api/auth';
 import {
   clearTokens,
@@ -20,6 +21,10 @@ interface AuthContextValue {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Keeps this session signed in with the new tokens; every other one ends. */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** Deletes the account and all its data, then ends the session. */
+  deleteAccount: (password: string) => Promise<void>;
 }
 
 interface AuthProviderProps {
@@ -104,9 +109,18 @@ export function AuthProvider({ children, forgetAccountData }: AuthProviderProps)
     }
   }, []);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    saveTokens(await accountApi.changePassword(currentPassword, newPassword));
+  }, []);
+
+  const deleteAccount = useCallback(async (password: string) => {
+    await accountApi.deleteAccount(password);
+    endSession();
+  }, []);
+
   const value = useMemo(
-    () => ({ isAuthenticated, isReady, login, register, logout }),
-    [isAuthenticated, isReady, login, register, logout],
+    () => ({ isAuthenticated, isReady, login, register, logout, changePassword, deleteAccount }),
+    [isAuthenticated, isReady, login, register, logout, changePassword, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

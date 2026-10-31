@@ -3,9 +3,11 @@ import type { FormEvent } from 'react';
 import type { ProviderSettings } from '../../core/api/types';
 import { ActivePill } from '../../core/ui/ActivePill';
 import { GlowButton } from '../../core/ui/GlowButton';
+import { LegalLinks } from '../../core/ui/LegalLinks';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { BlurText } from '../../core/ui/reactbits/BlurText';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { AccountSection } from './AccountSection';
 import { IntegrationsSection } from './IntegrationsSection';
 import { NoticeLine } from './NoticeLine';
 import { ProviderCard } from './ProviderCard';
@@ -120,6 +122,8 @@ export function SettingsPage() {
         {!settings && notice && <NoticeLine notice={notice} />}
         <IntegrationsSection />
         <UsageSection />
+        <AccountSection />
+        <LegalLinks className="mt-12" />
       </div>
     </div>
   );

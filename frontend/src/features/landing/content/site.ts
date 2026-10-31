@@ -1,5 +1,7 @@
 /** Site-wide landing content: navigation, footer and the stack shown in the marquee. */
 
+import { LEGAL_LINKS } from '../../../core/routes';
+
 /** What stage this release is at, shown in the nav and footer. Change it here, e.g. to 'Demo'. */
 export const RELEASE_STAGE = 'Beta';
 
@@ -47,6 +49,10 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
       { label: 'Auto pipeline', href: '/auto-pipeline' },
       { label: 'Settings', href: '/settings' },
     ],
+  },
+  {
+    title: 'Legal',
+    links: LEGAL_LINKS.map((link) => ({ label: link.label, href: link.path })),
   },
 ];
 

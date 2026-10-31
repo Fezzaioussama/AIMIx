@@ -4,7 +4,7 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { RequireAuth } from './core/auth/RequireAuth';
 import { useAuth } from './core/auth/AuthContext';
-import { HOME_PATH } from './core/routes';
+import { HOME_PATH, LEGAL_LINKS } from './core/routes';
 import { ActivePill } from './core/ui/ActivePill';
 import { AmbientBackdrop } from './core/ui/AmbientBackdrop';
 import { navIcon } from './core/ui/navIcons';
@@ -52,6 +52,9 @@ const FilesPage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import('./features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+);
+const LegalPage = lazy(() =>
+  import('./features/legal/LegalPage').then((module) => ({ default: module.LegalPage })),
 );
 
 function lazyRoute(Page: LazyExoticComponent<ComponentType>) {
@@ -160,6 +163,17 @@ export function App() {
       <Route path="/" element={lazyRoute(LandingPage)} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      {LEGAL_LINKS.map((link) => (
+        <Route
+          key={link.path}
+          path={link.path}
+          element={
+            <Suspense fallback={null}>
+              <LegalPage path={link.path} />
+            </Suspense>
+          }
+        />
+      ))}
       <Route element={<AppShell />}>
         <Route path={`${HOME_PATH}/:pipelineId?`} element={lazyRoute(MissionPage)} />
         <Route path="/chat" element={lazyRoute(ChatPage)} />

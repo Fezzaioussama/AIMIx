@@ -1,9 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from '../../core/api/endpoints';
-import { SettingsPage } from './SettingsPage';
 import { SETTINGS, byPath } from './testData';
+import { renderSettingsPage } from './testRender';
 
 describe('SettingsPage', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -12,7 +12,7 @@ describe('SettingsPage', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       byPath({ [API.llmSettings]: SETTINGS, [API.integrations]: [] }),
     );
-    render(<SettingsPage />);
+    renderSettingsPage();
 
     expect(await screen.findByRole('heading', { name: 'OpenRouter' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'OpenRouter' })).toBeChecked();
@@ -30,7 +30,7 @@ describe('SettingsPage', () => {
         [API.integrations]: [],
       }),
     );
-    render(<SettingsPage />);
+    renderSettingsPage();
 
     expect(await screen.findByText(/Model calls will fail until you add one/)).toBeInTheDocument();
   });

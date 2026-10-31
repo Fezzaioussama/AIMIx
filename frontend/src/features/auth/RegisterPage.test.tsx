@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -91,6 +91,22 @@ describe('RegisterPage', () => {
     await fillAndSubmit();
 
     expect(await screen.findByText('Landed on /login')).toBeInTheDocument();
+  });
+
+  it('says, before the account is created, which terms and policy apply', () => {
+    serve({});
+    renderRegister();
+
+    expect(screen.getByRole('link', { name: 'terms of use' })).toHaveAttribute('href', '/terms');
+    expect(screen.getByRole('link', { name: 'privacy policy' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
+    const legal = screen.getByRole('navigation', { name: 'Legal' });
+    expect(within(legal).getByRole('link', { name: 'Legal notice' })).toHaveAttribute(
+      'href',
+      '/legal',
+    );
   });
 
   it('does not ask the server anything when the two passwords differ', async () => {
