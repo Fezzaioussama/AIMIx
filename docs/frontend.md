@@ -179,6 +179,23 @@ Markdown makes, a task-list box, is kept as a disabled checkbox, and any other i
 becomes one. Links open in the same tab, as before, with `rel="noopener noreferrer"`.
 The hooks doing this live on the module's own instance, added once.
 
+## `core/voice/` — dictation
+
+`MicButton` sits in the Missions message box (`MissionComposer`): press to speak,
+press again to stop; it shows the seconds while recording, a spinner while the clip
+is transcribed, and any failure as an alert above it. It renders nothing where the
+browser cannot record (`canRecordVoice()`). `useVoiceInput(onTranscript)` owns the
+microphone: `getUserMedia`, a `MediaRecorder`, a stop after `MAX_RECORDING_SECONDS`
+(180), and, once stopped, `toSpeechWav` then `core/api/voice.transcribeClip`; the
+words go to the latest `onTranscript` (`useLatest`). Unmounting releases the
+microphone and drops a transcription on its way. `wav.ts` converts the recording
+(WebM, Ogg or MP4, whatever the browser made) to what Meta's speech model reads:
+decoded with `AudioContext`, re-rendered by an `OfflineAudioContext` into one 16 kHz
+channel, written as 16-bit PCM WAV by `encodeWav`. `dictation.ts`
+(`appendDictation`) adds the words after what is typed, within the box's limit. The
+server sends `Permissions-Policy: microphone=(self)`, so only the app's own pages
+may ask for the microphone.
+
 ## `core/ui/` — shared presentation and motion
 
 Components here render and animate; they never fetch or touch storage.

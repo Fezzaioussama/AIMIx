@@ -32,6 +32,7 @@ export const API = {
   runSchedule: (scheduleId: number) => `/api/schedules/${scheduleId}/run`,
   previewSchedule: '/api/schedules/preview',
   extractDocument: '/api/documents/extract',
+  transcribeVoice: '/api/voice/transcribe',
   files: '/api/files',
   /** One file of the user's workspace, by its '/'-separated path. */
   file: (path: string) => `/api/files/${path.split('/').map(encodeURIComponent).join('/')}`,

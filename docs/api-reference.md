@@ -550,6 +550,39 @@ ten minutes (`UPLOAD_TIMEOUT_MS`), longer than that worst case by default.
 
 ---
 
+## Voice
+
+### `POST /voice/transcribe`
+
+Turns one recorded clip into text with Meta's speech model (`VOICE_MODEL`,
+`muse-voice-transcribe-1.0`), for the microphone of the Missions message box.
+`multipart/form-data` with one field, `audio`: a WAV file, mono, 16-bit PCM, at
+16 or 24 kHz (the browser converts its recording, see `core/voice/wav.ts`). The
+call spends the user's **Meta** key from Settings, whichever provider they chose
+for chat and teams, or the server's `META_API_KEY` when `ALLOW_SERVER_LLM_KEY`
+shares it. Rate-limited per account like the other routes that spend.
+
+`200`:
+
+```json
+{ "transcript": "Research our three main competitors and write a comparison.", "duration_ms": 4120 }
+```
+
+`duration_ms` is the clip's length as the model measured it, or `null`. An empty
+`transcript` means no speech was heard.
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | The clip is empty, larger than `VOICE_MAX_BYTES` (10 MB, about 5 minutes), not a WAV file, or not mono 16-bit at 16 or 24 kHz; nothing is sent |
+| 503 | `provider_not_configured` | No Meta key: neither saved by the user nor shared by the server |
+| 502 | `provider_unavailable` | Meta refused or failed the call, after the retries of `LLM_MAX_RETRIES` |
+| 504 | `provider_timeout` | Meta did not answer within `VOICE_TIMEOUT_SECONDS` (60) |
+
+The clip is never stored, and neither it nor its words are logged: only its size
+and timings.
+
+---
+
 ## Files
 
 Each account has one private folder, `AGENT_WORKSPACE_DIR/user-<id>`, shared with

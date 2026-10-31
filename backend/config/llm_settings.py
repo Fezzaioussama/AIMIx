@@ -48,6 +48,11 @@ class LlmSettings(BaseModel):
         validation_alias="TOGETHERAI_DEFAULT_MODEL",
     )
     meta_default_model: str = Field("muse-spark-1.3", validation_alias="META_DEFAULT_MODEL")
+    # Speech to text (the Missions microphone): Muse Voice Transcribe, on the Meta key.
+    voice_model: str = Field("muse-voice-transcribe-1.0", validation_alias="VOICE_MODEL")
+    voice_timeout_seconds: float = Field(60.0, gt=0, validation_alias="VOICE_TIMEOUT_SECONDS")
+    # A bigger clip is refused before it is sent: 10 MB is about 5 minutes of 16 kHz WAV.
+    voice_max_bytes: int = Field(10_000_000, ge=1, validation_alias="VOICE_MAX_BYTES")
 
     # Provider-keyed views, so provider lookups stay one dict access (§5 O).
     @property

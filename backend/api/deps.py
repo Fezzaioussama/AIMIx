@@ -28,7 +28,7 @@ from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage
 from api.services.integrations.rules import IntegrationRules, rules_from
 from api.services.integrations.service import IntegrationAccess
-from api.services.llm import LLMProfile, get_planner_provider
+from api.services.llm import LLMProfile, get_planner_provider, get_transcriber
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.run_executor import RunExecutor
@@ -40,6 +40,8 @@ from api.services.templates.use import StepDefaults
 from api.services.tool_catalog import PipelineToolCatalog
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
+from llm.speech import PROVIDER as SPEECH_PROVIDER
+from llm.speech import Transcriber
 
 
 def db_session(request: Request) -> Iterator[Session]:
@@ -182,6 +184,25 @@ def provider_factory(profile: Profile) -> ProviderFactory:
 
 
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
+
+TranscriberFactory = Callable[[], Transcriber]
+
+
+def voice_transcribers(user: CurrentUser, session: DbSession, box: Secrets) -> TranscriberFactory:
+    """Speech to text on the user's Meta key, whichever provider they chose; built
+    only once the clip is valid."""
+    profile = llm_settings.provider_profile(session, user, box, SPEECH_PROVIDER)
+    return partial(get_transcriber, profile)
+
+
+Transcribers = Annotated[TranscriberFactory, Depends(voice_transcribers)]
+
+
+def voice_max_bytes(settings: AppSettings) -> int:
+    return settings.voice_max_bytes
+
+
+VoiceMaxBytes = Annotated[int, Depends(voice_max_bytes)]
 
 
 PipelineAgentFactory = Callable[[], StepAgent]

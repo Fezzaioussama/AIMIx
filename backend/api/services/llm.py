@@ -20,6 +20,7 @@ from llm.base import LLMProvider, ProviderConfig
 from llm.catalog import CATALOGS, ModelInfo
 from llm.registry import create_provider
 from llm.retry import RetryPolicy
+from llm.speech import MetaTranscriber, Transcriber
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,17 @@ def get_agent_model(profile: LLMProfile, model_id: str | None = None) -> BaseCha
         return create_agent_model(profile.provider, provider_config(profile, model_id))
     except llm_exceptions.ProviderNotConfigured as cause:
         raise ProviderNotConfigured(str(cause)) from cause
+
+
+def get_transcriber(profile: LLMProfile) -> Transcriber:
+    """Speech to text on the profile's key (a Meta profile): its calls use VOICE_MODEL
+    and time out after VOICE_TIMEOUT_SECONDS."""
+    settings = get_settings()
+    config = replace(
+        provider_config(profile, settings.voice_model),
+        timeout_seconds=settings.voice_timeout_seconds,
+    )
+    return MetaTranscriber(config)
 
 
 def model_info(profile: LLMProfile, model_id: str) -> ModelInfo | None:

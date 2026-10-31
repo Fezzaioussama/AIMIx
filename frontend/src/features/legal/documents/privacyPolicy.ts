@@ -44,6 +44,11 @@ responsable (voir les [conditions générales d'utilisation](/terms)).
 chat lance à votre demande est enregistré comme toute exécution. La conversation d'une mission
 est gardée dans votre navigateur, pour l'onglet ouvert seulement.
 
+**Votre voix.** Si vous dictez une demande avec le micro de Missions, votre navigateur vous
+demande d'abord l'accès au micro. L'enregistrement est envoyé au Service, qui le transmet pour
+transcription et ne le conserve pas ; seul le texte transcrit revient dans la zone de saisie, où
+vous le relisez avant de l'envoyer.
+
 **La sécurité.** Pour limiter les tentatives de connexion et les abus, le Service compte les
 requêtes par adresse IP, par nom d'utilisateur et par compte. Il n'enregistre ni l'adresse IP ni
 le nom d'utilisateur à cette fin, seulement une empreinte calculée avec une clé secrète du serveur
@@ -73,14 +78,17 @@ de l'éditeur, et transmises aux prestataires suivants, dans la limite de ce qui
 
 **Hébergeur.** {{host}} héberge le Service, sa base de données et vos fichiers.
 
-**Services utilisés à votre demande.** Lorsque vous exécutez un pipeline, discutez dans le chat
-ou planifiez une équipe :
+**Services utilisés à votre demande.** Lorsque vous exécutez un pipeline, discutez dans le chat,
+planifiez une équipe ou dictez une demande :
 
 - *Le fournisseur de modèles que vous choisissez* (OpenRouter, TogetherAI ou Meta) reçoit les
   consignes, entrées, documents et résultats intermédiaires nécessaires à chaque appel de
   modèle. Avec votre propre clé, il les traite dans le cadre de votre compte chez lui et de ses
   conditions, qui peuvent prévoir la conservation ou l'utilisation de ces données : consultez
   ses réglages de confidentialité.
+- *La transcription vocale* (Meta, avec votre clé Meta), lorsque vous dictez une demande, reçoit
+  l'enregistrement de votre voix et le traite dans le cadre de votre compte chez Meta et de ses
+  conditions.
 - *Le service de recherche web* (Tavily), lorsque vos agents utilisent la recherche web, reçoit
   leurs requêtes de recherche, qu'il peut transmettre à des moteurs de recherche tiers.
 - *Le bac à sable d'exécution de code* (E2B), lorsque vos agents exécutent du Python, reçoit le

@@ -102,7 +102,12 @@ def resolve_profile(session: Session, user: User, box: SecretBox) -> LLMProfile:
     The key is decrypted here, once per request, and lives only in the returned
     profile; it is never written back or cached in clear.
     """
-    provider = _active_provider(user)
+    return provider_profile(session, user, box, _active_provider(user))
+
+
+def provider_profile(session: Session, user: User, box: SecretBox, provider: str) -> LLMProfile:
+    """The default model and key this user saved for one provider, active or not
+    (speech to text always uses Meta's)."""
     saved = repository.get(session, user, provider)
     return LLMProfile(
         provider=provider,

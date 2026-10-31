@@ -122,6 +122,13 @@ export interface ExtractedDocument {
   truncated: boolean;
 }
 
+/** What a recorded clip said (POST /api/voice/transcribe). */
+export interface Transcript {
+  transcript: string;
+  /** How long the clip was, as the speech model measured it; null when it did not say. */
+  duration_ms: number | null;
+}
+
 /** A file in the user's workspace, the folder their agents read and save to. */
 export interface WorkspaceFile {
   /** Relative to the workspace, '/'-separated, e.g. "reports/q3.pdf". */

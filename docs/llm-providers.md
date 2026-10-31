@@ -7,8 +7,9 @@ outside this app.
 
 ```
 llm/
-  base.py          # ProviderConfig, LLMProvider Protocol, OpenAICompatibleProvider
+  base.py          # ProviderConfig, LLMProvider Protocol, OpenAICompatibleProvider, normalised_failures
   agent_models.py  # LangChain model factory registry for LangGraph chat, with retries
+  speech.py        # Transcript, Transcriber Protocol, MetaTranscriber: speech to text
   retry.py         # RetryPolicy, Retrier: bounded retries for transient failures
   usage.py         # TokenUsage, cost sources, UsageCallback, metered: what each model call used and cost
   exceptions.py    # LLMError, ProviderNotConfigured, ProviderTimeout, ProviderRequestError
@@ -19,6 +20,21 @@ llm/
     together.py    # builds an openai.OpenAI client with the Together base URL
     meta.py        # builds an openai.OpenAI client with the Meta Model API base URL
 ```
+
+## Speech to text
+
+`llm/speech.py` turns one recorded clip into text for the Missions microphone.
+`MetaTranscriber` posts it to Muse Voice Transcribe's batch endpoint
+(`/asr/transcribe`): a WAV `audio` part (mono, 16-bit PCM, 16 or 24 kHz) beside
+a JSON `request` part (`PUSH_TO_TALK`, the model, `WAV`). It goes through the
+client of `providers/meta.py` (`client(config)`, shared with chat), so it has
+the same timeout, the same retry policy and the same failure contract: only
+`ProviderTimeout` or `ProviderRequestError` escape, through `normalised_failures`.
+The openai SDK sends a multipart body only when a request carries
+`Content-Type: multipart/form-data`, as its own upload methods do. An answer
+without a `transcript` string is a `ProviderRequestError`.
+`api/services/llm.get_transcriber` builds it with the speech model and timeout of
+`VOICE_MODEL` and `VOICE_TIMEOUT_SECONDS`; `api/services/voice.py` checks the clip.
 
 ## The contract
 
@@ -55,10 +71,11 @@ class implements the transport for all three:
 - `_resolve_model` — explicit model, else `config.default_model`, else error.
 - `_create` — the SDK call; `generate` and `stream` run it under the retry
   policy (below).
-- `_normalised_failures` — the one place that catches a broad `Exception` from
-  the SDK, once the retries are spent. It logs `llm.request_failed` (provider,
-  model, error class and HTTP status — no prompt, no provider message) and
-  re-raises as `ProviderTimeout` if the class name contains "timeout", otherwise
+- `normalised_failures` (a module function, shared with `llm/speech.py`) — the
+  one place that catches a broad `Exception` from the SDK, once the retries are
+  spent. It logs `llm.request_failed` (provider, model, error class and HTTP
+  status — no prompt, no provider message) and re-raises as `ProviderTimeout` if
+  the class name contains "timeout", otherwise
   `ProviderRequestError("<provider> could not answer the request.")`, always
   `from cause`. A failure in the middle of a stream is normalised the same way.
 - `generate` — returns `choices[0].message.content`.

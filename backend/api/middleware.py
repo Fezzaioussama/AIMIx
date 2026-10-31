@@ -18,7 +18,8 @@ BASE_SECURITY_HEADERS = {
     "Referrer-Policy": "same-origin",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    # The microphone only for the app's own pages: Missions dictation (api/services/voice.py).
+    "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
     "Content-Security-Policy": (
         "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; "
         "object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "

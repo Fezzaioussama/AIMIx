@@ -2,6 +2,8 @@ import { Play, SendHorizontal } from 'lucide-react';
 import { useId, type KeyboardEvent, type Ref, type SyntheticEvent } from 'react';
 
 import { GlowButton } from '../../core/ui/GlowButton';
+import { appendDictation } from '../../core/voice/dictation';
+import { MicButton } from '../../core/voice/MicButton';
 import { REVISION_INSTRUCTION_MAX_LENGTH } from '../pipelines/revision';
 
 interface MissionComposerProps {
@@ -25,8 +27,9 @@ interface FieldProps extends Pick<MissionComposerProps, 'value' | 'onChange' | '
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
-/** The labelled text box with its send button. */
+/** The labelled text box with its microphone and send button. */
 function ComposerField({ id, value, onChange, hasTeam, ready, onKeyDown, ref }: FieldProps) {
+  const maxLength = hasTeam ? REVISION_INSTRUCTION_MAX_LENGTH : undefined;
   return (
     <>
       <label htmlFor={`${id}-message`} className="sr-only">
@@ -38,7 +41,7 @@ function ComposerField({ id, value, onChange, hasTeam, ready, onKeyDown, ref }: 
           id={`${id}-message`}
           rows={2}
           value={value}
-          maxLength={hasTeam ? REVISION_INSTRUCTION_MAX_LENGTH : undefined}
+          maxLength={maxLength}
           aria-describedby={`${id}-hint`}
           placeholder={
             hasTeam ? 'Ask for a change, or say “run it”' : 'Describe what you want to get done…'
@@ -46,6 +49,10 @@ function ComposerField({ id, value, onChange, hasTeam, ready, onKeyDown, ref }: 
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
           className="max-h-40 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-white outline-none placeholder:text-slate-400"
+        />
+        <MicButton
+          label={hasTeam ? 'Dictate a change to your team' : 'Dictate your mission'}
+          onTranscript={(text) => onChange(appendDictation(value, text, maxLength))}
         />
         <button
           type="submit"

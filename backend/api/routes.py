@@ -26,6 +26,7 @@ from api.endpoints import (
     schedules,
     templates,
     usage,
+    voice,
 )
 
 API_PREFIX = "/api"
@@ -47,6 +48,7 @@ PROTECTED_ROUTERS = (
     usage.router,
     approvals.router,
     schedules.router,
+    voice.router,
 )
 
 

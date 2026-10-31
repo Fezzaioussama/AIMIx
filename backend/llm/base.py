@@ -69,6 +69,31 @@ def _text(chunks: Iterable[Any]) -> Iterator[str]:
             yield content
 
 
+@contextmanager
+def normalised_failures(provider: str, model: str, timeout_seconds: float) -> Iterator[None]:
+    """Re-raise what is left of a provider call's failure, after its retries, as
+    this layer's errors. Every adapter over an SDK shares it (§3)."""
+    try:
+        yield
+    except Exception as cause:
+        # Normalised so every provider fails the same way (§5 L). Only the
+        # error's type and status are logged: never the prompt (§6), nor the
+        # provider's message, which can echo the key or the account's state.
+        logger.warning(
+            "llm.request_failed provider=%s model=%s error=%s status=%s",
+            provider,
+            model,
+            type(cause).__name__,
+            status_code(cause),
+        )
+        if is_timeout(cause):
+            raise ProviderTimeout(
+                f"{provider} did not respond within {timeout_seconds:g}s."
+            ) from cause
+        # Generic on purpose: the caller may be spending the server's key.
+        raise ProviderRequestError(f"{provider} could not answer the request.") from cause
+
+
 class OpenAICompatibleProvider:
     """Shared provider implementation over an OpenAI-shaped chat client.
 
@@ -102,32 +127,9 @@ class OpenAICompatibleProvider:
             **({} if bound is None else {"max_tokens": bound}),
         )
 
-    @contextmanager
-    def _normalised_failures(self, model: str) -> Iterator[None]:
-        """Re-raise what is left after the retries as this layer's errors."""
-        try:
-            yield
-        except Exception as cause:
-            # Normalised so every provider fails the same way (§5 L). Only the
-            # error's type and status are logged: never the prompt (§6), nor the
-            # provider's message, which can echo the key or the account's state.
-            logger.warning(
-                "llm.request_failed provider=%s model=%s error=%s status=%s",
-                self.name,
-                model,
-                type(cause).__name__,
-                status_code(cause),
-            )
-            if is_timeout(cause):
-                raise ProviderTimeout(
-                    f"{self.name} did not respond within {self._config.timeout_seconds:g}s."
-                ) from cause
-            # Generic on purpose: the caller may be spending the server's key.
-            raise ProviderRequestError(f"{self.name} could not answer the request.") from cause
-
     def generate(self, prompt: str, model: str | None = None) -> str:
         resolved = self._resolve_model(model)
-        with self._normalised_failures(resolved):
+        with normalised_failures(self.name, resolved, self._config.timeout_seconds):
             response = self._retrier(resolved).call(
                 lambda: self._create(prompt, resolved, stream=False)
             )
@@ -138,7 +140,7 @@ class OpenAICompatibleProvider:
 
     def stream(self, prompt: str, model: str | None = None) -> Iterator[str]:
         resolved = self._resolve_model(model)
-        with self._normalised_failures(resolved):
+        with normalised_failures(self.name, resolved, self._config.timeout_seconds):
             yield from self._retrier(resolved).stream(
                 lambda: _text(self._create(prompt, resolved, stream=True))
             )
