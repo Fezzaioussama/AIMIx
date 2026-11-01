@@ -2,9 +2,11 @@ import { useState } from 'react';
 
 import type { RunApproval } from '../../core/api/types';
 import { useNow } from '../../core/hooks/useNow';
+import { FOCUS_RING } from '../../core/ui/focus';
 import { ArgumentList } from './ArgumentList';
-import { argumentRows, formatTimeLeft, toolLabel } from './approvalFormat';
+import { argumentRows, formatTimeLeft } from './approvalFormat';
 import { RUN_BUTTON } from './runButtons';
+import { approvalHeading, fromSource, isPlainAsk } from './toolWords';
 
 type Choice = 'approve' | 'decline';
 
@@ -19,15 +21,11 @@ interface ApprovalCardProps {
   onDecline?: () => void;
 }
 
-/** Where the tool comes from, as a phrase; built-in tools need no source. */
-function fromSource(source: string): string {
-  return source === 'AIMIx' ? '' : ` from ${source}`;
-}
-
 /**
- * One tool call waiting for the run's owner: which step wants it, the tool in
- * plain words, what it will use, the time left, and Approve or Decline. Doing
- * nothing counts as a decline once the time is up.
+ * One tool call waiting for the run's owner: what it asks in plain words (a
+ * built-in tool's request, or the tool's name), which step wants it, what it will
+ * use, Approve or Decline, and the time left. Doing nothing counts as a decline
+ * once the time is up. No motion on purpose: PendingApprovals keeps the focus.
  */
 export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: ApprovalCardProps) {
   const [choice, setChoice] = useState<Choice | null>(null);
@@ -38,27 +36,27 @@ export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: 
     send();
   };
   const pending = busy ? choice : null;
+  const plain = isPlainAsk(approval);
 
   return (
     <section
       aria-labelledby={headingId}
       className="rounded-2xl border border-amber-400/40 bg-amber-400/[0.06] p-4"
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
-        <p className="text-xs font-semibold tracking-widest text-amber-300 uppercase">
-          Needs your OK
-        </p>
-        <p className="text-xs text-slate-300 tabular-nums">
-          {formatTimeLeft(Date.parse(approval.expires_at) - now)}
-        </p>
-      </div>
-      <h3 id={headingId} className="mt-1 text-base font-semibold break-words text-slate-50">
-        Allow “{toolLabel(approval.tool_name, approval.tool_source)}”?
+      {/* The jump target of "Review the request", hence focusable. */}
+      <h3
+        id={headingId}
+        tabIndex={-1}
+        className={`scroll-mt-[calc(var(--sticky-top,0px)+1rem)] rounded text-base font-semibold text-balance break-words text-slate-50 ${FOCUS_RING}`}
+      >
+        {approvalHeading(approval)}
       </h3>
       <p className="mt-1 text-sm break-words text-slate-300">
-        {askedBy} wants to use this tool{fromSource(approval.tool_source)}.
+        {plain
+          ? `${askedBy} wants your OK first.`
+          : `${askedBy} wants to use this tool${fromSource(approval.tool_source)}.`}
       </p>
-      {approval.tool_description && (
+      {!plain && approval.tool_description && (
         <p className="mt-1 text-sm break-words text-slate-400">{approval.tool_description}</p>
       )}
       <ArgumentList rows={argumentRows(approval.arguments)} />
@@ -73,7 +71,7 @@ export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: 
             type="button"
             onClick={() => answer('approve', onApprove)}
             disabled={busy}
-            className={`${RUN_BUTTON.resume} min-h-10`}
+            className={RUN_BUTTON.resume}
           >
             {pending === 'approve' ? 'Approving…' : 'Approve'}
           </button>
@@ -81,15 +79,20 @@ export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: 
             type="button"
             onClick={() => answer('decline', onDecline)}
             disabled={busy}
-            className={`${RUN_BUTTON.stop} min-h-10`}
+            className={RUN_BUTTON.stop}
           >
             {pending === 'decline' ? 'Declining…' : 'Decline'}
           </button>
-          <span className="text-xs text-slate-400">No answer counts as a decline.</span>
         </div>
       ) : (
         <p className="mt-3 text-xs text-slate-400">Answer it from the run in Runs.</p>
       )}
+      <p className="mt-3 text-xs text-slate-400">
+        <span className="tabular-nums">
+          {formatTimeLeft(Date.parse(approval.expires_at) - now)}
+        </span>{' '}
+        · No answer counts as a decline.
+      </p>
     </section>
   );
 }

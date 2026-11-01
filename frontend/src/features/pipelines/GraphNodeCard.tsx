@@ -60,7 +60,7 @@ export const NODE_STATUS_STYLES: Record<
 };
 
 /** Why a skipped step did not run, in the words shown on hover and in the step list. */
-export const SKIPPED_REASON = 'Its condition was not met';
+const SKIPPED_REASON = 'Its condition was not met';
 
 interface GraphNodeCardProps {
   node: GraphNode;
@@ -101,10 +101,7 @@ export function GraphNodeCard({
 }: GraphNodeCardProps) {
   const style = NODE_STATUS_STYLES[node.status];
   const running = node.status === 'running';
-  const summary =
-    node.outputLength === null
-      ? node.expectedOutput.trim() || node.prompt || 'No prompt yet'
-      : `${node.outputLength} chars`;
+  const summary = node.expectedOutput.trim() || node.prompt || 'No prompt yet';
 
   return (
     <button
@@ -177,26 +174,14 @@ export function OutputBadge() {
   );
 }
 
-interface GraphTerminalProps {
-  label: string;
-  detail: string;
-  active?: boolean;
-  onClick?: () => void;
-}
-
 /** The Input and Output ends of the diagram. */
-export function GraphTerminal({ label, detail, active = false, onClick }: GraphTerminalProps) {
+export function GraphTerminal({ label, detail }: { label: string; detail: string }) {
   return (
-    <button
-      type="button"
-      disabled={!onClick}
-      onClick={onClick}
-      className={`${nodeBase} w-36 border-indigo-400/40 bg-gradient-to-br from-indigo-500/20 to-purple-500/10 ${
-        active ? 'ring-2 ring-sky-400' : ''
-      } enabled:cursor-pointer enabled:hover:bg-indigo-500/20 disabled:cursor-default`}
+    <div
+      className={`${nodeBase} w-36 border-indigo-400/40 bg-gradient-to-br from-indigo-500/20 to-purple-500/10`}
     >
       <span className="text-xs font-semibold tracking-wide text-indigo-300 uppercase">{label}</span>
       <span className="line-clamp-2 text-xs text-slate-400">{detail}</span>
-    </button>
+    </div>
   );
 }

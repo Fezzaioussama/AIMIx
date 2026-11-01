@@ -269,7 +269,7 @@ step did, the step is given an empty `{feedback}` (known-issues.md, entry 10).
 | Hold a tool call for a person (approval gates, built) | A tool asks first when `ApprovalPolicy.asks(name, source)` says so (`approvals/policy.py`: `MCP_REQUIRE_APPROVAL`, each integration's switch, `AGENT_APPROVAL_TOOLS`). To gate something else, add the source or tool name to the policy; the guard and the middleware need no change. See [Approval gates](#approval-gates). |
 | Pause a run another way | End the run in a new status from the job (`RunService._execute`) and let `resume` continue it; `RunControl.completed` already skips the finished steps. Add the status to `RunStatus` and, if it can continue, to `RESUMABLE_RUN_STATUSES` (`api/models.py`); mirror it in `frontend/src/features/runs/runStatus.ts` and `RUN_STATUS_STYLES`. |
 | Start runs without a request | `RunService(database, executor, max_parallel_steps).start(user, pipeline, RunStart(text, values, trigger, schedule_id), agent)`; the app's executor is `app.state.run_executor` (`RunExecutor`: `submit(key, job) -> Future`, `cancel(key)`, `shutdown()`). Schedules do exactly this, see [Scheduled runs](#scheduled-runs). A new kind of starter adds a member to `RunTrigger` (`api/models.py`) and to `RunTrigger` in `frontend/src/core/api/types.ts`. |
-| Show a run on another screen | `const live = useRun(runId)` then `<LiveRun run={live.run} onStop={live.stop} onResume={live.resume} onApprove={live.approve} onDecline={live.decline} busy={live.busy} error={live.error} actions={…}>…</LiveRun>` (`features/runs`). Without `onApprove` and `onDecline` a waiting run's requests are shown but cannot be answered on that screen. |
+| Show a run on another screen | `const live = useRun(runId)` then, once `live.run` is there, `<RunReport key={live.run.id} run={live.run} control={live} level={2} extras={…} />` (`features/runs/report`; `level` is 2 under the page's `h1`, 3 under an `h2`; `extras` adds "Open in Runs", a note, actions such as Delete, or the team's diagram). Its approval cards answer through `control.approve` and `control.decline`. See [frontend-missions.md](frontend-missions.md#the-run-report-featuresrunsreport). |
 
 A pipeline may declare named inputs. `pipeline_inputs.bind_run_inputs` checks
 the request against them before the graph starts: the first stage receives
@@ -598,7 +598,7 @@ readers and web tools are not offered together stays as it is.
 
 ```
 endpoints/documents.import_document_url (async, rate-limited per account)
-  → deps.PageImports → documents/web_import.PageImporter.read(url)
+  → document_deps.PageImports → documents/web_import.PageImporter.read(url)
       → one of DOCUMENT_URL_MAX_CONCURRENT link slots, else 503 at once
       → web_download.PageDownloader.download(url, DOCUMENT_MAX_BYTES, readable?)
           every hop: absolute http(s), no user name or password, a host httpx
@@ -927,7 +927,7 @@ flowchart TD
     Intent -- yes --> Form["Inputs form in the conversation<br/>(RunInputCard)"]
     Form --> Save["useMissionTeam.save<br/>POST or PUT /pipelines/"]
     Save --> Start["POST /pipelines/id/runs"]
-    Start --> Follow["useFollowedRun polls GET /runs/id<br/>team graph, deliverables, run details"]
+    Start --> Follow["useFollowedRun polls GET /runs/id<br/>team graph and the run report"]
     Intent -- no --> Rev["useMissionProposals over useRevisePipeline<br/>POST /pipelines/revise"]
     Rev -- Apply --> Replace["team replaced; a saved mission is<br/>saved again 1.5 s after its last edit"]
 ```

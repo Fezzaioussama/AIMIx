@@ -5,6 +5,14 @@
    (AGENTS.md §8). */
 
 @theme {
+  /* The page's ground, for surfaces that must match it exactly (`bg-ground/90` under a
+     stuck title row, shown only while it is stuck). */
+  --color-ground: #050611;
+
+  /* transitions.dev's surface curve (`ease-smooth-out`); motionTokens.ts holds the
+     same curve for motion/react. */
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+
   --animate-gradient-pan: aimix-gradient-pan 8s ease-in-out infinite;
   --animate-shine: aimix-shine 3s linear infinite;
   --animate-orbit: aimix-orbit 4s linear infinite;
@@ -129,7 +137,7 @@ html {
 body {
   margin: 0;
   font-family: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  background-color: #050611;
+  background-color: var(--color-ground);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -221,4 +229,85 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.15);
   padding: 0.4rem 0.6rem;
   text-align: left;
+}
+
+/* A deliverable as a reading document (RenderedMarkdown): 16px at a 1.7 line height,
+   words that never break mid-way, and the writer's headings at the size they meant
+   whatever level they were moved to (renderDocument sets data-level). Unlayered and
+   after .prose-output, so these win while chat and the legal pages stay as they are. */
+.prose-document {
+  font-size: 1rem;
+  line-height: 1.7;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.prose-document > * + * {
+  margin-top: 0.9em;
+}
+
+.prose-document [data-level] {
+  margin-top: 1.6em;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-white);
+  text-wrap: balance;
+}
+
+.prose-document [data-level='1'] {
+  font-size: 1.35rem;
+}
+
+.prose-document [data-level='2'] {
+  font-size: 1.15rem;
+}
+
+.prose-document [data-level='3'] {
+  font-size: 1.05rem;
+}
+
+.prose-document [data-level] + * {
+  margin-top: 0.5em;
+}
+
+.prose-document > :first-child {
+  margin-top: 0;
+}
+
+.prose-document :is(p, li) {
+  text-wrap: pretty;
+}
+
+.prose-document :is(a, code) {
+  overflow-wrap: anywhere;
+}
+
+.prose-document a {
+  text-underline-offset: 0.2em;
+}
+
+/* A focused link or table never hides under the sticky title row (WCAG 2.4.11). */
+.prose-document :is(a, [tabindex]) {
+  scroll-margin-top: calc(var(--sticky-top, 0px) + 5rem);
+}
+
+.prose-document :is(a, .md-table-scroll):focus-visible {
+  outline: 2px solid var(--color-sky-400);
+  outline-offset: 2px;
+}
+
+/* A wide table scrolls sideways in its own focusable box (renderDocument wraps it). */
+.md-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.prose-document th {
+  white-space: nowrap;
+}
+
+.prose-document td[data-num] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

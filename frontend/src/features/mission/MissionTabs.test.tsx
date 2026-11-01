@@ -60,6 +60,54 @@ describe('MissionTabs', () => {
     expect(onChange).toHaveBeenLastCalledWith('results');
   });
 
+  it('offers only the panes it is given, the keys moving within them', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <MissionTabs
+        panes={['team', 'results']}
+        compact
+        active="results"
+        onChange={onChange}
+        runStatus="succeeded"
+      />,
+    );
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.id)).toEqual([
+      'mission-team-tab',
+      'mission-results-tab',
+    ]);
+    screen.getByRole('tab', { name: 'Results, run done' }).focus();
+
+    await user.keyboard('{ArrowRight}');
+    expect(onChange).toHaveBeenLastCalledWith('team');
+    expect(screen.getByRole('tab', { name: 'Team' })).toHaveFocus();
+
+    await user.keyboard('{ArrowLeft}');
+    expect(onChange).toHaveBeenLastCalledWith('results');
+    await user.keyboard('{Home}');
+    expect(onChange).toHaveBeenLastCalledWith('team');
+    await user.keyboard('{End}');
+    expect(onChange).toHaveBeenLastCalledWith('results');
+  });
+
+  it('sizes compact tabs to their words, the run’s status beside the name', () => {
+    render(
+      <MissionTabs
+        panes={['team', 'results']}
+        compact
+        active="team"
+        onChange={() => {}}
+        runStatus="running"
+      />,
+    );
+
+    const results = screen.getByRole('tab', { name: 'Results, run running' });
+    expect(results).toHaveClass('flex-row', 'flex-none');
+    expect(results).not.toHaveClass('flex-1');
+    expect(screen.getByRole('tablist', { name: 'Mission' })).not.toHaveClass('bg-slate-950/60');
+  });
+
   it('leaves other keys alone', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();

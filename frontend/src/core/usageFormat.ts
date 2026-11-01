@@ -25,6 +25,11 @@ export function formatCount(count: number): string {
   return NUMBER.format(count);
 }
 
+/** "1 agent", "1,042 characters": a count and its noun, plural unless it is one. */
+export function countOf(amount: number, noun: string): string {
+  return `${formatCount(amount)} ${noun}${amount === 1 ? '' : 's'}`;
+}
+
 export function formatTokens(count: number): string {
   return formatCount(count);
 }

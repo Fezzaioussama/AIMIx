@@ -71,6 +71,11 @@ describe('formatTimeLeft', () => {
     [600_000, '10 min left'],
     [1_684_000, '29 min left'],
     [1_800_000, '30 min left'],
+    [3_540_000, '59 min left'],
+    [3_599_001, '1 h 00 min left'],
+    [3_600_000, '1 h 00 min left'],
+    [21_360_000, '5 h 56 min left'],
+    [86_400_000, '24 h 00 min left'],
   ])('says %i ms as "%s"', (ms, words) => {
     expect(formatTimeLeft(ms)).toBe(words);
   });

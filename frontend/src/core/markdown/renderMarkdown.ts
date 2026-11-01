@@ -88,3 +88,63 @@ export function renderMarkdown(text: string): string {
   const html = marked.parse(text, { async: false });
   return purifier.sanitize(html, SANITIZE_CONFIG);
 }
+
+const HEADINGS = 'h1, h2, h3, h4, h5, h6';
+/** A cell holding one number, maybe signed, priced or a percentage: "1,900", "-$4.60", "12 %". */
+const NUMERIC_CELL = /^[-+−]?[$€£¥]?\s?\d[\d\s.,]*%?$/;
+
+/**
+ * Moves a text's own headings under the page's: its `#` becomes h{base}, `##`
+ * h{base + 1}, capped at h6. `data-level` keeps the size the writer meant.
+ */
+function nestHeadings(root: DocumentFragment, base: number): void {
+  for (const heading of root.querySelectorAll(HEADINGS)) {
+    const level = Number(heading.localName[1]);
+    const nested = document.createElement(`h${Math.min(6, base + level - 1)}`);
+    for (const { name, value } of heading.attributes) nested.setAttribute(name, value);
+    nested.dataset.level = String(level);
+    nested.append(...heading.childNodes);
+    heading.replaceWith(nested);
+  }
+}
+
+/** A wide table scrolls sideways in its own focusable box instead of breaking words. */
+function wrapTables(root: DocumentFragment): void {
+  for (const table of root.querySelectorAll('table')) {
+    const scroller = document.createElement('div');
+    scroller.className = 'md-table-scroll';
+    scroller.setAttribute('role', 'group');
+    scroller.setAttribute('aria-label', 'Table');
+    scroller.tabIndex = 0;
+    table.replaceWith(scroller);
+    scroller.append(table);
+  }
+}
+
+function markNumbers(root: DocumentFragment): void {
+  for (const cell of root.querySelectorAll('td')) {
+    if (NUMERIC_CELL.test(cell.textContent?.trim() ?? '')) cell.dataset.num = '';
+  }
+}
+
+/**
+ * A model's Markdown as a reading document: sanitised like `renderMarkdown`, then its
+ * headings nested from `headingBase`, its tables in scrollers and its number cells
+ * marked for right alignment. The marks are added to the sanitised DOM, never parsed
+ * from text, and the model's own `data-*` attributes are dropped, so only this code
+ * sets `data-level`, `data-num` or the scroller's class.
+ */
+export function renderDocument(text: string, headingBase: number): string {
+  const html = marked.parse(text, { async: false });
+  const root = purifier.sanitize(html, {
+    ...SANITIZE_CONFIG,
+    ALLOW_DATA_ATTR: false,
+    RETURN_DOM_FRAGMENT: true,
+  });
+  nestHeadings(root, headingBase);
+  wrapTables(root);
+  markNumbers(root);
+  const host = document.createElement('div');
+  host.append(root);
+  return host.innerHTML;
+}

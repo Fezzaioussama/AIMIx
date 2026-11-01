@@ -175,10 +175,12 @@ features one step closer to the machinery.
    what the team needs (you can attach a document) and the run starts; the first run
    saves the mission. The team in the middle shows each agent waiting, running or
    done and opens a side drawer to edit its role, prompt, model and tools; **Results**
-   leads with the deliverables, folds the full run details away once the run is done
-   and lists your newest files. Reopen a mission at `/mission/<id>` or with **Open in
+   hands each run over as one report: what happened and what to do now, the final
+   check, each deliverable to copy or download, the files saved during the run, and how
+   the team got there. Once the team has run, a wide screen sets the conversation beside
+   Team | Results tabs. Reopen a mission at `/mission/<id>` or with **Open in
    mission view** on the builder, and hand it to the advanced mode with **Open in
-   builder**. Under 1280px wide the three panes become tabs. The conversation is kept
+   builder**. Under 1280px wide the panes become tabs. The conversation is kept
    for the browser tab only; the team and its runs are saved on the server. Template
    quick-starts sit under the examples on the empty screen.
 2. **Chat** (`/chat`) — type a prompt; the LangGraph agent can use native pipeline functions and the configured MCP tools that need no approval (see [above](#give-chat-and-pipeline-steps-mcp-tools)).
@@ -191,10 +193,10 @@ features one step closer to the machinery.
    (see [architecture.md](architecture.md#conditions-and-review-loops)). Write
    prompts using `{input}` (and `{feedback}` in a step a reviewer sends work back
    to), **Save**, then **Run** with an input. The run executes in the background:
-   the diagram shows each step waiting, running, done or failed, outputs appear
-   as soon as each step finishes, and **Stop** / **Resume** act on it. Run
-   results group deliverables by stage and show each called tool's name and
-   success/error status. You can leave the page; reopening the pipeline shows
+   the diagram shows each step waiting, running, done or failed, and the run's
+   report under the run form shows each deliverable as soon as it is ready, with
+   **Stop** / **Resume**; "How your team got there" lists what each agent did and
+   which tools it used. You can leave the page; reopening the pipeline shows
    its latest run. To change a
    pipeline in a sentence, open **Ask AIMIx to change this pipeline** (e.g.
    "add an SEO agent that works alongside the marketing agent"), review the

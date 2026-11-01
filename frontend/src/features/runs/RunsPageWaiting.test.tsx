@@ -54,7 +54,15 @@ describe('RunsPage with a run that waits for you', () => {
     const history = await screen.findByRole('navigation', { name: 'Run history' });
     expect(within(history).getByText('Waiting for you')).toBeInTheDocument();
     expect(within(history).getByText('Needs your OK')).toBeInTheDocument();
-    expect(screen.getByText('Run waiting for you. 1 of 3 steps done.')).toBeInTheDocument();
+    // The page's h1 is "Runs" and the run's name an h2, so its report starts at h3.
+    expect(
+      await screen.findByRole('heading', { level: 3, name: 'Your team needs your OK' }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Draft wants to use “Send email” from crm. The run waits until you answer below.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('region', CARD)).toBeVisible();
   });
 

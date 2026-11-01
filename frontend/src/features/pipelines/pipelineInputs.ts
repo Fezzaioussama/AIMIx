@@ -144,13 +144,16 @@ export function runRequest(inputs: PipelineInput[], draft: RunDraft): PipelineRu
   };
 }
 
+/** What separates a document from what comes before it in an input. */
+const DOCUMENT_GAP = '\n\n';
+
 /**
  * `current` with a document's text added under a line naming its source, so the model
  * knows where it came from. Anything already typed is kept, with a blank line between.
  */
 export function appendDocument(current: string, document: ExtractedDocument): string {
   const block = documentBlock(document);
-  return current.trim() ? `${current.trimEnd()}\n\n${block}` : block;
+  return current.trim() ? `${current.trimEnd()}${DOCUMENT_GAP}${block}` : block;
 }
 
 function documentBlock(document: ExtractedDocument): string {
@@ -160,6 +163,33 @@ function documentBlock(document: ExtractedDocument): string {
 /** The line a document's text starts with in an input, naming where it came from. */
 function documentHeader(filename: string): string {
   return `[Document: ${filename}]`;
+}
+
+/** `documentHeader`'s line as an input holds it; the name is what it was given. */
+const DOCUMENT_HEADER_LINE = /^\[Document: (.+)\]$/gm;
+
+/** A document an input holds: its source (a file's name or a page's address) and its text. */
+export interface HeldDocument {
+  source: string;
+  text: string;
+}
+
+/**
+ * An input read back into what `appendDocument` put together: the text typed before the
+ * first document, then each document in order (what follows its header line).
+ */
+export function splitDocuments(input: string): { typed: string; documents: HeldDocument[] } {
+  const headers = [...input.matchAll(DOCUMENT_HEADER_LINE)];
+  const documents = headers.map((header, index) => {
+    const next = headers[index + 1]?.index ?? input.length;
+    const text = input.slice(header.index + header[0].length + 1, next);
+    return { source: header[1], text: next < input.length ? withoutGap(text) : text };
+  });
+  return { typed: input.slice(0, headers[0]?.index ?? input.length).trimEnd(), documents };
+}
+
+function withoutGap(text: string): string {
+  return text.endsWith(DOCUMENT_GAP) ? text.slice(0, -DOCUMENT_GAP.length) : text;
 }
 
 /** Whether `current` still holds the document added from `filename` (its header line). */

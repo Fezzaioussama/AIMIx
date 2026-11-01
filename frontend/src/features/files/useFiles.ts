@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ApiError } from '../../core/api/client';
-import { deleteFile, downloadFile, listFiles } from '../../core/api/files';
+import { deleteFile, listFiles } from '../../core/api/files';
 import type { FileListing, WorkspaceFile } from '../../core/api/types';
-import { saveBlob } from '../../core/saveBlob';
+import { downloadAndSave } from './fileDownload';
 import { fileName, withoutFile } from './fileFormat';
 import { messageOf, useFileUploads, type Lifetime, type SetListing } from './useFileUploads';
 
@@ -20,7 +20,7 @@ export interface RowError {
 }
 
 /** One AbortController per mount: unmounting aborts every request made through it. */
-function useLifetime(): Lifetime {
+export function useLifetime(): Lifetime {
   const lifetime = useRef(new AbortController());
   useEffect(() => {
     const controller = new AbortController();
@@ -91,10 +91,7 @@ function useRowActions(
 
   const download = useCallback(
     (file: WorkspaceFile) =>
-      track(file, 'download', async (signal) => {
-        const content = await downloadFile(file.path, signal);
-        if (!signal.aborted) saveBlob(content, fileName(file.path));
-      }),
+      track(file, 'download', (signal) => downloadAndSave(file.path, signal)),
     [track],
   );
 

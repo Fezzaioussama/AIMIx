@@ -3,7 +3,6 @@ import type {
   RunStep,
   RunStepStatus,
   StepCondition,
-  StepResult,
   StepReview,
 } from '../../core/api/types';
 import { groupByStage, outputOrders, type StageGroup } from './stages';
@@ -15,24 +14,16 @@ import { roundTotals } from './stepFlow';
  * run because its condition did not hold.
  */
 export type NodeStatus =
-  | 'pending'
-  | 'waiting'
-  | 'running'
-  | 'done'
-  | 'failed'
-  | 'stopped'
-  | 'skipped';
+  'pending' | 'waiting' | 'running' | 'done' | 'failed' | 'stopped' | 'skipped';
 
 export interface GraphNode {
   order: number;
   title: string;
   model: string;
   prompt: string;
-  /** What the step must deliver, the node's summary until it has run. */
+  /** What the step must deliver, the node's summary. */
   expectedOutput: string;
   status: NodeStatus;
-  /** Length of the step's output once it has run, for the node's summary line. */
-  outputLength: number | null;
   isOutput: boolean;
   /** The step runs only while this holds. */
   condition: StepCondition | null;
@@ -60,24 +51,21 @@ export function liveNodeStatus(step: RunStep, runActive: boolean): NodeStatus {
 
 /**
  * The diagram's view of a pipeline: its stages, each step's status taken from
- * the run shown — `liveSteps` when one is being followed — else from the latest
- * results. Kept pure so the component only draws (§2).
+ * the run shown — `liveSteps` when one is being followed. Kept pure so the
+ * component only draws (§2).
  */
 export function buildGraph(
   steps: PipelineStep[],
-  results: StepResult[],
   isRunning: boolean,
-  liveSteps?: RunStep[],
+  liveSteps: RunStep[] = [],
 ): StageGroup<GraphNode>[] {
-  const outputs = new Map(results.map((result) => [result.step_order, result.output]));
-  const live = liveSteps && new Map(liveSteps.map((step) => [step.step_order, step]));
+  const live = new Map(liveSteps.map((step) => [step.step_order, step]));
   // A followed run knows every step's verdict before its result exists.
-  const deliverables = deliverableOrders(steps, liveSteps?.length ? liveSteps : results);
+  const deliverables = deliverableOrders(steps, liveSteps);
   const totals = roundTotals(steps);
   const nodes = steps.map((step) => {
-    const output = outputs.get(step.order);
-    const liveStep = live?.get(step.order);
-    const status = liveStep ? liveNodeStatus(liveStep, isRunning) : nodeStatus(output, isRunning);
+    const liveStep = live.get(step.order);
+    const status = liveStep ? liveNodeStatus(liveStep, isRunning) : idleStatus(isRunning);
     return {
       stage: step.stage,
       node: {
@@ -87,7 +75,6 @@ export function buildGraph(
         prompt: step.prompt,
         expectedOutput: step.expected_output,
         status,
-        outputLength: output === undefined ? null : output.length,
         // A step that was skipped never counts as a deliverable.
         isOutput: deliverables.has(step.order) && status !== 'skipped',
         condition: step.condition,
@@ -103,16 +90,13 @@ export function buildGraph(
   }));
 }
 
-/** After a run the backend's verdict wins; before one, predict it from the steps. */
-function deliverableOrders(steps: PipelineStep[], results: StepResult[]): Set<number> {
-  if (results.length === 0) return outputOrders(steps);
-  return new Set(results.filter((result) => result.is_output).map((result) => result.step_order));
+/** During or after a run the backend's verdict wins; before one, predict it from the steps. */
+function deliverableOrders(steps: PipelineStep[], liveSteps: RunStep[]): Set<number> {
+  if (liveSteps.length === 0) return outputOrders(steps);
+  return new Set(liveSteps.filter((step) => step.is_output).map((step) => step.step_order));
 }
 
-function nodeStatus(output: string | undefined, isRunning: boolean): NodeStatus {
-  if (isRunning) return 'running';
-  return output === undefined ? 'pending' : 'done';
+/** A step no followed run tells about: running while a run starts, else not run. */
+function idleStatus(isRunning: boolean): NodeStatus {
+  return isRunning ? 'running' : 'pending';
 }
-
-/** What a click on the diagram points at: one step's output, or all outputs. */
-export type OutputTarget = number | 'outputs';

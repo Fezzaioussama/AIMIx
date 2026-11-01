@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,18 +20,13 @@ import {
 const log = () => screen.getByRole('log', { name: 'Conversation with AIMIx' });
 const teamPane = () => within(screen.getByRole('tabpanel', { name: 'Team' }));
 
-function savedMission(extra: Record<string, unknown> = {}) {
-  return routeFetch({ ...COMMON_ROUTES, 'GET /api/pipelines/7/': SAVED, ...extra });
+/** Lets the answers already given reach the screen. */
+async function answered() {
+  await act(() => new Promise((done) => setTimeout(done, 0)));
 }
 
-/** Pretends the window is as wide as the three panes need (Tailwind's `xl`). */
-function stubWideScreen() {
-  window.matchMedia = ((query: string) => ({
-    matches: true,
-    media: query,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  })) as unknown as typeof window.matchMedia;
+function savedMission(extra: Record<string, unknown> = {}) {
+  return routeFetch({ ...COMMON_ROUTES, 'GET /api/pipelines/7/': SAVED, ...extra });
 }
 
 describe('the mission workspace: panes on a narrow screen', () => {
@@ -111,28 +106,6 @@ describe('the mission workspace: panes on a narrow screen', () => {
     const heading = screen.getByRole('heading', { name: 'Results', level: 2 });
     expect(heading).toHaveClass('max-xl:sr-only');
     expect(heading.parentElement).toHaveClass('max-xl:sr-only');
-  });
-});
-
-describe('the mission workspace: panes side by side', () => {
-  beforeEach(() => {
-    window.sessionStorage.clear();
-    stubWideScreen();
-  });
-  afterEach(() => {
-    Reflect.deleteProperty(window, 'matchMedia');
-    vi.restoreAllMocks();
-  });
-
-  it('shows all three as labelled regions, without tabs', async () => {
-    savedMission();
-    renderMission('/mission/7');
-    await within(log()).findByText(/Here’s your “Competitor brief” team/);
-
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-    for (const name of ['Conversation', 'Team', 'Results']) {
-      expect(screen.getByRole('region', { name })).toBeInTheDocument();
-    }
   });
 });
 
@@ -264,7 +237,7 @@ describe('the mission workspace: the results pane', () => {
   beforeEach(() => window.sessionStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
-  it('leads with a finished run’s deliverables, its details folded behind them', async () => {
+  it('leads with a finished run’s deliverables, how the team got there folded behind them', async () => {
     const run = finishedRun();
     savedMission({
       'GET /api/runs?limit=1&offset=0&pipeline_id=7': { items: [run], total: 1 },
@@ -275,12 +248,14 @@ describe('the mission workspace: the results pane', () => {
     const deliverables = await screen.findByRole('region', { name: 'Deliverables' });
 
     expect(await within(deliverables).findByText('Comparison table')).toBeInTheDocument();
-    // The deliverable, then the research agent's notes below it: each can be copied.
-    expect(within(deliverables).getAllByRole('button', { name: 'Copy' })).toHaveLength(2);
-    expect(screen.getByText('Run details').closest('details')).not.toHaveAttribute('open');
-    const header = screen.getByRole('heading', { name: 'Results', level: 2 })
-      .parentElement as HTMLElement;
-    expect(within(header).getByText('Done')).toBeInTheDocument();
+    // Only the deliverable: the research agent's notes wait in the appendix.
+    expect(within(deliverables).getAllByRole('button', { name: /^Copy / })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /^How your team got there/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    const report = screen.getByRole('article', { name: '1 deliverable ready' });
+    expect(within(report).getByText('Done')).toBeInTheDocument();
     // The team on the centre pane shows what the run did.
     expect(
       teamPane().getByRole('button', { name: /Comparison, .*, deliverable, Done/ }),
@@ -305,15 +280,13 @@ describe('the mission workspace: the results pane', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Stop the run' }));
 
-    expect(await screen.findByRole('button', { name: 'Resume the run' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Resume' })).toBeEnabled();
     expect(server.to('POST', '/api/runs/12/cancel')).toHaveLength(1);
-    const header = screen.getByRole('heading', { name: 'Results', level: 2 })
-      .parentElement as HTMLElement;
-    expect(within(header).getByText('Stopped')).toBeInTheDocument();
-    // Stopped short: the details stay open, with the reason.
-    expect(screen.getByText('Run details').closest('details')).toHaveAttribute('open');
+    // The outcome heading swaps its words once the old ones have faded.
+    const report = await screen.findByRole('article', { name: 'You stopped the run' });
+    expect(within(report).getByText('Stopped')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Resume the run' }));
+    await user.click(screen.getByRole('button', { name: 'Resume' }));
 
     expect(await screen.findByRole('button', { name: 'Stop the run' })).toBeInTheDocument();
     expect(server.to('POST', '/api/runs/12/resume')).toHaveLength(1);
@@ -336,12 +309,12 @@ describe('the mission workspace: the results pane', () => {
     });
     renderMission('/mission/7');
 
-    const deliverables = await screen.findByRole('region', { name: 'Deliverables' });
-
     expect(
-      await within(deliverables).findByText(
-        'No deliverable was made: the steps that make them did not run.',
-      ),
+      await screen.findByRole('heading', { name: 'Done, with no deliverable', level: 3 }),
+    ).toBeInTheDocument();
+    const deliverables = screen.getByRole('region', { name: 'Deliverables' });
+    expect(
+      within(deliverables).getByText(/^Not made: its condition was not met\./),
     ).toBeInTheDocument();
     expect(within(deliverables).queryByText(/Not finished/)).not.toBeInTheDocument();
   });
@@ -352,38 +325,64 @@ describe('the mission workspace: the results pane', () => {
 
     expect(await screen.findByText('When your team has run, you get this:')).toBeInTheDocument();
     const deliverables = screen.getByRole('region', { name: 'Deliverables' });
-    expect(within(deliverables).getByText('Analyst')).toBeInTheDocument();
+    expect(within(deliverables).getByText('Comparison')).toBeInTheDocument();
     expect(within(deliverables).getByText('Comparison result')).toBeInTheDocument();
-    expect(screen.queryByText('Run details')).not.toBeInTheDocument();
+    expect(within(deliverables).getByText('by Analyst')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^How your team got there/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it('lists the newest files and links to all of them', async () => {
-    savedMission();
-    renderMission('/mission/7');
-
-    expect(await screen.findByText('brief.pdf')).toBeInTheDocument();
-    expect(screen.getByText('notes.txt')).toBeInTheDocument();
-    expect(screen.getByText(/reports · 52 KB/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /All files/ })).toHaveAttribute('href', '/files');
-  });
-
-  it('says so when there are no files, and when they could not be loaded', async () => {
-    routeFetch({
-      ...COMMON_ROUTES,
-      'GET /api/pipelines/7/': SAVED,
-      'GET /api/files': { ...FILES, files: [] },
+  it('lists the files saved during a run, and links to all of them', async () => {
+    const run = finishedRun();
+    savedMission({
+      'GET /api/runs?limit=1&offset=0&pipeline_id=7': { items: [run], total: 1 },
+      'GET /api/runs/9': run,
     });
     renderMission('/mission/7');
-    expect(await screen.findByText('Files your agents save appear here.')).toBeInTheDocument();
-    cleanup();
 
-    routeFetch({
+    const saved = await screen.findByRole('region', { name: 'Saved during this run' });
+
+    // brief.pdf was saved while the run worked; notes.txt the day before.
+    expect(within(saved).getByText('brief.pdf')).toBeInTheDocument();
+    expect(within(saved).queryByText('notes.txt')).not.toBeInTheDocument();
+    expect(within(saved).getByRole('link', { name: /^All files/ })).toHaveAttribute(
+      'href',
+      '/files',
+    );
+  });
+
+  it('leaves the files out when none were saved, or when they could not be loaded', async () => {
+    const run = finishedRun();
+    const routes = {
       ...COMMON_ROUTES,
       'GET /api/pipelines/7/': SAVED,
+      'GET /api/runs?limit=1&offset=0&pipeline_id=7': { items: [run], total: 1 },
+      'GET /api/runs/9': run,
+    };
+    const server = routeFetch({ ...routes, 'GET /api/files': { ...FILES, files: [] } });
+    renderMission('/mission/7');
+    await screen.findByRole('region', { name: 'Deliverables' });
+    await waitFor(() => expect(server.to('GET', '/api/files')).not.toHaveLength(0));
+    await answered();
+    expect(
+      screen.queryByRole('heading', { name: 'Saved during this run' }),
+    ).not.toBeInTheDocument();
+    cleanup();
+    vi.restoreAllMocks();
+
+    const failing = routeFetch({
+      ...routes,
       'GET /api/files': () => json({ error: 'server_error', detail: 'Storage is offline.' }, 500),
     });
     renderMission('/mission/7');
-    expect(await screen.findByText('Storage is offline.')).toBeInTheDocument();
+    await screen.findByRole('region', { name: 'Deliverables' });
+    await waitFor(() => expect(failing.to('GET', '/api/files')).not.toHaveLength(0));
+    await answered();
+    expect(
+      screen.queryByRole('heading', { name: 'Saved during this run' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 

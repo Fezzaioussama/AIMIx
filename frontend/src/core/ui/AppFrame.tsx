@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
 
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { HOME_PATH } from '../routes';
+import { FOCUS_RING } from './focus';
 import { GradientText } from './reactbits/GradientText';
 import { SidebarNav, type NavGroup } from './SidebarNav';
 
@@ -12,8 +13,6 @@ import { SidebarNav, type NavGroup } from './SidebarNav';
 const SIDEBAR_LAYOUT = '(min-width: 1024px)';
 const MENU_ID = 'app-menu';
 const SLIDE = { duration: 0.25, ease: [0.16, 1, 0.3, 1] } as const;
-const FOCUS_RING =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400';
 
 /** The logo and the wordmark, leading to Missions, the app's front door. */
 function Brand() {

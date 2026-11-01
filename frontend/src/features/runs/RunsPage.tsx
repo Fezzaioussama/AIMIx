@@ -61,7 +61,10 @@ export function RunsPage() {
             onLoadMore={() => void history.loadMore()}
           />
         </div>
-        <div className={runId === null ? 'hidden lg:block' : 'min-w-0'}>
+        {/* Below lg the window scrolls under the 60px top bar: sticky rows stop under it. */}
+        <div
+          className={`[--sticky-top:60px] lg:[--sticky-top:0px] ${runId === null ? 'hidden lg:block' : 'min-w-0'}`}
+        >
           {runId === null ? (
             <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">
               Choose a run to see its steps and results.

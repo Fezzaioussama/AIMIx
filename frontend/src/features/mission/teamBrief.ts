@@ -84,10 +84,6 @@ export function toolsInWords(tools: ToolAccess): string {
   return ACCESS_WORDS[tools.kind](tools.names);
 }
 
-export function countOf(amount: number, noun: string): string {
-  return `${amount} ${noun}${amount === 1 ? '' : 's'}`;
-}
-
 /** What the person provides on each run, as one sentence. */
 export function providesInWords(brief: TeamBrief): string {
   return brief.provides.length > 0

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Usage } from './api/types';
 import {
   UNKNOWN_COST,
+  countOf,
   describeCost,
   formatCost,
   formatCount,
@@ -49,6 +50,13 @@ describe('counts', () => {
 
   it('says what went in and what came out', () => {
     expect(tokenBreakdown(usage())).toBe('1,234 tokens in, 567 out');
+  });
+
+  it('counts with the right plural', () => {
+    expect(countOf(1, 'agent')).toBe('1 agent');
+    expect(countOf(3, 'stage')).toBe('3 stages');
+    expect(countOf(0, 'round')).toBe('0 rounds');
+    expect(countOf(1646, 'character')).toBe('1,646 characters');
   });
 });
 

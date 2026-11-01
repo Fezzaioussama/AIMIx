@@ -3,14 +3,15 @@ import { useLocation } from 'react-router-dom';
 
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
+import { BusyNotice } from '../../core/ui/BusyNotice';
 import { CountUp } from '../../core/ui/reactbits/CountUp';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
-import { FollowedRunBar } from '../runs/FollowedRunBar';
-import { useFollowedRun } from '../runs/useFollowedRun';
+import { RunReport } from '../runs/report/RunReport';
+import { useFollowedRun, type FollowedRun } from '../runs/useFollowedRun';
 import { SchedulePanel } from '../schedules/SchedulePanel';
 import { OpenInMissionLink } from './OpenInMissionLink';
+import { PipelineGraph } from './PipelineGraph';
 import { PipelineInputsEditor } from './PipelineInputsEditor';
-import { PipelineRunView } from './PipelineRunView';
 import { RecentPipelines } from './RecentPipelines';
 import { RevisePanel } from './RevisePanel';
 import { RunInputCard } from './RunInputCard';
@@ -52,7 +53,10 @@ export function PipelineBuilderPage() {
   }
 
   // The editor sits beside the canvas only from `xl`: below it the app sidebar leaves the
-  // canvas too little room, so the editor stacks above it.
+  // canvas too little room, so the editor stacks above it and the window scrolls the page.
+  // `<main>` scrolls only from `xl`: a scroll container that never scrolls would hold the
+  // report's sticky title rows in place. Its vertical padding sits on the column inside it:
+  // a sticky row stops below its scroller's top padding.
   return (
     <div className="flex min-h-[calc(100vh-60px)] flex-col text-slate-50 lg:min-h-dvh xl:h-dvh xl:flex-row">
       <aside
@@ -126,8 +130,8 @@ export function PipelineBuilderPage() {
         </button>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-8 2xl:p-12">
-        <div className="mx-auto max-w-6xl">
+      <main className="min-w-0 flex-1 px-4 sm:px-8 xl:overflow-y-auto 2xl:px-12">
+        <div className="mx-auto max-w-6xl py-4 sm:py-8 2xl:py-12">
           <div className="mb-8">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
@@ -159,33 +163,54 @@ export function PipelineBuilderPage() {
               className="mb-6"
             />
             <SchedulePanel pipeline={pipeline} dirty={dirty} className="mb-6" />
-            <PipelineRunView
+            {/* The diagram shows the latest run only when it ran exactly this version. */}
+            <PipelineGraph
               steps={pipeline.steps}
               inputs={pipeline.inputs}
               liveSteps={followed.shown?.steps}
-              runKey={followed.shown?.id ?? null}
               isRunning={followed.shown ? followed.shownActive : isStarting}
               input={draft.text}
-              elapsedMs={followed.shownElapsedMs}
               onEditStep={isRunning || isSaving ? undefined : editStep}
               onAddParallel={isRunning || isSaving ? undefined : actions.addParallelStep}
               onAddAfter={isRunning || isSaving ? undefined : actions.addStepAfter}
-            >
-              <RunInputCard
-                inputs={pipeline.inputs}
-                draft={draft}
-                isRunning={isRunning}
-                dirty={dirty}
-                isSaved={pipeline.id !== undefined}
-                message={message || modelsError || ''}
-                onDraftChange={setDraft}
-                onRun={() => void startRun()}
-              />
-              <FollowedRunBar followed={followed} />
-            </PipelineRunView>
+            />
+            <RunInputCard
+              inputs={pipeline.inputs}
+              draft={draft}
+              isRunning={isRunning}
+              dirty={dirty}
+              isSaved={pipeline.id !== undefined}
+              message={message || modelsError || ''}
+              onDraftChange={setDraft}
+              onRun={() => void startRun()}
+            />
+            <LatestRun followed={followed} starting={isStarting} />
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+/** The pipeline's newest run, handed over as its report; or word that one is starting. */
+function LatestRun({ followed, starting }: { followed: FollowedRun; starting: boolean }) {
+  const { run } = followed;
+  if (run === null) {
+    return starting ? <BusyNotice className="mt-8">Starting the run…</BusyNotice> : null;
+  }
+  return (
+    // The window scrolls below xl, under the 60px top bar that sits there below lg.
+    <section aria-label="Latest run" className="mt-10 [--sticky-top:60px] lg:[--sticky-top:0px]">
+      <RunReport
+        key={run.id}
+        run={run}
+        control={followed}
+        level={2}
+        extras={{
+          linkToRuns: true,
+          note: followed.shown ? undefined : 'This run used an earlier version of this pipeline.',
+        }}
+      />
+    </section>
   );
 }

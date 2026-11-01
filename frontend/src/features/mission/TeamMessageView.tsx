@@ -1,10 +1,11 @@
 import { Wrench } from 'lucide-react';
 
+import { countOf } from '../../core/usageFormat';
 import { OutputBadge } from '../pipelines/GraphNodeCard';
 import { ANSWER_ACTION, Bubble } from './Bubble';
 import type { ViewProps } from './messageContext';
 import type { TeamMessage } from './missionMessages';
-import { countOf, providesInWords, toolsInWords, type AgentBrief } from './teamBrief';
+import { providesInWords, toolsInWords, type AgentBrief } from './teamBrief';
 
 const INTROS: Record<TeamMessage['origin'], (name: string) => string> = {
   generated: (name) => `Here’s the team I put together for “${name}”.`,

@@ -53,12 +53,17 @@ export function argumentRows(args: Record<string, unknown>): ArgumentRow[] {
   return Object.entries(args).map(([key, value]) => toRow(key, value));
 }
 
-/** What is left of a request's time: "45 s left", "9 min 05 s left", "28 min left". */
+/**
+ * What is left of a request's time: "45 s left", "9 min 05 s left", "28 min left",
+ * "5 h 56 min left".
+ */
 export function formatTimeLeft(ms: number): string {
   if (ms <= 0) return 'Time is up';
   const seconds = Math.ceil(ms / 1000);
   if (seconds < 60) return `${seconds} s left`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 10) return `${minutes} min ${String(seconds % 60).padStart(2, '0')} s left`;
-  return `${Math.ceil(seconds / 60)} min left`;
+  const rounded = Math.ceil(seconds / 60);
+  if (rounded < 60) return `${rounded} min left`;
+  return `${Math.floor(rounded / 60)} h ${String(rounded % 60).padStart(2, '0')} min left`;
 }

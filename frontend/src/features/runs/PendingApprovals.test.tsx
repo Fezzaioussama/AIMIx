@@ -2,7 +2,6 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LiveRun } from './LiveRun';
 import { PendingApprovals } from './PendingApprovals';
 import { makeApproval, makeRun, runStep } from './testData';
 
@@ -89,7 +88,8 @@ describe('PendingApprovals', () => {
     expect(screen.getAllByRole('region', { name: 'Allow “Send email”?' })).toHaveLength(2);
     expect(within(region).getByText(/Draft \(Writer\) wants to use this tool/)).toBeVisible();
     expect(within(region).getByText(/Research wants to use this tool/)).toBeVisible();
-    expect(screen.getByText('2 actions are waiting for your approval.')).toBeInTheDocument();
+    // Nothing said aloud here: the run report's announcer tells it once.
+    expect(screen.queryByText(/waiting for your approval\./)).not.toBeInTheDocument();
   });
 
   it('answers by the id of the request', async () => {
@@ -114,54 +114,5 @@ describe('PendingApprovals', () => {
 
     expect(screen.getByRole('region', { name: 'Allow “Send email”?' })).toBeVisible();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-  });
-});
-
-describe('LiveRun waiting for the person', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
-    vi.setSystemTime(new Date('2026-10-24T10:00:30Z'));
-  });
-  afterEach(() => vi.useRealTimers());
-
-  it('says the run waits for you, offers Stop, and shows what it asks', () => {
-    render(
-      <LiveRun
-        run={waitingRun(makeApproval())}
-        onStop={vi.fn()}
-        onApprove={vi.fn()}
-        onDecline={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText('Waiting for you')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'This run is waiting for you. Approve or decline the action below to let it go on.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Run waiting for you. 1 of 3 steps done.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
-    expect(screen.getByRole('region', { name: 'Allow “Send email”?' })).toBeVisible();
-    // Its step is still working, as on the diagram.
-    expect(screen.getByRole('button', { name: /Draft, writer, output, Running/ })).toBeDisabled();
-  });
-
-  it('hands the answers to whoever shows the run', async () => {
-    vi.useRealTimers();
-    const user = userEvent.setup();
-    const onApprove = vi.fn();
-    render(
-      <LiveRun
-        run={waitingRun(makeApproval({ id: 44 }))}
-        onApprove={onApprove}
-        onDecline={vi.fn()}
-        busy={false}
-      />,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Approve' }));
-
-    expect(onApprove).toHaveBeenCalledWith(44);
   });
 });

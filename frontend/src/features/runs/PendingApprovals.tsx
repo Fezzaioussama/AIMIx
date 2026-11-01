@@ -14,7 +14,7 @@ interface PendingApprovalsProps {
 }
 
 /** The step and its agent's role, e.g. "Draft email (Writer)", as the card says who asks. */
-function askedBy(run: Run, stepOrder: number): string {
+export function askedBy(run: Run, stepOrder: number): string {
   const step = run.definition.steps.find((item) => item.order === stepOrder);
   const name = stepLabel({ order: stepOrder, title: step?.title ?? '' });
   return step?.role.trim() ? `${name} (${step.role.trim()})` : name;
@@ -23,7 +23,8 @@ function askedBy(run: Run, stepOrder: number): string {
 /**
  * The tool calls a run waits on, one card each, right under its status bar.
  * Renders no card while none is waiting. A screen that shows a run passes the
- * answers from `useRun` (`live.approve`, `live.decline`).
+ * answers from `useRun` (`live.approve`, `live.decline`). It says nothing aloud: the
+ * run report's announcer tells that the team needs your OK.
  */
 export function PendingApprovals({ run, onApprove, onDecline, busy }: PendingApprovalsProps) {
   const waiting = run.pending_approvals;
@@ -43,12 +44,7 @@ export function PendingApprovals({ run, onApprove, onDecline, busy }: PendingApp
   return (
     <div ref={anchor} tabIndex={-1} className="outline-none">
       {waiting.length > 0 && (
-        <section aria-label="Actions waiting for your approval" className="mt-4 space-y-3">
-          <p className="sr-only" aria-live="polite">
-            {waiting.length === 1
-              ? '1 action is waiting for your approval.'
-              : `${waiting.length} actions are waiting for your approval.`}
-          </p>
+        <section aria-label="Actions waiting for your approval" className="mt-6 space-y-3">
           {waiting.map((approval) => (
             <ApprovalCard
               key={approval.id}

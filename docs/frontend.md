@@ -13,13 +13,13 @@ frontend/src/
   core/             # cross-feature, the only layer that talks to the backend
     api/            # client.ts, endpoints.ts, types.ts, one module per resource
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
-    hooks/          # useModels.ts, useAgentTools.ts, useAccountName.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts
-    markdown/       # renderMarkdown.ts
+    hooks/          # useModels.ts, useAgentTools.ts, useAccountName.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts, useCopyToClipboard.ts
+    markdown/       # renderMarkdown.ts, documentText.ts, RenderedMarkdown.tsx
     routes.ts       # HOME_PATH (where sign-in lands), missionPath(id), runPath(id), LEGAL_LINKS
     saveBlob.ts     # hands a downloaded Blob to the browser as a file to save
     chosenFiles.ts  # the files a file input was given, emptied so the same one counts again
     time.ts         # elapsedMs, formatDuration, formatDateTime
-    usageFormat.ts  # formatCost, formatTokens, parseCost, describeCost: tokens and costs in words
+    usageFormat.ts  # formatCost, formatTokens, formatCount, countOf, parseCost, describeCost: counts, tokens and costs in words
     ui/             # shared presentational components and motion (no data access)
       reactbits/    # effects adapted from React Bits, with its LICENSE.md
   features/
@@ -30,7 +30,7 @@ frontend/src/
     legal/          # LegalPage: /legal, /privacy, /terms (French), operator facts
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
-    runs/           # RunsPage, LiveRun, useRun and the run history
+    runs/           # RunsPage, useRun, the run history, and report/: RunReport, one run as one document
     schedules/      # the Schedule panel (builder) and the Schedules screen
     settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Usage, Account
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
@@ -210,6 +210,14 @@ panel and the Missions message box use it.
 pure helpers screens share: `elapsedMs(startedAt, finishedAt, now)`,
 `formatDuration(ms)` ("4.2 s", "3 min 05 s") and `formatDateTime(iso)`.
 
+## `core/hooks/useCopyToClipboard.ts`
+
+`useCopyToClipboard()` → `{ status, copy, copyRich }`: `copy(text)` writes plain text;
+`copyRich({ html, text })` writes both at once (one `ClipboardItem`, so a paste into a
+document keeps the formatting), falling back to the plain text where rich content is
+refused. `status` is `'copied'` for 1.5 s, then `'idle'`, or `'failed'` (until the next
+copy) when the browser refuses both or has no clipboard. Unmounting clears the timer.
+
 ## `core/markdown/renderMarkdown.ts`
 
 `marked` → HTML → a private `DOMPurify` instance. Model output is untrusted (a web
@@ -223,6 +231,17 @@ renders: tables with their `align`, code blocks, lists and links. The one input
 Markdown makes, a task-list box, is kept as a disabled checkbox, and any other input
 becomes one. Links open in the same tab, as before, with `rel="noopener noreferrer"`.
 The hooks doing this live on the module's own instance, added once.
+
+`renderDocument(text, headingBase)` is the same sanitising for a deliverable read as a
+document: the text's own headings start at `headingBase` (an `h1` becomes `h3` under an
+`h2` title, never past `h6`) and carry `data-level` for their size; each table is wrapped
+in a focusable, labelled scroller (`md-table-scroll`); number cells get `data-num`, so they
+right-align with tabular figures. It drops the model's own `data-*` attributes, so only it
+can set those, except the picture path the shared hook moves to `data-workspace-path`.
+`RenderedMarkdown` renders it (`prose-output prose-document`, the reading styles in
+`styles.css`) and loads those pictures with `useWorkspacePictures`; `documentText.ts` holds `plainTextOf(html)` (the plain text a copy
+carries: bullets, numbers, tab-separated table rows, links as "text (address)", no Markdown
+marks) and `countWords` (`Intl.Segmenter`, with a fallback).
 
 ## `core/voice/` — dictation
 
@@ -252,7 +271,7 @@ Components here render and animate; they never fetch or touch storage.
 | `GlowLink.tsx` | `GlowButton`'s look on a router `Link`, for navigation that should stay a real link |
 | `TiltCard.tsx` | Leans its children toward the pointer in 3D; flat on touch and under reduced motion |
 | `webgl.ts` | `hasWebGL()`: probes for a context and releases it, so effects can pick a fallback |
-| `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers. In a group that moves while it stays on screen (the run tabs under a live status bar), give each item's pill its own `layoutDependency` (its key): it then glides only when the selection changes |
+| `ActivePill.tsx` | Selected-item highlight shared through a motion `layoutId`, so it glides between nav items, tabs and pickers |
 | `PageTransition.tsx` | Enter-only fade/slide keyed by the route |
 | `AmbientBackdrop.tsx` | Fixed, static glow behind the signed-in screens |
 | `AppFrame.tsx` | The signed-in frame: the fixed sidebar from `lg` up; below it, the 60px top bar and the menu drawer (see Routing) |
@@ -263,7 +282,12 @@ Components here render and animate; they never fetch or touch storage.
 | `CostText.tsx` | A cost (`describeCost` from `core/usageFormat`) as plain words, its token counts in the `title` and also read out after it, so nothing depends on the pointer. `compact` uses the short words ("Cost unknown") for tight rows |
 | `SwitchButton.tsx` | The bare `role="switch"` button: `checked`, `disabled`, `onChange(next)`, and its name from `label`, or from the visible text it points to with `labelledBy` and `describedBy`. The one switch every other is built on |
 | `ToggleSwitch.tsx` | A `SwitchButton` with its state in words ("On" / "Off") beside it: `checked`, `label` (its accessible name), `disabled`, `onChange(next)`. Shared by the integrations and the schedules |
-| `AiNotice.tsx` | The one line that says text beside it was written by AI and can be wrong (`AI_NOTICE`, EU AI Act art. 50): under the chat composer, above a pipeline's run results, under the mission's deliverables |
+| `AiNotice.tsx` | The one line that says text beside it was written by AI and can be wrong (`AI_NOTICE`, EU AI Act art. 50): under the chat composer, and once at the head of a run report's deliverables |
+| `motionTokens.ts` | The motion scale for `motion/react`, mirroring transitions.dev: `DURATION` (quick 150 ms, fast 250, medium 350, slow 400), `EASE_SMOOTH_OUT` (the same curve as `--ease-smooth-out`, Tailwind's `ease-smooth-out`), `DISTANCE` (micro 4px, base 8px), `BLUR` and `ICON_SPRING` |
+| `focus.ts` | `FOCUS_RING` (the 2px sky ring under keyboard focus) and `TOUCH` (40px tall under a mouse, 44px under a finger), the one copy of each class string |
+| `Heading.tsx` | `Heading level={2…6}`: a heading whose level the caller computes (the run report nests under the page's) |
+| `SwapText.tsx` | Words that change in place: the old ones rise out with a slight blur, the new ones rise in (150 ms each); only a fade under reduced motion; nothing on the first render |
+| `Announcer.tsx` | A polite, atomic `role="status"` line portalled into `<body>`, so what it says is heard even while its owner is hidden (the run report's announcements) |
 | `LegalLinks.tsx` | The three legal pages as a row of small links (`LEGAL_LINKS`): on the sign-in and sign-up cards, under every Settings tab and on the legal pages themselves |
 
 `core/ui/reactbits/` holds components adapted from [React Bits](https://reactbits.dev)
@@ -280,6 +304,15 @@ Rules for motion:
 - `MotionConfig reducedMotion="user"` (in `main.tsx`) makes every motion
   animation honour the OS setting; CSS effects use `motion-safe:` utilities and
   `Aurora` renders a single still frame.
+- Timings come from the token scale (`core/ui/motionTokens.ts`, and `duration-150` /
+  `duration-250` / `ease-smooth-out` in CSS): 150 ms for a close or a text swap, 250 ms
+  for an open, 350–400 ms for a panel or a document arriving; content arrives 8px below
+  its place, text swapping in place moves 4px, and a blur is at most 2px. Closing is
+  faster than opening. Under reduced motion keep at most a 150 ms fade: no movement, no
+  blur. Enter with `initial={false}` where a component mounts with the page, so nothing
+  animates on load, and transition named properties (never `transition: all`). The run
+  report's moments (M1–M13) are listed in
+  [frontend-missions.md](frontend-missions.md#the-run-report-featuresrunsreport).
 - Effects are decorative: `Aurora` and `ClickSpark` render nothing when WebGL2
   or a 2D canvas is missing, and animated text keeps a plain `sr-only` copy
   (as a sibling, never inside the styled element) for assistive tech.
@@ -304,123 +337,10 @@ Rules for motion:
 
 ### `features/mission`
 
-The mission workspace at `/mission` (a new mission) and `/mission/<pipeline id>`
-(reopen one) is the front door: a person says what they want done, AIMIx builds a
-team of agents, shows it, runs it and delivers the results, and the person changes
-the team by talking to it. It adds no backend of its own: it composes generation
-(`POST /api/pipelines/generate`), revision (`/revise`), saving and background runs,
-on one screen.
-
-**The screen.** Three panes side by side from `xl` (1280px); below that they are
-tabs (Conversation, Team, Results — ARIA tabs, arrow keys, Home and End), and the
-Results tab carries the newest run's status ("Running"). All three panes stay
-mounted, so a half-written message and scroll positions survive a switch of tab;
-a link in the conversation ("See the team") brings its pane forward and moves
-focus to that pane's heading.
-
-- **Conversation** (an ARIA `log`, so AIMIx's answers are announced). Empty, it asks
-  "What do you want to get done?" with four example missions, the template
-  quick-starts (one click makes the person's own saved pipeline from a template) and
-  the newest saved missions. The first message *describes* the mission: a team is
-  generated and, in plain words, AIMIx lists each agent, what it delivers, its tools
-  and what the person provides. Every later message is a *change request*: AIMIx
-  answers with the changes in words (`describeChange`), a preview, and inline Apply
-  and Discard. **Run it** — the button under the box, or the phrase typed (`isRunRequest`
-  takes whole phrases only, so "run the research in parallel" is still a change) —
-  puts the run's inputs in the conversation (`RunInputCard`, "Attach a document" and
-  "Add a web page" included) and starts the run. Nothing is sent while AIMIx is working
-  (Stop cancels it), and the box says why. The box takes `PLAN_DESCRIPTION_MAX_LENGTH`
-  characters before there is a team and `REVISION_INSTRUCTION_MAX_LENGTH` after, and
-  says so once full.
-- **Documents in the message box.** Beside the microphone, "Attach a document" (several
-  files at once) and "Add a link" (the same `WebPageField` as the run form); files
-  dropped on the box are attached too (it lights up while they are held over it), and a
-  link written in the message is offered as "Read example.com for your team". Each
-  becomes a chip above the text: its name (a link as host and path), "Reading…", then
-  "1 page · 195 characters", or the server's reason in amber; removing one cancels its
-  reading and moves focus to the next chip, else back to the text; a chip that leaves on
-  its own (its document went into the open run form) hands focus on the same way. Each is
-  read on its own, so no reading waits for another. A mission takes `MAX_PLAN_DOCUMENTS`
-  (5), and the box says so; the same file (name, size and date) or page (by the link
-  given or where it led) is not added twice ("report.pdf is already attached."). The
-  documents belong to the mission until a run takes them: a message planned with them
-  (the description, or the answers to the planner's questions) sends each read one's
-  name, size and first 2,000 characters (`documents` on `POST /api/pipelines/generate`;
-  the plan then has a `documents` run input), and names them on the person's bubble.
-  Planning never goes without one still being read: until it is, Send and the questions'
-  buttons wait and say "Waiting for report.pdf to be read…". **Run it** opens the form
-  with their blocks in the `documents` input (or the free text of a team without named
-  inputs), as many as one run takes (`RUN_INPUT_MAX_LENGTH`), and the box lets go of
-  those. A team whose inputs are all meant for something else gets no guess: the box
-  keeps them and asks "Put them in:" with a button per input. One that does not fit stays
-  for the next run, and the box says so. One still being read when the form is open
-  goes into it when read, and the form's Run waits for it. A change request does not read
-  them, so they stay. Only the names and sizes are kept with the conversation; the text
-  lives in memory, so after a reload, or once a run has taken them, a form whose
-  `documents` input is empty with nothing coming says "Attach your documents again under
-  “Your documents”: AIMIx keeps only their names, not their text.".
-- **Team.** The pipeline graph, live while a run works (a run of exactly this team,
-  as in the builder). Selecting an agent opens a drawer over the results with the
-  builder's own step editor (`StepCard`: role, task, tools, model, prompt); it is a
-  non-modal dialog (focus moves in, Escape closes and hands focus back) and agents
-  cannot be edited while a run works. "Open in builder" saves and opens the pipeline
-  in the advanced mode, which links back with "Open in mission view".
-- **Results.** The deliverables first (the newest run's output steps as `OutputCard`s,
-  or what to expect before a run), then "Run details" — `LiveRun` embedded as it is,
-  so anything added to it appears here: open while the run works or stopped short,
-  folded once it is done (a fold or unfold by the person holds while the run stays in
-  the same status) — then the newest workspace files with a link to Files. The pane's
-  header keeps the run's status and Stop / Resume within reach.
-
-**Layout rule.** The screen is exactly the window's height and each pane scrolls inside
-itself, so nothing may make the page scroll. The grid has one bounded row
-(`xl:grid-rows-[minmax(0,1fr)]`; without it the row grows with the tallest pane), every
-scrolling area is `relative` (visually hidden `sr-only` text is absolutely positioned and
-would otherwise escape it and stretch the page), each pane `overflow-clip`s what
-decoration spills past its edge (the sparks around "Run it"), and the root clips what is
-left. A new scrolling area inside a pane needs `relative` too.
-
-**Saving.** A mission is a pipeline. A new mission is a draft in the tab until it
-first runs: starting a run saves it (named from the plan, else from the first words
-of the description) and moves the address to `/mission/<id>` without rebuilding the
-screen (router state `{ adopted }`, see `useWorkspaceIdentity`); opening it in the
-builder saves it too. Edits to a saved mission — the drawer, an applied change — are
-saved `AUTOSAVE_DELAY_MS` (1.5 s) after the last one, and always before a run; one
-save runs at a time. A failed save shows on the team pane and waits for the next edit.
-
-**What is kept, and where.** The server keeps the team and its runs: reopening
-`/mission/<id>` loads the pipeline and its newest run (`useLatestRun`). The
-*conversation* is client state in this version: JSON in `sessionStorage`, one entry per
-mission (`aimix.mission.v1.<pipeline id>`, or `….new` for a draft, which also keeps
-the draft team), at most 200 messages, every access in try/catch. It lasts for the tab:
-another tab or browser starts that mission's conversation again from a greeting with
-its team. The keys name no account, so all of them are forgotten (`forgetAllMissions`)
-when the session ends (a logout, or the server refusing the session) and again when
-someone signs in: the next account in the tab never finds the last one's prompts, team
-brief or draft team. A proposal that was waiting when the page was left shows as no longer
-available, and a message left unanswered is said to be. Keeping conversations on the
-server would need a table and endpoints; that is not part of this version.
-
-| File | Role |
-|---|---|
-| `MissionPage.tsx`, `useWorkspaceIdentity.ts`, `missionAddress.ts` | The route: reads the id, redirects an address that is not one, and rebuilds the workspace when another mission is opened (not for a new mission's own first save) |
-| `MissionWorkspace.tsx`, `usePanes.ts`, `missionPanes.ts`, `PaneHeader.tsx`, `MissionTabs.tsx` | The three panes and the phone tabs; which pane is in front and where focus goes; the pane title bar (screen readers only on a phone unless it has controls) |
-| `useMission.ts` | The workspace's state, composed from the hooks below; routes what the person sends (describe, answer the planner's open questions, run it, or a change), plans with the documents read so far (waiting while one is read: `planWaitsFor`) and hands them to "Run it" (`runIt`); what the open run form makes of the box (`runWaitsFor`, the `placement` of the ones it did not take, `documentsGone`); opens the mission in the builder |
-| `useMissionDocuments.ts`, `missionDocuments.ts` | The documents and pages added in the message box: each read on its own request (several at once, each cancelled when removed or when the screen goes), at most `MAX_PLAN_DOCUMENTS`, none twice (`isAttached`: a file by `fileKey`, a page by either address), a status line for screen readers, the one still being read (`reading`), and a sink that puts a document read while the run form is open straight into it. The pure side: what a message keeps (`noteOf`), what the planner reads (`planDocumentOf`: the first `PLAN_DOCUMENT_EXCERPT_CHARS`, and the name cut to `PLAN_DOCUMENT_NAME_MAX_LENGTH`, since a redirect can make a page's address longer; never half an emoji), where the run form takes them (`documentsTarget`: the `documents` input, the free text, or `null` so the person picks), what fits (`withDocuments`, which leaves out one past `RUN_INPUT_MAX_LENGTH` and says which it took) and the link to offer (`unattachedLink`) |
-| `useMissionTeam.ts` | The team on screen: loads a saved mission by id, edits (swap, patch or remove an agent), one-at-a-time saving, autosave. Saving keeps the team's identity, so a proposal made for it stays valid |
-| `useTeamGeneration.ts` | Description → team over `POST /api/pipelines/generate` (`planMission`): the planner may ask questions first (`may_ask`); the answers, or a skip, plan the team without asking again. The `Briefing` carries the documents too. Cancellable, plain words for failures, nothing saved |
-| `useMissionProposals.ts` | Change requests over `useRevisePipeline`: each gets an answer in the conversation that shows the live proposal and keeps its outcome (applied, discarded, failed, stopped, expired) |
-| `useMissionRun.ts` | "Run it": the inputs form in the conversation, opened with the mission's documents in it (`ask` returns the ones it took, or `null` when no form opened; `place` puts documents in the open form, in an input picked or where the team takes them, as far as they fit, measured against the newest values so documents arriving together count each other), saving then starting a run, following it (`useFollowedRun`) |
-| `useMissionConversation.ts`, `missionMessages.ts`, `missionStorage.ts`, `missionShape.ts` | The conversation as plain JSON data (notes, team descriptions, the planner's questions, proposals, forms, runs; a message of the person's may name the documents that went with it, `DocumentNote`: name, pages, characters, never the text), its `sessionStorage` copy, and `missionShape`'s checks of what is read back (a message or draft that does not fit is left out, never allowed to break the screen; a message kept before documents existed has none and still loads) |
-| `missionIntent.ts`, `teamBrief.ts` | Pure: which phrases mean "run it"; a team as words (agents, tasks, tools, what to provide) |
-| `ConversationPane.tsx`, `MissionComposer.tsx`, `MissionStart.tsx`, `useRecentMissions.ts` | The conversation pane: the log, the message box (Enter sends, Shift + Enter adds a line; `noValidate`, so a half-typed link never blocks Send), the empty state with examples, templates and recent missions |
-| `ComposerAttachments.tsx`, `DocumentPlacementNotice.tsx`, `ComposerTools.tsx` | The message box's documents: the chips (they come in with a 200 ms fade, scale and blur and leave in 150 ms, `AnimatePresence` with `initial={false}`), the caption "Your team gets these when it runs." once there is a team, the limit and "already attached" notice and a polite status; while a run form is open, why the ones left are not in it, naming them, with a button per input when the team has none meant for documents (`DocumentPlacementNotice`); the toolbar (attach, add a link, dictate, send; 44px on a phone). The box is a drop zone (`core/hooks/useFileDrop`) |
-| `MessageItem.tsx`, `TeamMessageView.tsx`, `QuestionsMessageView.tsx`, `ProposalMessageView.tsx`, `InputsMessageView.tsx`, `RunMessageView.tsx`, `Bubble.tsx`, `messageContext.ts` | One view per kind of answer, in a registry (a new kind is a new entry); the context carries the live proposal, form, run and open questions each one needs. The questions view offers each suggested answer as a chip (a radio underneath) beside a field for one's own; a message typed meanwhile answers all of them; its buttons wait while a document of the box is still being read. The run form waits for one the box will hand it, and asks for the documents again when they are gone |
-| `TeamPane.tsx`, `TeamRoster.tsx`, `StepDrawer.tsx`, `useStepDrawer.ts` | The team pane (what the person provides, then `TeamRoster`: the agents as people, step by step, the ones of one step "together", each with its role, what it makes, a Deliverable or "Checks the work" badge, its live status, round and a check's outcome, and the start of its work once done; a card opens the agent while the team can be edited) and the agent drawer (its editor is the builder's `StepCard`, so it has the two flow sections too, over the team's own steps); the hook follows the team (a removed agent closes it) and gives focus back |
-| `ResultsPane.tsx`, `Deliverables.tsx`, `RunDetails.tsx`, `RecentFiles.tsx`, `useRecentFiles.ts` | The results pane: status and controls, deliverables (a skipped step is never one; each headed by what it is, then who made it with the model and cost in a quiet line) followed by what each other agent produced (e.g. the orchestrator's final check), the folded live run, the newest files (reloaded when a run ends; a picture, such as one `generate_image` drew, shows above its name through `useImagePreview`) |
-
-`testData.ts` (fixtures and `routeFetch`, a fetch stand-in that answers
-`"METHOD /api/path"`) and `testRender.tsx` serve the tests.
+The Missions workspace at `/mission` and `/mission/<pipeline id>`: the conversation, the
+team, the results, their layouts and what is kept. It has its own page,
+[frontend-missions.md](frontend-missions.md#featuresmission--the-missions-workspace),
+with the run report the Results pane shares with the Runs page and the builder.
 
 ### `features/chat`
 
@@ -440,12 +360,11 @@ server would need a table and endpoints; that is not part of this version.
 
 | File | Role |
 |---|---|
-| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, run form, diagram + results; under its title the foldable "Ask AIMIx to change this pipeline" and "Schedule this pipeline" ([`features/schedules`](#featuresschedules)) panels. It follows the open pipeline's newest run (`features/runs/useFollowedRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen, and its status bar (`FollowedRunBar`: Stop, Resume, Open in Runs) sits under the run form. Leaving the page does not stop a run; reopening the pipeline shows it again |
+| `PipelineBuilderPage.tsx` | Builder screen: saved list, name, run inputs, steps, then the diagram, the run form and the latest run; under its title the foldable "Ask AIMIx to change this pipeline" and "Schedule this pipeline" ([`features/schedules`](#featuresschedules)) panels. It follows the open pipeline's newest run (`features/runs/useFollowedRun`): the diagram shows that run's live step statuses when the run executed exactly the version on screen; under the run form, "Starting the run…" while a run starts, then the region "Latest run" with its [run report](frontend-missions.md#the-run-report-featuresrunsreport) at level 2 ("Open in Runs", and "This run used an earlier version of this pipeline." for a run of another version). `<main>` scrolls inside itself only from `xl`, where the editor sits beside the canvas (below, the window scrolls, so the report's title rows stick below the 60px top bar); its vertical padding sits on the inner column, so a stuck row meets the scroller's top edge. Leaving the page does not stop a run; reopening the pipeline shows it again |
 | `AttachDocument.tsx`, `useAttachDocument.ts`, `AttachWebPage.tsx`, `WebPageField.tsx`, `DocumentStatus.tsx`, `attachStyles.ts` | The controls under every run input (builder, mission conversation, schedule form). "Attach a document": choose a PDF, Word, Excel, PowerPoint, image, HTML, CSV or text file (the picker's `accept` and the helper text both come from `DOCUMENT_FORMATS`). "Add a web page" (`AttachWebPage`): a button that reveals `WebPageField` — a `type="url"` field, "Read page" or Enter reads (https:// added when left out; Enter never submits a surrounding form), Escape closes, and focus goes back to the button; it opens with a 250 ms grid-row and opacity reveal and is `inert` while closed. The server reads either (`core/api/documents.ts`) and the text is added to the input under a `[Document: name or address]` line, where it stays editable. `useAttachDocument(target)` is one hook with two loaders (`readFile`, `readPage`) sharing one reading, error, notice and cancellation: it reads the target when the document *arrives* (so text typed meanwhile is kept), replaces a read still going, and cancels on unmount. An input that holds only a link shows "Agents can’t open links on their own." with "Read this page into the box", whose page takes the link's place (`placeDocument`). A document that would put the run past `RUN_INPUT_MAX_LENGTH` is held with a warning (an alert) until "Add it anyway" or "Leave it out". `DocumentStatus` is the line under the controls: a polite live region ("Reading report.pdf…", then what was added), the server's reason as an alert; after "Add it anyway" or "Leave it out" focus goes back to the picker. `onReading` tells the form what is being read, so it can wait. The controls are at least 44px tall on a phone |
 | `RecentPipelines.tsx`, `RunInputCard.tsx` | The builder's saved-pipeline list and its "Run Execution" panel: one labelled field per named input (all required), or a single free-text field when the pipeline declares none, then the optional cost limit. `RunInputCard` exports `RunInputFields` (those fields alone, with "Attach a document" and "Add a web page"; an optional `label` names the free-text field), which the schedule form asks its inputs with too, naming it "Input for each scheduled run" so the builder page never holds two fields called "Run input". Inputs past `RUN_INPUT_MAX_LENGTH` in all are said under the fields ("Your inputs are 612,000 characters; a run takes at most 500,000. Shorten the text, or delete a document from it (each starts with “[Document: …]”).", a polite status, there even when empty so it is announced, since the count changes with each key) and the run waits. While any input reads a document or page (`useInputReadings`, told by each `AttachDocument`), or one is read elsewhere for the run (`waitingFor`: the mission's message box), Run waits and says "Waiting for report.pdf to be read…"; the schedule form's save waits the same way. The `documents` input shows how to fill it ("Attach your documents or web pages below, or paste their text.") instead of its description, which says AIMIx puts their text there |
 | `CostLimitField.tsx` | The "Stop if it costs more than $…" field of the run form: optional, labelled, with its hint or problem under it as a polite live region. The draft keeps it as typed text (`RunDraft.maxCost`); `costLimitProblem` flags text that is not an amount above zero and `isRunReady` then blocks the run, because running without the cap the person asked for would be worse than not running. `runRequest` sends it as `max_cost_usd` |
-| `StepHeading.tsx` | The title row of a step's card: name, position, model, Output badge (never on a skipped step) and, for a followed run's step, what its model calls cost (`CostText`; a pending step shows nothing), its "Round 2 of 3" chip when a review loop ran it again, and a reviewer's outcome ("Sent back 2 times, then accepted"; `roundNotes.ts`) |
-| `FoldablePanel.tsx` | `PanelToggle` (the bar: a heading holding one button with an icon, a title and a chevron, `aria-expanded` / `aria-controls`) and `Foldable` (the body, animated by its grid row, `inert` while folded). `RevisePanel` and `SchedulePanel` are built on them |
+| `FoldablePanel.tsx` | `PanelToggle` (the bar: a heading holding one button with an icon, a title, an optional `summary` and a chevron that flips, `aria-expanded` / `aria-controls`), `Foldable` (the body, animated by its grid row with a fade and a 2px blur, `inert` while folded; `size` small opens in 250 ms and closes in 150, large in 350 and 250; `bodyClassName` replaces its padding) and `DisclosureButton` (an inline text button that opens a `Foldable`: "Read the full check"; its `id` lets a jump hand focus back to it). `RevisePanel`, `SchedulePanel` and the run report are built on them |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, replacing the whole draft (`replace`, for an accepted revision), saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
 | `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
 | `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps, `replace` (an accepted revision) and saving the proposed workflow (later saves update it) |
@@ -456,7 +375,7 @@ server would need a table and endpoints; that is not part of this version.
 | `revision.ts` | `describeChange` (a change as a sentence), `adoptRevision`, the example instructions and the instruction length limit (mirrors the backend's) |
 | `buttonStyles.ts` | Primary and secondary in-card button looks for actions beside a page's GlowButton |
 | `PipelineInputsEditor.tsx` | The named run inputs (name, label, description), shared by both screens; names are typed as snake_case and problems show before saving |
-| `pipelineInputs.ts` | Pure helpers for named inputs and attached documents (`appendDocument`, `placeDocument`, `documentSummary`, `documentDetails`, `documentSize`, `documentLimitWarning`): the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, `inputValue` (what the person typed, else the input's `default_value`, so a mission's form starts filled in with what its request gave), `runRequest`, which sends only declared inputs, and the run's size limit, `RUN_INPUT_MAX_LENGTH` (500,000 characters in all, mirroring `backend/api/schemas/common.py`): `runInputSize` (what `runRequest` sends, defaults included), `runInputLimitProblem`, and `isRunReady`, which is false past it; `waitingForDocument`, the words for anything that waits for a reading |
+| `pipelineInputs.ts` | Pure helpers for named inputs and attached documents (`appendDocument`, `placeDocument`, `documentSummary`, `documentDetails`, `documentSize`, `documentLimitWarning`, and `splitDocuments`, which reads an input back into its typed text and its `[Document: …]` blocks, with the same separator `appendDocument` writes): the naming rule (mirrors the backend), `{placeholder}` checks, the run form's `RunDraft`, `inputValue` (what the person typed, else the input's `default_value`, so a mission's form starts filled in with what its request gave), `runRequest`, which sends only declared inputs, and the run's size limit, `RUN_INPUT_MAX_LENGTH` (500,000 characters in all, mirroring `backend/api/schemas/common.py`): `runInputSize` (what `runRequest` sends, defaults included), `runInputLimitProblem`, and `isRunReady`, which is false past it; `waitingForDocument`, the words for anything that waits for a reading |
 | `webLinks.ts` | Pure: the http(s) links in typed text (`linksIn`, without the punctuation after them), a field holding only a link (`bareLink`), a typed address made openable (`toWebAddress`), `sameAddress`, and short names for links (`linkLabel`: host and path without `https://` or `www.`, cut in the middle; `linkHost`; `sourceLabel`, a file's name or a page's label) |
 | `StepEditor.tsx` | Builder sidebar: each step's stage, title, expected output, agent role, tool access, model, prompt and, folded away, the two options that change how work flows (`StepFlowFields`). `StepCard` (one step's editor; it takes every step of the pipeline too) is exported: the mission screen's drawer uses it |
 | `StepFlowFields.tsx`, `ConditionFields.tsx`, `ReviewFields.tsx`, `FlowFieldParts.tsx` | Two `<details>` sections, folded by default (the first file holds the sections, the next two their fields, the last the labelled field and the problem line they share): "Run this step only if…" (a source list: the previous result, each input, each earlier step by title; a comparison; the text, hidden for "is empty" / "is not empty") and "Review loop" ("Send the work back to stage [2 · Writer] up to [2 times] when this step says the work needs fixes", offered to a step with an earlier stage, plus one line saying its prompt should judge the work). Each shows what is set next to its title, and what is wrong in amber (`aria-invalid`, `aria-describedby`); a source or stage that is no longer on offer stays in its list, so the person sees what it was. Used by the step card (builder and the mission drawer) and by the planned steps |
@@ -465,16 +384,10 @@ server would need a table and endpoints; that is not part of this version.
 | `StepAgentFields.tsx` | Agent role and tool policy controls shared by manual and generated step editors (`null` all, `[]` none, selected names otherwise); the checklist groups tools by source, so an integration's tools sit under its name |
 | `StepRoleFields.tsx` | A step's title, its Intermediate / Output toggle and its expected output, shared by both editors |
 | `GeneratedSteps.tsx` | Generated steps drawn stage by stage; parallel steps side by side; each step shows the condition or review loop the planner gave it, editable like in the builder |
-| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and, before a run, their expected output; clicking a finished (or failed) node opens its output (or error). Stages slide in; during a run connectors pulse and running nodes carry a StarBorder. `NODE_STATUS_STYLES` holds each status's colours and word: Not run, Waiting, Running, Done, Failed, Stopped, Skipped (muted and dashed, with "Its condition was not met" on hover). A step with a condition carries an "Only if…" mark (its words on hover and in its accessible name), a reviewer a "Reviewer" mark, and a step a followed run redid a "Round 2 of 3" mark. The legend explains the marks that are on the diagram |
+| `PipelineGraph.tsx`, `GraphNodeCard.tsx` | Flow diagram Input → stages → Outputs with fork/merge brackets, a legend and controls to add parallel steps or a following stage; the Input terminal lists the named inputs; nodes show title, model, status, an Output badge and their expected output; where the diagram is editable, selecting a node opens its step editor. Stages slide in; during a run connectors pulse and running nodes carry a StarBorder. `NODE_STATUS_STYLES` holds each status's colours and word: Not run, Waiting, Running, Done, Failed, Stopped, Skipped (muted and dashed, with "Its condition was not met" on hover). A step with a condition carries an "Only if…" mark (its words on hover and in its accessible name), a reviewer a "Reviewer" mark, and a step a followed run redid a "Round 2 of 3" mark. The legend explains the marks that are on the diagram |
 | `LoopRail.tsx`, `graphLayout.ts` | The line that shows a reviewer sending work back: a row above the stages, from the reviewer's stage back to the stage it goes to, ending in an arrow into that stage with "Back here up to 2 times". It lines up with the columns because both read their widths from `graphLayout.ts` (stage columns have a fixed width), and it hides from assistive technology (the reviewer's node and the legend say the same in words). Drawn only for loops the engine would follow; it scrolls with the diagram on a phone |
-| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`, which takes a followed run's steps for live statuses and gives each node its condition, review, round and the most rounds it may take; a skipped node is never an output; `liveNodeStatus`) and the `OutputTarget` type |
-| `PipelineRunView.tsx`, `RunStats.tsx` | Diagram + "Outputs" / "All steps" tabs + run stats (`RunStats`: outputs, steps, stages, seconds — counted up once the run has ended, with a one-line `sr-only` summary); deliverables are grouped by stage, and a run whose output steps were all skipped says so instead of "No outputs yet". It provides the `RunFlowContext` its step cards read. Given a followed run's `liveSteps` (and its `runKey`), nodes show each step's status, outputs appear as soon as they are saved, and "All steps" lists every step — a run in progress opens on it, a finished one on its outputs |
-| `StepProgressCard.tsx` | In "All steps", a step without an output: its status, live elapsed time and, for a failed step, the error; for a skipped step "Skipped. Its condition was not met. It runs only if the previous result contains “blog”." |
-| `RunFlowContext.tsx`, `roundNotes.ts` | The pipeline a followed run executed, handed to the cards of its steps by context (`PipelineRunView` and the mission's deliverables provide it) so a skipped step can say what its condition was and a step what its loop allows; and the words of a loop's outcome (`roundLabel`, `reviewNote`: "Sent back 2 times, then accepted") |
-| `StepHeading.tsx` | Title row of a step's output card (name, model, Output badge) |
-| `RunResults.tsx`, `ToolCallTrace.tsx` | Every step's output grouped by stage, with called tool names and success/error statuses |
-| `OutputCard.tsx` | One output: rendered/raw toggle, copy, the input it saw, folding for long text |
-| `useCopyToClipboard.ts` | Clipboard copy with short "Copied" feedback |
+| `pipelineGraph.ts` | Pure model behind the diagram (`buildGraph`, which takes a followed run's steps for live statuses and its outputs, and gives each node its condition, review, round and the most rounds it may take; a skipped node is never an output; `liveNodeStatus`) |
+| `roundNotes.ts` | `roundLabel`: "Round 2 of 3", the words of a step a review loop ran again (the diagram's mark, the run report's rows) |
 | `stages.ts` | `groupByStage`, `nextStage`, `insertStep` (which keeps conditions and review loops pointing where they did when it renumbers steps or opens a stage), `outputOrders` (preview of which steps are outputs; mirrors the backend rule) and `stepLabel` |
 | `fieldStyles.ts` | The builder's field looks (`FIELD`, `INLINE_FIELD`, `SMALL_ACTION`) |
 | `StageInput.tsx`, `StageHeader.tsx`, `StageArrow.tsx` | Stage picker, stage label ("N steps in parallel"), connector |
@@ -508,35 +421,37 @@ to read (`/api/files`).
 |---|---|
 | `FilesPage.tsx` | Header with the storage used (text and a bar), the upload panel, an `aria-live` status line, then the list or the empty state ("Files your agents save appear here. Agents with file tools can also read the files you upload.") |
 | `UploadPanel.tsx` | Drop zone plus a "Choose files" `GlowButton` that opens a hidden multi-file input (`accept` from the server's `allowed_extensions`), the accepted types in plain words and the size cap, and each refused file with its reason; a taken name offers "Replace". The drop zone is `core/hooks/useFileDrop`, dark and ignoring drops while a file is on its way up |
-| `FileRow.tsx` | One file: type icon (lucide), name, folder, size, date, download and delete buttons with a spinner while busy; delete asks first (focus starts on Cancel, Escape cancels) and errors show under the row |
-| `useFiles.ts` | State + transport: loads the listing, uploads one file per request (so each refusal is reported against its file), replace/dismiss, download (then `saveBlob` from `core/saveBlob.ts`, shared with the account export) and delete (a 404 counts as deleted). One `AbortController` per mount cancels everything on unmount |
+| `FileRow.tsx` | One file: type icon (lucide), name, folder, size, date, download and (when `onDelete` is given) delete buttons with a spinner while busy, 44px under a finger; delete asks first (focus starts on Cancel, Escape cancels) and errors show under the row. An optional `preview` sits above it (the run report's pictures) |
+| `PicturePreview.tsx` | A workspace picture shown through `useImagePreview` (`alt=""`: its name follows), with a hairline outline; the caller sizes it |
+| `useFiles.ts`, `fileDownload.ts` | State + transport: loads the listing, uploads one file per request (so each refusal is reported against its file), replace/dismiss, download (`downloadAndSave`: the file, then `saveBlob` from `core/saveBlob.ts` under its own name, nothing once aborted) and delete (a 404 counts as deleted). One `AbortController` per mount (`useLifetime`, also used by the run report's files) cancels everything on unmount |
 | `fileFormat.ts` | Pure helpers: `formatBytes` (decimal units like the server's limits), `formatDate`, `fileName`, `folderOf`, `fileIcon`, `describeTypes`, and `withFile` / `withoutFile`, which keep `used_bytes` equal to the sum of the sizes |
 
 ### `features/runs`
 
-Runs execute on the server; the screens follow them by polling. `features/runs`
-builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
-`OutputCard`, `RunResults`), and the builder embeds its header and hooks.
+Runs execute on the server; the screens follow them by polling. Each screen shows a run
+as its run report (`report/`, described with the Missions workspace in
+[frontend-missions.md](frontend-missions.md#the-run-report-featuresrunsreport)); the
+builder and the Missions workspace follow their pipeline's newest run with the hooks below.
 
 | File | Role |
 |---|---|
-| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume(budget?), approve, decline, adopt }`. Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued, running or waiting for an approval and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `approve(approvalId)` and `decline(approvalId)` answer a request and show the run as it comes back; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
-| `useLatestRun.ts` | The builder's follower: loads the pipeline's newest run when it opens (`GET /runs?pipeline_id=…&limit=1`) and `follow(run)` switches to a run started here |
-| `useFollowedRun.ts`, `FollowedRunBar.tsx` | What the builder needs from that run: whether one is active, the run the diagram may show (`shown`, only a run of exactly the version on screen) and its duration; and its status bar with Stop, Resume and "Open in Runs", and a card for each action the run waits on, so it can be answered there |
+| `useRun.ts` | `useRun(runId)` → `{ run, error, busy, stop, resume(budget?), approve, decline, adopt }` (`RunControls` is the part a run report needs). Fetches the run, polls it every `RUN_POLL_INTERVAL_MS` (1.5 s) while it is queued, running or waiting for an approval and stops once it ends; unmounting or switching runs clears the timer and aborts the request in flight. A resumed run is polled again; `approve(approvalId)` and `decline(approvalId)` answer a request and show the run as it comes back; `adopt(run)` shows a run already in hand (one just started) at once. A failed poll is retried, a 404 is not |
+| `useLatestRun.ts` | The builder's and the mission's follower: loads the pipeline's newest run when it opens (`GET /runs?pipeline_id=…&limit=1`) and `follow(run)` switches to a run started here; `checked` once it is known whether there is a run to follow (and it has loaded), `listed` for a run found that way rather than started here |
+| `useFollowedRun.ts` | What the builder and the mission need from that run: whether one is active, and the run the diagram may show (`shown`, only a run of exactly the version on screen) |
 | `useRunHistory.ts` | The history list: pages of `RUN_PAGE_SIZE` (20), refreshed every `RUN_LIST_REFRESH_MS` (5 s) while a listed run is active; `update` keeps a line in step with the open run, `remove` deletes a run |
-| `LiveRun.tsx` | **The embeddable live run**: `<LiveRun run onStop onResume onApprove onDecline busy error actions>{children}</LiveRun>` — the run's own diagram with live statuses, the status bar, the cards of the actions it waits on, any `children` (e.g. its inputs), then the results. Pair it with `useRun` (`onApprove={live.approve}`, `onDecline={live.decline}`); without both, requests are shown but not answerable on that screen |
-| `LiveRunHeader.tsx` | Status bar: status badge, "2 of 5 steps done" (a skipped step counts as done: "4 of 4 steps done (1 skipped)"), ticking elapsed time, the running cost (`RunCost`), Stop / Resume (`ResumeControl`) and extra `actions`, an `aria-live` line, and why the run stopped or waits (the failed step and its error, "Spending limit reached." with the server's message, "You stopped this run", "The server restarted…", "This run is waiting for you…") |
-| `RunCost.tsx` | The run's cost in the status bar: `$0.0123` (its token counts a hover away, and read out), "$0.0123 or more" when part of it is unpriced, "Cost unknown for this model" when none is, next to "of $0.50 limit" when the run has a limit; nothing before an active run has used anything (or "Limit $0.50" if it has one), and "No usage recorded" for a finished run with none |
+| `report/` | **The run report**, one run as one document: `<RunReport key={run.id} run control level extras />`, the same on the Runs page, in the builder and on a mission. See [frontend-missions.md](frontend-missions.md#the-run-report-featuresrunsreport) |
+| `toolWords.ts` | `TOOL_WORDS`, a registry of each tool's use in words: `toolUsePhrase` ("1 date check · 3 web searches · 3 page reads, 1 failed"; a tool it does not know reads by its name), and the plain request an approval makes (`approvalAsk`, `approvalHeading`: "Save “notes/plan.md” to your files?") for AIMIx's own tools (`isPlainAsk`, `fromSource`) |
+| `RunCost.tsx` | The run's cost in the report's meta line: `$0.0123` (its token counts a hover away, and read out), "$0.0123 or more" when part of it is unpriced, "Cost unknown for this model" when none is, next to "of $0.50 limit" when the run has a limit; nothing before an active run has used anything (or "Limit $0.50" if it has one), and "No usage recorded" for a finished run with none |
 | `ResumeControl.tsx` | The Resume button. A run that stopped at its spending limit cannot resume under it, so it shows "Raise the limit to $[ ] Resume" instead, prefilled with double the old limit, saying what the run has used so far and refusing an amount at or below that; the token variant appears when it was a token limit. `onResume(budget?)` carries the new limit |
 | `runBudget.ts` | `limitReached(run)` (which limit a run is at; mirrors the server's rule, rounding slack included), `limitParts`, `suggestedLimit`, `limitBudget` and `limitProblem` for the resume form, and `BUDGET_ERROR_CODE` |
-| `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under its status bar (a polite `aria-live` count), each as an `ApprovalCard`: "Needs your OK", `Allow “Send email”?`, which step and agent role asks and from which integration, the tool's description, what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), the time left (ticking, `useNow`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "No answer counts as a decline". `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`) |
+| `PendingApprovals.tsx`, `ApprovalCard.tsx`, `ArgumentList.tsx`, `approvalFormat.ts` | Approval gates. `PendingApprovals` lists a run's `pending_approvals` under the report's header (the report's `Announcer` says how many wait; `askedBy` names the step and role that asks), each as an `ApprovalCard`: its question first (`Allow “Send email”?`, or for AIMIx's own tools a plain one, "Save “notes/plan.md” to your files?"; focusable, `id="approval-{id}"`, the target of "Review the request"), who asks ("Draft (Writer) wants your OK first.") and from which integration, the tool's description (not for a plain ask), what it will use (`ArgumentList`: one labelled value per argument, a long one folded behind "Show all" in a native `<details>`), **Approve** and **Decline** with "Approving…" / "Declining…" states, and "{time left} · No answer counts as a decline." (ticking, `useNow`). `approvalFormat.ts` holds the pure helpers (`toolLabel`, `argumentRows`, `formatTimeLeft`: "5 h 56 min left") |
 | `useWaitingRuns.ts` | `useWaitingRuns()`: how many runs wait for the person, fetched on mount and every `WAITING_RUNS_POLL_MS` (5 s) with `countWaitingRuns`; a failed fetch keeps the last count, and unmounting clears the timer and aborts the request. The sidebar shows it as a badge on Runs, with the same count in words for screen readers |
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
-| `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
+| `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger): 40px tall, 44px under a finger, a slight press (`active:scale-[0.96]`, none under reduced motion) and the focus ring |
 | `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount` (succeeded or skipped), and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen, conditions and review loops included |
 | `RunTriggerTag.tsx` | A small icon and "Scheduled" or "From a webhook" for a run a schedule or another app started (`TRIGGER_TAGS`, `hasTriggerTag`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
-| `RunByline.tsx` | The line under a run's title in `RunDetail`: "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a scheduled run, the link only while the pipeline exists) |
-| `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
+| `RunByline.tsx` | The line under a run's title in `RunDetail`: "Run #12 · Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a run a schedule or a webhook started, the link only while the pipeline exists) |
+| `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail is the pipeline's name (h2, under the page's h1 "Runs") and its byline, then the run's report at level 3 with the team's diagram in its appendix (the column sets `--sticky-top` to 60px below `lg`, where the window scrolls under the top bar, and 0 from `lg`); Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 
 ### `features/schedules`
 
@@ -667,8 +582,12 @@ throws). What to fill in and what keeps the texts true: [legal.md](legal.md).
 `core/api/client.test.ts` (auth header, error contract, 401 handling and when it
 ends the session, network error), `core/auth/AuthContext.test.tsx` (signing out when
 the session ends or on logout, no loop on public pages, forgetting mission drafts),
-`core/auth/tokenStorage.test.ts`, `core/markdown/renderMarkdown.test.ts` (sanitisation:
-injected forms, styles, classes and links; what Markdown makes still renders),
+`core/auth/tokenStorage.test.ts`, `core/markdown/renderMarkdown.test.ts` (sanitisation,
+through both renderers: injected forms, styles, classes and links; what Markdown makes
+still renders; `renderDocument`'s heading levels, table scrollers and number cells),
+`documentText.test.ts` and `RenderedMarkdown.test.tsx`, `core/hooks/useCopyToClipboard.test.tsx`
+(rich, plain and refused copies, the timer), `core/ui/motionTokens.test.ts` (the JS and CSS
+curves agree), `SwapText.test.tsx`, `Announcer.test.tsx`, `Heading.test.tsx`,
 `core/ui/GlowButton.test.tsx`, `core/ui/reactbits/reactbits.test.tsx`
 (fallbacks and accessible text of the adapted effects),
 `features/chat/ChatPage.test.tsx`, `core/api/files.test.ts` and
@@ -691,16 +610,16 @@ connection, delete confirmation, switch, edit with hints), `useIntegrations.test
 and `integrationDraft.test.ts`; `testData.ts` holds their fixtures and `byPath`,
 a fetch stand-in that answers each API path. For
 runs: `core/api/runs.test.ts`, `features/runs/useRun.test.tsx` (polling with
-fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx`,
-`LiveRun.test.tsx` (live statuses, Stop/Resume, failure explanation) and
-`RunsPage.test.tsx` (list, deep link, delete with confirmation);
+fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx` (`checked`
+and `listed`, failure paths included), `toolWords.test.ts` and `RunsPage.test.tsx` (list,
+deep link, delete with confirmation);
 `features/runs/testData.ts` builds the runs and requests they share (`runStep(order, status,
 output, used)` and `makeRun` default to nothing used; `usageOf(in, out, cost)`
 builds a usage). Tokens and cost: `core/usageFormat.test.ts` (formatting,
 parsing what a person types, the words for each kind of cost),
 `core/ui/CostText.test.tsx`, `core/api/usage.test.ts`,
-`features/runs/LiveRunUsage.test.tsx` (the running total, per-step cost, unknown
-and partial costs, the stop at a limit), `runBudget.test.ts`,
+`features/runs/report/RunReportUsage.test.tsx` (the running total, per-agent cost,
+unknown and partial costs, the stop at a limit and raising it), `runBudget.test.ts`,
 `ResumeControl.test.tsx` (raise the limit and resume), `useRunResume.test.tsx`,
 `RunHistoryUsage.test.tsx`, `features/pipelines/RunCostLimit.test.tsx` (the run
 form's limit field and its draft rules) and
@@ -708,7 +627,7 @@ form's limit field and its draft rules) and
 cancelling on unmount).
 For approval gates: `core/api/approvals.test.ts`, `approvalFormat.test.ts`,
 `ApprovalCard.test.tsx` (the words, folded values, the countdown, busy and
-read-only states), `PendingApprovals.test.tsx` (through `LiveRun` too),
+read-only states, the plain ask, the jump target), `PendingApprovals.test.tsx`,
 `useRunApprovals.test.tsx` (answering through `useRun`), `RunsPageWaiting.test.tsx`
 (a waiting run in the history and its detail, approve, decline and a
 refused answer), `useWaitingRuns.test.tsx`, `core/ui/SidebarNav.test.tsx` and
@@ -721,10 +640,20 @@ covered by `features/mission/`: the pure modules (`missionIntent.test.ts`,
 loading, one save at a time, autosave, identity kept; `useMission.test.tsx`: describe →
 reply, revise → apply or discard, saving then starting a run, reopening a mission,
 templates, "Open in builder"), the components (`MissionTabs.test.tsx`,
-`StepDrawer.test.tsx`, `RunDetails.test.tsx`) and the whole screen
-(`MissionPage.test.tsx`: starting, describing, change requests, running;
-`MissionPanes.test.tsx`: tabs and focus, the wide layout, the drawer, the results pane,
-addresses and what a tab remembers). `App.test.tsx` checks the nav order and the
+`StepDrawer.test.tsx`, `PlannedDeliverables.test.tsx`, `ComposerAttachments.test.tsx`,
+`ComposerTouch.test.tsx`, `InputsMessageView.test.tsx`), the layouts (`missionPanes.test.ts`,
+and `MissionLayout.test.tsx`: three panes, two columns, settling once, when Results comes
+forward without moving focus) and the whole screen (`MissionPage.test.tsx`: starting,
+describing, change requests, running; `MissionPanes.test.tsx`: tabs and focus, the drawer,
+the results pane and its files, addresses and what a tab remembers).
+The run report is covered by `features/runs/report/`: the pure modules (`reportModel`,
+`reviewRounds`, `outcomeCopy`, `signOffCopy`, `stepCopy`, `runGiven` (with the server's
+real notes), `runFiles` (the time window), `deliverableFiles`, `jump`), the parts
+(`DeliverableList` with the hand-over's motion and reduced motion, `DeliverableActions`,
+`DeliverableSlot`, `RunFiles`, `RunGiven`, `TeamWork`), the announcements
+(`useRunAnnouncements.test.ts`) and the whole report in each state (`RunReport.test.tsx`,
+`RunReportFlow.test.tsx`: the check and its rounds, `RunReportUsage.test.tsx`); the builder's
+use of it is in `features/pipelines/PipelineBuilderRun.test.tsx`. `App.test.tsx` checks the nav order and the
 Missions route, `features/auth/LoginPage.test.tsx` the landing after sign-in,
 `features/pipelines/OpenInMissionLink.test.tsx` the builder's link and
 `core/hooks/useMediaQuery.test.tsx` the media-query hook, `core/hooks/useFileDrop.test.tsx` the drop zone, `core/chosenFiles.test.tsx` a file input taking the same file twice.
@@ -737,9 +666,9 @@ every condition and review pointing where it did), `StepFlowFields.test.tsx` (fo
 until opened, the fields, stale choices kept, problems announced, a review offered
 from the second stage on), `PipelineGraph.test.tsx` and `pipelineGraph.test.ts` (the
 marks, the loop-back rail, legend, labels and the model behind them),
-`features/runs/LiveRunFlow.test.tsx` (skipped steps and their reason, the round
-chip, the reviewer's outcome, "No outputs" when the output steps were skipped, the
-header's "(1 skipped)"), `roundNotes.test.ts`, and the planned steps in
+`features/runs/report/RunReportFlow.test.tsx` (a skipped deliverable and its reason,
+"Done, with no deliverable", the reviewer's sign-off and rounds), `roundNotes.test.ts`, and
+the planned steps in
 `GeneratedSteps.test.tsx`; `StepDrawer.test.tsx` and `missionStorage.test.ts` cover
 the mission side.
 For schedules:

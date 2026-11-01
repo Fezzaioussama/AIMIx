@@ -1,7 +1,7 @@
 import { Check, Copy, Webhook } from 'lucide-react';
 
 import { webhookUrl } from '../../core/api/webhooks';
-import { useCopyToClipboard } from '../pipelines/useCopyToClipboard';
+import { useCopyToClipboard } from '../../core/hooks/useCopyToClipboard';
 import { useWebhookLink } from './useWebhookLink';
 
 /**
@@ -10,7 +10,8 @@ import { useWebhookLink } from './useWebhookLink';
  */
 export function WebhookCard({ webhookId }: { webhookId: number }) {
   const { link, error } = useWebhookLink(webhookId);
-  const { copied, copy } = useCopyToClipboard();
+  const { status, copy } = useCopyToClipboard();
+  const copied = status === 'copied';
 
   if (error) return <p className="mt-1.5 text-xs text-rose-300">{error}</p>;
   if (!link) return <p className="mt-1.5 text-xs text-slate-400">Loading the link…</p>;

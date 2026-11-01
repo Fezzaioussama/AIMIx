@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { countOf } from '../../core/usageFormat';
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from '../pipelines/buttonStyles';
 import { PipelineGraph } from '../pipelines/PipelineGraph';
 import { ChangeList } from '../pipelines/RevisionReview';
@@ -7,7 +8,6 @@ import type { RevisionProposal } from '../pipelines/useRevisePipeline';
 import { Bubble, Working } from './Bubble';
 import type { MessageContext, ViewProps } from './messageContext';
 import type { ProposalMessage, ProposalState } from './missionMessages';
-import { countOf } from './teamBrief';
 
 const STOPPED = 'Stopped. Ask again whenever you like.';
 const STALE = 'The team changed after you asked, so I set that proposal aside. Ask again.';

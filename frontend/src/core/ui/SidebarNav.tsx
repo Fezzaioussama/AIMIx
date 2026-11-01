@@ -3,6 +3,7 @@ import { useId } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { ActivePill } from './ActivePill';
+import { FOCUS_RING } from './focus';
 
 /** A count on an item, read out with what it counts: "Runs, 2 waiting for you". */
 export interface NavBadge {
@@ -30,7 +31,7 @@ function owns(to: string, pathname: string): boolean {
 
 const itemClass = (active: boolean) =>
   [
-    'relative isolate flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400',
+    `relative isolate flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${FOCUS_RING}`,
     active ? 'text-white' : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-50',
   ].join(' ');
 

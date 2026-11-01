@@ -88,7 +88,7 @@ describe('RunsPage', () => {
     );
     renderAt('/runs/7');
 
-    expect(await screen.findByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Stop the run' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 });

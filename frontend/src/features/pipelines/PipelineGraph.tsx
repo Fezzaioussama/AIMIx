@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 
-import type { PipelineInput, PipelineStep, RunStep, StepResult } from '../../core/api/types';
+import type { PipelineInput, PipelineStep, RunStep } from '../../core/api/types';
 import {
   ConditionBadge,
   GraphNodeCard,
@@ -10,24 +10,20 @@ import {
 } from './GraphNodeCard';
 import { CONNECTOR_WIDTH, columnWidth } from './graphLayout';
 import { LoopRail } from './LoopRail';
-import { buildGraph, type GraphNode, type OutputTarget } from './pipelineGraph';
+import { buildGraph, type GraphNode } from './pipelineGraph';
 import { inputsSummary } from './pipelineInputs';
 import { describeCondition, reviewLoops } from './stepFlow';
-
-/** A node the diagram can open: its output, or the error it stopped on. */
-const SELECTABLE = new Set<GraphNode['status']>(['done', 'failed']);
 
 interface PipelineGraphProps {
   steps: PipelineStep[];
   /** Named run inputs, listed on the Input terminal instead of the typed text. */
   inputs?: PipelineInput[];
-  results?: StepResult[];
   /** The followed run's steps: each node shows its own live status. */
   liveSteps?: RunStep[];
   isRunning?: boolean;
   input?: string;
-  selected?: OutputTarget | null;
-  onSelect?: (target: OutputTarget) => void;
+  /** The step whose editor is open, ringed on the diagram. */
+  selected?: number | null;
   onEditStep?: (order: number) => void;
   onAddParallel?: (stage: number) => void;
   onAddAfter?: (stage: number) => void;
@@ -55,22 +51,19 @@ function stageEntrance(stage: number) {
 export function PipelineGraph({
   steps,
   inputs = [],
-  results = [],
   liveSteps,
   isRunning = false,
   input = '',
   selected = null,
-  onSelect,
   onEditStep,
   onAddParallel,
   onAddAfter,
   parallelLabel = '+ Parallel step',
   nextLabel = '+ Next stage',
 }: PipelineGraphProps) {
-  const stages = buildGraph(steps, results, isRunning, liveSteps);
+  const stages = buildGraph(steps, isRunning, liveSteps);
   const nodes = stages.flatMap((stage) => stage.items);
   const outputCount = nodes.filter((node) => node.isOutput).length;
-  const hasRun = results.length > 0;
   const loops = reviewLoops(steps);
   const conditionTextOf = (order: number) => {
     const step = steps.find((candidate) => candidate.order === order);
@@ -98,7 +91,6 @@ export function PipelineGraph({
               nodes={stage.items}
               selected={selected}
               conditionTextOf={conditionTextOf}
-              onSelect={onSelect}
               onEditStep={onEditStep}
               onAddParallel={onAddParallel}
               onAddAfter={onAddAfter}
@@ -110,9 +102,7 @@ export function PipelineGraph({
         <Connector flowing={isRunning} />
         <GraphTerminal
           label={outputCount === 1 ? 'Output' : 'Outputs'}
-          detail={`${outputCount} ${outputCount === 1 ? 'result' : 'results'}${hasRun ? ' · view' : ''}`}
-          active={selected === 'outputs'}
-          onClick={hasRun && onSelect ? () => onSelect('outputs') : undefined}
+          detail={`${outputCount} ${outputCount === 1 ? 'result' : 'results'}`}
         />
       </div>
       <Legend
@@ -126,10 +116,9 @@ export function PipelineGraph({
 interface StageColumnProps {
   stage: number;
   nodes: GraphNode[];
-  selected: OutputTarget | null;
+  selected: number | null;
   /** A step's condition in words, for its node; null for a step without one. */
   conditionTextOf: (order: number) => string | null;
-  onSelect?: (target: OutputTarget) => void;
   onEditStep?: (order: number) => void;
   onAddParallel?: (stage: number) => void;
   onAddAfter?: (stage: number) => void;
@@ -142,7 +131,6 @@ function StageColumn({
   nodes,
   selected,
   conditionTextOf,
-  onSelect,
   onEditStep,
   onAddParallel,
   onAddAfter,
@@ -155,7 +143,7 @@ function StageColumn({
       className={`flex flex-col gap-3 ${columnWidth(nodes.length > 1)}`}
       {...stageEntrance(stage)}
     >
-      <StageNodes {...{ stage, nodes, selected, conditionTextOf, onSelect, onEditStep }} />
+      <StageNodes {...{ stage, nodes, selected, conditionTextOf, onEditStep }} />
       <StageActions {...{ stage, onAddParallel, onAddAfter, parallelLabel, nextLabel }} />
     </motion.div>
   );
@@ -163,17 +151,10 @@ function StageColumn({
 
 type StageNodesProps = Pick<
   StageColumnProps,
-  'stage' | 'nodes' | 'selected' | 'conditionTextOf' | 'onSelect' | 'onEditStep'
+  'stage' | 'nodes' | 'selected' | 'conditionTextOf' | 'onEditStep'
 >;
 
-function StageNodes({
-  stage,
-  nodes,
-  selected,
-  conditionTextOf,
-  onSelect,
-  onEditStep,
-}: StageNodesProps) {
+function StageNodes({ stage, nodes, selected, conditionTextOf, onEditStep }: StageNodesProps) {
   const parallel = nodes.length > 1;
   return (
     <div className={`relative flex flex-col gap-3 ${parallel ? 'px-3' : ''}`}>
@@ -194,13 +175,7 @@ function StageNodes({
           node={node}
           selected={selected === node.order}
           conditionText={conditionTextOf(node.order)}
-          onClick={
-            SELECTABLE.has(node.status) && onSelect
-              ? () => onSelect(node.order)
-              : onEditStep
-                ? () => onEditStep(node.order)
-                : undefined
-          }
+          onClick={onEditStep ? () => onEditStep(node.order) : undefined}
         />
       ))}
     </div>

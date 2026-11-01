@@ -32,7 +32,7 @@ describe('ApprovalCard', () => {
     renderCard();
 
     const card = screen.getByRole('region', { name: 'Allow “Send email”?' });
-    expect(within(card).getByText('Needs your OK')).toBeInTheDocument();
+    expect(within(card).getByText('· No answer counts as a decline.')).toBeInTheDocument();
     expect(
       within(card).getByText('Draft email (Writer) wants to use this tool from crm.'),
     ).toBeInTheDocument();
@@ -60,11 +60,35 @@ describe('ApprovalCard', () => {
     expect(screen.getByText('Time is up')).toBeInTheDocument();
   });
 
-  it('needs no source for a built-in tool', () => {
-    renderCard({ approval: makeApproval({ tool_name: 'save_artifact', tool_source: 'AIMIx' }) });
+  it('asks in plain words for a built-in tool', () => {
+    renderCard({
+      approval: makeApproval({
+        tool_name: 'save_artifact',
+        tool_source: 'AIMIx',
+        tool_description: 'Save a new file in the user’s workspace.',
+        arguments: { path: 'notes/plan.md', content: 'x' },
+      }),
+    });
 
-    expect(screen.getByRole('region', { name: 'Allow “Save artifact”?' })).toBeInTheDocument();
-    expect(screen.getByText('Draft email (Writer) wants to use this tool.')).toBeInTheDocument();
+    const card = screen.getByRole('region', { name: 'Save “notes/plan.md” to your files?' });
+    expect(within(card).getByText('Draft email (Writer) wants your OK first.')).toBeInTheDocument();
+    expect(within(card).queryByText('Save a new file in the user’s workspace.')).toBeNull();
+  });
+
+  it('is a jump target: its heading takes focus', () => {
+    renderCard();
+
+    const heading = screen.getByRole('heading', { name: 'Allow “Send email”?' });
+    heading.focus();
+
+    expect(heading).toHaveAttribute('id', 'approval-31');
+    expect(heading).toHaveFocus();
+  });
+
+  it('counts hours down in hours and minutes', () => {
+    renderCard({ approval: makeApproval({ expires_at: '2026-10-24T15:56:30Z' }) });
+
+    expect(screen.getByText('5 h 56 min left')).toBeInTheDocument();
   });
 
   it('folds a long value behind Show all and opens it in full', async () => {
@@ -105,7 +129,6 @@ describe('ApprovalCard', () => {
 
     expect(onApprove).toHaveBeenCalledOnce();
     expect(onDecline).toHaveBeenCalledOnce();
-    expect(screen.getByText('No answer counts as a decline.')).toBeInTheDocument();
   });
 
   it('shows which answer is on its way and blocks both meanwhile', async () => {
@@ -131,5 +154,6 @@ describe('ApprovalCard', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Decline' })).not.toBeInTheDocument();
     expect(screen.getByText('Answer it from the run in Runs.')).toBeInTheDocument();
+    expect(screen.getByText('30 s left')).toBeInTheDocument();
   });
 });

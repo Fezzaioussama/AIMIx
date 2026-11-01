@@ -1,8 +1,16 @@
 import { Download, Trash2, type LucideIcon } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type Ref } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+  type Ref,
+} from 'react';
 
 import type { WorkspaceFile } from '../../core/api/types';
+import { FOCUS_RING } from '../../core/ui/focus';
 import { Spinner } from '../../core/ui/Spinner';
 import { fileIcon, fileName, folderOf, formatBytes, formatDate } from './fileFormat';
 import type { RowAction } from './useFiles';
@@ -14,11 +22,11 @@ interface FileRowProps {
   /** Why the last action on this file failed; empty when it did not. */
   error: string;
   onDownload: () => void;
-  onDelete: () => void;
+  /** Without it the row offers no delete. */
+  onDelete?: () => void;
+  /** Shown above the name, e.g. the picture itself. */
+  preview?: ReactNode;
 }
-
-const FOCUS =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400';
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: LucideIcon;
@@ -33,7 +41,7 @@ function IconButton({ icon: Icon, busy, buttonRef, ...rest }: IconButtonProps) {
       {...rest}
       ref={buttonRef}
       type="button"
-      className={`grid size-9 shrink-0 place-items-center rounded-lg text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}
+      className={`grid size-9 shrink-0 place-items-center pointer-coarse:size-11 rounded-lg text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
     >
       {busy ? (
         <Spinner decorative className="size-4" />
@@ -91,14 +99,14 @@ function ConfirmDelete({ onConfirm, onCancel }: { onConfirm: () => void; onCance
         ref={cancel}
         type="button"
         onClick={onCancel}
-        className={`rounded-lg border border-white/15 px-3 py-1.5 text-slate-100 transition-colors hover:bg-white/10 ${FOCUS}`}
+        className={`rounded-lg border border-white/15 px-3 py-1.5 text-slate-100 transition-colors hover:bg-white/10 ${FOCUS_RING}`}
       >
         Cancel
       </button>
       <button
         type="button"
         onClick={onConfirm}
-        className={`rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-1.5 font-medium text-red-200 transition-colors hover:bg-red-500/20 ${FOCUS}`}
+        className={`rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-1.5 font-medium text-red-200 transition-colors hover:bg-red-500/20 ${FOCUS_RING}`}
       >
         Delete
       </button>
@@ -106,8 +114,8 @@ function ConfirmDelete({ onConfirm, onCancel }: { onConfirm: () => void; onCance
   );
 }
 
-/** One file: what it is, with download and delete (after a confirmation). */
-export function FileRow({ file, action, error, onDownload, onDelete }: FileRowProps) {
+/** One file: what it is, with download and, when given, delete (after a confirmation). */
+export function FileRow({ file, action, error, onDownload, onDelete, preview }: FileRowProps) {
   const [confirming, setConfirming] = useState(false);
   const deleteButton = useRef<HTMLButtonElement>(null);
   const name = fileName(file.path);
@@ -119,11 +127,12 @@ export function FileRow({ file, action, error, onDownload, onDelete }: FileRowPr
 
   function confirm() {
     setConfirming(false);
-    onDelete();
+    onDelete?.();
   }
 
   return (
     <motion.li initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-3">
+      {preview}
       <div className="flex items-center gap-3">
         <FileSummary file={file} />
         <IconButton
@@ -133,15 +142,17 @@ export function FileRow({ file, action, error, onDownload, onDelete }: FileRowPr
           aria-label={`Download ${name}`}
           onClick={onDownload}
         />
-        <IconButton
-          icon={Trash2}
-          busy={action === 'delete'}
-          disabled={action !== undefined}
-          aria-label={`Delete ${name}`}
-          aria-expanded={confirming}
-          onClick={() => setConfirming(true)}
-          buttonRef={deleteButton}
-        />
+        {onDelete && (
+          <IconButton
+            icon={Trash2}
+            busy={action === 'delete'}
+            disabled={action !== undefined}
+            aria-label={`Delete ${name}`}
+            aria-expanded={confirming}
+            onClick={() => setConfirming(true)}
+            buttonRef={deleteButton}
+          />
+        )}
       </div>
       {confirming && <ConfirmDelete onCancel={cancel} onConfirm={confirm} />}
       {error && (

@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 
 import { HOME_PATH } from '../../core/routes';
 import { BusyNotice } from '../../core/ui/BusyNotice';
+import { countOf } from '../../core/usageFormat';
 import { SECONDARY_BUTTON } from '../pipelines/buttonStyles';
 import { inputLabel } from '../pipelines/pipelineInputs';
 import { PaneHeader } from './PaneHeader';
-import { countOf } from './teamBrief';
 import { TeamRoster } from './TeamRoster';
 import type { Mission } from './useMission';
 import type { MissionTeam } from './useMissionTeam';
@@ -16,6 +16,8 @@ interface TeamPaneProps {
   /** The agent the drawer is editing, marked on the graph. */
   selected: number | null;
   onEditStep: (order: number) => void;
+  /** A tab names the pane at every width (two columns). */
+  tabbed?: boolean;
 }
 
 /** Where saving stands, in a few words. */
@@ -103,11 +105,11 @@ function TeamBody({ mission, selected, onEditStep }: TeamPaneProps) {
 
 /** The team at the centre: its agents (live while a run works) and "Open in builder". */
 export function TeamPane(props: TeamPaneProps) {
-  const { mission } = props;
+  const { mission, tabbed } = props;
   const { team } = mission;
   return (
     <>
-      <PaneHeader pane="team" icon={Users}>
+      <PaneHeader pane="team" icon={Users} tabbed={tabbed}>
         {team.pipeline !== null && (
           <button
             type="button"

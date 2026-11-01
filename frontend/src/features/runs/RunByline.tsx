@@ -5,13 +5,14 @@ import { formatDateTime } from '../../core/time';
 import { hasTriggerTag, RunTriggerTag } from './RunTriggerTag';
 
 /**
- * "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline": when a run began, what started
- * it (marked only when a schedule or a webhook did), and the way back to its pipeline.
+ * "Run #4 · Started Oct 24, 9:58 PM · Scheduled · Open the pipeline": which run it is, when
+ * it began, what started it (marked only when a schedule or a webhook did), and the way back
+ * to its pipeline while it exists.
  */
 export function RunByline({ run }: { run: Run }) {
   return (
     <p className="mt-1 text-sm text-slate-400">
-      Started {formatDateTime(run.started_at ?? run.created_at)}
+      Run #{run.id} · Started {formatDateTime(run.started_at ?? run.created_at)}
       {hasTriggerTag(run.trigger) && (
         <>
           {' · '}

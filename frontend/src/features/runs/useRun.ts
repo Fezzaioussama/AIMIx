@@ -28,6 +28,12 @@ export interface LiveRunState {
   adopt: (run: Run) => void;
 }
 
+/** What a run's report needs to act on it; both `useRun` and `FollowedRun` give it. */
+export type RunControls = Pick<
+  LiveRunState,
+  'stop' | 'resume' | 'approve' | 'decline' | 'busy' | 'error'
+>;
+
 interface Failure {
   runId: number;
   message: string;

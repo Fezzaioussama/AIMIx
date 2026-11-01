@@ -344,8 +344,13 @@ describe('the mission workspace: running', () => {
     });
     expect(composer()).toHaveFocus();
     expect(within(log()).getByText(/Your team is on it/)).toBeInTheDocument();
-    // The status and its control are always in reach at the top of the results pane.
-    expect(screen.getByRole('button', { name: 'Stop the run' })).toBeEnabled();
+    // A run started here keeps the person in the conversation, where they typed.
+    expect(screen.getByRole('tab', { name: /^Conversation/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // The report takes the planned list's place, its status and Stop at the top.
+    expect(await screen.findByRole('button', { name: 'Stop the run' })).toBeEnabled();
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
     // Editing waits: the agents on the team pane cannot be opened mid-run.
     const team = within(screen.getByRole('tabpanel', { name: 'Team' }));
@@ -362,8 +367,12 @@ describe('the mission workspace: running', () => {
     const results = screen.getByRole('region', { name: 'Deliverables' });
     expect(within(results).getByText('Comparison table')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stop the run' })).not.toBeInTheDocument();
-    expect(screen.getByText('Run details').closest('details')).not.toHaveAttribute('open');
-    // What the agents saved is listed again once the run has ended.
+    expect(screen.getByRole('button', { name: /^How your team got there/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    // The Comparison agent may save files: what was saved during the run is looked up while
+    // it works, and again once a step has finished and the run has ended.
     await waitFor(() => expect(server.to('GET', '/api/files').length).toBeGreaterThanOrEqual(2));
   }, 15000);
 

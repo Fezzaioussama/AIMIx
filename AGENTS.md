@@ -117,6 +117,7 @@ backend/
     endpoints/*.py       #   HTTP boundary: one APIRouter per resource; validate, call, shape
     schemas/*.py         #   pydantic request + response contracts (one module per resource)
     deps.py              #   FastAPI dependencies: db session, settings, current user, provider
+    document_deps.py     #   the documents' dependencies: limits, OCR engine, page downloads
     throttling.py        #   rate-limit dependencies: client address, auth and per-account limits
     services/*.py        #   ALL business logic and orchestration
     repositories/*.py    #   data access (SQLAlchemy); ownership filtering lives here
@@ -216,14 +217,18 @@ and `services → llm`. `llm/` never imports `api/` or `config/` — it receives
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
 **Files already over budget (technical debt).** None — no file in `backend/` or
-`frontend/src/` exceeds the 700-line cap. Six source files are past the 300-line target
-and should be split before they grow: `frontend/src/core/api/types.ts` (489),
-`backend/api/models.py` (463), `backend/api/services/prompts.py` (351),
-`backend/api/deps.py` (340), `backend/api/services/agent_tools.py` (373) and
-`backend/api/repositories/runs.py` (303). The largest files
-overall are tests, the biggest being `frontend/src/features/mission/useMission.test.tsx`
-(561). When a file first crosses a budget, list it here with its line count so the next
-change knows not to grow it.
+`frontend/src/` exceeds the 700-line cap. Seven source files are past the 300-line target
+and should be split before they grow: `frontend/src/core/api/types.ts` (406),
+`backend/api/models.py` (525), `backend/api/services/prompts.py` (313),
+`backend/api/deps.py` (351), `backend/api/services/agent_tools.py` (351),
+`frontend/src/styles.css` (313) and `backend/api/repositories/runs.py` (303). The largest
+files overall are tests, the biggest being `frontend/src/features/mission/useMission.test.tsx`
+(563); tests past 300 lines also include
+`frontend/src/features/runs/report/reportModel.test.ts` (351),
+`backend/tests/test_web_import_guard.py` (329),
+`frontend/src/features/pipelines/AttachDocument.test.tsx` (316) and
+`frontend/src/features/mission/MissionComposer.test.tsx` (309). When a file first crosses a
+budget, list it here with its line count so the next change knows not to grow it.
 
 ---
 

@@ -15,6 +15,7 @@ import {
   runInputLimitProblem,
   runInputSize,
   runRequest,
+  splitDocuments,
   toInputName,
   unknownPlaceholders,
 } from './pipelineInputs';
@@ -180,6 +181,33 @@ describe('appendDocument', () => {
     const once = appendDocument('', report);
     const twice = appendDocument(once, { ...report, filename: 'notes.txt', text: 'More.' });
     expect(twice).toBe('[Document: report.pdf]\nRevenue grew.\n\n[Document: notes.txt]\nMore.');
+  });
+});
+
+describe('splitDocuments', () => {
+  it('reads back what appendDocument wrote: the typed text, then each document', () => {
+    const notes = { ...report, filename: 'notes.txt', text: 'More.\n' };
+    const input = appendDocument(appendDocument('Summarise this:', report), notes);
+    expect(splitDocuments(input)).toEqual({
+      typed: 'Summarise this:',
+      documents: [
+        { source: 'report.pdf', text: 'Revenue grew.' },
+        { source: 'notes.txt', text: 'More.\n' },
+      ],
+    });
+  });
+
+  it('holds only typed text when no document was added', () => {
+    expect(splitDocuments('Just a topic')).toEqual({ typed: 'Just a topic', documents: [] });
+    expect(splitDocuments('')).toEqual({ typed: '', documents: [] });
+  });
+
+  it('keeps a document with no text, and a header-like phrase inside a line', () => {
+    const input = 'See [Document: x] here\n\n[Document: empty.txt]';
+    expect(splitDocuments(input)).toEqual({
+      typed: 'See [Document: x] here',
+      documents: [{ source: 'empty.txt', text: '' }],
+    });
   });
 });
 

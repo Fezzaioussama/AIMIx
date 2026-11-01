@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom';
 
 import type { Run, RunStatus } from '../../core/api/types';
+import { countOf } from '../../core/usageFormat';
 import { stepLabel } from '../pipelines/stages';
 import { RUN_STATUS_STYLES, RunStatusBadge } from '../runs/RunStatusBadge';
 import { ANSWER_ACTION, Bubble } from './Bubble';
 import type { ViewProps } from './messageContext';
-import { countOf } from './teamBrief';
 
 function readyLine(run: Run): string {
   const ready = run.steps.filter((step) => step.status === 'succeeded' && step.is_output).length;

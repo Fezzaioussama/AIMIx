@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Pipeline } from '../../core/api/types';
-import { countOf, describeTeam, providesInWords, toolsInWords } from './teamBrief';
+import { describeTeam, providesInWords, toolsInWords } from './teamBrief';
 import { PLAN, planStep } from './testData';
 
 describe('describeTeam', () => {
@@ -86,10 +86,5 @@ describe('words for the brief', () => {
     expect(providesInWords(describeTeam({ ...PLAN, inputs: [] }))).toBe(
       'You provide: a short description of what to work on.',
     );
-  });
-
-  it('counts with the right plural', () => {
-    expect(countOf(1, 'agent')).toBe('1 agent');
-    expect(countOf(3, 'stage')).toBe('3 stages');
   });
 });

@@ -4,9 +4,9 @@ import { Link } from 'react-router-dom';
 import type { MissionTemplate, Pipeline } from '../../core/api/types';
 import { missionPath } from '../../core/routes';
 import { Spinner } from '../../core/ui/Spinner';
+import { countOf } from '../../core/usageFormat';
 import { templateIcon } from '../templates/templateIcons';
 import { useTemplates } from '../templates/useTemplates';
-import { countOf } from './teamBrief';
 import { useRecentMissions } from './useRecentMissions';
 
 /** Missions to start from; picking one fills the message box. */
