@@ -15,6 +15,7 @@
 !.env.*.example
 .envrc
 .direnv/
+artifacts/
 local_settings.py
 settings.local.py
 # Per-developer overrides, e.g. .claude/settings.local.json. A shared
@@ -140,6 +141,7 @@ Thumbs.db
 # Tracked on purpose: AGENTS.md, CLAUDE.md, and any .cursor/ or .github/
 # pointer files — they are shared rules, not local state.
 .codex/
+.kilo/
 .agents/
 .agents-server/
 # Archify skill work folders (diagram candidates, receipts, browser evidence).
