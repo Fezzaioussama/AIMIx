@@ -75,7 +75,7 @@ def _workspace(config: ToolboxConfig) -> LocalWorkspace | None:
         config.document_limits,
     )
     render = RenderOptions(config.pdf_font_path, config.pdf_bold_font_path)
-    return LocalWorkspace(storage, limits, render)
+    return LocalWorkspace(storage, limits, render, config.ocr)
 
 
 def _workspace_tool(

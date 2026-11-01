@@ -11,6 +11,7 @@ import {
   inputLabel,
   inputValue,
   isRunReady,
+  runInputLimitProblem,
   runRequest,
   type RunDraft,
 } from '../pipelines/pipelineInputs';
@@ -236,6 +237,8 @@ export function scheduleProblem(inputs: PipelineInput[], draft: ScheduleDraft): 
       ? 'Enter the minutes past the hour, from 0 to 59.'
       : 'Choose a time of day.';
   }
+  const tooLong = runInputLimitProblem(inputs, draft.run);
+  if (tooLong) return tooLong;
   if (isRunReady(inputs, draft.run)) return null;
   if (inputs.length === 0) return 'Say what each run should work on.';
   const missing = inputs.filter((field) => !inputValue(field, draft.run).trim());

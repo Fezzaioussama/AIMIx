@@ -17,8 +17,9 @@ from api.exceptions import DocumentUnreadable, OcrTimedOut
 from api.services.documents import ocr
 from api.services.documents.extraction import extract_document
 from api.services.documents.ocr import OcrConfig, TesseractOcr, ocr_config, ocr_engine
+from api.services.toolbox.config import toolbox_config
 from config.settings import Settings, pin_settings
-from tests.conftest import TEST_SETTINGS
+from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE
 from tests.test_documents import LIMITS
 
 ON = OcrConfig(enabled=True, languages="eng+fra", timeout_seconds=5.0)
@@ -128,7 +129,7 @@ def test_a_failing_language_check_gives_no_engine(monkeypatch: pytest.MonkeyPatc
     assert ocr_engine(ON) is None
 
 
-def test_the_app_builds_its_ocr_engine_once_from_the_settings(
+def test_the_app_and_the_agents_share_one_engine_built_once_from_the_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     built: list[OcrConfig] = []
@@ -138,15 +139,22 @@ def test_the_app_builds_its_ocr_engine_once_from_the_settings(
         built.append(config)
         return engine
 
-    monkeypatch.setattr(main, "ocr_engine", build)
-    settings = {"document_ocr_languages": "deu", "document_ocr_timeout_seconds": 3.0}
-    pin_settings(TEST_SETTINGS.model_copy(update=settings))
+    monkeypatch.setattr(ocr, "ocr_engine", build)
+    ocr.shared_ocr_engine.cache_clear()
+    settings = TEST_SETTINGS.model_copy(
+        update={"document_ocr_languages": "deu", "document_ocr_timeout_seconds": 3.0}
+    )
+    pin_settings(settings)
     try:
         application = main.create_app()
+        # An agent's toolbox is built in a run's worker, long after startup.
+        toolboxes = [toolbox_config(settings, UNUSED_WORKSPACE) for _ in range(2)]
     finally:
         pin_settings(TEST_SETTINGS)
+        ocr.shared_ocr_engine.cache_clear()
     assert built == [OcrConfig(enabled=False, languages="deu", timeout_seconds=3.0)]
     assert application.state.ocr is engine
+    assert [toolbox.ocr for toolbox in toolboxes] == [engine, engine]
 
 
 # --- settings ------------------------------------------------------------------------

@@ -33,6 +33,7 @@ export const API = {
   runSchedule: (scheduleId: number) => `/api/schedules/${scheduleId}/run`,
   previewSchedule: '/api/schedules/preview',
   extractDocument: '/api/documents/extract',
+  importDocumentUrl: '/api/documents/import-url',
   transcribeVoice: '/api/voice/transcribe',
   files: '/api/files',
   /** One file of the user's workspace, by its '/'-separated path. */

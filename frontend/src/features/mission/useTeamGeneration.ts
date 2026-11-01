@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 
 import { ApiError } from '../../core/api/client';
 import { planMission } from '../../core/api/pipelines';
+import type { PlanDocument } from '../../core/api/planningTypes';
 import type { Pipeline, PlanAnswer } from '../../core/api/types';
 import { useCancellableRequest } from '../../core/hooks/useCancellableRequest';
 import { note, questionsReply, teamReply, type AimixMessage } from './missionMessages';
@@ -36,15 +37,16 @@ export function missionNamed(pipeline: Pipeline, description: string): Pipeline 
 }
 
 /**
- * How the planner is asked: `answers` to the questions it asked before, and whether it
- * may ask (it may not once the person skipped its questions).
+ * How the planner is asked: `answers` to the questions it asked before, whether it may
+ * ask (it may not once the person skipped its questions), and the documents attached.
  */
 export interface Briefing {
   answers: PlanAnswer[];
   mayAsk: boolean;
+  documents: PlanDocument[];
 }
 
-const FIRST_ASK: Briefing = { answers: [], mayAsk: true };
+export const FIRST_ASK: Briefing = { answers: [], mayAsk: true, documents: [] };
 
 async function plan(
   description: string,
@@ -52,7 +54,7 @@ async function plan(
   signal: AbortSignal,
 ): Promise<Generation> {
   try {
-    const response = await planMission(description, briefing.answers, briefing.mayAsk, signal);
+    const response = await planMission({ description, ...briefing }, signal);
     if (response.generated_pipeline === null) {
       return { team: null, reply: questionsReply(description, response.questions) };
     }

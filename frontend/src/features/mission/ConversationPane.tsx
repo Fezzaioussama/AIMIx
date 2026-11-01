@@ -1,6 +1,7 @@
 import { MessagesSquare, Plus } from 'lucide-react';
 import { useEffect, useRef, useState, type Ref, type RefObject } from 'react';
 
+import { waitingForDocument } from '../pipelines/pipelineInputs';
 import { Bubble, Working } from './Bubble';
 import { MessageItem } from './MessageItem';
 import type { MessageContext } from './messageContext';
@@ -24,7 +25,8 @@ const LOG_CLASS =
 function composerHint(mission: Mission): string {
   if (mission.generation.generating) return 'AIMIx is putting your team together…';
   if (mission.proposals.revision.busy) return 'AIMIx is working on your change…';
-  return mission.unavailable ? 'This mission is not available.' : '';
+  if (mission.unavailable) return 'This mission is not available.';
+  return mission.planWaitsFor ? waitingForDocument(mission.planWaitsFor) : '';
 }
 
 /** Scrolls the newest message into view as the conversation grows or an answer changes. */
@@ -56,6 +58,9 @@ function contextOf(
     focusComposer: () => field.current?.focus(),
     openQuestionsId: openQuestions(mission.conversation.messages)?.id ?? null,
     answerQuestions: mission.answer,
+    planWaitsFor: mission.planWaitsFor,
+    runWaitsFor: mission.runWaitsFor,
+    documentsGone: mission.documentsGone,
   };
 }
 
@@ -145,9 +150,11 @@ export function ConversationPane({ mission, showPane, onStartOver }: Conversatio
         onChange={setText}
         onSend={send}
         hasTeam={team.pipeline !== null}
-        disabled={mission.thinking || mission.unavailable}
+        disabled={mission.thinking || mission.unavailable || mission.planWaitsFor !== ''}
         disabledHint={composerHint(mission)}
-        onRun={canRun ? () => run.ask() : undefined}
+        onRun={canRun ? () => mission.runIt() : undefined}
+        documents={mission.documents}
+        placement={mission.placement}
       />
     </>
   );

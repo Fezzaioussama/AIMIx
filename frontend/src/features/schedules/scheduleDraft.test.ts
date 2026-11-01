@@ -222,6 +222,19 @@ describe('what stops a schedule from being saved', () => {
     expect(scheduleProblem([TOPIC, AUDIENCE], half)).toBe('Fill in audience.');
     expect(scheduleProblem([TOPIC, AUDIENCE], draft)).toBe('Fill in Topic, audience.');
   });
+
+  it('says when the inputs are longer than a run takes', () => {
+    const long = 'x'.repeat(500_001);
+    expect(scheduleProblem([], { ...draft, run: { text: long, values: {} } })).toBe(
+      'Your inputs are 500,001 characters; a run takes at most 500,000. ' +
+        'Shorten the text, or delete a document from it (each starts with “[Document: …]”).',
+    );
+    const named = { ...draft, run: { text: '', values: { topic: long, audience: 'b' } } };
+    expect(scheduleProblem([TOPIC, AUDIENCE], named)).toBe(
+      'Your inputs are 500,002 characters; a run takes at most 500,000. ' +
+        'Shorten the text, or delete a document from it (each starts with “[Document: …]”).',
+    );
+  });
 });
 
 describe('the requests', () => {

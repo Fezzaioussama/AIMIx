@@ -4,10 +4,12 @@ Kept apart from the planner's prompts (``prompts``), which decide what each step
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 
 from api.services.flow_prompts import REVIEWER_RULE
+from api.services.tool_prompts import tool_guidance
 
 STEP_AGENT_TEMPLATE = (
     "You are {identity} in an AIMIx pipeline. Your final reply is handed on as the "
@@ -30,12 +32,6 @@ STEP_AGENT_WORK_RULES = (
 )
 STEP_AGENT_OUTPUT_TEMPLATE = (
     "Your final reply must match this expected output in content and format: {expected_output}"
-)
-STEP_AGENT_TOOL_GUIDANCE = (
-    "Use your tools whenever the task depends on something you cannot be sure of, such "
-    "as current events, figures, calculations or the content of a web page, instead of "
-    "guessing. Cite the URL of every web source you rely on. When a tool returns an "
-    "error, adapt: try another query or source, or say what could not be verified."
 )
 #: How much of each run input every agent is shown in its brief; its task holds the rest.
 BRIEF_VALUE_MAX_CHARS = 600
@@ -100,11 +96,11 @@ def team_brief(team: TeamView, own_order: int) -> str:
     return "\n".join(lines)
 
 
-def step_agent_system_prompt(agent: AgentRole, has_tools: bool) -> str:
+def step_agent_system_prompt(agent: AgentRole, tools: Collection[str]) -> str:
     """The system prompt for one step's agent: its identity, the working rules, its team
-    and this run when known, the result it must deliver when the step names one, tool
-    guidance only when it has tools, and, for a reviewer, the rule to end with a verdict
-    line."""
+    and this run when known, the result it must deliver when the step names one, what it
+    is told about its tools (by name) and links (``tool_prompts``), and, for a reviewer,
+    the rule to end with a verdict line."""
     identity = f"the {agent.role} agent" if agent.role else "an agent"
     parts = [STEP_AGENT_TEMPLATE.format(identity=identity), STEP_AGENT_WORK_RULES]
     if agent.context.strip():
@@ -112,8 +108,7 @@ def step_agent_system_prompt(agent: AgentRole, has_tools: bool) -> str:
     if agent.expected_output.strip():
         expected = agent.expected_output.strip()
         parts.append(STEP_AGENT_OUTPUT_TEMPLATE.format(expected_output=expected))
-    if has_tools:
-        parts.append(STEP_AGENT_TOOL_GUIDANCE)
+    parts.extend(tool_guidance(tools))
     if agent.reviewer:
         parts.append(REVIEWER_RULE)
     return "\n\n".join(parts)

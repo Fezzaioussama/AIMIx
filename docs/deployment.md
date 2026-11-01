@@ -74,7 +74,10 @@ French, the default `DOCUMENT_OCR_LANGUAGES=eng+fra`. Another language needs its
 one line saying whether OCR is ready (`documents.ocr status=ready`), turned off,
 or unavailable and why (`binary_missing`, `languages_missing:<codes>`); while it
 is unavailable, images are refused and scanned PDF pages are skipped, with a
-message that says so.
+message that says so. Agents reading the user's files (`read_workspace_file`) use
+the same engine, in reading slots of their own, so an agent's OCR never keeps an
+upload waiting; and a scan that carries only a page number or a scanner app's
+footer in small print is read by OCR too (`DOCUMENT_OCR_MIN_PAGE_CHARS`).
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -83,7 +86,10 @@ message that says so.
 | `DOCUMENT_OCR_MAX_PAGES` | `30` | Pages one document may send to OCR |
 | `DOCUMENT_OCR_MAX_SECONDS` | `120` | All the OCR of one document; no page starts after it |
 | `DOCUMENT_OCR_TIMEOUT_SECONDS` | `15` | Per page; a slower page is skipped |
-| `DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` | `2` | Documents read at once; another waits `DOCUMENT_EXTRACTION_WAIT_SECONDS` (`30`), then gets 503 |
+| `DOCUMENT_OCR_MIN_PAGE_CHARS` | `50` | A PDF page with less text than this, all small print (14 pt or less), whose pictures cover most of it, is OCR'd too; `0`: never |
+| `DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` | `2` | Documents people read at once (uploads and links); another waits `DOCUMENT_EXTRACTION_WAIT_SECONDS` (`30`), then gets 503 |
+| `DOCUMENT_AGENT_MAX_CONCURRENT_READS` | `2` | Workspace files agents read at once, apart from people's; another waits as long, then the agent is told the server is busy |
+| `DOCUMENT_URL_MAX_CONCURRENT` | `8` | Links downloaded and read at once, each holding up to `DOCUMENT_MAX_BYTES` in memory; one more gets 503 at once |
 | `DOCUMENT_OCR_DPI` | `300` | Resolution a PDF page is rendered at for OCR |
 | `DOCUMENT_MAX_IMAGE_PIXELS` | `40000000` | Larger images are refused before decoding |
 

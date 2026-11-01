@@ -99,7 +99,7 @@ describe('planMission', () => {
       );
     const answers = [{ question: 'Who reads it?', answer: 'Students' }];
 
-    const plan = await planMission('A report', answers, false);
+    const plan = await planMission({ description: 'A report', answers, mayAsk: false });
 
     expect(plan).toEqual({
       generated_pipeline: null,
@@ -123,10 +123,26 @@ describe('planMission', () => {
       reply({ generated_pipeline: legacy, questions: [], available_models: ['v/m'] }),
     );
 
-    const plan = await planMission('A report', [], true);
+    const plan = await planMission({ description: 'A report', answers: [], mayAsk: true });
 
     expect(plan.generated_pipeline?.inputs).toEqual([]);
     expect(plan.generated_pipeline?.steps[0]).toMatchObject({ review: null, condition: null });
+  });
+
+  it('sends the documents the person attached, as their name, size and start', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(reply({ generated_pipeline: null, questions: [], available_models: [] }));
+    const documents = [{ name: 'report.pdf', pages: 2, characters: 13, excerpt: 'Revenue grew.' }];
+
+    await planMission({ description: 'Summarise it', answers: [], mayAsk: true, documents });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      description: 'Summarise it',
+      may_ask: true,
+      answers: [],
+      documents,
+    });
   });
 });
 

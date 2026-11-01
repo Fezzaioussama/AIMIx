@@ -5,46 +5,38 @@ Failures an agent can recover from raise ``ToolException``: the agent receives
 them as an error result and can try another query or source, instead of the
 whole pipeline run failing.
 
-Page fetches only reach public addresses. Every hop of a redirect chain is
-refused up front when its host resolves to any loopback, private, link-local
-or otherwise non-global address (``api.services.addresses``), and the
-connection itself is made by ``api.services.outbound``, which checks the
-addresses it resolves and connects to exactly those: neither a model nor a DNS
-server that changes its answer can steer a fetch into the server's own network
-(SSRF, DNS rebinding). Bodies arrive decoded in bounded pieces, so a
-compressed bomb stops at WEB_FETCH_MAX_BYTES like any page, and
-WEB_FETCH_MAX_SECONDS bounds the whole fetch, redirects included.
+Page fetches go through ``api.services.web_download``, the core the pages users
+read from a link share: public addresses only, every redirect hop checked, no
+DNS-rebinding window, bodies decoded in bounded pieces (a compressed bomb stops
+at WEB_FETCH_MAX_BYTES like any page) and WEB_FETCH_MAX_SECONDS for the whole
+fetch, redirects included.
 """
 
 from __future__ import annotations
 
-import codecs
 import logging
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urljoin, urlsplit
 
-import anyio
 import httpx
 from langchain_core.tools import ToolException
 
-from api.services.addresses import AddressNotAllowed, Resolver, ensure_public_host, resolve_host
-from api.services.outbound import BoundedBodies, OutboundPolicy, guarded_client, guarded_transport
+from api.services.addresses import AddressNotAllowed, Resolver, resolve_host
 from api.services.toolbox.config import ToolboxConfig
-from api.services.toolbox.html_text import html_to_text
+from api.services.toolbox.html_text import decode_page, html_to_text, page_charset, text_charset
+from api.services.web_download import (
+    USER_AGENT,
+    Download,
+    DownloadFailed,
+    PageDownloader,
+    UnwantedMediaType,
+)
 
 logger = logging.getLogger(__name__)
 
-MAX_REDIRECTS = 5
-USER_AGENT = "AIMIx-agent/1.0"
 TEXT_MEDIA_TYPES = frozenset(
     {"application/json", "application/xml", "application/xhtml+xml", "application/javascript"}
 )
-#: Codecs a page may name as its charset that are not character sets: they
-#: raise on ordinary text ("idna", "undefined") or take quadratic time ("punycode").
-#: Bytes-to-bytes codecs ("zlib", "base64", "rot13") fail the decode and fall back too.
-NOT_CHARSETS = frozenset({"idna", "punycode", "undefined"})
-FALLBACK_CHARSET = "utf-8"
 
 
 @dataclass(frozen=True)
@@ -56,16 +48,11 @@ class SearchHit:
 
 @dataclass(frozen=True)
 class FetchedPage:
-    """One fetched hop: either readable text or where the server redirected."""
+    """A fetched page's readable text."""
 
     url: str
     text: str = ""
     truncated: bool = False
-    redirect: str | None = None
-
-
-def _media_type(content_type: str) -> str:
-    return content_type.split(";", 1)[0].strip().lower()
 
 
 def _is_text(media_type: str) -> bool:
@@ -76,23 +63,6 @@ def _is_text(media_type: str) -> bool:
         or media_type in TEXT_MEDIA_TYPES
         or media_type.endswith(("+json", "+xml"))
     )
-
-
-def _charset(name: str | None) -> str:
-    try:
-        codec = codecs.lookup(name or FALLBACK_CHARSET).name
-    except LookupError:
-        return FALLBACK_CHARSET
-    return FALLBACK_CHARSET if codec in NOT_CHARSETS else codec
-
-
-def decode_page(body: bytes, charset: str | None) -> str:
-    """The page as text in its declared charset, or UTF-8 when that is no text
-    codec at all; undecodable bytes become U+FFFD, never an error."""
-    try:
-        return body.decode(_charset(charset), errors="replace")
-    except (LookupError, UnicodeError):  # "zlib" and friends are not text codecs
-        return body.decode(FALLBACK_CHARSET, errors="replace")
 
 
 def _reason(cause: Exception) -> str:
@@ -122,33 +92,12 @@ def _search_hits(body: Any) -> list[SearchHit]:
     ]
 
 
-async def _read_capped(response: httpx.Response, limit: int) -> tuple[bytes, bool]:
-    body = bytearray()
-    async for chunk in response.aiter_bytes():
-        body.extend(chunk)
-        if len(body) > limit:
-            return bytes(body[:limit]), True
-    return bytes(body), False
-
-
-def _host(url: str) -> str:
-    """The host of an absolute http(s) URL, else ``ToolException``."""
-    try:
-        parts = urlsplit(url)
-        host, _port = parts.hostname, parts.port  # .port raises on a bad one
-    except ValueError as cause:  # e.g. "http://[abc/"
-        raise ToolException("That is not a valid URL.") from cause
-    if parts.scheme not in ("http", "https") or not host:
-        raise ToolException("Only absolute http or https URLs can be fetched.")
-    return host
-
-
-def _redirect(url: str, location: str) -> FetchedPage:
-    try:
-        target = urljoin(url, location)
-    except ValueError as cause:
-        raise ToolException("The page redirected to an invalid URL.") from cause
-    return FetchedPage(url, redirect=target)
+def _page_text(page: Download) -> str:
+    """The page as text, in the charset ``html_text``'s rules find (for HTML, the HTML
+    standard's order), reduced to what a reader sees."""
+    if "html" not in page.media_type:
+        return decode_page(page.body, text_charset(page.body, page.charset)).strip()
+    return html_to_text(decode_page(page.body, page_charset(page.body, page.charset)))
 
 
 class WebGateway:
@@ -166,7 +115,9 @@ class WebGateway:
     ) -> None:
         self._config = config
         self._transport = transport
-        self._resolver = resolver
+        self._pages = PageDownloader(
+            config.timeout_seconds, config.fetch_max_seconds, transport, resolver
+        )
 
     def _search_client(self) -> httpx.AsyncClient:
         # TAVILY_SEARCH_URL is the operator's: it keeps httpx's defaults, proxies included.
@@ -174,19 +125,6 @@ class WebGateway:
             transport=self._transport,
             timeout=self._config.timeout_seconds,
             headers={"User-Agent": USER_AGENT},
-        )
-
-    def _fetch_client(self) -> httpx.AsyncClient:
-        transport = (
-            BoundedBodies(self._transport)
-            if self._transport is not None
-            else guarded_transport(OutboundPolicy(self._resolver))
-        )
-        return guarded_client(
-            transport,
-            timeout=self._config.timeout_seconds,
-            headers={"User-Agent": USER_AGENT},
-            follow_redirects=False,
         )
 
     async def search(self, query: str) -> list[SearchHit]:
@@ -206,47 +144,22 @@ class WebGateway:
         return _search_hits(body)
 
     async def fetch(self, url: str) -> FetchedPage:
-        """Follow up to MAX_REDIRECTS redirects, checking every hop is public,
-        all within WEB_FETCH_MAX_SECONDS."""
+        """The readable text of the page at ``url``, within WEB_FETCH_MAX_SECONDS."""
+        page = await self._download(url)
+        text = _page_text(page)
+        limit = self._config.fetch_max_chars
+        return FetchedPage(page.url, text[:limit], page.truncated or len(text) > limit)
+
+    async def _download(self, url: str) -> Download:
         limit = self._config.fetch_max_seconds
         try:
-            with anyio.fail_after(limit):
-                return await self._follow(url)
+            return await self._pages.download(url, self._config.fetch_max_bytes, _is_text)
+        except UnwantedMediaType as cause:
+            raise ToolException(f"The page is {cause.media_type}, not text.") from cause
+        except (DownloadFailed, AddressNotAllowed) as cause:
+            raise ToolException(str(cause)) from cause
         except TimeoutError as cause:
             logger.warning("agent.tool_failed tool=fetch_url error=deadline")
             raise ToolException(f"Fetching the page took longer than {limit:g} seconds.") from cause
-
-    async def _follow(self, url: str) -> FetchedPage:
-        async with self._fetch_client() as client:
-            for _ in range(MAX_REDIRECTS + 1):
-                await self._ensure_public(url)
-                page = await self._get(client, url)
-                if page.redirect is None:
-                    return page
-                url = page.redirect
-        raise ToolException(f"The page redirected more than {MAX_REDIRECTS} times.")
-
-    async def _ensure_public(self, url: str) -> None:
-        try:
-            await ensure_public_host(_host(url), self._resolver)
-        except AddressNotAllowed as cause:
-            raise ToolException(str(cause)) from cause
-
-    async def _get(self, client: httpx.AsyncClient, url: str) -> FetchedPage:
-        try:
-            async with client.stream("GET", url) as response:
-                if response.is_redirect:
-                    return _redirect(url, response.headers["location"])
-                response.raise_for_status()
-                media_type = _media_type(response.headers.get("content-type", ""))
-                if not _is_text(media_type):
-                    raise ToolException(f"The page is {media_type}, not text.")
-                body, truncated = await _read_capped(response, self._config.fetch_max_bytes)
-                raw = decode_page(body, response.charset_encoding)
-        except AddressNotAllowed as cause:  # the address changed since the check
-            raise ToolException(str(cause)) from cause
         except (httpx.HTTPError, httpx.InvalidURL) as cause:
             raise _failure("fetch_url", "Fetching the page failed", cause) from cause
-        text = html_to_text(raw) if "html" in media_type else raw.strip()
-        limit = self._config.fetch_max_chars
-        return FetchedPage(url, text[:limit], truncated or len(text) > limit)

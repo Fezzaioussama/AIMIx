@@ -62,11 +62,11 @@ def parse_plan(
         sanitise_step(step, index, available_models, available_tools)
 
     plan["inputs"] = _sanitise_inputs(plan.get("inputs"))
-    _drop_unusable_flow(steps, plan["inputs"])
+    drop_unusable_flow(steps, plan["inputs"])
     return plan
 
 
-def _drop_unusable_flow(steps: list[dict[str, Any]], inputs: list[dict[str, str]]) -> None:
+def drop_unusable_flow(steps: list[dict[str, Any]], inputs: list[dict[str, str]]) -> None:
     """Set aside each condition and review loop that cannot work in this plan
     (the checks a save makes): a planner's slip never fails the request, it
     only leaves that step without the field."""

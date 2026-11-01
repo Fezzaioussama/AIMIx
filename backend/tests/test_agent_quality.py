@@ -31,7 +31,7 @@ from api.services.multiagent.step_agent import (
     StepAgentDependencies,
 )
 from api.services.pipeline_inputs import INPUT_DEFAULT_MAX_LENGTH
-from api.services.plan_prompts import TEAM_GUIDE, pipeline_generation_prompt
+from api.services.plan_prompts import TEAM_GUIDE, PlanRequest, pipeline_generation_prompt
 from tests.conftest import TEST_SETTINGS, FakeProvider
 
 DEFAULT = "deepseek/deepseek-v4-flash"
@@ -74,7 +74,7 @@ def test_a_planned_input_keeps_the_value_the_request_gave_unless_it_is_too_long(
 
 
 def test_a_new_plan_is_told_how_to_shape_its_team_and_to_keep_one_model() -> None:
-    prompt = pipeline_generation_prompt("Launch posts", [DEFAULT, "x-ai/grok-4.20"])
+    prompt = pipeline_generation_prompt(PlanRequest("Launch posts"), [DEFAULT, "x-ai/grok-4.20"])
 
     assert TEAM_GUIDE in prompt
     assert f'"model": {DEFAULT} for every step, unless the request asks for another' in prompt

@@ -3,7 +3,9 @@ import { useState, type FormEvent } from 'react';
 import type { PipelineInput } from '../../core/api/types';
 import { Spinner } from '../../core/ui/Spinner';
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from '../pipelines/buttonStyles';
+import { waitingForDocument } from '../pipelines/pipelineInputs';
 import { RunInputFields } from '../pipelines/RunInputCard';
+import { useInputReadings } from '../pipelines/useInputReadings';
 import { ScheduleFields } from './ScheduleFields';
 import {
   describeTiming,
@@ -58,11 +60,14 @@ export function ScheduleForm({
   const [draft, setDraft] = useState(initial);
   const [tried, setTried] = useState(false);
   const problem = scheduleProblem(inputs, draft);
+  const readings = useInputReadings();
+  // A document still being read would come too late for the schedule: saving waits for it.
+  const hold = blocked || (readings.reading && waitingForDocument(readings.reading));
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTried(true);
-    if (!problem && !blocked) onSubmit(draft);
+    if (!problem && !hold) onSubmit(draft);
   }
 
   return (
@@ -76,6 +81,7 @@ export function ScheduleForm({
           draft={draft.run}
           disabled={busy}
           onDraftChange={(run) => setDraft({ ...draft, run })}
+          onReading={readings.report}
           label={INPUT_LABEL}
         />
       </fieldset>
@@ -84,10 +90,10 @@ export function ScheduleForm({
           {problem}
         </p>
       )}
-      {blocked && <p className="mb-3 text-sm text-sky-300">{blocked}</p>}
+      {hold && <p className="mb-3 text-sm text-sky-300">{hold}</p>}
       <FormButtons
         busy={busy}
-        locked={Boolean(blocked)}
+        locked={Boolean(hold)}
         submitLabel={submitLabel}
         onCancel={onCancel}
       />

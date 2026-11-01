@@ -17,6 +17,7 @@ from api.services.flow_prompts import (
     FLOW_REVISION_RULES,
     NO_FEEDBACK_DETAIL,
 )
+from api.services.tool_prompts import LINKS_PLANNER_GUIDE
 
 #: What every planner prompt explains — tools, inputs, step fields, stages and the
 #: reply format — shared by generation and revision (§3). ``{tools}``, ``{models}``
@@ -77,6 +78,7 @@ each one. Group independent deliverables in the same stage so they can run in \
 parallel; add a later synthesis stage only if the request calls for one.
 
 """
+    + LINKS_PLANNER_GUIDE
     + FLOW_PLANNER_GUIDE
     + """\
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
@@ -191,9 +193,14 @@ def pipeline_revision_prompt(
 
 
 def fenced(tag: str, text: str) -> str:
-    """``text`` inside a ``<tag>`` block. That tag is removed from the text first,
-    so untrusted content cannot end the block early and pass for instructions."""
-    inner = re.sub(rf"<\s*/?\s*{tag}\s*>", "", text, flags=re.IGNORECASE)
+    """``text`` inside a ``<tag>`` block. Every form of the tag (any case, spaces,
+    attributes, ``/>``, no ``>``) is removed from the text, again until none is left
+    (removing one can join another: ``<</tag>/tag>``), so untrusted content cannot end
+    the block early and pass for instructions."""
+    tags = re.compile(rf"<\s*/?\s*{re.escape(tag)}\b(?:[^<>]*>)?", re.IGNORECASE)
+    inner, found = text, 1
+    while found:
+        inner, found = tags.subn("", inner)
     return f"<{tag}>\n{inner}\n</{tag}>"
 
 

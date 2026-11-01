@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -10,6 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from api.errors import error_body
+from api.services.documents.extraction import megabytes
 from config.settings import Settings
 
 BASE_SECURITY_HEADERS = {
@@ -52,18 +55,37 @@ class SecurityHeadersMiddleware:
         await self.app(scope, receive, send_with_headers)
 
 
-class RequestSizeLimitMiddleware:
-    """Caps every request body: a multipart upload at ``max_bytes``, any other body
-    (JSON) at ``max_json_bytes``. A declared Content-Length over the cap is refused
-    before any of the body is read; a body sent without one (chunked) is counted as
-    it arrives and refused once it passes the cap. Either way nothing past the cap
-    is read, parsed or spooled to disk, and this runs before routing, so before
-    authentication."""
+@dataclass(frozen=True)
+class _Cap:
+    size: int
+    #: What the 413 says.
+    detail: str
 
-    def __init__(self, app: ASGIApp, max_bytes: int, max_json_bytes: int) -> None:
+
+class RequestSizeLimitMiddleware:
+    """Caps every request body: a multipart upload at ``max_bytes`` (one file of at
+    most ``max_file_bytes`` plus its framing), any other body (JSON) at
+    ``max_json_bytes``. A declared Content-Length over the cap is refused before any
+    of the body is read; a body sent without one (chunked) is counted as it arrives
+    and refused once it passes the cap. Either way nothing past the cap is read,
+    parsed or spooled to disk, and this runs before routing, so before
+    authentication. A refused upload names the file limit people know, not the cap
+    with the framing's allowance; the parts are not counted, so it speaks of the
+    upload, which may hold several files (POST /files)."""
+
+    def __init__(
+        self, app: ASGIApp, max_bytes: int, max_json_bytes: int, max_file_bytes: int
+    ) -> None:
         self.app = app
-        self.max_bytes = max_bytes
-        self.max_json_bytes = max_json_bytes
+        file_limit = megabytes(max_file_bytes)
+        self._upload = _Cap(
+            max_bytes,
+            f"The upload is larger than the {file_limit} limit. "
+            f"Send one file at a time, each up to {file_limit}.",
+        )
+        self._json = _Cap(
+            max_json_bytes, f"The request is larger than the {megabytes(max_json_bytes)} limit."
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -71,11 +93,9 @@ class RequestSizeLimitMiddleware:
             return
         headers = Headers(scope=scope)
         multipart = headers.get("content-type", "").lower().startswith("multipart/")
-        body = _CappedBody(
-            scope, receive, send, self.max_bytes if multipart else self.max_json_bytes
-        )
+        body = _CappedBody(scope, receive, send, self._upload if multipart else self._json)
         declared = headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > body.limit:
+        if declared.isdigit() and int(declared) > body.cap.size:
             await body.refuse()
             return
         try:
@@ -95,8 +115,8 @@ class _CappedBody:
     Past the cap, ``receive`` raises; whatever the app answers then (FastAPI turns a
     failed body read into a 400) is replaced by the 413."""
 
-    def __init__(self, scope: Scope, receive: Receive, send: Send, limit: int) -> None:
-        self.scope, self._receive, self._send, self.limit = scope, receive, send, limit
+    def __init__(self, scope: Scope, receive: Receive, send: Send, cap: _Cap) -> None:
+        self.scope, self._receive, self._send, self.cap = scope, receive, send, cap
         self.received = 0
         self.overflowed = False
         self.responded = False
@@ -105,7 +125,7 @@ class _CappedBody:
         message = await self._receive()
         if message["type"] == "http.request":
             self.received += len(message.get("body", b""))
-            if self.received > self.limit:
+            if self.received > self.cap.size:
                 self.overflowed = True
                 raise _BodyTooLarge
         return message
@@ -119,8 +139,7 @@ class _CappedBody:
 
     async def refuse(self) -> None:
         self.responded = True
-        detail = f"The request is larger than the {self.limit / 1_000_000:g} MB limit."
-        response = JSONResponse(error_body("request_too_large", detail), status_code=413)
+        response = JSONResponse(error_body("request_too_large", self.cap.detail), status_code=413)
         await response(self.scope, self._receive, self._send)
 
 
@@ -133,6 +152,7 @@ def install_middleware(app: FastAPI, settings: Settings) -> None:
         RequestSizeLimitMiddleware,
         max_bytes=settings.max_request_bytes,
         max_json_bytes=settings.request_max_json_bytes,
+        max_file_bytes=settings.document_max_bytes,
     )
     app.add_middleware(SecurityHeadersMiddleware, headers=headers)
     app.add_middleware(

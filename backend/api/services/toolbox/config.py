@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from api.services.documents.contracts import ExtractionLimits
+from api.services.documents.contracts import ExtractionLimits, OcrEngine, SlotPool
 from api.services.documents.extraction import extraction_limits
+from api.services.documents.ocr import ocr_config, shared_ocr_engine
 from config.settings import Settings
 from llm.images import ImageGenerator
 from llm.vision import ObjectFinder
@@ -56,7 +57,8 @@ class ToolboxConfig:
     workspace_max_total_bytes: int
     workspace_max_files: int
     workspace_min_free_bytes: int
-    #: What reading a PDF or Word file from the workspace may cost.
+    #: What reading a PDF or Word file from the workspace may cost, in agents' own
+    #: reading slots.
     document_limits: ExtractionLimits
     pdf_font_path: Path
     pdf_bold_font_path: Path
@@ -68,6 +70,9 @@ class ToolboxConfig:
     #: The user's Meta models; None (no Meta key) means generate_image and
     #: find_objects are not configured.
     meta: MetaTools | None = field(default=None, repr=False, compare=False)
+    #: Reads the scanned pages of workspace documents; None when OCR is off or not
+    #: installed, and those pages are skipped and named.
+    ocr: OcrEngine | None = field(default=None, repr=False, compare=False)
 
 
 def toolbox_config(
@@ -101,11 +106,16 @@ def toolbox_config(
         workspace_max_total_bytes=settings.workspace_max_total_bytes,
         workspace_max_files=settings.workspace_max_files,
         workspace_min_free_bytes=settings.workspace_min_free_bytes,
-        document_limits=extraction_limits(settings),
+        document_limits=replace(
+            extraction_limits(settings),
+            max_concurrent=settings.document_agent_max_concurrent_reads,
+            pool=SlotPool.AGENTS,
+        ),
         pdf_font_path=settings.pdf_font_path,
         pdf_bold_font_path=settings.pdf_bold_font_path,
         search_api_key=settings.tavily_api_key,
         sandbox_api_key=settings.e2b_api_key,
         sandbox_quota=sandbox_quota,
         meta=meta,
+        ocr=shared_ocr_engine(ocr_config(settings)),
     )

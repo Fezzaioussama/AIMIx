@@ -4,11 +4,16 @@ import type { ExtractedDocument, PipelineInput } from '../../core/api/types';
 import {
   addInput,
   appendDocument,
+  documentDetails,
   documentSummary,
   inputNameProblem,
   inputsSummary,
   inputValue,
   isRunReady,
+  placeDocument,
+  RUN_INPUT_MAX_LENGTH,
+  runInputLimitProblem,
+  runInputSize,
   runRequest,
   toInputName,
   unknownPlaceholders,
@@ -92,6 +97,37 @@ describe('run drafts', () => {
   });
 });
 
+describe('the run input limit', () => {
+  it('counts what a run would be given: its text, or its declared inputs', () => {
+    expect(runInputSize([], { text: 'abc', values: { topic: 'zz' } })).toBe(3);
+    expect(
+      runInputSize([topic, audience], {
+        text: 'ignored',
+        values: { topic: 'ab', audience: 'c', old: 'xxxx' },
+      }),
+    ).toBe(3);
+  });
+
+  it('will not run inputs over the limit, and says why in words', () => {
+    const over = { text: 'x'.repeat(RUN_INPUT_MAX_LENGTH + 1), values: {} };
+    expect(isRunReady([], over)).toBe(false);
+    expect(runInputLimitProblem([], over)).toBe(
+      'Your inputs are 500,001 characters; a run takes at most 500,000. ' +
+        'Shorten the text, or delete a document from it (each starts with “[Document: …]”).',
+    );
+    expect(runInputLimitProblem([], { text: 'x'.repeat(RUN_INPUT_MAX_LENGTH), values: {} })).toBe(
+      null,
+    );
+  });
+
+  it('adds the named inputs up', () => {
+    const half = 'x'.repeat(RUN_INPUT_MAX_LENGTH / 2 + 1);
+    const draft = { text: '', values: { topic: half, audience: half } };
+    expect(isRunReady([topic, audience], draft)).toBe(false);
+    expect(runInputLimitProblem([topic, audience], draft)).toContain('500,002 characters');
+  });
+});
+
 const report: ExtractedDocument = {
   filename: 'report.pdf',
   format: 'pdf',
@@ -147,6 +183,35 @@ describe('appendDocument', () => {
   });
 });
 
+describe('placeDocument', () => {
+  const page: ExtractedDocument = {
+    ...report,
+    filename: 'https://example.com/a',
+    format: 'html',
+    text: 'Page text.',
+    pages: null,
+  };
+  const block = '[Document: https://example.com/a]\nPage text.';
+
+  it('adds a document after what the input holds', () => {
+    expect(placeDocument('Summarise this:', report, null)).toBe(
+      appendDocument('Summarise this:', report),
+    );
+  });
+
+  it('puts a page read from the link an input holds alone in the link’s place', () => {
+    expect(placeDocument('  https://example.com/a \n', page, 'https://example.com/a')).toBe(block);
+    // The link written another way is still the same page.
+    expect(placeDocument('HTTPS://Example.com/a', page, 'https://example.com/a')).toBe(block);
+  });
+
+  it('keeps a link that sits among other words, and adds the page after them', () => {
+    expect(placeDocument('Summarise https://example.com/a', page, 'https://example.com/a')).toBe(
+      `Summarise https://example.com/a\n\n${block}`,
+    );
+  });
+});
+
 describe('documentSummary', () => {
   it('says what was added, with pages and a thousands separator', () => {
     expect(documentSummary({ ...report, characters: 24310 })).toBe(
@@ -161,5 +226,17 @@ describe('documentSummary', () => {
 
   it('warns when part of the document was left out', () => {
     expect(documentSummary({ ...report, truncated: true })).toMatch(/part of it was left out$/);
+  });
+
+  it('names a page by its link, briefly', () => {
+    const page = { ...report, filename: 'https://www.example.com/news/today', pages: null };
+    expect(documentSummary(page)).toBe('example.com/news/today added · 13 characters');
+  });
+
+  it('gives the size alone, for a document’s chip', () => {
+    expect(documentDetails(report)).toBe('2 pages · 13 characters');
+    expect(documentDetails({ ...report, pages: null, truncated: true })).toBe(
+      '13 characters · part of it was left out',
+    );
   });
 });

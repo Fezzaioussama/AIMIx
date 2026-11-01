@@ -11,7 +11,6 @@ live here.
 
 from __future__ import annotations
 
-import codecs
 import logging
 from collections.abc import Callable
 
@@ -20,7 +19,7 @@ from api.services.documents.contracts import ReadContext, ReadResult
 from api.services.documents.images import IMAGE_SUFFIXES, read_image
 from api.services.documents.office import read_docx, read_pptx, read_xlsx
 from api.services.documents.pdf import read_pdf
-from api.services.toolbox.html_text import html_to_text
+from api.services.toolbox.html_text import decode_page, html_to_text, page_charset, text_charset
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,6 @@ TEXT_SUFFIXES = (
     ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".log", ".rst",
 )  # fmt: skip
 _BINARY_SNIFF_BYTES = 8192
-_UTF16_BOMS = (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
 
 
 def guarded(kind: str, read: Reader) -> Reader:
@@ -50,26 +48,27 @@ def guarded(kind: str, read: Reader) -> Reader:
     return guarded_read
 
 
-def _decode(data: bytes) -> str:
-    """Text from bytes: UTF-16 by its BOM, else UTF-8, else Windows-1252. A damaged
-    UTF-16 file (an odd byte at the end, half a surrogate pair) keeps its readable
-    text, with U+FFFD where it is damaged, as Windows-1252 does for stray bytes."""
-    if data.startswith(_UTF16_BOMS):
-        return data.decode("utf-16", errors="replace")
+def _decode(data: bytes, charset: str | None) -> str:
+    """Text from bytes: in ``charset`` when something named one (``html_text``'s
+    rules), else UTF-8, else Windows-1252. A damaged file in a named charset (a UTF-16
+    file with an odd byte at the end) keeps its readable text, with U+FFFD where it is
+    damaged, as Windows-1252 does for stray bytes."""
+    if charset:
+        return decode_page(data, charset)
     if b"\x00" in data[:_BINARY_SNIFF_BYTES]:
         raise DocumentUnreadable("This file looks binary, not text.")
     try:
-        return data.decode("utf-8-sig")
+        return data.decode("utf-8")
     except UnicodeDecodeError:
         return data.decode("cp1252", errors="replace")
 
 
 def read_text(data: bytes, context: ReadContext) -> ReadResult:
-    return ReadResult(_decode(data))
+    return ReadResult(_decode(data, text_charset(data, context.charset)))
 
 
 def read_html(data: bytes, context: ReadContext) -> ReadResult:
-    return ReadResult(html_to_text(_decode(data)))
+    return ReadResult(html_to_text(_decode(data, page_charset(data, context.charset))))
 
 
 READERS: dict[str, Reader] = {

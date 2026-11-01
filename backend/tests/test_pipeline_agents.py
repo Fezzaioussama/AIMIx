@@ -17,7 +17,6 @@ from api.repositories import pipelines
 from api.services import agent_runtime
 from api.services import llm as llm_service
 from api.services.agent_prompts import (
-    STEP_AGENT_TOOL_GUIDANCE,
     STEP_AGENT_WORK_RULES,
     AgentRole,
     step_agent_system_prompt,
@@ -25,6 +24,7 @@ from api.services.agent_prompts import (
 from api.services.catalog import default_model_id
 from api.services.llm import LLMProfile
 from api.services.multiagent import step_agent
+from api.services.tool_prompts import LINKS_RULE, STEP_AGENT_TOOL_GUIDANCE, STEP_AGENT_WEB_GUIDANCE
 from llm.base import ProviderConfig
 
 
@@ -146,9 +146,11 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
     user: User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The step's own tools shape its prompt (fetch_url: the web guidance); the
+    # guidance per tool is tests/test_tool_prompts.py's.
     saved = saved_pipeline(session, user, "Research", "Find {input}")
     saved.steps[0].role = "Researcher"
-    saved.steps[0].allowed_tools = ["inspect_pipeline"]
+    saved.steps[0].allowed_tools = ["fetch_url"]
     saved.steps[0].expected_output = "Three cited facts"
     session.commit()
     observed: dict[str, Any] = {}
@@ -166,33 +168,36 @@ def test_step_role_and_tool_allowlist_reach_langgraph(
     monkeypatch.setattr(step_agent, "get_agent_model", tool_call_agent_model)
     response = auth_client.post(f"/api/pipelines/{saved.id}/run", json={"input": "facts"})
     assert response.status_code == 200
-    assert observed["tools"] == ["inspect_pipeline"]
+    assert observed["tools"] == ["fetch_url"]
     assert "Researcher" in observed["system_prompt"]
     assert "expected output in content and format: Three cited facts" in observed["system_prompt"]
     assert STEP_AGENT_TOOL_GUIDANCE in observed["system_prompt"]
+    assert STEP_AGENT_WEB_GUIDANCE in observed["system_prompt"]
+    assert LINKS_RULE in observed["system_prompt"]
 
 
 def test_step_without_tools_gets_no_tool_guidance() -> None:
-    prompt = step_agent_system_prompt(AgentRole(""), has_tools=False)
+    prompt = step_agent_system_prompt(AgentRole(""), [])
     assert prompt.startswith("You are an agent in an AIMIx pipeline.")
     assert STEP_AGENT_TOOL_GUIDANCE not in prompt
     assert "expected output" not in prompt
 
 
-def test_the_prompt_runs_identity_rules_team_expected_output_then_tools() -> None:
+def test_the_prompt_runs_identity_rules_team_expected_output_tools_then_links() -> None:
     agent = AgentRole("Writer", " One tweet ", context='You work in the team "Launch".')
-    prompt = step_agent_system_prompt(agent, has_tools=True)
-    identity, rules, team, expected, guidance = prompt.split("\n\n")
+    prompt = step_agent_system_prompt(agent, ["calculator"])
+    identity, rules, team, expected, guidance, links = prompt.split("\n\n")
     assert identity.startswith("You are the Writer agent")
     assert rules == STEP_AGENT_WORK_RULES
     assert team == 'You work in the team "Launch".'
     assert expected.endswith(": One tweet")
     assert guidance == STEP_AGENT_TOOL_GUIDANCE
+    assert links == LINKS_RULE
 
 
 def test_every_agent_is_told_how_to_work_and_a_blank_team_adds_nothing() -> None:
-    prompt = step_agent_system_prompt(AgentRole("Writer", context="  "), has_tools=False)
-    assert prompt.split("\n\n") == [prompt.split("\n\n")[0], STEP_AGENT_WORK_RULES]
+    prompt = step_agent_system_prompt(AgentRole("Writer", context="  "), [])
+    assert prompt.split("\n\n") == [prompt.split("\n\n")[0], STEP_AGENT_WORK_RULES, LINKS_RULE]
     assert "Never invent facts" in STEP_AGENT_WORK_RULES
     assert "your reply still holds the full deliverable" in STEP_AGENT_WORK_RULES
 

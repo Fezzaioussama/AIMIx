@@ -1,9 +1,10 @@
 """The OCR engine behind the OcrEngine port: Tesseract, through pytesseract (§7 Adapter).
 
-``ocr_engine`` is called once, when the app starts. It returns None when OCR is
-turned off, when the ``tesseract`` binary is missing, or when a configured
-language is not installed, and logs which: readers then skip what needs OCR and
-say so, instead of every upload failing on a misconfigured server.
+``ocr_engine`` returns None when OCR is turned off, when the ``tesseract`` binary
+is missing, or when a configured language is not installed, and logs which:
+readers then skip what needs OCR and say so, instead of every upload failing on a
+misconfigured server. ``shared_ocr_engine`` asks once per process, for the upload
+endpoint (``create_app``) and for agents reading workspace files alike.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import logging
 import shutil
 import subprocess
 from dataclasses import dataclass
+from functools import cache
 
 import pytesseract  # type: ignore[import-untyped]
 from PIL import Image
@@ -84,6 +86,14 @@ def ocr_engine(config: OcrConfig) -> OcrEngine | None:
         return None
     logger.info("documents.ocr status=ready languages=%s", config.languages)
     return TesseractOcr(config.languages, config.timeout_seconds)
+
+
+@cache
+def shared_ocr_engine(config: OcrConfig) -> OcrEngine | None:
+    """``ocr_engine(config)``, worked out once per process: asking starts a process,
+    and agents read documents in a run's worker, outside any request, where the
+    app's state is out of reach. The engine keeps no state, so threads share it."""
+    return ocr_engine(config)
 
 
 def _tesseract_problem(config: OcrConfig) -> str | None:

@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
 
+import { DOCUMENTS_INPUT_NAME } from '../../core/api/pipelines';
+import type { Pipeline } from '../../core/api/types';
+import { inputLabel } from '../pipelines/pipelineInputs';
 import { RunInputCard } from '../pipelines/RunInputCard';
 import { Bubble } from './Bubble';
 import type { ViewProps } from './messageContext';
@@ -12,6 +15,16 @@ const DONE: Record<InputsState, string> = {
   closed: 'This form was replaced by a newer one.',
 };
 
+/** What the form says when the input for documents is empty and nothing will fill it. */
+function documentsAgain(team: Pipeline): string {
+  const field = team.inputs.find((input) => input.name === DOCUMENTS_INPUT_NAME);
+  const label = field ? inputLabel(field) : DOCUMENTS_INPUT_NAME;
+  return (
+    `Attach your documents again under “${label}”: ` +
+    'AIMIx keeps only their names, not their text.'
+  );
+}
+
 /**
  * The run's inputs, asked for in the conversation: the builder's run form as it is
  * (named inputs or one text field, each with "Attach a document"). Only the newest
@@ -19,7 +32,7 @@ const DONE: Record<InputsState, string> = {
  * never asks for a save.
  */
 export function InputsMessageView({ message, context }: ViewProps<'inputs'>) {
-  const { team, run, runActive, focusComposer } = context;
+  const { team, run, runActive, focusComposer, runWaitsFor, documentsGone } = context;
   const form = useRef<HTMLDivElement>(null);
   const takesFocus = message.id === run.newFormId;
 
@@ -37,7 +50,10 @@ export function InputsMessageView({ message, context }: ViewProps<'inputs'>) {
 
   return (
     <>
-      <Bubble>Here’s what your team needs to start. Fill it in, then run.</Bubble>
+      <Bubble>
+        <p>Here’s what your team needs to start. Fill it in, then run.</p>
+        {documentsGone && <p className="mt-2">{documentsAgain(team)}</p>}
+      </Bubble>
       {/* The form lays its fields out in two columns from the md breakpoint, but this
           pane is narrower than that whatever the screen: its grids stack, and it sits
           right under the bubble rather than a page section's distance away. */}
@@ -51,6 +67,7 @@ export function InputsMessageView({ message, context }: ViewProps<'inputs'>) {
           message={run.error}
           onDraftChange={run.setDraft}
           onRun={() => void start()}
+          waitingFor={runWaitsFor}
         />
       </div>
     </>

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
@@ -26,9 +26,10 @@ from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
 from api.services.pipeline_flow import ensure_valid_flow, ensure_valid_spec
 from api.services.pipeline_inputs import bind_run_inputs
-from api.services.plan_parsing import decoded, on_default_model, parse_plan
-from api.services.plan_prompts import pipeline_generation_prompt
-from api.services.plan_questions import Clarification, ClarifyingQuestion, questions_in
+from api.services.plan_documents import with_documents_input
+from api.services.plan_parsing import decoded, drop_unusable_flow, on_default_model, parse_plan
+from api.services.plan_prompts import PlanRequest, pipeline_generation_prompt
+from api.services.plan_questions import ClarifyingQuestion, questions_in
 from config.settings import get_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
@@ -97,17 +98,6 @@ def run(
 
 
 @dataclass(frozen=True)
-class PlanRequest:
-    """What to plan; no ``planner_model`` means the profile's default model. The
-    ``clarification`` says whether the planner may ask questions first (Missions),
-    and holds the answers to the ones it asked."""
-
-    description: str
-    planner_model: str | None = None
-    clarification: Clarification = field(default_factory=Clarification)
-
-
-@dataclass(frozen=True)
 class Plan:
     """What a generation gave: a pipeline, or else the questions to answer first."""
 
@@ -130,12 +120,13 @@ def generate(
     request: PlanRequest,
     tools: list[ToolDescriptor] | None = None,
 ) -> Plan:
-    """Ask the planner model for a pipeline definition and validate the result; its
-    steps run on the default model unless the request names another, and a plan
-    without a reviewer gets the final check. When the planner may ask and replies
-    with questions instead, return those (it asks once)."""
+    """Ask the planner model for a pipeline definition and validate the result; a plan
+    made with documents gets the input their text reaches the team through, its steps
+    run on the default model unless the request names another, and a plan without a
+    reviewer gets the final check. When the planner may ask and replies with questions
+    instead, return those (it asks once)."""
     clarification = request.clarification
-    prompt = pipeline_generation_prompt(request.description, profile.models, tools, clarification)
+    prompt = pipeline_generation_prompt(request, profile.models, tools)
     call = PlannerCall(prompt, request.planner_model)
 
     def ask() -> Plan:
@@ -149,6 +140,10 @@ def generate(
     plan = answer.pipeline
     if plan is None:
         return answer
+    if request.documents:
+        with_documents_input(plan)
+        # Making room for it may have set aside an input that a condition looked at.
+        drop_unusable_flow(plan["steps"], plan["inputs"])
     asked = " ".join([request.description, *(item.answer for item in clarification.answers)])
     on_default_model(plan["steps"], profile.default_model, asked)
     with_final_check(plan, request.description, clarification.answers, profile.default_model)

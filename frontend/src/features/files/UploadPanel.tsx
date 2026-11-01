@@ -1,7 +1,9 @@
 import { CloudUpload, X } from 'lucide-react';
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useRef } from 'react';
 
 import type { FileListing } from '../../core/api/types';
+import { chosenFiles } from '../../core/chosenFiles';
+import { useFileDrop } from '../../core/hooks/useFileDrop';
 import { GlowButton } from '../../core/ui/GlowButton';
 import { describeTypes, formatBytes } from './fileFormat';
 import type { UploadProblem } from './useFileUploads';
@@ -18,21 +20,6 @@ interface UploadPanelProps {
 
 const SMALL_BUTTON =
   'rounded-md border border-white/15 px-2.5 py-1 text-xs font-medium text-slate-100 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-50';
-
-/** A file dropped just beside the zone would otherwise replace the page with itself. */
-function useDropGuard() {
-  useEffect(() => {
-    const hold = (event: globalThis.DragEvent) => {
-      if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
-    };
-    window.addEventListener('dragover', hold);
-    window.addEventListener('drop', hold);
-    return () => {
-      window.removeEventListener('dragover', hold);
-      window.removeEventListener('drop', hold);
-    };
-  }, []);
-}
 
 /** Files that were refused, each with its reason and, for a taken name, "Replace". */
 function ProblemList({
@@ -88,39 +75,15 @@ export function UploadPanel({
   onDismiss,
 }: UploadPanelProps) {
   const input = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
   const busy = uploading !== '';
-  useDropGuard();
-
-  function choose(event: ChangeEvent<HTMLInputElement>) {
-    const files = [...(event.target.files ?? [])];
-    // Reset, so choosing the same file again still counts as a change.
-    event.target.value = '';
-    if (files.length > 0) onUpload(files);
-  }
-
-  function drop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    setDragging(false);
-    const files = [...event.dataTransfer.files];
-    if (files.length > 0 && !busy) onUpload(files);
-  }
-
-  function leave(event: DragEvent<HTMLElement>) {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
-  }
+  const drop = useFileDrop(onUpload, !busy);
 
   return (
     <section
       aria-labelledby="upload-title"
-      onDragOver={(event) => {
-        event.preventDefault();
-        setDragging(!busy);
-      }}
-      onDragLeave={leave}
-      onDrop={drop}
+      {...drop.zone}
       className={`rounded-2xl border border-dashed px-5 py-8 text-center transition-colors ${
-        dragging ? 'border-sky-400/70 bg-sky-400/[0.06]' : 'border-white/15 bg-slate-900/40'
+        drop.dragging ? 'border-sky-400/70 bg-sky-400/[0.06]' : 'border-white/15 bg-slate-900/40'
       }`}
     >
       <CloudUpload aria-hidden="true" className="mx-auto mb-3 size-8 text-sky-300" />
@@ -138,7 +101,10 @@ export function UploadPanel({
         hidden
         aria-label="Files to upload"
         accept={listing.allowed_extensions.join(',')}
-        onChange={choose}
+        onChange={(event) => {
+          const files = chosenFiles(event);
+          if (files.length > 0) onUpload(files);
+        }}
       />
       <p className="mt-3 text-xs text-slate-400">
         {describeTypes(listing.allowed_extensions)}, up to {formatBytes(listing.max_file_bytes)}{' '}

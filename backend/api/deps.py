@@ -25,6 +25,7 @@ from api.services.chat_tools.scope import ChatScope
 from api.services.deliveries.sender import SendPolicy, send_policy
 from api.services.documents.contracts import ExtractionLimits, OcrEngine
 from api.services.documents.extraction import extraction_limits
+from api.services.documents.web_import import PageImporter, link_limits
 from api.services.files.disk import disk_reserve
 from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage
@@ -41,6 +42,7 @@ from api.services.schedules.scheduler import ProfileAgents
 from api.services.schedules.service import ScheduleAccess
 from api.services.templates.use import StepDefaults
 from api.services.tool_catalog import PipelineToolCatalog
+from api.services.web_download import PageDownloader
 from api.services.webhooks.calls import CallPolicy, WebhookCalls
 from config.settings import Settings, get_settings
 from llm.base import LLMProvider
@@ -75,6 +77,23 @@ def document_ocr(request: Request) -> OcrEngine | None:
 
 
 DocumentOcr = Annotated[OcrEngine | None, Depends(document_ocr)]
+
+
+def page_downloader(settings: AppSettings) -> PageDownloader:
+    """Downloads the pages users read from a link; tests swap in a fake network."""
+    return PageDownloader(settings.web_timeout_seconds, settings.document_url_max_seconds)
+
+
+def page_importer(
+    downloader: Annotated[PageDownloader, Depends(page_downloader)],
+    limits: DocumentLimits,
+    ocr: DocumentOcr,
+    settings: AppSettings,
+) -> PageImporter:
+    return PageImporter(downloader, limits, ocr, link_limits(settings))
+
+
+PageImports = Annotated[PageImporter, Depends(page_importer)]
 
 
 def token_signer(settings: AppSettings) -> TokenSigner:

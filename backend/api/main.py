@@ -14,7 +14,7 @@ from api.errors import install_error_handlers
 from api.frontend import install_frontend
 from api.middleware import install_middleware
 from api.routes import API_PREFIX, api_router
-from api.services.documents.ocr import ocr_config, ocr_engine
+from api.services.documents.ocr import ocr_config, shared_ocr_engine
 from api.services.run_executor import BackgroundRunExecutor
 from api.services.run_policy import warn_about_unbounded_spending
 from api.services.runs import interrupt_abandoned_runs
@@ -58,8 +58,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.state.database = Database(settings.database_url)
-    # Built once: finding out whether OCR can run here starts a process.
-    app.state.ocr = ocr_engine(ocr_config(settings))
+    # Built once per process (finding out whether OCR can run here starts a
+    # process), and shared with agents' toolboxes (``toolbox_config``).
+    app.state.ocr = shared_ocr_engine(ocr_config(settings))
     app.state.run_executor = BackgroundRunExecutor(
         settings.run_max_concurrent, settings.run_shutdown_grace_seconds
     )

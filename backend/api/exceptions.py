@@ -160,6 +160,14 @@ class DocumentReadersBusy(DomainError):
         self.headers = {"Retry-After": str(retry_after)}
 
 
+class PageUnreachable(DomainError):
+    """A web page a user asked to read could not be fetched: the site answered with
+    an error, could not be reached, redirected too often or answered too slowly."""
+
+    code = "page_unreachable"
+    status_code = 502
+
+
 class FileAlreadyExists(DomainError):
     """A write would replace a file that the caller did not ask to replace."""
 

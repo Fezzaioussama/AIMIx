@@ -34,6 +34,9 @@ function orList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`;
 }
 
+/** The longest link the server opens; it mirrors the import request's limit. */
+export const PAGE_URL_MAX_LENGTH = 2048;
+
 /**
  * Has the server read a document — PDF, Office file, image (by text recognition),
  * HTML or text — and return its text. Nothing is stored: the caller puts the text in
@@ -45,6 +48,23 @@ export function extractDocument(file: File, signal?: AbortSignal): Promise<Extra
   return request<ExtractedDocument>(API.extractDocument, {
     method: 'POST',
     body: form,
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+    signal,
+  });
+}
+
+/**
+ * Has the server open a public web page (or a PDF, Office file, image or text file at a
+ * link) and return its text, as `extractDocument` does for a file. `filename` is the
+ * address the link led to and `format` the reader used. Nothing is stored.
+ */
+export function importDocumentFromUrl(
+  url: string,
+  signal?: AbortSignal,
+): Promise<ExtractedDocument> {
+  return request<ExtractedDocument>(API.importDocumentUrl, {
+    method: 'POST',
+    body: { url },
     timeoutMs: UPLOAD_TIMEOUT_MS,
     signal,
   });

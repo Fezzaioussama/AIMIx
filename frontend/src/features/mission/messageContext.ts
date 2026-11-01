@@ -21,6 +21,12 @@ export interface MessageContext {
   openQuestionsId: string | null;
   /** Answers them, said in words as `said`; no answers skips them. Then the team is planned. */
   answerQuestions: (asked: QuestionsMessage, answers: PlanAnswer[], said: string) => void;
+  /** A document of the message box still being read, which planning waits for; '' if none. */
+  planWaitsFor: string;
+  /** One the open run form will get, which its run waits for; '' if none. */
+  runWaitsFor: string;
+  /** The open run form needs the documents again: AIMIx keeps only their names. */
+  documentsGone: boolean;
 }
 
 /** The props of the view that draws one kind of answer. */

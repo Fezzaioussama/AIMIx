@@ -6,11 +6,20 @@ import type { TeamBrief } from './teamBrief';
  * Every message is JSON, so the conversation can be kept for the tab (missionStorage).
  */
 
+/** A document that went with a message: its file name or page address and size, never its text. */
+export interface DocumentNote {
+  name: string;
+  pages: number | null;
+  characters: number;
+}
+
 /** What the person typed, or the action they took (e.g. "Run it"). */
 export interface YouMessage {
   id: string;
   from: 'you';
   text: string;
+  /** The documents that went with it: to the planner, or into the run form. */
+  documents?: DocumentNote[];
 }
 
 export const NOTE_TONES = ['info', 'error'] as const;
@@ -106,8 +115,9 @@ export function newMessageId(): string {
   );
 }
 
-export function you(text: string): YouMessage {
-  return { id: newMessageId(), from: 'you', text };
+export function you(text: string, documents: DocumentNote[] = []): YouMessage {
+  const said: YouMessage = { id: newMessageId(), from: 'you', text };
+  return documents.length > 0 ? { ...said, documents } : said;
 }
 
 export function note(text: string, tone: NoteMessage['tone'] = 'info'): NoteMessage {

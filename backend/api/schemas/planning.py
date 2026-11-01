@@ -23,6 +23,11 @@ from api.services.plan_questions import MAX_QUESTIONS
 PLAN_DESCRIPTION_MAX_LENGTH = 20_000
 #: An answered question: one of the planner's, or all of them when typed as one answer.
 ANSWERED_QUESTION_MAX_LENGTH = 2000
+#: The most documents a mission is planned with, and how much of each one's text the
+#: planner sees; a document's name is its file name or its page's URL.
+MAX_PLAN_DOCUMENTS = 5
+PLAN_DOCUMENT_EXCERPT_CHARS = 2000
+PLAN_DOCUMENT_NAME_MAX_LENGTH = 2048
 
 
 class AnswerIn(BaseModel):
@@ -31,6 +36,17 @@ class AnswerIn(BaseModel):
     question: Annotated[NonBlank, Field(max_length=ANSWERED_QUESTION_MAX_LENGTH)]
     #: Typed in the message box, an answer can say as much as the mission it is about.
     answer: Annotated[NonBlank, Field(max_length=PLAN_DESCRIPTION_MAX_LENGTH)]
+
+
+class PlanDocumentIn(BaseModel):
+    """A document or web page added to the mission: the planner sees its name, size
+    and the start of its text; the run gets the whole text."""
+
+    name: Annotated[NonBlank, Field(max_length=PLAN_DOCUMENT_NAME_MAX_LENGTH)]
+    #: Null for a document without pages, such as a web page.
+    pages: int | None = Field(None, ge=0)
+    characters: int = Field(ge=0)
+    excerpt: str = Field("", max_length=PLAN_DOCUMENT_EXCERPT_CHARS)
 
 
 class GenerateRequest(BaseModel):
@@ -43,6 +59,10 @@ class GenerateRequest(BaseModel):
     may_ask: bool = False
     #: The answers to its questions; with them, the planner plans and asks nothing more.
     answers: Annotated[list[AnswerIn], Field(max_length=MAX_QUESTIONS)] = Field(
+        default_factory=list
+    )
+    #: Documents and web pages added before planning; their text reaches the run.
+    documents: Annotated[list[PlanDocumentIn], Field(max_length=MAX_PLAN_DOCUMENTS)] = Field(
         default_factory=list
     )
 

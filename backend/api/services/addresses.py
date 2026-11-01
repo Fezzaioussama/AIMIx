@@ -5,7 +5,8 @@ A host passes only when it resolves and every address it resolves to is
 global: never loopback, private, link-local (which covers the cloud metadata
 address 169.254.169.254), shared, reserved, multicast, site-local or
 IPv4-compatible. An IPv6 address that carries an IPv4 address — IPv4-mapped,
-NAT64 (64:ff9b::/96) or 6to4 — is judged as the IPv4 address it carries.
+IPv4-translated (::ffff:0:0:0/96), NAT64 (64:ff9b::/96) or 6to4 — is judged as
+the IPv4 address it carries.
 
 These checks are only half of the guard: ``api.services.outbound`` connects to
 the very addresses it checked, so a DNS server cannot answer "public" here and
@@ -27,12 +28,20 @@ NEVER_PUBLIC = (
     ipaddress.IPv6Network("fec0::/10"),  # site-local, deprecated
     ipaddress.IPv6Network("64:ff9b:1::/48"),  # local-use NAT64
 )
-#: The well-known NAT64 prefix: the last 32 bits are the IPv4 address reached.
-NAT64 = ipaddress.IPv6Network("64:ff9b::/96")
+#: Prefixes whose last 32 bits are the IPv4 address reached: the well-known NAT64
+#: prefix, and IPv4-translated addresses (SIIT, RFC 2765).
+CARRY_IPV4 = (
+    ipaddress.IPv6Network("64:ff9b::/96"),
+    ipaddress.IPv6Network("::ffff:0:0:0/96"),
+)
 
 
 class AddressNotAllowed(ValueError):
     """The host does not resolve, or resolves to an address that is not public."""
+
+
+class HostNotFound(AddressNotAllowed):
+    """The host does not resolve: a typo or a site that is gone, not a private address."""
 
 
 async def resolve_host(host: str) -> list[str]:
@@ -41,7 +50,7 @@ async def resolve_host(host: str) -> list[str]:
 
 
 def _carried_ipv4(ip: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
-    if ip in NAT64:
+    if any(ip in prefix for prefix in CARRY_IPV4):
         return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
     return ip.ipv4_mapped or ip.sixtofour
 
@@ -57,15 +66,15 @@ def is_public(address: str) -> bool:
 
 
 async def resolve(host: str, resolver: Resolver = resolve_host) -> list[str]:
-    """``host``'s addresses, or ``AddressNotAllowed`` when it has none. A name
+    """``host``'s addresses, or ``HostNotFound`` when it has none. A name
     no resolver accepts (a label over 63 characters fails IDNA encoding with
     ``UnicodeError``) is refused the same way as one that does not exist."""
     try:
         addresses = await resolver(host)
     except (OSError, ValueError) as cause:  # UnicodeError is a ValueError
-        raise AddressNotAllowed(f"Could not resolve {host}.") from cause
+        raise HostNotFound(f"Could not resolve {host}.") from cause
     if not addresses:
-        raise AddressNotAllowed(f"Could not resolve {host}.")
+        raise HostNotFound(f"Could not resolve {host}.")
     return addresses
 
 

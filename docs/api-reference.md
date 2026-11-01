@@ -14,7 +14,9 @@ interactive explorer at `/api/docs`.
 The code list is in the [README error contract](../README.md#error-contract);
 other codes you may see are `method_not_allowed` (405), `budget_exceeded` (409,
 a run reached its [spending limit](#spending-limits)), `request_too_large` (413,
-a body over its cap: `DOCUMENT_MAX_BYTES` plus 1 MB for a multipart upload,
+a body over its cap: `DOCUMENT_MAX_BYTES` plus 1 MB for a multipart upload, whose
+`detail` names the file limit, e.g. "The upload is larger than the 10 MB limit.
+Send one file at a time, each up to 10 MB.";
 `REQUEST_MAX_JSON_BYTES` for any other body, counted as it arrives whether or not
 it declares a `Content-Length`, and refused before authentication), `throttled`
 (429, with `Retry-After`), `too_many_runs` (429, the account already has
@@ -263,8 +265,8 @@ the URL must start with `https` (plain `http` only when `APP_ENV=local`), may
 not contain a user name or password, and its host must resolve only to public
 addresses — never loopback, private, link-local (such as the cloud metadata
 address `169.254.169.254`), shared, reserved, multicast or site-local ones; an
-IPv6 address that carries an IPv4 one (NAT64, 6to4) is judged by that IPv4
-address. Local development can reach a server on `127.0.0.1` with
+IPv6 address that carries an IPv4 one (IPv4-mapped or -translated, NAT64, 6to4)
+is judged by that IPv4 address. Local development can reach a server on `127.0.0.1` with
 `APP_ENV=local` and `INTEGRATIONS_ALLOW_PRIVATE_NETWORK=true`. A refused
 address, or a host name that cannot be resolved, is a `400 validation_error`
 naming the host. One response from your server is cut off past
@@ -401,7 +403,17 @@ character, a line break, a text-direction mark or any of `\ : * ? " < > |`;
 reads, searches and CSV rows are bounded by the `WORKSPACE_*`
 settings. `read_workspace_file` returns text, Markdown, JSON, YAML, HTML and CSV
 files as written, and PDF and Word (and the other run-document formats) as their
-extracted text, cut at `WORKSPACE_MAX_OUTPUT_CHARS`. `save_artifact` writes `.txt`,
+extracted text (scanned pages read by OCR when the server has it), at most
+`WORKSPACE_MAX_OUTPUT_CHARS` characters per call. It takes an optional
+`start_page`: a PDF is shown in its own whole pages from that page, any other file
+in parts of that size, and a longer file's output ends with, for example,
+`[Shown: pages 1-5 of 45. To read on, call read_workspace_file again with start_page=6.]`.
+A PDF call also stops before a page its OCR page or time budget would skip, so the
+next call, with a budget of its own, reads it. Agents read workspace files in
+reading slots of their own (`DOCUMENT_AGENT_MAX_CONCURRENT_READS`, 2): an agent's
+OCR never keeps an upload waiting, and another agent's read that cannot get a slot
+within `DOCUMENT_EXTRACTION_WAIT_SECONDS` is told the server is busy.
+`save_artifact` writes `.txt`,
 `.md`, `.json` and `.html` as given, and `.csv` as given unless a cell would run
 as a spreadsheet formula (it starts with `=`, `+`, `-`, `@`, a tab or a carriage
 return and is not a plain number such as `-12.5`, even once split on another
@@ -566,17 +578,20 @@ Supported by extension (case-insensitive):
 
 | Format | Extensions | What the text holds |
 |---|---|---|
-| PDF | `.pdf` | Each page's text layer; a page without one is read by OCR (see below) |
+| PDF | `.pdf` | Each page's text layer, then its filled form fields and comments (`[Form field <name>: <value>]`, `[Comment: <text>]`; each field once, empty fields and unticked boxes left out; a value written as raw bytes is read as UTF-8, else Windows-1252, a PDF 2.0 UTF-8 one as UTF-8, a number as written); a scanned page is read by OCR (see below) |
 | Word | `.docx` | Paragraphs, with tables in place (`a \| b` per row) |
 | Excel | `.xlsx` | `## Sheet: <name>`, then each row as tab-separated values. Formulas give their saved value; a sheet is read as it is, not as the size it declares |
 | PowerPoint | `.pptx` | Per slide: `## Slide <n>: <title>`, its text, table rows (`a \| b`), grouped shapes, then `Speaker notes: ...` |
 | Image | `.png`, `.jpg`, `.jpeg`, `.webp`, `.tif`, `.tiff`, `.bmp`, `.gif` | Read by OCR. Every page of a TIFF; the first frame of an animated GIF or WebP. Transparency is read as white and an EXIF rotation is applied. The content decides the decoder, so a misnamed photo still reads, but only these decoders ever run |
-| HTML | `.html`, `.htm` | Visible text only |
+| HTML | `.html`, `.htm` | Visible text only, table cells separated by ` \| `. Decoded in the charset a byte order mark, else the page's own `<meta>` tag (within its first 4 KB), declares; else like a text file |
 | Text | `.txt`, `.md`, `.markdown`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`, `.xml`, `.log`, `.rst` | Decoded as UTF-8 (BOM, UTF-16 and Windows-1252 are handled; a damaged UTF-16 file keeps its readable text, with `�` where it is damaged) |
 
 **OCR** (Tesseract, languages `DOCUMENT_OCR_LANGUAGES`, default English and
-French) reads images and the PDF pages that have no text layer; pages with a
-text layer are never sent to it. A PDF page is rendered at `DOCUMENT_OCR_DPI`
+French) reads images and scanned PDF pages: those with no text layer, and those
+whose text layer holds under `DOCUMENT_OCR_MIN_PAGE_CHARS` (50) characters of
+small print (14 pt or less: a page number, a scanner app's footer, not a slide's
+title) while pictures cover most of the page; that little text is kept, OCR's
+text following it. Other pages with a text layer are never sent to it. A PDF page is rendered at `DOCUMENT_OCR_DPI`
 (300), less if that would exceed `DOCUMENT_MAX_IMAGE_PIXELS`. At most
 `DOCUMENT_OCR_MAX_PAGES` (30) pages of one document are recognised, each
 within `DOCUMENT_OCR_TIMEOUT_SECONDS` (15), and no new page is started once the
@@ -585,11 +600,13 @@ limit, one that takes too long or that OCR fails on, one that waits more than
 `DOCUMENT_EXTRACTION_WAIT_SECONDS` (30) for the PDF renderer (one page renders
 at a time in the process), or every scanned page when OCR is off or not
 installed, is skipped, and the text names it at the end, for example
-`[Not read: pages 31-40 (OCR reads at most 30 pages per document).]` or
-`[Not read: page 2 (no text layer, and OCR is not available).]`.
+`[Not read: pages 31-40 (OCR reads at most 30 pages per document).]`,
+`[Not read: page 2 (no text layer, and OCR is not available).]` or
+`[Not read: page 1 (looks scanned: under 50 characters of text, and OCR is not available).]`.
 
 At most `DOCUMENT_MAX_CONCURRENT_EXTRACTIONS` (2) documents are read at once in
-the server, uploads and agents reading workspace files alike; another waits up to
+the server for people (uploads and links; agents reading workspace files have
+slots of their own, `DOCUMENT_AGENT_MAX_CONCURRENT_READS`); another waits up to
 `DOCUMENT_EXTRACTION_WAIT_SECONDS` (30) for its turn, then gets `503
 documents_busy` with a `Retry-After` header. The route is also rate-limited per
 account (`USER_RATE_LIMIT_REQUESTS` per `USER_RATE_LIMIT_WINDOW_SECONDS`).
@@ -621,7 +638,9 @@ a TIFF can take quadratic time), and `null` for other formats. `truncated` is
 (300) pages, slides or TIFF pages, more than `DOCUMENT_MAX_SPREADSHEET_ROWS`
 (5,000) rows in a workbook (all sheets together, blank rows included) or more
 cells than `DOCUMENT_MAX_CHARS` (a row is as wide as its last cell), more than
-`DOCUMENT_MAX_CHARS` characters of text, or pages OCR skipped. A cut text ends
+`DOCUMENT_MAX_CHARS` characters of text (a PDF stops after its last whole page
+that fits; only a first page longer than that on its own is cut inside), or
+pages OCR skipped. NUL characters and a leading byte-order mark are dropped. A cut text ends
 with `[Document truncated: the rest was not included.]`, and skipped pages are
 named as above, so the model knows too.
 
@@ -629,7 +648,7 @@ named as above, so the model knows too.
 |---|---|---|
 | 400 | `validation_error` | No `file` field |
 | 401 | `not_authenticated` | No or invalid token |
-| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB). A request body over that plus 1 MB is refused earlier, as `request_too_large`: before it is read when its `Content-Length` says so, else as soon as it passes the cap |
+| 413 | `document_too_large` | The file is over `DOCUMENT_MAX_BYTES` (10 MB): "The file is larger than the 10 MB limit." A request body over that plus 1 MB is refused earlier, as `request_too_large` ("The upload is larger than the 10 MB limit. Send one file at a time, each up to 10 MB."): before it is read when its `Content-Length` says so, else as soon as it passes the cap |
 | 415 | `unsupported_document` | The extension is not supported; `detail` lists the supported ones |
 | 422 | `document_unreadable` | Empty, password-protected PDF, damaged or not really that format, a `.docx`, `.xlsx` or `.pptx` that unpacks past `DOCUMENT_MAX_UNPACKED_BYTES` (50 MB) or holds a non-media part over `DOCUMENT_MAX_XML_PART_BYTES` (10 MB), an image (or one TIFF page) over `DOCUMENT_MAX_IMAGE_PIXELS` (40 million) checked before it is decoded, an image while OCR is off or not installed, or no text at all (`detail` then says which pages were skipped and why) |
 | 429 | `throttled` | The account sent more than `USER_RATE_LIMIT_REQUESTS` uploads in `USER_RATE_LIMIT_WINDOW_SECONDS`; `Retry-After` says when to try again |
@@ -643,6 +662,80 @@ CPU, so a long scan can hold the request for a minute or two (at worst about
 `DOCUMENT_OCR_MAX_SECONDS` plus one `DOCUMENT_OCR_TIMEOUT_SECONDS`, after up to
 `DOCUMENT_EXTRACTION_WAIT_SECONDS` waiting for a turn); the frontend waits up to
 ten minutes (`UPLOAD_TIMEOUT_MS`), longer than that worst case by default.
+
+### `POST /documents/import-url`
+
+Reads what a link points to, a web page or a PDF, Office file, picture or text
+file, and returns its text as `POST /documents/extract` returns an upload's, so a
+page can be a run input like an attached document. JSON body `{"url": "..."}`
+(trimmed, 1 to 2,048 characters). The server reads the link once, when this is
+called; no agent gets a web tool from it. Nothing is stored, and the URL is never
+logged.
+
+Only public web pages are opened. Every hop, the link and each redirect (at most
+5), must be an absolute `http` or `https` URL with no user name or password in it
+(a redirect that adds one is refused, so none is ever sent as Basic auth), whose
+host the server can encode (an `xn--` name that IDNA 2008 refuses is refused), and
+that host must resolve to public addresses only:
+loopback, private, link-local (the cloud metadata address), NAT64 and other
+non-global addresses are refused whatever `INTEGRATIONS_ALLOW_PRIVATE_NETWORK`
+says, and the connection goes to the very address that was checked (no DNS
+rebinding). Each request is bounded by `WEB_TIMEOUT_SECONDS` (15) and the whole
+download, redirects included, by `DOCUMENT_URL_MAX_SECONDS` (60), with no retries.
+Bodies are asked for unencoded; gzip and deflate are decoded in bounded pieces,
+and a body over `DOCUMENT_MAX_BYTES` (10 MB, counted decoded) is refused, never
+cut.
+
+The `Content-Type` picks the reader; any other type is refused before its body
+is read:
+
+| Media type | `format` |
+|---|---|
+| `text/html`, `application/xhtml+xml` | `html` |
+| `application/pdf` | `pdf` |
+| Word, Excel and PowerPoint (`application/vnd.openxmlformats-officedocument.*`) | `docx`, `xlsx`, `pptx` |
+| `text/plain`, `text/markdown`, `text/csv`, `text/tab-separated-values`, `application/json`, `application/xml`, `text/xml` | `txt`, `md`, `csv`, `tsv`, `json`, `xml` |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `image/tiff`, `image/bmp` | `png`, `jpg`, `webp`, `gif`, `tiff`, `bmp` (read by OCR) |
+| `application/octet-stream`, or none | `pdf` when the body starts with `%PDF-`, else by the extension of the link's path |
+
+Text is decoded in the charset a byte order mark names, else the one the
+`Content-Type` header names; without either, as an uploaded file of that format
+(HTML in the charset its `<meta>` tag declares). The limits, OCR and the bound on
+documents read at once are an upload's (above); besides, at most
+`DOCUMENT_URL_MAX_CONCURRENT` (8) links are downloaded and read at once in the
+server, since each holds what it downloaded until it is read.
+A web page whose text is shorter than `DOCUMENT_URL_MIN_TEXT_CHARS` (200) is one
+a browser builds with JavaScript, which the server does not run, and is refused.
+
+`200`: a `DocumentOut`, whose `filename` is the address the link ended at after
+redirects:
+
+```json
+{
+  "filename": "https://en.wikipedia.org/wiki/Retrieval-augmented_generation",
+  "format": "html",
+  "text": "Retrieval-augmented generation - Wikipedia\n...",
+  "characters": 24468,
+  "pages": null,
+  "truncated": false
+}
+```
+
+| Status | `error` | When |
+|---|---|---|
+| 400 | `validation_error` | No `url`, or a blank one, or one over 2,048 characters (`url: ...`). Not an absolute `http(s)` URL, a user name or password in it, a host httpx cannot encode, or a host that is not public, in the link or in a redirect: `AIMIx can only open public web pages.` |
+| 401 | `not_authenticated` | No or invalid token |
+| 413 | `document_too_large` | What the link holds is over `DOCUMENT_MAX_BYTES` (10 MB) |
+| 415 | `unsupported_document` | A type no reader handles: `AIMIx can read web pages, PDF, Word, Excel, PowerPoint, images and text from a link.` |
+| 422 | `document_unreadable` | A web page built by JavaScript: `This page builds its text in the browser, so AIMIx can't read it from the link. Copy the text into the box, or print the page to PDF and attach it.` Otherwise what an upload of the same file gets (a password-protected PDF, a damaged file, a picture while OCR is off) |
+| 429 | `throttled` | More than `USER_RATE_LIMIT_REQUESTS` links in `USER_RATE_LIMIT_WINDOW_SECONDS` (counted apart from uploads); `Retry-After` says when to try again |
+| 502 | `page_unreachable` | The site answered 401, 403 or 429: `This site didn't let AIMIx read the page (it may need a sign-in or block automated readers). Open it in your browser, save or print it as PDF, and attach the PDF.` Another error: `AIMIx couldn't open this page (the site answered 404).` A request past `WEB_TIMEOUT_SECONDS` or a download past `DOCUMENT_URL_MAX_SECONDS`: `The site took too long to answer. Try again, or save the page as PDF and attach it.` A name that does not resolve, a failed connection, or more than 5 redirects: `AIMIx couldn't reach this site.` |
+| 503 | `documents_busy` | As for an upload, or `DOCUMENT_URL_MAX_CONCURRENT` links were already being read (refused at once, `Retry-After: 1`) |
+
+The call waits for the download, then for the reading, as an upload does; the
+frontend gives it `UPLOAD_TIMEOUT_MS`. The text is the page as it was when it was
+added: a scheduled run keeps it, and does not read the page again (see
+[known-issues.md](known-issues.md)).
 
 ---
 
@@ -733,7 +826,7 @@ the route is rate-limited per account (`USER_RATE_LIMIT_REQUESTS` per
 |---|---|---|
 | 400 | `validation_error` | No `files` part, a name with nothing left after cleaning, or two files with the same name |
 | 409 | `file_exists` | A file has that name and `replace` was not `true` |
-| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request body over that plus 1 MB is refused as `request_too_large`: before it is read when its `Content-Length` says so, else as soon as it passes the cap |
+| 413 | `file_too_large` | A file is over `DOCUMENT_MAX_BYTES` (10 MB) — the one cap on every upload. A request body over that plus 1 MB, one large file or several files together, is refused as `request_too_large` ("The upload is larger than the 10 MB limit. Send one file at a time, each up to 10 MB."): before it is read when its `Content-Length` says so, else as soon as it passes the cap |
 | 413 | `storage_quota_exceeded` | The user's files would take more than `WORKSPACE_MAX_TOTAL_BYTES` (100 MB), or a new file would make more than `WORKSPACE_MAX_FILES` (2,000) files and folders |
 | 415 | `unsupported_file_type` | The extension is not in `WORKSPACE_UPLOAD_EXTENSIONS`; `detail` lists the accepted ones |
 | 429 | `throttled` | The account sent more than `USER_RATE_LIMIT_REQUESTS` uploads in `USER_RATE_LIMIT_WINDOW_SECONDS`; `Retry-After` says when to try again |
@@ -1316,6 +1409,30 @@ it plans (Missions sends them; the Auto Pipeline page does not):
   planner plans and never asks again; they reach its prompt fenced as data. To
   skip the questions, send `may_ask: false` and no answers.
 
+One more optional field gives the planner the documents and web pages added to the
+mission before its team exists:
+
+- `documents` (default `[]`, at most 5, `MAX_PLAN_DOCUMENTS`): `{ "name", "pages",
+  "characters", "excerpt" }` items. `name` is the file name or the page's URL
+  (non-blank, at most 2,048 characters), `pages` a count `>= 0` or `null` (a web
+  page has none), `characters` the length of the whole text (`>= 0`), and `excerpt`
+  the start of that text (at most 2,000 characters, `PLAN_DOCUMENT_EXCERPT_CHARS`;
+  default `""`). Too many items, or a field out of its range, is a
+  `400 validation_error` before the planner is asked. The planner sees the names,
+  sizes and excerpts fenced as data, and is asked to declare the run input
+  `documents` (label "Your documents") and to insert `{documents}` in the steps
+  that need the text. With `may_ask`, a document whose excerpt says what the work
+  is about counts as context, so the planner does not ask about it. Send the same
+  `documents` again with the `answers`. The response shape is unchanged.
+
+```json
+{ "description": "Brief my team on these.",
+  "documents": [
+    { "name": "q3-report.pdf", "pages": 12, "characters": 34567, "excerpt": "Q3 revenue grew 12%..." },
+    { "name": "https://example.com/pricing", "pages": null, "characters": 5120, "excerpt": "Plans start at..." }
+  ] }
+```
+
 ```json
 { "generated_pipeline": null,
   "questions": [
@@ -1356,7 +1473,19 @@ out anyway, AIMIx adds it as the last step itself: role "Orchestrator", title "F
 check", the default model, no tools, a prompt that quotes the request (the
 description and any answers, braces made round, at most 20,000 characters), and a
 review back to the earliest stage holding an output step (the first stage when
-none does). A revision is never told to add one, and gets none added. Before planning, AIMIx discovers the same pipeline tool
+none does). A revision is never told to add one, and gets none added.
+A plan made with `documents` always has the input `documents` (label "Your
+documents", description "The documents and web pages you added. Their text is put
+here when the team runs."): when the planner did not declare it, AIMIx adds it
+last. A plan already at the 20-input limit gives up its last input to make room,
+and a `condition` that looked at that input becomes `null`, so the plan still
+saves. Whether a later step inserts `{documents}` is the planner's choice: a
+first-stage step whose prompt holds `{input}` receives every input anyway.
+Every planner prompt (generation and revision) also says that an agent cannot
+open a link unless one of its tools can, so a mission that depends on a page or
+document the user has not given gets an input for its content, whose description
+tells the user to add it in the run form with "Attach a document" or "Add a web
+page". Before planning, AIMIx discovers the same pipeline tool
 catalogue as `GET /agent-tools` and gives its names and descriptions to the
 planner. The planner declares the run's named `inputs` and chooses roles,
 expected outputs and tool allowlists for its steps. Unknown tool names are

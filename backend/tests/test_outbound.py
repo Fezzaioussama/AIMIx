@@ -39,6 +39,9 @@ TOKEN = "Bearer crm-secret-token-1234"
         "::7f00:1",  # IPv4-compatible 127.0.0.1
         "::a9fe:a9fe",
         "2002:a9fe:a9fe::1",  # 6to4 of 169.254.169.254
+        "::ffff:0:a9fe:a9fe",  # IPv4-translated (SIIT) 169.254.169.254
+        "::ffff:0:7f00:1",  # IPv4-translated 127.0.0.1
+        "::ffff:0:a00:1",  # IPv4-translated 10.0.0.1
         "ff02::1",
         "ff0e::1",  # global-scope multicast
         "224.0.0.1",
@@ -50,7 +53,14 @@ def test_addresses_that_carry_or_reach_internal_hosts_are_not_public(address: st
 
 
 @pytest.mark.parametrize(
-    "address", [PUBLIC_ADDRESS, "64:ff9b::5db8:d70e", "2606:4700::1111", "2002:5db8:d70e::1"]
+    "address",
+    [
+        PUBLIC_ADDRESS,
+        "64:ff9b::5db8:d70e",
+        "::ffff:0:5db8:d70e",  # IPv4-translated PUBLIC_ADDRESS
+        "2606:4700::1111",
+        "2002:5db8:d70e::1",
+    ],
 )
 def test_public_addresses_stay_public(address: str) -> None:
     assert is_public(address)

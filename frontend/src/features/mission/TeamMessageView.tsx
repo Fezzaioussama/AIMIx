@@ -44,7 +44,8 @@ export function TeamMessageView({ message, context }: ViewProps<'team'>) {
       </ol>
       <p className="mt-3">{providesInWords(brief)}</p>
       <p className="mt-1 text-slate-300">
-        Ask for any change in your own words, or press Run it when you’re ready.
+        Ask for any change in your own words, or press Run it when you’re ready. Documents and web
+        pages you add in the box below go to your team when it runs.
       </p>
       <button
         type="button"
