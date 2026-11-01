@@ -36,7 +36,7 @@ make typecheck                                              # mypy only
 | Add or change an endpoint | schema in `api/schemas/` → service (logic) → thin route in `api/endpoints/` → router listed in `api/routes.py`; then `core/api/endpoints.ts`, `types.ts`, a function in `core/api/<resource>.ts` | Put logic or queries in the endpoint |
 | Add a failure case | New `DomainError` subclass in `api/exceptions.py`; raise it from the service | Build a `Response` or raise `HTTPException` for an error |
 | Query data differently | `api/repositories/` | Write `select(...)` in an endpoint, schema or service |
-| Change a prompt | `api/services/prompts.py` | Build prompt strings in `pipelines.py` |
+| Change a prompt | `api/services/prompts.py` (planner), `agent_prompts.py` (a step's agent) | Build prompt strings in `pipelines.py` |
 | Change agent or stage execution | `api/services/multiagent/contracts.py` for the step-agent contract; `mapper.py` for ORM snapshots; `graph.py` for stage barriers and result ordering; `step_agent.py` for model/tool behavior; `api/services/agent_runtime.py` for shared chat/pipeline policy | Put graph execution in an endpoint or mix it with planning and database queries |
 | Add a provider or model | `llm/` — see [llm-providers.md](llm-providers.md) | Add an `if provider ==` anywhere |
 | Add a built-in agent tool | A factory and name constant in `api/services/toolbox/tools.py` (raise `ToolException` for failures the agent can recover from), an entry in `toolbox/registry.py`, its default in `AGENT_BUILTIN_TOOLS` | Branch on tool names in an agent, or let an outbound call run without a timeout |

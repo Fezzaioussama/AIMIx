@@ -83,9 +83,10 @@ REVIEWER_RULE = (
     "You are reviewing the work you are given, as the person who asked for it would. Say "
     "what is good and what must be fixed, quoting the exact text to change; never praise "
     "something that is not there. Garbled text, a missing or partial deliverable, invented "
-    "sources, figures that disagree or a wrong date always need fixes. Then end your reply "
-    "with one final line that holds only 'VERDICT: PASS' when the person could use the work "
-    "as it is, or only 'VERDICT: REVISE' when it needs fixes."
+    "sources, figures that disagree or a wrong date always need fixes. Then, whatever your "
+    "task says about it, end your reply with one final line that holds only 'VERDICT: PASS' "
+    "when the person could use the work as it is, or only 'VERDICT: REVISE' when it needs "
+    "fixes: AIMIx reads that line to decide whether the work goes back."
 )
 
 #: What the steps a reviewer sent work back to are told, unless their own prompt

@@ -680,8 +680,8 @@ A pipeline object:
   "user": 1,
   "created_at": "2026-09-27T10:00:00Z",
   "inputs": [
-    { "name": "article", "label": "Article", "description": "The text to summarise" },
-    { "name": "language", "label": "Target language", "description": "e.g. French" }
+    { "name": "article", "label": "Article", "description": "The text to summarise", "default_value": "" },
+    { "name": "language", "label": "Target language", "description": "e.g. French", "default_value": "French" }
   ],
   "steps": [
     { "id": 12, "order": 1, "stage": 1, "title": "Summary", "role": "Summariser", "allowed_tools": [], "is_output": false, "expected_output": "Five bullet points", "prompt": "Summarise:\n{article}", "model": "deepseek/deepseek-v4-flash", "condition": null, "review": null },
@@ -919,9 +919,10 @@ themselves, using any `{name}` counts as placing it.
 The first stage's input is the run's text, or its named values: one value as
 it is, several each under a `## <label>` heading. A later stage's input is the
 previous stage's output. When that stage ran several steps in parallel, their
-outputs are joined, each under a `## Output of step <order>` heading. `final_output` is the last stage's output,
-joined the same way if it is parallel; it is kept for compatibility, and the
-UI shows the `is_output` results instead. At most `PIPELINE_MAX_PARALLEL_STEPS`
+outputs are joined, each under a `## Output of step <order>` heading. `final_output` is the run's
+deliverables (its `is_output` steps' work, joined the same way; the last stage's output when
+none wrote anything), never a final reviewer's verdict; the UI shows the `is_output` results
+themselves. At most `PIPELINE_MAX_PARALLEL_STEPS`
 (default 4) steps of one stage run agents at once; if any of them fails,
 the run fails.
 Errors: `404` not owned, `400 validation_error` if the pipeline has no steps,
@@ -1588,7 +1589,7 @@ name a model or a tool the caller lacks:
   prompts then work from what the model knows and label unverified figures.
 
 This is the rule the planner's output goes through
-(`services/pipelines.sanitise_step`). Using a template twice creates two
+(`services/plan_parsing.sanitise_step`). Using a template twice creates two
 pipelines.
 
 | Status | `error` | When |

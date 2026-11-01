@@ -23,6 +23,8 @@ def test_a_reviewer_is_asked_to_end_with_a_verdict_line() -> None:
 
     assert "VERDICT: PASS" in prompt and "VERDICT: REVISE" in prompt
     assert prompt.startswith("You are the QA agent in an AIMIx pipeline.")
+    # Planners sometimes write "do not include a verdict line" into a reviewer's task.
+    assert "whatever your task says about it" in prompt
 
 
 def test_any_other_step_is_not_asked_for_a_verdict() -> None:

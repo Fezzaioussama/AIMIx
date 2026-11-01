@@ -278,9 +278,14 @@ graph state so that `prompts.step_prompt` can fill `{name}` in a step of any
 stage, next to `{input}`, the stage's input.
 
 Each agent uses its selected model and optional role, and a system prompt from
-`prompts.step_agent_system_prompt` that states the step's expected output when
-it has one and, when the agent has tools, tells it to use them instead of
-guessing, cite web sources and adapt when a tool fails.
+`agent_prompts.step_agent_system_prompt`: the working rules every agent follows, its
+team (each member by stage, itself marked), today's date and what the person gave for
+the run, the step's expected output when it has one and, when the agent has tools, to
+use them instead of guessing, cite web sources and adapt when a tool fails. A reply
+with no text, or with a model's control token such as `<|endoftext|>`, is tried once
+more on the default model (without tools when the default model itself failed) before
+the step fails. A reviewer judges the previous stage's work and, when its loop made
+deliverables in earlier stages, those too.
 `allowed_tools: null` grants the signed-in user's pipeline list and inspect
 tools, the enabled built-in web, calculation, clock and local workspace tools
 (see below), all configured MCP tools and the tools of the user's enabled
@@ -691,17 +696,21 @@ crash, startup recovery logs only how many runs it interrupted
 2. `services/tool_catalog` discovers the native pipeline tools, the
    configured MCP tools and the user's integration tools.
    `services/pipelines.generate` builds a prompt (`services/plan_prompts`) with
-   their names and descriptions plus the allowed model ids, the final check every
+   their names and descriptions plus the allowed model ids (every step on the
+   default one), how to shape the team, the final check every
    new team ends with, and either the invitation to ask (`may_ask`, no answers
    yet) or the fenced answers, then calls the direct provider adapter. When the
    planner may ask and replies `{"questions": [...]}`, `services/plan_questions`
    reads them and the endpoint returns them with `generated_pipeline: null`. A
-   plan with no reviewer gets the final check added (`services/final_check`).
+   reply that is not a usable plan is asked for once more. Each step goes on the
+   default model unless the request names another (`plan_parsing.on_default_model`),
+   and a plan with no reviewer gets the final check added (`services/final_check`).
 3. `parse_plan` extracts the first `{...}` block, parses JSON, requires `name`
    and a non-empty `steps` list, fills a missing `order`, replaces unknown model
    ids with the default, removes unavailable names from explicit tool
    allowlists, clips each step's `expected_output`, and keeps only the planned
-   `inputs` whose names follow the same rule the save endpoint enforces. A
+   `inputs` whose names follow the same rule the save endpoint enforces, each with
+   the `default_value` it suggests to the run form when it fits. A
    planned `condition` or `review` is read into its stored form, and each one
    that cannot work in the plan (the checks of `services/pipeline_flow`) is set
    to `null`: a planner's slip never fails the request.
@@ -844,7 +853,7 @@ server — never a 200 with an error inside.
 | Null Object | `api/services/schedules/scheduler.IdleScheduler` | `SCHEDULER_ENABLED=false` leaves the lifespan code unchanged |
 | Dependency Injection | `api/deps.py` | Session, settings, user and provider swappable in tests |
 | Application Factory | `api/main.create_app` | One place wires settings, database, middleware and routes |
-| Builder | `api/services/prompts.py` | Prompt text kept apart from transport |
+| Builder | `api/services/prompts.py`, `agent_prompts.py` | Prompt text kept apart from transport |
 | DTO / Value Object | `StepResult`, `RunResult`, `ProviderConfig`, `ModelInfo` | Frozen dataclasses across layers |
 | Gateway | `frontend/src/core/api/client.ts` | Token, timeout, error mapping in one place |
 | Provider/Context | `frontend/src/core/auth/AuthContext.tsx` | Shared auth state |

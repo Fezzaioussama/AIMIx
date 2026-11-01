@@ -213,8 +213,9 @@ It is used in three places, which is why they can never disagree:
 1. `PipelineStepIn` and `GenerateRequest` reject ids no catalogue lists.
 2. `GET /api/models` serves the user's provider's list to the frontend
    (`useModels`), and `GET /api/llm-settings` every provider's.
-3. The planner prompt lists the allowed ids, and `parse_plan` replaces any
-   other id with the default.
+3. The planner prompt lists the allowed ids and asks for the default on every
+   step; `parse_plan` replaces any unknown id with the default, and a new plan's
+   steps all go on the default unless the request names another model.
 
 The default model is the one the user saved for that provider, else
 `llm_default_models[provider]` (env), else the first catalogue entry.
