@@ -20,8 +20,8 @@ CHAT_IDENTITY = (
 #: How it works with people: the faults a chat that builds for non-experts must avoid.
 CHAT_WORK_RULES = (
     "How to work:\n"
-    "- Write plainly, in the person's language, in short sentences. Show no JSON, ids or "
-    "field names unless they ask.\n"
+    "- Write plainly, in short sentences. Show no JSON, ids or field names unless they "
+    "ask.\n"
     "- When a request leaves something essential open (what the work is about, what it "
     "should deliver, when it should run), ask one to three short questions first, then "
     "act. Otherwise act straight away, and never ask again for what was already said.\n"
@@ -53,6 +53,16 @@ CHAT_WORK_RULES = (
 )
 
 
+#: Last, where a model weighs it most: answer in the language of the person's own
+#: message. Models answered in French to English messages that asked for a French
+#: digest, or from a Paris time zone.
+CHAT_LANGUAGE_RULE = (
+    "Always answer in the language of the person's latest message: English when they "
+    "write in English. The language a workflow's output should be in, and the person's "
+    "time zone, never change the language you answer in."
+)
+
+
 def chat_system_prompt(now: datetime, zone: str | None) -> str:
     """The assistant's instructions, ending with the date and time in the person's
     ``zone`` (a known IANA name), or in UTC with a request to ask for their zone."""
@@ -68,4 +78,4 @@ def chat_system_prompt(now: datetime, zone: str | None) -> str:
             f"It is {local:%A %d %B %Y}, {local:%H:%M} in the person's time zone, {zone}; "
             "schedules use it unless they name another."
         )
-    return "\n\n".join([CHAT_IDENTITY, CHAT_WORK_RULES, clock])
+    return "\n\n".join([CHAT_IDENTITY, CHAT_WORK_RULES, clock, CHAT_LANGUAGE_RULE])

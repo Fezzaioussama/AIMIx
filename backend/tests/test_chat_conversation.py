@@ -17,7 +17,7 @@ from api.services.chat_conversation import (
     model_messages,
     recent,
 )
-from api.services.chat_prompts import CHAT_WORK_RULES, chat_system_prompt
+from api.services.chat_prompts import CHAT_LANGUAGE_RULE, CHAT_WORK_RULES, chat_system_prompt
 from tests.conftest import FakeAgent, use_agent
 
 #: A Sunday morning; Paris is on winter time (UTC+1) since 25 October 2026.
@@ -93,6 +93,8 @@ def test_the_instructions_send_building_to_the_planner_tools() -> None:
 
     assert "design_workflow" in prompt
     assert "change_workflow" in prompt
+    # It answered in French when only the digest was to be in French: the rule comes last.
+    assert prompt.endswith(CHAT_LANGUAGE_RULE)
     assert "Never ask for, repeat or keep passwords or API keys" in prompt
 
 

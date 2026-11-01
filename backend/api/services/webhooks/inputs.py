@@ -3,8 +3,9 @@ whatever it sends, so the rules are few and predictable:
 
 1. A JSON object with ``input`` or ``inputs`` is a run request, as
    ``POST /pipelines/<id>/runs`` takes it.
-2. Otherwise a pipeline with named inputs takes the object's fields of those names;
-   one with a single named input takes the whole body when no field has its name.
+2. Otherwise a pipeline with named inputs takes the object's fields of those names,
+   and each input's declared default where none is sent; one with a single named
+   input takes the whole body when no field has its name.
 3. Otherwise the body is the run's text: JSON laid out readably, anything else as sent.
 """
 
@@ -37,7 +38,7 @@ def call_start(fields: Sequence[Mapping[str, str]], body: bytes) -> RunStart:
     if isinstance(payload, dict):
         values = {name: _as_text(payload[name]) for name in names if name in payload}
         if values or len(names) > 1:
-            return _started("", values)
+            return _started("", _with_defaults(fields, values))
     if len(names) == 1:
         return _started("", {names[0]: shown})
     raise ValidationFailed(
@@ -71,6 +72,14 @@ def _started(text: str, values: Mapping[str, str]) -> RunStart:
     except ValueError as cause:
         raise ValidationFailed(str(cause)) from cause
     return RunStart(text, dict(values), trigger=RunTrigger.WEBHOOK)
+
+
+def _with_defaults(fields: Sequence[Mapping[str, str]], sent: Mapping[str, str]) -> dict[str, str]:
+    """The values sent, and each input's declared default where none was: another app
+    cannot know every input a workflow declares."""
+    defaults = {field["name"]: field.get("default_value", "") for field in fields}
+    filled = {**defaults, **{name: value for name, value in sent.items() if value.strip()}}
+    return {name: value for name, value in filled.items() if value.strip()}
 
 
 def _as_text(value: Any) -> str:

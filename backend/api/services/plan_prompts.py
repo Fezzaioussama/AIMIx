@@ -26,8 +26,9 @@ PIPELINE_GENERATION_TEMPLATE = PIPELINE_GENERATION_INTRO + PIPELINE_PLANNER_GUID
 TEAM_GUIDE = """\
 How to build a strong team:
 - Keep it as small as the work allows: one agent per distinct deliverable or real specialty, \
-often two to four, plus the final check. Add no step for something trivial: every agent is \
-told today's date and who else is in the team.
+often two to four, plus the final check. Add no step for something trivial. Every agent is \
+told today's date and who else is in the team: never add a step or an input only to get \
+the date or the time.
 - Put a step in a later stage when it needs another step's result, for example subject lines \
 for an email another step rewrites, or recommendations that build on an analysis. Steps share \
 a stage only when their work is independent. When several agents each write part of one \

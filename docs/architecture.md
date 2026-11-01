@@ -440,8 +440,9 @@ sequenceDiagram
   writes `/api/hooks/<token>` in its place; the service logs ids only.
 - **What a call sends** (`webhooks/inputs.call_start`, pure): a JSON object with
   `input`/`inputs` is a run request; otherwise a pipeline's named inputs are read
-  from the object's fields of those names (one named input takes the whole body
-  when none matches); otherwise the body is the run's text. A body is bounded like
+  from the object's fields of those names, or else their declared defaults (one
+  named input takes the whole body when none matches); otherwise the body is the
+  run's text. A body is bounded like
   any JSON request (`REQUEST_MAX_JSON_BYTES`) and a run's inputs like any run's.
 
 ### Result deliveries

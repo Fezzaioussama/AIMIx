@@ -156,6 +156,19 @@ class _ToolEvents(BaseCallbackHandler):
             self._emit(tool_failed(name, str(error)[:300]))
 
 
+class _Paragraphs:
+    """Starts the text of a new model reply (after a tool call) on a new paragraph, so
+    two replies' sentences never run together on the screen."""
+
+    def __init__(self) -> None:
+        self._last: str | None = None
+
+    def text(self, message: AIMessage) -> str:
+        separate = self._last is not None and message.id != self._last
+        self._last = message.id
+        return f"\n\n{message.text}" if separate else message.text
+
+
 class LangGraphChatAgent:
     def __init__(self, model: BaseChatModel, toolset: AgentToolset, limits: AgentLimits) -> None:
         self._model = model
@@ -186,6 +199,7 @@ class LangGraphChatAgent:
                     "callbacks": [_ToolEvents(asyncio.get_running_loop(), queue)],
                 },
             )
+            paragraphs = _Paragraphs()
             async for event in events:
                 if event["type"] != "messages":
                     continue
@@ -193,9 +207,9 @@ class LangGraphChatAgent:
                 if (
                     metadata.get("langgraph_node") == "model"
                     and isinstance(message, AIMessage)
-                    and (text := message.text)
+                    and message.text
                 ):
-                    queue.put_nowait(text_event(text))
+                    queue.put_nowait(text_event(paragraphs.text(message)))
         logger.info(
             "chat.agent_completed tools=%d duration_ms=%.1f",
             len(tools),

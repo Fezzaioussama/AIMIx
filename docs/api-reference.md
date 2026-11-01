@@ -1710,8 +1710,10 @@ The token in the path is the credential. The body is any JSON or text (up to
 1. A JSON object with `input` or `inputs` is a run request, as
    [`POST /pipelines/<id>/runs`](#post-pipelinesidruns) takes it.
 2. Otherwise a pipeline with named inputs takes the object's fields of those
-   names (other fields are ignored; a value that is not text is sent as JSON); one
-   with a single named input takes the whole body when no field has its name.
+   names (other fields are ignored; a value that is not text is sent as JSON), and
+   each input's declared default where none is sent, so a form that only needs to
+   start the workflow can send anything; one with a single named input takes the
+   whole body when no field has its name.
 3. Otherwise the body is the run's text: JSON laid out readably, anything else as
    sent.
 

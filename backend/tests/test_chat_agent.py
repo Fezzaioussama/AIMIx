@@ -287,3 +287,33 @@ async def test_the_agent_reads_its_instructions_and_the_earlier_turns(
     }
     assert captured["system_prompt"].startswith("You are the AIMIx assistant.")
     assert "in the person's time zone, Europe/Paris" in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_a_reply_after_a_tool_call_starts_a_new_paragraph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
+        return native
+
+    def chunk(text: str, message_id: str) -> dict[str, Any]:
+        message = AIMessageChunk(content=text, id=message_id)
+        return {"type": "messages", "data": (message, {"langgraph_node": "model"})}
+
+    class FakeGraph:
+        async def astream(self, state: object, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+            yield chunk("I will schedule it", "first")
+            yield chunk(" now.", "first")
+            yield {
+                "type": "messages",
+                "data": (ToolMessage(content="ok", tool_call_id="x"), {"langgraph_node": "tools"}),
+            }
+            yield chunk("Done.", "second")
+
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
+    monkeypatch.setattr(agent_service, "create_agent", lambda *args, **kwargs: FakeGraph())
+    agent = LangGraphChatAgent(object(), AgentToolset({}, []), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
+
+    events = [part async for part in agent.stream(Conversation("Schedule it"))]
+
+    assert "".join(event.text for event in events) == "I will schedule it now.\n\nDone."

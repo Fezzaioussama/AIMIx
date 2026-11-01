@@ -33,6 +33,7 @@ from tests.conftest import TEST_SETTINGS, FakeProvider, InlineRunExecutor, beare
 
 TOPIC = {"name": "topic", "label": "Topic", "description": ""}
 TONE = {"name": "tone", "label": "Tone", "description": ""}
+FUN = {**TONE, "default_value": "fun"}
 
 
 def workflow(session: Session, owner: User, inputs: list[dict[str, str]] | None = None) -> Pipeline:
@@ -214,6 +215,14 @@ def test_deleting_the_workflow_deletes_its_webhook(
         ),
         ([TOPIC], b"bees", "", {"topic": "bees"}),
         ([TOPIC], b'{"subject": "bees"}', "", {"topic": '{\n  "subject": "bees"\n}'}),
+        # An input the call does not send takes its declared default.
+        ([TOPIC, FUN], b'{"topic": "bees", "tone": " "}', "", {"topic": "bees", "tone": "fun"}),
+        (
+            [{**TOPIC, "default_value": "cars"}, FUN],
+            b'{"form": 1}',
+            "",
+            {"topic": "cars", "tone": "fun"},
+        ),
     ],
 )
 def test_what_a_call_sends_becomes_the_runs_input(
