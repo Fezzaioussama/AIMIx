@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 
 import type { Run } from '../../core/api/types';
+import { runPath } from '../../core/routes';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { Page, PageHeader } from '../../core/ui/Page';
 import { NoticeLine } from '../settings/NoticeLine';
@@ -49,7 +50,7 @@ export function SchedulesPage() {
           schedules={schedules}
           busy={status !== 'idle'}
           actions={actions}
-          onStarted={(run: Run) => navigate(`/runs/${run.id}`)}
+          onStarted={(run: Run) => navigate(runPath(run.id))}
         />
       )}
     </Page>

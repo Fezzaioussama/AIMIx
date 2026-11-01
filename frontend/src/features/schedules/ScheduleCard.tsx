@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { Schedule } from '../../core/api/types';
+import { runPath } from '../../core/routes';
 import { formatDateTime } from '../../core/time';
 import { ToggleSwitch } from '../../core/ui/ToggleSwitch';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
@@ -73,7 +74,7 @@ function LastRun({ schedule }: { schedule: Schedule }) {
   if (last === null) return <>No runs yet</>;
   return (
     <Link
-      to={`/runs/${last.id}`}
+      to={runPath(last.id)}
       className={`inline-flex flex-wrap items-center gap-2 text-slate-100 underline-offset-2 hover:underline ${LINK_FOCUS}`}
     >
       <span className="sr-only">Open the run from </span>

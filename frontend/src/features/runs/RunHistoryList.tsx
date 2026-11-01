@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import type { RunSummary } from '../../core/api/types';
+import { runPath } from '../../core/routes';
 import { elapsedMs, formatDateTime, formatDuration } from '../../core/time';
 import { CostText } from '../../core/ui/CostText';
 import { describeCost } from '../../core/usageFormat';
@@ -74,7 +75,7 @@ function RunLink({ run, selected }: { run: RunSummary; selected: boolean }) {
   const cost = describeCost(run.usage);
   return (
     <Link
-      to={`/runs/${run.id}`}
+      to={runPath(run.id)}
       aria-current={selected ? 'page' : undefined}
       className={`block rounded-xl border px-3 py-2.5 transition-colors focus-visible:outline-2 focus-visible:outline-sky-400 ${
         selected

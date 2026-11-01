@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import type { Run, RunStatus } from '../../core/api/types';
+import { runPath } from '../../core/routes';
 import { countOf } from '../../core/usageFormat';
 import { stepLabel } from '../pipelines/stages';
 import { RUN_STATUS_STYLES, RunStatusBadge } from '../runs/RunStatusBadge';
@@ -46,7 +47,7 @@ export function RunMessageView({ message, context }: ViewProps<'run'>) {
     return (
       <Bubble>
         Run #{message.runId}.{' '}
-        <Link to={`/runs/${message.runId}`} className={ANSWER_ACTION}>
+        <Link to={runPath(message.runId)} className={ANSWER_ACTION}>
           Open it in Runs
         </Link>
       </Bubble>
