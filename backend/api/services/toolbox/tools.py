@@ -171,11 +171,13 @@ def read_csv_tool(workspace: LocalWorkspace) -> BaseTool:
 def save_artifact_tool(workspace: LocalWorkspace) -> BaseTool:
     return make_tool(
         SAVE_ARTIFACT,
-        "Save a new file in the user's workspace; they can download it from their Files "
+        "Save a file in the user's workspace; they can download it from their Files "
         "page. The extension sets the format: .txt, .md, .json, .csv or .html are saved as "
         "written. For .docx or .pdf, write Markdown (headings, lists, bold, italic, tables): "
         "it becomes a formatted document; a line holding only ![description](path) shows "
-        "that PNG or JPEG of the workspace. Never overwrites.",
+        "that PNG or JPEG of the workspace. A .pdf's reply gives its page count. Saving "
+        "again under a name this run already saved replaces that draft; an older file is "
+        "never replaced.",
         func=workspace.save_artifact,
     )
 

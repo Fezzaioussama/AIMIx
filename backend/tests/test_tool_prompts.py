@@ -13,6 +13,7 @@ from api.services.prompts import pipeline_revision_prompt
 from api.services.tool_prompts import (
     LINKS_PLANNER_GUIDE,
     LINKS_RULE,
+    STEP_AGENT_SAVE_GUIDANCE,
     STEP_AGENT_TOOL_GUIDANCE,
     STEP_AGENT_WEB_GUIDANCE,
 )
@@ -33,6 +34,15 @@ def test_a_step_with_a_web_tool_is_told_to_cite_its_sources(web_tool: str) -> No
     assert STEP_AGENT_TOOL_GUIDANCE in prompt
     assert STEP_AGENT_WEB_GUIDANCE in prompt
     assert "cite the URL of every web source" in prompt
+
+
+def test_a_step_that_saves_files_is_told_to_keep_to_a_set_length() -> None:
+    saves = step_agent_system_prompt(AgentRole("Designer"), ["save_artifact"])
+    reads = step_agent_system_prompt(AgentRole("Reader"), ["read_workspace_file"])
+
+    assert STEP_AGENT_SAVE_GUIDANCE in saves
+    assert "save it again under the same name" in saves
+    assert STEP_AGENT_SAVE_GUIDANCE not in reads
 
 
 @pytest.mark.parametrize("tools", [[], ["calculator"], ["fetch_url"]])

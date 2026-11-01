@@ -362,7 +362,7 @@ Every integration route answers `404` for another account's integration.
   { "name": "read_workspace_file", "description": "Read a file from the user's workspace...", "source": "AIMIx" },
   { "name": "search_workspace_files", "description": "Search local text files...", "source": "AIMIx" },
   { "name": "read_csv", "description": "Read a local CSV as structured rows...", "source": "AIMIx" },
-  { "name": "save_artifact", "description": "Save a new file in the user's workspace...", "source": "AIMIx" },
+  { "name": "save_artifact", "description": "Save a file in the user's workspace...", "source": "AIMIx" },
   { "name": "run_python", "description": "Run Python in a fresh sandbox without internet...", "source": "AIMIx" },
   { "name": "generate_image", "description": "Draw a picture with Meta's Muse Image model...", "source": "AIMIx" },
   { "name": "find_objects", "description": "Find and count every object of one kind in a PNG or JPEG...", "source": "AIMIx" }
@@ -420,8 +420,12 @@ return and is not a plain number such as `-12.5`, even once split on another
 delimiter): such a cell then gets a leading `'` and every cell is quoted. For
 `.docx` and `.pdf` the agent
 passes Markdown (headings, paragraphs, bullet and numbered lists, bold, italic,
-links, tables, code, quotes) and it is laid out as a document. It never
-overwrites an existing file, refuses an artifact (or its Markdown) over
+links, tables, code, quotes) and it is laid out as a document; a `.pdf`'s reply
+ends with its page count ("Saved brief.pdf (2 pages)"), so an agent asked for one
+page can shorten it. In a run, saving again under a name the run already saved
+replaces that draft ("Replaced …"): a file changed since the run started counts
+as its own. It never overwrites a file older than the run, nor any file outside a
+run (the chat), refuses an artifact (or its Markdown) over
 `WORKSPACE_MAX_FILE_BYTES`, and refuses one that would take the user's files past
 `WORKSPACE_MAX_TOTAL_BYTES` or `WORKSPACE_MAX_FILES`. When any workspace-reading tool is enabled, outbound
 `web_search` and `fetch_url` are suppressed unless

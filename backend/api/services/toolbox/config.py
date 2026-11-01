@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 
 from api.services.documents.contracts import ExtractionLimits, OcrEngine, SlotPool
@@ -25,6 +26,17 @@ class MetaTools:
 
     images: ImageGenerator
     vision: ObjectFinder
+
+
+@dataclass(frozen=True)
+class WorkspaceOptions:
+    """What the workspace tools may do besides reading and adding files."""
+
+    #: Reads the scanned pages of PDF and Word files; None skips and names them.
+    ocr: OcrEngine | None = None
+    #: When the run started: save_artifact replaces a file saved since then (this
+    #: run's own draft), never an older one. None (chat, no run): never replaces.
+    drafts_since: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +85,8 @@ class ToolboxConfig:
     #: Reads the scanned pages of workspace documents; None when OCR is off or not
     #: installed, and those pages are skipped and named.
     ocr: OcrEngine | None = field(default=None, repr=False, compare=False)
+    #: The start of the run these tools work for (``WorkspaceOptions.drafts_since``).
+    drafts_since: datetime | None = None
 
 
 def toolbox_config(

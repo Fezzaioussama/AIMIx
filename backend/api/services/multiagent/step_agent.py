@@ -6,6 +6,7 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from functools import partial
 from time import monotonic
 
@@ -17,6 +18,7 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from api.db import Database
 from api.exceptions import UpstreamResponseInvalid
 from api.models import User
+from api.repositories import runs as run_repository
 from api.services.agent_prompts import AgentRole, step_agent_system_prompt
 from api.services.agent_runtime import (
     AGENT_FAILURES,
@@ -26,7 +28,7 @@ from api.services.agent_runtime import (
     resolve_tools,
 )
 from api.services.agent_tools import native_tools
-from api.services.agent_types import AgentOutcome, AgentTask, ToolCallTrace
+from api.services.agent_types import AgentOutcome, AgentTask, RunStepRef, ToolCallTrace
 from api.services.approvals.gate import ApprovalGate
 from api.services.approvals.guard import guard_tools, run_gate
 from api.services.approvals.policy import approval_policy_for
@@ -187,7 +189,12 @@ class PipelineAgentGenerator:
             self._dependencies.model_factory(task.model),
             AgentToolset(
                 mcp_connections_for(self._database, self._user, settings),
-                native_tools(self._database, self._user, settings),
+                native_tools(
+                    self._database,
+                    self._user,
+                    settings,
+                    _drafts_since(self._database, task.run_step),
+                ),
                 approval_policy_for(self._database, self._user, settings),
             ),
             AgentLimits(
@@ -201,3 +208,15 @@ class PipelineAgentGenerator:
             ),
         )
         return await agent.reply(task)
+
+
+def _drafts_since(database: Database, step: RunStepRef | None) -> datetime | None:
+    """When the step's run started: its agents may replace the files saved since then,
+    their own drafts. None outside a recorded run, where nothing is replaced."""
+    if step is None:
+        return None
+    with database.session() as session:
+        run = run_repository.load(session, step.run_id)
+    started = run.started_at if run else None
+    # SQLite hands back the UTC time it stored without its zone.
+    return started.replace(tzinfo=timezone.utc) if started and started.tzinfo is None else started

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import asdict, replace
+from datetime import datetime
 from typing import Any
 
 from langchain.tools import tool
@@ -128,15 +129,17 @@ def meta_tools(database: Database, user: User, settings: Settings) -> MetaTools 
             return None
 
 
-def native_tools(database: Database, user: User, settings: Settings) -> list[BaseTool]:
-    """Every in-process tool an agent may use: pipeline inspection plus the
-    built-in toolbox (web search, page fetch, calculator, clock, pictures)."""
+def native_tools(
+    database: Database, user: User, settings: Settings, drafts_since: datetime | None = None
+) -> list[BaseTool]:
+    """Every in-process tool an agent may use: pipeline inspection plus the built-in
+    toolbox; a run's agents may replace the files saved since ``drafts_since``."""
     workspace = user_workspace_dir(settings.workspace_dir, user.id)
     quota = sandbox_quota(database, user, settings)
-    models = meta_tools(database, user, settings)
+    config = toolbox_config(settings, workspace, quota, meta_tools(database, user, settings))
     return [
         *read_only_tools(database, user),
-        *toolbox_tools(toolbox_config(settings, workspace, quota, models)),
+        *toolbox_tools(replace(config, drafts_since=drafts_since)),
     ]
 
 

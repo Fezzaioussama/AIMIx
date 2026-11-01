@@ -26,15 +26,17 @@ from PIL import Image
 from api.exceptions import DomainError, FileTooLarge
 from api.services.artifacts.contracts import RenderOptions
 from api.services.artifacts.registry import render_artifact
-from api.services.documents.contracts import ExtractionLimits, OcrEngine, ReadContext
+from api.services.documents.contracts import ExtractionLimits, ReadContext
 from api.services.documents.extraction import (
     extract_document,
     megabytes,
     omission_notes,
     read_document,
 )
+from api.services.documents.pdf import page_count
 from api.services.documents.scans import no_such_page
 from api.services.files.storage import WorkspaceStorage
+from api.services.toolbox.config import WorkspaceOptions
 
 #: Read and searched as they are; any other file is read through the document
 #: readers (PDF, Word, ...), which refuse what they cannot read.
@@ -111,12 +113,13 @@ class LocalWorkspace:
         storage: WorkspaceStorage,
         limits: WorkspaceLimits,
         render: RenderOptions,
-        ocr: OcrEngine | None = None,
+        options: WorkspaceOptions = WorkspaceOptions(),
     ) -> None:
         self._storage = storage
         self._limits = limits
         self._render = render
-        self._ocr = ocr
+        self._ocr = options.ocr
+        self._drafts_since = options.drafts_since
 
     def list_files(self, directory: str = ".") -> str:
         base = self._resolve(directory, directory=True)
@@ -162,12 +165,16 @@ class LocalWorkspace:
         return json.dumps(rows, ensure_ascii=False)[: self._limits.max_output_chars]
 
     def save_artifact(self, path: str, content: str) -> str:
+        """Saves a new file, or replaces this run's own draft of it; a PDF's reply
+        gives its page count, so an agent asked for one page can tell."""
         with _tool_errors():
-            target = self._storage.writable(path)
+            draft = self._is_draft(path)
+            target = self._storage.writable(path, replace=draft)
             self._check_artifact_size(len(content.encode("utf-8", errors="replace")))
             options = replace(self._render, pictures=self._picture)
             data = render_artifact(target.suffix.lower(), content, options)
-            return f"Saved {self._store(path, data)}"
+            saved = self._store(path, data, overwrite=draft)
+            return f"{'Replaced' if draft else 'Saved'} {saved}{_length(target.suffix, data)}"
 
     def read_bytes(self, path: str) -> bytes:
         """Any visible file's raw content, within the file size limit. The storage
@@ -184,13 +191,19 @@ class LocalWorkspace:
         with _tool_errors():
             return self._store(path, _spreadsheet_safe(path, content, self._render))
 
-    def _store(self, path: str, data: bytes) -> str:
-        """Write a new file within the file limit and the quota, never replacing one."""
+    def _store(self, path: str, data: bytes, *, overwrite: bool = False) -> str:
+        """Write a file within the file limit and the quota; an existing one only
+        with ``overwrite``."""
         self._check_artifact_size(len(data))
         try:
-            return self._storage.relative_path(self._storage.save(path, data))
+            return self._storage.relative_path(self._storage.save(path, data, replace=overwrite))
         except OSError as cause:
             raise ToolException("The artifact could not be saved.") from cause
+
+    def _is_draft(self, path: str) -> bool:
+        """Whether ``path`` is a file saved since this run started: its own draft."""
+        since, changed = self._drafts_since, self._storage.modified(path)
+        return since is not None and changed is not None and changed >= since
 
     def _resolve(self, relative: str, *, directory: bool = False) -> Path:
         with _tool_errors():
@@ -286,6 +299,14 @@ class LocalWorkspace:
                 return handle.read(self._limits.documents.max_bytes + 1)
         except OSError as cause:
             raise ToolException("The file could not be read.") from cause
+
+
+def _length(suffix: str, data: bytes) -> str:
+    """A saved PDF's page count, as save_artifact's reply ends: " (2 pages)"."""
+    if suffix.lower() != PDF_SUFFIX:
+        return ""
+    pages = page_count(data)
+    return f" ({pages} page{'' if pages == 1 else 's'})"
 
 
 def _page_of(text: str, number: int, size: int) -> FilePages:

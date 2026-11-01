@@ -48,6 +48,11 @@ _MOST_OF_THE_PAGE = 0.5
 _SMALL_PRINT = 14.0
 
 
+def page_count(data: bytes) -> int:
+    """How many pages a PDF has, so an agent asked for one page can tell."""
+    return len(PdfReader(BytesIO(data), strict=False).pages)
+
+
 def read_pdf(data: bytes, context: ReadContext) -> ReadResult:
     reader = PdfReader(BytesIO(data), strict=False)
     if reader.is_encrypted and reader.decrypt("") == PasswordType.NOT_DECRYPTED:

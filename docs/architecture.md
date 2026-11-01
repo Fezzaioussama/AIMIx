@@ -494,7 +494,12 @@ folder, no link followed, no overwrite unless the caller asks, and at most
 them to the model as tool errors, the HTTP layer returns them as they are.
 `save_artifact` writes text formats as given and lays out Markdown as `.docx`
 or `.pdf` through `api/services/artifacts` (one Markdown parse, then a renderer
-per extension from the `RENDERERS` registry). `agent_tools.native_tools` joins
+per extension from the `RENDERERS` registry). A run's agents may replace their own
+drafts: `step_agent` hands `native_tools` the run's start (`drafts_since`), and the
+workspace (`toolbox.config.WorkspaceOptions`) replaces only a file changed since
+then, so a reviewer's "send it back" round updates the deliverable in place, while
+the user's older files stay untouched; a PDF's reply gives its page count for
+length limits (`tool_prompts.STEP_AGENT_SAVE_GUIDANCE`). `agent_tools.native_tools` joins
 them with the pipeline tools, so pipeline agents, the chat agent, the planner
 and `GET /agent-tools` all see the same set.
 

@@ -7,6 +7,7 @@ import os
 import stat
 import time
 import unicodedata
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -60,6 +61,16 @@ def test_a_new_file_never_replaces_one_unless_asked(storage: WorkspaceStorage) -
     assert (storage.root / "notes.txt").read_bytes() == b"second"
     # The staged copy used for the swap is gone.
     assert [path.name for path in storage.root.iterdir()] == ["notes.txt"]
+
+
+def test_modified_tells_when_a_file_last_changed_in_utc(storage: WorkspaceStorage) -> None:
+    storage.save("notes.txt", b"first")
+
+    changed = storage.modified("notes.txt")
+
+    assert changed is not None and changed.tzinfo == timezone.utc
+    assert abs(datetime.now(timezone.utc) - changed) < timedelta(minutes=1)
+    assert storage.modified("missing.txt") is None
 
 
 def test_a_folder_is_never_replaced(storage: WorkspaceStorage) -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Collection
 
 from api.services.toolbox.registry import OUTBOUND_TOOLS
+from api.services.toolbox.tools import SAVE_ARTIFACT
 
 #: For a step with any tool.
 STEP_AGENT_TOOL_GUIDANCE = (
@@ -21,6 +22,12 @@ STEP_AGENT_TOOL_GUIDANCE = (
 STEP_AGENT_WEB_GUIDANCE = (
     "Your tools can read the web: use them for the content of a web page instead of "
     "guessing, and cite the URL of every web source you rely on."
+)
+#: Only for a step with save_artifact, which reports a PDF's page count.
+STEP_AGENT_SAVE_GUIDANCE = (
+    "When the request sets a length for a file (one page, two pages), check the page "
+    "count save_artifact reports. If the file is longer, shorten the content and save it "
+    "again under the same name: that replaces your draft."
 )
 #: For every agent, with or without tools.
 LINKS_RULE = (
@@ -47,4 +54,6 @@ def tool_guidance(tools: Collection[str]) -> list[str]:
     guidance = [STEP_AGENT_TOOL_GUIDANCE] if tools else []
     if OUTBOUND_TOOLS.intersection(tools):
         guidance.append(STEP_AGENT_WEB_GUIDANCE)
+    if SAVE_ARTIFACT in tools:
+        guidance.append(STEP_AGENT_SAVE_GUIDANCE)
     return [*guidance, LINKS_RULE]

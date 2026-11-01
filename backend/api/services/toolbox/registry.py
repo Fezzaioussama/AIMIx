@@ -14,7 +14,7 @@ from langchain_core.tools import BaseTool
 from api.services.artifacts.contracts import RenderOptions
 from api.services.files.storage import WorkspaceStorage
 from api.services.toolbox.code_runner import CodeRunner
-from api.services.toolbox.config import MetaTools, ToolboxConfig
+from api.services.toolbox.config import MetaTools, ToolboxConfig, WorkspaceOptions
 from api.services.toolbox.e2b_sandbox import E2BSandboxOpener
 from api.services.toolbox.images import ImageStudio
 from api.services.toolbox.sandbox import SandboxLimits, SandboxOpener, metered
@@ -75,7 +75,9 @@ def _workspace(config: ToolboxConfig) -> LocalWorkspace | None:
         config.document_limits,
     )
     render = RenderOptions(config.pdf_font_path, config.pdf_bold_font_path)
-    return LocalWorkspace(storage, limits, render, config.ocr)
+    return LocalWorkspace(
+        storage, limits, render, WorkspaceOptions(config.ocr, config.drafts_since)
+    )
 
 
 def _workspace_tool(

@@ -217,14 +217,21 @@ def test_workspace_does_not_follow_symlinks(tmp_path: Path) -> None:
         workspace.read_file("alias.txt")
 
 
-@pytest.mark.parametrize(("path", "opens"), [("brief.docx", Document), ("brief.pdf", PdfReader)])
+@pytest.mark.parametrize(
+    ("path", "opens", "reply"),
+    [
+        ("brief.docx", Document, "Saved brief.docx"),
+        # A PDF's page count, so an agent asked for one page can tell.
+        ("brief.pdf", PdfReader, "Saved brief.pdf (1 page)"),
+    ],
+)
 def test_save_artifact_lays_markdown_out_as_a_document(
-    tmp_path: Path, path: str, opens: type[Any]
+    tmp_path: Path, path: str, opens: type[Any], reply: str
 ) -> None:
     limits = replace(WORKSPACE_LIMITS, max_file_bytes=200_000)
     workspace = local_workspace(tmp_path, limits, quota=1_000_000)
 
-    assert workspace.save_artifact(path, "# Brief\n\nRevenue grew **12%**.") == f"Saved {path}"
+    assert workspace.save_artifact(path, "# Brief\n\nRevenue grew **12%**.") == reply
     opens(BytesIO((tmp_path / path).read_bytes()))  # a real file of that format
     assert "Revenue grew 12%." in workspace.read_file(path).text
 

@@ -18,6 +18,7 @@ import stat
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path, PurePath
 from uuid import uuid4
 
@@ -105,6 +106,11 @@ class WorkspaceStorage:
         if not found:
             raise NotFound(f"'{relative}' does not exist in the workspace.")
         return target
+
+    def modified(self, relative: str) -> datetime | None:
+        """When the file at ``relative`` last changed (UTC); None when there is none."""
+        info = _regular_stat(self._confined(relative))
+        return None if info is None else datetime.fromtimestamp(info.st_mtime, timezone.utc)
 
     def files(self, base: Path | None = None) -> Iterator[tuple[Path, os.stat_result]]:
         """Visible regular files below ``base`` (the root by default) and their
