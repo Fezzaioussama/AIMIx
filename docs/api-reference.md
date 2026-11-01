@@ -471,8 +471,10 @@ out. The events are:
 ```
 
 `action` is present when the tool created or changed something the chat can
-link to: `kind` is `pipeline` (open it at `/mission/<id>`) or `schedule` (open
-Schedules). `detail` carries a short human-readable result or failure.
+link to: `kind` is `pipeline` (open it at `/mission/<id>`), `schedule` (open
+Schedules) or `run` (open it at `/runs/<id>`; its subtitle says where it is, such
+as "Finished" or "Waiting for your OK"). `detail` carries a short human-readable
+result or failure.
 
 The assistant is told who it is and how to work with people who are not
 technical (`services/chat_prompts.py`): plain words in their language, one to
@@ -484,11 +486,30 @@ team guide, your own tools and models, and the final check, then save the result
 like the pipeline endpoints. `list_tools()` lists what your agents can use, as
 `GET /agent-tools` does.
 
+The rest of what the screens configure is in the chat too. **Runs**:
+`list_runs(pipeline_id?, status?, limit)` (the `GET /runs` filters),
+`get_run(run_id)` (status, each agent's state, the tool calls waiting for your
+OK, and the result cut at `CHAT_RUN_RESULT_MAX_CHARS`), `stop_run(run_id)` and
+`resume_run(run_id)` (the cancel and resume rules). An approval is never given
+from the chat: the assistant links to the run, and you approve there.
+`run_pipeline` waits for the run at most `RUN_WAIT_MAX_SECONDS`, then answers
+`{"id", "status": "running"}` with a link instead of ending the reply.
+**Ready-made workflows**: `list_templates()` and `use_template(slug, name?)`
+(`POST /templates/<slug>/use`). **Settings**: `show_settings()` (the provider,
+the default model, which providers have a key, and your integrations by name and
+host only, never a key or a full address) and `set_default_model(model,
+provider?)` (validated like `PUT /llm-settings`; switching to a provider without
+a key is refused). Keys, approvals, and adding or changing an integration stay on
+their screens: neither a secret nor an address the person did not type passes
+through the model.
+
 A refused write is a `status: "failed"` event (and an error result the model
 explains), not the end of the stream. The agent can call, for the signed-in
 user: `list_pipelines()`,
 `inspect_pipeline(pipeline_id)`, `list_models()`, `list_tools()`,
 `design_workflow(description)`, `change_workflow(pipeline_id, change)`,
+`list_runs`, `get_run`, `stop_run`, `resume_run`, `list_templates`,
+`use_template`, `show_settings`, `set_default_model`,
 `create_pipeline(name, steps, inputs)`,
 `update_pipeline(pipeline_id, name?, steps?, inputs?)`,
 `run_pipeline(pipeline_id, input_text, inputs)`, `list_schedules(pipeline_id?)`,

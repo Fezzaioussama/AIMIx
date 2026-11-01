@@ -683,7 +683,8 @@ crash, startup recovery logs only how many runs it interrupted
    through a `ChatScope` (pipelines, runs and schedules from `agent_tools`; the
    planner's `design_workflow` and `change_workflow`, and `list_tools`, from
    `chat_tools/workflows`, so a team built by chatting is planned like a
-   mission's) and discovers tools from every server in `MCP_SERVERS` and the
+   mission's; runs, templates and settings from `chat_tools/runs`, `templates`
+   and `settings`) and discovers tools from every server in `MCP_SERVERS` and the
    user's enabled integrations. Graph execution runs in one producer task, which sends
    `ChatEvent`s through a queue: assistant text, and a callback handler's
    `tool` events (started, finished with the created resource, failed). Model
@@ -704,7 +705,7 @@ crash, startup recovery logs only how many runs it interrupted
    the status, so it is logged (`chat.stream_interrupted`) and the stream ends.
 6. The hook appends text to the AI message and folds each `tool` event into the
    reply's tool list; a finished write offers an `action` the bubble links to
-   (the mission, or Schedules). Unmounting aborts the fetch and keeps what came,
+   (the mission, a run, or Schedules). Unmounting aborts the fetch and keeps what came,
    so following that link and coming back continues the conversation.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`

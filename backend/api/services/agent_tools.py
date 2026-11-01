@@ -11,7 +11,7 @@ from langchain.tools import tool
 from langchain_core.tools import BaseTool, ToolException
 
 from api.db import Database
-from api.exceptions import DomainError, ProviderNotConfigured, Throttled
+from api.exceptions import DomainError, ProviderNotConfigured, RunStillRunning, Throttled
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
 from api.repositories import schedules as schedule_repository
@@ -182,8 +182,14 @@ def built_in_tools(
     ) -> dict[str, Any]:
         """Run one of your saved AIMIx pipelines and return its step results. Pass
         input_text, or, when the pipeline declares named inputs (see
-        inspect_pipeline), a value for each of them in inputs."""
-        return asdict(launch(pipeline_id, RunStart(input_text, inputs or {})))
+        inspect_pipeline), a value for each of them in inputs. A long run goes on
+        in the background: follow it with get_run."""
+        try:
+            return asdict(launch(pipeline_id, RunStart(input_text, inputs or {})))
+        except RunStillRunning as running:
+            return {"id": running.run_id, "status": "running"}
+        except DomainError as cause:
+            raise refused(cause) from cause
 
     @tool
     def list_models() -> list[str]:

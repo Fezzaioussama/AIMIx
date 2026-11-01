@@ -9,10 +9,10 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, ToolException
 from sqlalchemy.orm import Session
 
-from api.exceptions import NotFound, ValidationFailed
+from api.exceptions import NotFound
 from api.models import Pipeline, Run, RunStatus, Schedule, User
 from api.repositories import pipelines, users
 from api.repositories.pipelines import PipelineChanges
@@ -114,7 +114,8 @@ def test_native_tools_cannot_read_or_run_another_users_pipeline(
     assert listing.invoke({}) == []
     with pytest.raises(NotFound):
         inspect.invoke({"pipeline_id": theirs.id})
-    with pytest.raises(NotFound):
+    # A refused run reaches the model as a tool error it can explain.
+    with pytest.raises(ToolException, match="not found"):
         run.invoke({"pipeline_id": theirs.id, "input_text": "hello"})
     assert provider.calls == []
 
@@ -123,7 +124,7 @@ def test_native_run_rejects_blank_input(app: FastAPI, session: Session, user: Us
     saved = pipelines.create_with_steps(session, user, one_step("Echo", "{input}"))
     provider = FakeProvider()
     run = chat_tools(app, user, provider)["run_pipeline"]
-    with pytest.raises(ValidationFailed, match="must not be blank"):
+    with pytest.raises(ToolException, match="must not be blank"):
         run.invoke({"pipeline_id": saved.id, "input_text": "   "})
     assert provider.calls == []
     assert session.query(Run).count() == 0

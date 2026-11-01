@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
 ChatEventKind = Literal["text", "tool"]
 ToolStatus = Literal["started", "finished", "failed"]
-ActionKind = Literal["pipeline", "schedule"]
+ActionKind = Literal["pipeline", "schedule", "run"]
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,14 @@ TOOL_LABELS: dict[str, str] = {
     "create_pipeline": "Creating a pipeline",
     "update_pipeline": "Updating a pipeline",
     "run_pipeline": "Running a pipeline",
+    "list_runs": "Listing your runs",
+    "get_run": "Checking a run",
+    "stop_run": "Stopping a run",
+    "resume_run": "Resuming a run",
+    "list_templates": "Listing ready-made workflows",
+    "use_template": "Starting from a ready-made workflow",
+    "show_settings": "Reading your settings",
+    "set_default_model": "Changing your default model",
     "list_schedules": "Listing your schedules",
     "create_schedule": "Creating a schedule",
     "update_schedule": "Updating a schedule",
@@ -86,6 +95,11 @@ TOOL_LABELS: dict[str, str] = {
 ACTION_KINDS: dict[str, ActionKind] = {
     "design_workflow": "pipeline",
     "change_workflow": "pipeline",
+    "use_template": "pipeline",
+    "run_pipeline": "run",
+    "get_run": "run",
+    "stop_run": "run",
+    "resume_run": "run",
     "create_pipeline": "pipeline",
     "update_pipeline": "pipeline",
     "create_schedule": "schedule",
@@ -109,19 +123,41 @@ def action_for(name: str, output: object) -> dict[str, Any] | None:
     identifier = payload.get("id")
     if not isinstance(identifier, int):
         return None
-    if kind == "pipeline":
-        return {
-            "kind": kind,
-            "id": identifier,
-            "title": _text(payload.get("name"), "Pipeline"),
-            "subtitle": "Open the mission",
-        }
-    return {
-        "kind": kind,
-        "id": identifier,
-        "title": _text(payload.get("pipeline_name"), "Schedule"),
-        "subtitle": schedule_subtitle(payload),
-    }
+    title, subtitle = ACTION_TEXTS[kind](payload)
+    return {"kind": kind, "id": identifier, "title": title, "subtitle": subtitle}
+
+
+#: A run's status as the chat's link says it.
+RUN_STATUS_WORDS = {
+    "queued": "Queued",
+    "running": "Running",
+    "waiting": "Waiting for your OK",
+    "succeeded": "Finished",
+    "failed": "Failed",
+    "cancelled": "Stopped",
+    "interrupted": "Interrupted",
+}
+
+
+def _pipeline_texts(payload: dict[str, Any]) -> tuple[str, str]:
+    return _text(payload.get("name"), "Pipeline"), "Open the mission"
+
+
+def _schedule_texts(payload: dict[str, Any]) -> tuple[str, str]:
+    return _text(payload.get("pipeline_name"), "Schedule"), schedule_subtitle(payload)
+
+
+def _run_texts(payload: dict[str, Any]) -> tuple[str, str]:
+    status = _text(payload.get("status"), "")
+    return _text(payload.get("workflow"), "Run"), RUN_STATUS_WORDS.get(status, "Open the run")
+
+
+#: The title and subtitle of each kind's link (§5 O: a new kind is one entry).
+ACTION_TEXTS: dict[ActionKind, Callable[[dict[str, Any]], tuple[str, str]]] = {
+    "pipeline": _pipeline_texts,
+    "schedule": _schedule_texts,
+    "run": _run_texts,
+}
 
 
 WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")

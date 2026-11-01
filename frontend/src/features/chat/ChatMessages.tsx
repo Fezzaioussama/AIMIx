@@ -1,8 +1,8 @@
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 
-import type { ChatAction } from '../../core/api/chatTypes';
-import { missionPath } from '../../core/routes';
+import type { ChatAction, ChatActionKind } from '../../core/api/chatTypes';
+import { missionPath, runPath } from '../../core/routes';
 import { renderMarkdown } from '../../core/markdown/renderMarkdown';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { SCHEDULES_PATH } from '../schedules/paths';
@@ -39,9 +39,15 @@ const SUGGESTIONS = [
   },
 ] as const;
 
-/** Where a finished tool's result opens in the app. */
+/** Where a finished tool's result opens in the app, by what it is. */
+const ACTION_PATHS: Record<ChatActionKind, (id: number) => string> = {
+  pipeline: missionPath,
+  schedule: () => SCHEDULES_PATH,
+  run: runPath,
+};
+
 function actionPath(action: ChatAction): string {
-  return action.kind === 'schedule' ? SCHEDULES_PATH : missionPath(action.id);
+  return ACTION_PATHS[action.kind](action.id);
 }
 
 const STATUS_DOT = {

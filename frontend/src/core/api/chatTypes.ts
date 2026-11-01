@@ -13,7 +13,7 @@ export interface ChatTurn {
 }
 
 /** What a finished tool can link to. */
-export const CHAT_ACTION_KINDS = ['pipeline', 'schedule'] as const;
+export const CHAT_ACTION_KINDS = ['pipeline', 'schedule', 'run'] as const;
 export type ChatActionKind = (typeof CHAT_ACTION_KINDS)[number];
 
 /** A thing a finished tool created, which the chat offers as a link. */

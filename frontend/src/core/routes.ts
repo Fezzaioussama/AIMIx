@@ -8,6 +8,11 @@ export function missionPath(pipelineId?: number): string {
   return pipelineId === undefined ? HOME_PATH : `${HOME_PATH}/${pipelineId}`;
 }
 
+/** One run, followed live or read back on the Runs screen. */
+export function runPath(runId: number): string {
+  return `/runs/${runId}`;
+}
+
 /** The screen a path belongs to: its first segment, so /runs and /runs/7 are one. */
 export function sectionOf(pathname: string): string {
   return pathname.split('/')[1] ?? '';

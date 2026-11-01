@@ -15,7 +15,7 @@ frontend/src/
     auth/           # tokenStorage.ts, AuthContext.tsx, RequireAuth.tsx
     hooks/          # useModels.ts, useAgentTools.ts, useAccountName.ts, useCancellableRequest.ts, useLatest.ts, useNow.ts, useMediaQuery.ts, useMountedRef.ts
     markdown/       # renderMarkdown.ts
-    routes.ts       # HOME_PATH (where sign-in lands), missionPath(id), LEGAL_LINKS
+    routes.ts       # HOME_PATH (where sign-in lands), missionPath(id), runPath(id), LEGAL_LINKS
     saveBlob.ts     # hands a downloaded Blob to the browser as a file to save
     time.ts         # elapsedMs, formatDuration, formatDateTime
     usageFormat.ts  # formatCost, formatTokens, parseCost, describeCost: tokens and costs in words
@@ -392,8 +392,8 @@ server would need a table and endpoints; that is not part of this version.
   the session. `ChatPage` renders the header, a soft `Aurora`, the transcript and the
   `ChatComposer`; `ChatMessages` animates each bubble in (AI messages via
   `renderMarkdown`), with typing dots until a reply has text or a tool. A finished
-  write links to what it made (a mission, or Schedules), so the chat builds and
-  runs everything; a fresh conversation offers starter prompts.
+  write links to what it made (`ACTION_PATHS`: a mission, a run, Schedules), so the
+  chat builds and runs everything; a fresh conversation offers starter prompts.
 
 ### `features/pipelines`
 

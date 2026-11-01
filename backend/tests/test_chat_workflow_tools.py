@@ -11,27 +11,18 @@ from fastapi import FastAPI
 from langchain_core.tools import BaseTool, ToolException
 from sqlalchemy.orm import Session
 
-from api.db import Database
 from api.models import Pipeline, User
 from api.repositories import pipelines, users
 from api.repositories.pipelines import PipelineChanges
 from api.security import hash_password
-from api.services import agent_tools
-from api.services.agent_types import ToolDescriptor
 from api.services.catalog import default_model_id
 from api.services.chat_events import tool_finished
-from api.services.chat_tools.scope import ChatScope
 from api.services.chat_tools.workflows import workflow_tools
 from api.services.final_check import FINAL_CHECK_ROLE
-from api.services.llm import LLMProfile
-from api.services.run_policy import run_policy
-from api.services.run_recorder import utcnow
-from api.services.runs import RunService
-from api.services.schedules.service import ScheduleAccess
-from tests.conftest import FakeProvider, InlineRunExecutor
+from tests.chat_fakes import by_name, chat_scope
+from tests.conftest import FakeProvider
 
 REQUEST = "Every Monday, a digest of this week's AI news for my team, in French"
-TOOLS = [ToolDescriptor("web_search", "Search the web", "AIMIx")]
 PLAN = {
     "name": "AI news digest",
     "steps": [
@@ -53,38 +44,8 @@ PLAN = {
 }
 
 
-class FakeCatalog:
-    """The person's tools, without discovering any MCP server."""
-
-    def __init__(self, database: Database, user: User) -> None:
-        self.user = user
-
-    def available_sync(self) -> list[ToolDescriptor]:
-        return TOOLS
-
-
 def tools_for(app: FastAPI, user: User, planner: FakeProvider) -> dict[str, BaseTool]:
-    database = app.state.database
-    settings = agent_tools.get_settings()
-    with database.session() as placeholder:
-        schedules = ScheduleAccess(
-            placeholder,
-            user,
-            settings.schedules_max_per_user,
-            utcnow(),
-            run_policy(settings).limits,
-        )
-    scope = ChatScope(
-        database,
-        user,
-        LLMProfile("openrouter", default_model_id()),
-        RunService(database, InlineRunExecutor(), max_parallel_steps=1),
-        FakeProvider,
-        schedules,
-        planner=lambda profile: planner,
-        catalog=FakeCatalog,
-    )
-    return {item.name: item for item in workflow_tools(scope)}
+    return by_name(workflow_tools(chat_scope(app, user, planner)))
 
 
 def saved_digest(session: Session, user: User) -> Pipeline:

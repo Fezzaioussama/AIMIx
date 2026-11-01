@@ -24,6 +24,11 @@ class LlmSettings(BaseModel):
     # Of the earlier chat messages a request carries, the assistant reads the newest
     # whose texts fit in this many characters together; 0 makes each message stand alone.
     chat_history_max_chars: int = Field(24_000, ge=0, validation_alias="CHAT_HISTORY_MAX_CHARS")
+    # How much of a run's result the chat assistant reads (get_run); the Runs
+    # screen shows all of it.
+    chat_run_result_max_chars: int = Field(
+        12_000, ge=1, validation_alias="CHAT_RUN_RESULT_MAX_CHARS"
+    )
     # Retries of a transient provider failure (llm/retry.py); 0 turns them off.
     llm_max_retries: int = Field(2, ge=0, le=10, validation_alias="LLM_MAX_RETRIES")
     llm_retry_base_delay_seconds: float = Field(

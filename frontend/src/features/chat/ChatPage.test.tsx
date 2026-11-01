@@ -80,6 +80,27 @@ describe('ChatPage', () => {
     expect(await screen.findByText('Scheduled.')).toBeInTheDocument();
   });
 
+  it('links a run it checked to the run screen', async () => {
+    vi.mocked(streamChatReply).mockReturnValue(
+      events(
+        {
+          type: 'tool',
+          tool: 'get_run',
+          label: 'Checking a run',
+          status: 'finished',
+          action: { kind: 'run', id: 12, title: 'News digest', subtitle: 'Finished' },
+        },
+        { type: 'text', text: 'It finished.' },
+      ),
+    );
+    renderChat();
+
+    await say('How did my digest go?');
+
+    const link = await screen.findByRole('link', { name: /News digest/ });
+    expect(link).toHaveAttribute('href', '/runs/12');
+  });
+
   it('sends the conversation so far, and the time zone, with a follow-up', async () => {
     vi.mocked(streamChatReply)
       .mockReturnValueOnce(events({ type: 'text', text: 'Built: News digest.' }))
