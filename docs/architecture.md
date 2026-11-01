@@ -794,7 +794,10 @@ crash, startup recovery logs only how many runs it interrupted
 3. `services/agent` builds a chat-only LangGraph agent from the configured
    model, with the assistant's instructions (`chat_prompts`: how to work with
    people who are not technical, today's date and time in their zone) and the
-   earlier turns before the prompt. It binds the signed-in user's native tools
+   earlier turns before the prompt. After a tool's result, the model's next call
+   is reminded to answer in the language of the person's message, whose start it
+   quotes (`chat_language`): a result in another language drew answers in it.
+   It binds the signed-in user's native tools
    through a `ChatScope` (pipelines, runs and schedules from `agent_tools`; the
    planner's `design_workflow` and `change_workflow`, and `list_tools`, from
    `chat_tools/workflows`, so a team built by chatting is planned like a

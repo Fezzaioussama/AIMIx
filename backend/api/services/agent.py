@@ -42,6 +42,7 @@ from api.services.chat_events import (
     tool_finished,
     tool_started,
 )
+from api.services.chat_language import answer_in_their_language
 from api.services.chat_prompts import chat_system_prompt
 from api.services.chat_tools.deliveries import delivery_tools
 from api.services.chat_tools.runs import run_tools
@@ -187,7 +188,7 @@ class LangGraphChatAgent:
                 self._model,
                 tools,
                 system_prompt=chat_system_prompt(utcnow(), conversation.timezone),
-                middleware=[refusals_as_results],
+                middleware=[refusals_as_results, answer_in_their_language(conversation.prompt)],
             )
             events = graph.astream(
                 # A list display, so it takes the graph's message type.

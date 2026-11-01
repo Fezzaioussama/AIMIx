@@ -55,12 +55,23 @@ CHAT_WORK_RULES = (
 
 #: Last, where a model weighs it most: answer in the language of the person's own
 #: message. Models answered in French to English messages that asked for a French
-#: digest, or from a Paris time zone.
+#: digest, or from a Paris time zone; ``language_reminder`` repeats it after a tool's
+#: result.
 CHAT_LANGUAGE_RULE = (
     "Always answer in the language of the person's latest message: English when they "
     "write in English. The language a workflow's output should be in, and the person's "
     "time zone, never change the language you answer in."
 )
+#: How much of the person's latest message the reminder quotes: enough to tell its language.
+LANGUAGE_REMINDER_QUOTE_CHARS = 120
+
+
+def language_reminder(prompt: str) -> str:
+    """The language rule again, quoting the start of ``prompt`` (the person's latest
+    message) so the model sees which language that is: it follows a tool's result,
+    whose language drew answers in it (``chat_language``)."""
+    opening = " ".join(prompt.split())[:LANGUAGE_REMINDER_QUOTE_CHARS]
+    return f'{CHAT_LANGUAGE_RULE} The person\'s latest message began: "{opening}"'
 
 
 def chat_system_prompt(now: datetime, zone: str | None) -> str:
