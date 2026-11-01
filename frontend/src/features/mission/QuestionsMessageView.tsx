@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import type { ClarifyingQuestion, PlanAnswer } from '../../core/api/types';
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from '../pipelines/buttonStyles';
+import { waitingForDocument } from '../pipelines/pipelineInputs';
 import { Bubble } from './Bubble';
 import type { ViewProps } from './messageContext';
 import type { QuestionsMessage } from './missionMessages';
@@ -73,8 +74,15 @@ function QuestionField({ name, item, picked, written, onPick, onWrite }: Questio
 
 type Answer = (answers: PlanAnswer[], said: string) => void;
 
+interface QuestionsFormProps {
+  message: QuestionsMessage;
+  onAnswer: Answer;
+  /** A document still being read: the team is planned with it, so answering waits. */
+  waitsFor: string;
+}
+
 /** The open questions: pick or write an answer to each, then build, or skip them. */
-function QuestionsForm({ message, onAnswer }: { message: QuestionsMessage; onAnswer: Answer }) {
+function QuestionsForm({ message, onAnswer, waitsFor }: QuestionsFormProps) {
   const blank = message.questions.map(() => '');
   const [picked, setPicked] = useState(blank);
   const [written, setWritten] = useState(blank);
@@ -102,21 +110,41 @@ function QuestionsForm({ message, onAnswer }: { message: QuestionsMessage; onAns
           onWrite={(text) => setWritten((list) => set(list, index, text))}
         />
       ))}
+      <AnswerButtons answers={answers} onAnswer={onAnswer} waitsFor={waitsFor} />
+    </Bubble>
+  );
+}
+
+/** "Build my team" with the answers, or "Skip"; both wait while a document is being read. */
+function AnswerButtons({
+  answers,
+  onAnswer,
+  waitsFor,
+}: Omit<QuestionsFormProps, 'message'> & { answers: PlanAnswer[] }) {
+  return (
+    <>
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={answers.length === 0}
+          disabled={answers.length === 0 || waitsFor !== ''}
           onClick={() => onAnswer(answers, answersInWords(answers))}
           className={PRIMARY_BUTTON}
         >
           Build my team
         </button>
-        <button type="button" onClick={() => onAnswer([], SKIP_SAID)} className={SECONDARY_BUTTON}>
+        <button
+          type="button"
+          disabled={waitsFor !== ''}
+          onClick={() => onAnswer([], SKIP_SAID)}
+          className={SECONDARY_BUTTON}
+        >
           Skip
         </button>
       </div>
-      <p className="mt-3 text-xs text-slate-400">You can also answer in the message box.</p>
-    </Bubble>
+      <p className="mt-3 text-xs text-slate-400">
+        {waitsFor ? waitingForDocument(waitsFor) : 'You can also answer in the message box.'}
+      </p>
+    </>
   );
 }
 
@@ -127,7 +155,7 @@ function QuestionsForm({ message, onAnswer }: { message: QuestionsMessage; onAns
 export function QuestionsMessageView({ message, context }: ViewProps<'questions'>) {
   if (message.id === context.openQuestionsId) {
     const onAnswer: Answer = (answers, said) => context.answerQuestions(message, answers, said);
-    return <QuestionsForm message={message} onAnswer={onAnswer} />;
+    return <QuestionsForm message={message} onAnswer={onAnswer} waitsFor={context.planWaitsFor} />;
   }
   return (
     <Bubble>

@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { clearTokens, saveTokens } from '../auth/tokenStorage';
-import { DOCUMENT_ACCEPT, DOCUMENT_FORMATS, DOCUMENT_KINDS, extractDocument } from './documents';
+import {
+  DOCUMENT_ACCEPT,
+  DOCUMENT_FORMATS,
+  DOCUMENT_KINDS,
+  extractDocument,
+  importDocumentFromUrl,
+} from './documents';
 import { API } from './endpoints';
 import type { ExtractedDocument } from './types';
 
@@ -67,6 +73,45 @@ describe('extractDocument', () => {
       code: 'unsupported_document',
       status: 415,
       message: "'.exe' files are not supported.",
+    });
+  });
+});
+
+describe('importDocumentFromUrl', () => {
+  afterEach(() => {
+    clearTokens();
+    vi.restoreAllMocks();
+  });
+
+  it('has the server read the page at a link, with the session token', async () => {
+    saveTokens({ access: 'token-abc' });
+    const page = { ...extracted, filename: 'https://example.com/article', format: 'html' };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(page), { status: 200 }));
+
+    const result = await importDocumentFromUrl('https://example.com/a');
+
+    expect(result).toEqual(page);
+    const [path, init] = fetchMock.mock.calls[0];
+    expect(path).toBe(API.importDocumentUrl);
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ url: 'https://example.com/a' });
+    expect((init?.headers as Headers).get('Authorization')).toBe('Bearer token-abc');
+  });
+
+  it('surfaces why the page could not be opened', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: 'page_unreachable', detail: 'AIMIx couldn’t reach this site.' }),
+        { status: 502 },
+      ),
+    );
+
+    await expect(importDocumentFromUrl('https://nowhere.example')).rejects.toMatchObject({
+      code: 'page_unreachable',
+      status: 502,
+      message: 'AIMIx couldn’t reach this site.',
     });
   });
 });

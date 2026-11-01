@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { errorMessage } from '../../core/api/errorMessage';
 import { startRun } from '../../core/api/runs';
-import type { Pipeline, Run } from '../../core/api/types';
+import type { ExtractedDocument, Pipeline, Run } from '../../core/api/types';
 import { useMountedRef } from '../../core/hooks/useMountedRef';
 import { EMPTY_RUN_DRAFT, runRequest, type RunDraft } from '../pipelines/pipelineInputs';
 import type { FollowedRun } from '../runs/useFollowedRun';
+import { documentsTarget, noteOf, withDocuments } from './missionDocuments';
 import {
   inputsRequest,
   note,
@@ -35,8 +36,14 @@ export interface MissionRun {
   /** The form asked for during this visit: it takes focus as it appears (a restored one
    * does not, so opening the page never moves focus). */
   newFormId: string | null;
-  /** "Run it": asks for the mission's inputs in the conversation. */
-  ask: (said?: string) => void;
+  /** "Run it": asks for the mission's inputs in the conversation, with `documents` already
+   * in the form as far as they fit (`place`); the ones it took, or null when no form opened
+   * (none does without a team or during a run). */
+  ask: (said?: string, documents?: ExtractedDocument[]) => ExtractedDocument[] | null;
+  /** Puts documents into the open form: into `input`, else where the team takes documents
+   * (`documentsTarget`), each while the run can take it. The ones it took; none without an
+   * open form or a place for them. */
+  place: (documents: ExtractedDocument[], input?: string) => ExtractedDocument[];
   /** Saves the team when needed, then starts a run with the form's values; whether it
    * started. */
   start: () => Promise<boolean>;
@@ -65,10 +72,36 @@ async function saveAndLaunch(team: MissionTeam, draft: RunDraft): Promise<Launch
   return saved.pipeline ? launch(saved.pipeline, draft) : { run: null, error: saved.error };
 }
 
+/** The run form's values; documents go into the input meant for them (`withDocuments`). */
+function useRunDraft(team: MissionTeam, formId: string | null) {
+  const [draft, keep] = useState<RunDraft>(EMPTY_RUN_DRAFT);
+  // The newest values, so documents that arrive together each count the ones before them.
+  const latest = useRef(draft);
+  const setDraft = useCallback((next: RunDraft) => {
+    latest.current = next;
+    keep(next);
+  }, []);
+
+  function fill(documents: ExtractedDocument[], input?: string): ExtractedDocument[] {
+    const inputs = team.pipeline?.inputs ?? [];
+    const target = input ?? documentsTarget(inputs);
+    if (target === null || documents.length === 0) return [];
+    const { draft: next, placed } = withDocuments(latest.current, inputs, target, documents);
+    setDraft(next);
+    return placed;
+  }
+
+  const place = (documents: ExtractedDocument[], input?: string) =>
+    formId === null ? [] : fill(documents, input);
+
+  return { draft, setDraft, fill, place };
+}
+
 /**
  * Running the mission from the conversation: "Run it" asks for the inputs in a form
- * there; starting saves the team first (a new mission is saved on its first run, edits
- * before each run), then starts a background run and follows it (`followed`).
+ * there, with the mission's documents in it; starting saves the team first (a new mission
+ * is saved on its first run, edits before each run), then starts a background run and
+ * follows it (`followed`).
  */
 export function useMissionRun(
   team: MissionTeam,
@@ -76,21 +109,24 @@ export function useMissionRun(
   followed: FollowedRun,
   settleProposal: () => void,
 ): MissionRun {
-  const [draft, setDraft] = useState<RunDraft>(EMPTY_RUN_DRAFT);
+  const { messages, append, update } = conversation;
+  const formId = openInputsId(messages);
+  const { draft, setDraft, fill, place } = useRunDraft(team, formId);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [newFormId, setNewFormId] = useState<string | null>(null);
   const mounted = useMountedRef();
-  const { messages, append, update } = conversation;
-  const formId = openInputsId(messages);
 
-  function ask(said = 'Run it') {
+  function ask(said = 'Run it', documents: ExtractedDocument[] = []) {
     settleProposal();
     if (formId !== null) update(formId, settleInputs('closed'));
     setError('');
     const reply = askReply(team.pipeline !== null, followed.active);
-    append(you(said), reply);
-    setNewFormId(reply.kind === 'inputs' ? reply.id : null);
+    const opens = reply.kind === 'inputs';
+    const placed = opens ? fill(documents) : [];
+    append(you(said, placed.map(noteOf)), reply);
+    setNewFormId(opens ? reply.id : null);
+    return opens ? placed : null;
   }
 
   async function start(): Promise<boolean> {
@@ -112,5 +148,5 @@ export function useMissionRun(
     return true;
   }
 
-  return { draft, setDraft, starting, error, formId, newFormId, ask, start };
+  return { draft, setDraft, starting, error, formId, newFormId, ask, place, start };
 }

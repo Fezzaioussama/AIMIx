@@ -66,6 +66,23 @@ function isQuestion(value: unknown): boolean {
   return isRecord(value) && isString(value.question) && listOf(isString, value.options);
 }
 
+function isDocumentNote(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isString(value.name) &&
+    (value.pages === null || isNumber(value.pages)) &&
+    isNumber(value.characters)
+  );
+}
+
+/** What the person said; messages kept before documents went with them have none. */
+function isYou(message: Fields): boolean {
+  return (
+    isString(message.text) &&
+    (message.documents === undefined || listOf(isDocumentNote, message.documents))
+  );
+}
+
 function isChange(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -94,7 +111,7 @@ const AIMIX_FIELDS: Record<AimixMessage['kind'], (message: Fields) => boolean> =
 
 export function isMessage(value: unknown): value is MissionMessage {
   if (!isRecord(value) || !isString(value.id)) return false;
-  if (value.from === 'you') return isString(value.text);
+  if (value.from === 'you') return isYou(value);
   if (value.from !== 'aimix' || !isString(value.kind)) return false;
   if (!Object.hasOwn(AIMIX_FIELDS, value.kind)) return false;
   return AIMIX_FIELDS[value.kind as AimixMessage['kind']](value);

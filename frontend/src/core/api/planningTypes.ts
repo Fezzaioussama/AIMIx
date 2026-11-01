@@ -20,6 +20,17 @@ export interface PlanAnswer {
   answer: string;
 }
 
+/**
+ * A document the person attached to a mission, as the planner reads it: its file name or
+ * page address, its size and the start of its text. The whole text goes to the run.
+ */
+export interface PlanDocument {
+  name: string;
+  pages: number | null;
+  characters: number;
+  excerpt: string;
+}
+
 /** A mission's plan (POST /api/pipelines/generate with `may_ask`): a team, or questions first. */
 export interface MissionPlanResponse {
   /** Null when the planner asked `questions` instead. */

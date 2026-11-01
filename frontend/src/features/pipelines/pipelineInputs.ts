@@ -1,5 +1,6 @@
 import type { ExtractedDocument, PipelineInput, PipelineRunRequest } from '../../core/api/types';
-import { parseCost } from '../../core/usageFormat';
+import { formatCount, parseCost } from '../../core/usageFormat';
+import { bareLink, sameAddress, sourceLabel } from './webLinks';
 
 /**
  * Named run inputs. The naming rule mirrors `input_name_error` in
@@ -81,8 +82,45 @@ export function costLimitProblem(draft: RunDraft): string | null {
   return 'Enter an amount above zero, like 0.50, or leave it empty.';
 }
 
+/**
+ * Characters one run may be given in all: its text, or its named inputs together. Mirrors
+ * RUN_INPUT_MAX_LENGTH in backend/api/schemas/common.py, which decides.
+ */
+export const RUN_INPUT_MAX_LENGTH = 500_000;
+
+/** The characters a run would be given (what `runRequest` sends). */
+export function runInputSize(inputs: PipelineInput[], draft: RunDraft): number {
+  if (inputs.length === 0) return draft.text.length;
+  return inputs.reduce((size, field) => size + (draft.values[field.name] ?? '').length, 0);
+}
+
+/** Why the inputs are too long for one run, or null when they fit. */
+export function runInputLimitProblem(inputs: PipelineInput[], draft: RunDraft): string | null {
+  const size = runInputSize(inputs, draft);
+  if (size <= RUN_INPUT_MAX_LENGTH) return null;
+  return (
+    `Your inputs are ${formatCount(size)} characters; a run takes at most ` +
+    `${formatCount(RUN_INPUT_MAX_LENGTH)}. Shorten the text, or delete a document from it ` +
+    '(each starts with “[Document: …]”).'
+  );
+}
+
+/**
+ * Why `document` should not be added without asking: with it, the run's inputs would be
+ * `size` characters, past the limit. Null when it fits.
+ */
+export function documentLimitWarning(document: ExtractedDocument, size: number): string | null {
+  if (size <= RUN_INPUT_MAX_LENGTH) return null;
+  return (
+    `Adding ${sourceLabel(document.filename)} would make your inputs ${formatCount(size)} ` +
+    `characters; a run takes at most ${formatCount(RUN_INPUT_MAX_LENGTH)}.`
+  );
+}
+
 export function isRunReady(inputs: PipelineInput[], draft: RunDraft): boolean {
-  if (costLimitProblem(draft) !== null) return false;
+  if (costLimitProblem(draft) !== null || runInputLimitProblem(inputs, draft) !== null) {
+    return false;
+  }
   if (inputs.length === 0) return draft.text.trim() !== '';
   return inputs.every((field) => (draft.values[field.name] ?? '').trim() !== '');
 }
@@ -103,17 +141,62 @@ export function runRequest(inputs: PipelineInput[], draft: RunDraft): PipelineRu
  * knows where it came from. Anything already typed is kept, with a blank line between.
  */
 export function appendDocument(current: string, document: ExtractedDocument): string {
-  const block = `[Document: ${document.filename}]\n${document.text}`;
+  const block = documentBlock(document);
   return current.trim() ? `${current.trimEnd()}\n\n${block}` : block;
 }
 
+function documentBlock(document: ExtractedDocument): string {
+  return `${documentHeader(document.filename)}\n${document.text}`;
+}
+
+/** The line a document's text starts with in an input, naming where it came from. */
+function documentHeader(filename: string): string {
+  return `[Document: ${filename}]`;
+}
+
+/** Whether `current` still holds the document added from `filename` (its header line). */
+export function holdsDocument(current: string, filename: string): boolean {
+  return current.includes(documentHeader(filename));
+}
+
 /**
- * One line telling the person what was added, and warning when part was left out: cut
- * at a limit, or pages text recognition skipped (the text itself says which).
+ * `current` with a document in it, added after what is there (`appendDocument`). A page
+ * read from `link`, the link the input holds alone, takes that link's place instead.
  */
+export function placeDocument(
+  current: string,
+  document: ExtractedDocument,
+  link: string | null,
+): string {
+  const held = bareLink(current);
+  if (link !== null && held !== null && sameAddress(held, link)) return documentBlock(document);
+  return appendDocument(current, document);
+}
+
+/** "2 pages · 24,310 characters" (no pages for unpaged formats), from a document's size. */
+export function documentSize({
+  pages,
+  characters,
+}: Pick<ExtractedDocument, 'pages' | 'characters'>): string {
+  const size = `${formatCount(characters)} characters`;
+  return pages === null ? size : `${pages} page${pages === 1 ? '' : 's'} · ${size}`;
+}
+
+/**
+ * A document's size, warning when part was left out: cut at a limit, or pages text
+ * recognition skipped (the text itself says which).
+ */
+export function documentDetails(document: ExtractedDocument): string {
+  const size = documentSize(document);
+  return document.truncated ? `${size} · part of it was left out` : size;
+}
+
+/** Why something waits (a run, a plan): `name`, a document or page, is still being read. */
+export function waitingForDocument(name: string): string {
+  return `Waiting for ${name} to be read…`;
+}
+
+/** One line telling the person what was added: the file's name, or the page's link. */
 export function documentSummary(document: ExtractedDocument): string {
-  const pages =
-    document.pages === null ? '' : ` · ${document.pages} page${document.pages === 1 ? '' : 's'}`;
-  const added = `${document.filename} added${pages} · ${document.characters.toLocaleString('en-US')} characters`;
-  return document.truncated ? `${added} · part of it was left out` : added;
+  return `${sourceLabel(document.filename)} added · ${documentDetails(document)}`;
 }

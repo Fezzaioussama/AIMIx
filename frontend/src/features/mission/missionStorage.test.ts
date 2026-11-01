@@ -32,6 +32,10 @@ describe('mission storage', () => {
   it('round-trips every kind of message', () => {
     const messages: MissionMessage[] = [
       you('Compare my competitors'),
+      you('Summarise these', [
+        { name: 'report.pdf', pages: 2, characters: 13 },
+        { name: 'https://example.com/a', pages: null, characters: 1234 },
+      ]),
       note('Something went wrong', 'error'),
       { id: 't', from: 'aimix', kind: 'team', origin: 'generated', brief: describeTeam(PLAN) },
       {

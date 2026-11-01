@@ -216,6 +216,31 @@ describe('SchedulePanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('waits for a document still being read before it saves', async () => {
+    let answer: (response: Response) => void = () => {};
+    serve({
+      ...PREVIEW,
+      [`POST ${API.extractDocument}`]: () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    });
+    renderPanel();
+    await openPanel();
+    await enter('Summarise the attached report');
+
+    await userEvent.upload(
+      screen.getByLabelText('Attach a document'),
+      new File(['%PDF'], 'report.pdf', { type: 'application/pdf' }),
+    );
+
+    expect(submit()).toBeDisabled();
+    expect(screen.getByText('Waiting for report.pdf to be read…')).toBeInTheDocument();
+    const report = { filename: 'report.pdf', format: 'pdf', text: 'Revenue grew.' };
+    await act(async () => answer(json({ ...report, characters: 13, pages: 1, truncated: false })));
+    expect(submit()).toBeEnabled();
+  });
+
   it('shows why the server refused, and keeps what was typed', async () => {
     serve({
       ...PREVIEW,

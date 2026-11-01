@@ -1,61 +1,98 @@
 import { Paperclip } from 'lucide-react';
-import type { ChangeEvent } from 'react';
+import { useEffect, useRef, type Ref } from 'react';
 
 import { DOCUMENT_ACCEPT, DOCUMENT_KINDS } from '../../core/api/documents';
-import type { ExtractedDocument } from '../../core/api/types';
+import { chosenFiles } from '../../core/chosenFiles';
+import { useLatest } from '../../core/hooks/useLatest';
+import { filePickerClass } from './attachStyles';
+import { AttachWebPage } from './AttachWebPage';
+import { DocumentStatus, LinkNudge } from './DocumentStatus';
+import { documentLimitWarning, holdsDocument, placeDocument } from './pipelineInputs';
 import { useAttachDocument } from './useAttachDocument';
+import { bareLink } from './webLinks';
 
 interface AttachDocumentProps {
-  onDocument: (document: ExtractedDocument) => void;
+  /** The input's text: a document goes after it; a page read from the link it holds alone
+   * takes the link's place. */
+  value: string;
+  onChange: (value: string) => void;
+  /** Characters the run's other inputs take: a document that would put the run past its
+   * limit waits for the person's say-so. */
+  others?: number;
   disabled?: boolean;
+  /** Told what is being read ('' once nothing is), so the form can wait for it. */
+  onReading?: (name: string) => void;
 }
 
 /**
- * "Attach a document" under a run input: pick a PDF, Office file, image or text file
- * (DOCUMENT_FORMATS) and its text is added to the input, where it can still be read
- * and edited. The file input is visually hidden but real, so the label is its
- * accessible name and the keyboard works without script.
+ * The controls under a run input: "Attach a document" (a PDF, Office file, image or text
+ * file, DOCUMENT_FORMATS) and "Add a web page" (a link the server opens). The text is added
+ * to the input, where it can still be read and edited, and one status line says how it
+ * went. The file input is visually hidden but real, so the label is its accessible name and
+ * the keyboard works without script.
  */
-export function AttachDocument({ onDocument, disabled = false }: AttachDocumentProps) {
-  const { reading, error, notice, attach } = useAttachDocument(onDocument);
-
-  function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    // Reset, so choosing the same file again still counts as a change.
-    event.target.value = '';
-    if (file) void attach(file);
-  }
+export function AttachDocument({
+  value,
+  onChange,
+  others = 0,
+  disabled = false,
+  onReading,
+}: AttachDocumentProps) {
+  const reader = useAttachDocument({
+    add: (document, link) => onChange(placeDocument(value, document, link)),
+    warning: (document, link) =>
+      documentLimitWarning(document, others + placeDocument(value, document, link).length),
+  });
+  const told = useLatest(onReading);
+  useEffect(() => {
+    told.current?.(reader.reading);
+    return () => told.current?.('');
+  }, [reader.reading, told]);
+  const picker = useRef<HTMLInputElement>(null);
+  const busy = reader.reading !== '';
+  const link = bareLink(value);
+  // "… added" stays only while the input still holds that document's text.
+  const shown =
+    reader.added === '' || holdsDocument(value, reader.added) ? reader : { ...reader, notice: '' };
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-      <label
-        className={`inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 font-medium text-slate-200 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-sky-400 ${
-          disabled || reading
-            ? 'cursor-not-allowed opacity-60'
-            : 'cursor-pointer hover:border-white/25 hover:bg-white/10'
-        }`}
-      >
-        <input
-          type="file"
-          accept={DOCUMENT_ACCEPT}
-          className="sr-only"
-          disabled={disabled || reading}
-          onChange={handleChange}
-        />
-        <Paperclip aria-hidden="true" className="size-3.5" />
-        {reading ? 'Reading…' : 'Attach a document'}
-      </label>
-      <span className="text-slate-400">{DOCUMENT_KINDS} file</span>
-      {notice && (
-        <span role="status" className="text-emerald-300">
-          {notice}
-        </span>
+    <div className="mt-2 text-xs">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <FilePicker ref={picker} reading={busy} disabled={disabled} onFile={reader.readFile} />
+        <AttachWebPage onRead={reader.readPage} disabled={disabled} busy={busy} />
+        <span className="text-slate-400">{DOCUMENT_KINDS} file</span>
+      </div>
+      {link !== null && (
+        <LinkNudge disabled={disabled || busy} onRead={() => reader.readPage(link)} />
       )}
-      {error && (
-        <span role="alert" className="text-amber-300">
-          {error}
-        </span>
-      )}
+      <DocumentStatus reader={shown} onSettled={() => picker.current?.focus()} />
     </div>
+  );
+}
+
+interface FilePickerProps {
+  reading: boolean;
+  disabled: boolean;
+  onFile: (file: File) => void;
+  ref: Ref<HTMLInputElement>;
+}
+
+function FilePicker({ reading, disabled, onFile, ref }: FilePickerProps) {
+  return (
+    <label className={filePickerClass(!disabled && !reading)}>
+      <input
+        ref={ref}
+        type="file"
+        accept={DOCUMENT_ACCEPT}
+        className="sr-only"
+        disabled={disabled || reading}
+        onChange={(event) => {
+          const [file] = chosenFiles(event);
+          if (file) onFile(file);
+        }}
+      />
+      <Paperclip aria-hidden="true" className="size-3.5" />
+      {reading ? 'Reading…' : 'Attach a document'}
+    </label>
   );
 }

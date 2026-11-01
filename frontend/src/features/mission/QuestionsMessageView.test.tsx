@@ -18,15 +18,27 @@ const ASKED: QuestionsMessage = {
   ],
 };
 
-function show(message: QuestionsMessage = ASKED, openId: string | null = 'q1') {
+function show(message: QuestionsMessage = ASKED, openId: string | null = 'q1', waitsFor = '') {
   const answerQuestions = vi.fn();
-  // The view reads only these two fields of the workspace.
-  const context = { openQuestionsId: openId, answerQuestions } as unknown as MessageContext;
+  // The view reads only these fields of the workspace.
+  const context = {
+    openQuestionsId: openId,
+    answerQuestions,
+    planWaitsFor: waitsFor,
+  } as unknown as MessageContext;
   render(<QuestionsMessageView message={message} context={context} />);
   return answerQuestions;
 }
 
 describe('QuestionsMessageView', () => {
+  it('waits for a document still being read, which the team is planned with', () => {
+    show(ASKED, 'q1', 'report.pdf');
+
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Build my team' })).toBeDisabled();
+    expect(screen.getByText('Waiting for report.pdf to be read…')).toBeInTheDocument();
+  });
+
   it('builds the team from the answers picked, said in words', async () => {
     const user = userEvent.setup();
     const answerQuestions = show();
