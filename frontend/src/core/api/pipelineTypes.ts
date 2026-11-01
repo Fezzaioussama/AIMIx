@@ -2,12 +2,7 @@
 
 /** How a condition compares text (trimmed, ignoring case); the words are in features/pipelines/stepFlow. */
 export type ConditionOperator =
-  | 'contains'
-  | 'not_contains'
-  | 'equals'
-  | 'not_equals'
-  | 'is_empty'
-  | 'not_empty';
+  'contains' | 'not_contains' | 'equals' | 'not_equals' | 'is_empty' | 'not_empty';
 
 /**
  * "Run this step only if ...": the step is skipped when it does not hold. `source` is what

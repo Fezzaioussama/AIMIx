@@ -129,7 +129,9 @@ describe('useMissionDocuments', () => {
 
   it('does not count one it could not read toward the limit', async () => {
     serve((_path, init) =>
-      uploaded(init) === 'bad.pdf' ? json({ error: 'x', detail: 'Unreadable.' }, 422) : json(report),
+      uploaded(init) === 'bad.pdf'
+        ? json({ error: 'x', detail: 'Unreadable.' }, 422)
+        : json(report),
     );
     const { result } = renderHook(() => useMissionDocuments());
     act(() => result.current.addFiles(['a', 'b', 'c', 'd', 'bad.pdf'].map(pdf)));
