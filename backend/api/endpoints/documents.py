@@ -7,7 +7,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, UploadFile
 
-from api.deps import DocumentLimits, DocumentOcr, PageImports
+from api.document_deps import DocumentLimits, DocumentOcr, PageImports
 from api.schemas.documents import DocumentOut, PageImportRequest
 from api.services.documents import extraction
 from api.throttling import user_rate_limit

@@ -18,8 +18,12 @@ import {
 } from './pipelineInputs';
 import { useInputReadings, type ReadingReport } from './useInputReadings';
 
+/**
+ * A field scrolled into view (focus, or the mission's run form) brings its label along,
+ * with room for a message still rising into place (MessageItem's 10px entrance).
+ */
 const fieldClass =
-  'w-full resize-y rounded-xl border border-white/10 bg-slate-950/60 p-4 text-sm transition-[border-color,box-shadow] outline-none focus:border-sky-400/60 focus:shadow-[0_0_0_4px_rgba(56,189,248,0.1)]';
+  'w-full scroll-mt-12 resize-y rounded-xl border border-white/10 bg-slate-950/60 p-4 text-sm transition-[border-color,box-shadow] outline-none focus:border-sky-400/60 focus:shadow-[0_0_0_4px_rgba(56,189,248,0.1)]';
 
 interface RunInputCardProps {
   /** The saved pipeline's named inputs; none means one free-text input. */

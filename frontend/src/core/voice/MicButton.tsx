@@ -40,7 +40,7 @@ export function MicButton({ label, onTranscript }: MicButtonProps) {
         disabled={busy}
         aria-label={recording ? 'Stop recording' : busy ? status : label}
         title={recording ? 'Stop recording' : label}
-        className={`grid size-10 place-items-center rounded-xl border transition duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-wait ${recording ? RECORDING_STYLE : IDLE_STYLE}`}
+        className={`grid size-10 place-items-center rounded-xl border transition duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-wait pointer-coarse:size-11 ${recording ? RECORDING_STYLE : IDLE_STYLE}`}
       >
         {busy ? (
           <Spinner decorative className="size-4" />

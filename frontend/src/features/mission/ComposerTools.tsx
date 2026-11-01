@@ -5,12 +5,12 @@ import { DOCUMENT_ACCEPT } from '../../core/api/documents';
 import { chosenFiles } from '../../core/chosenFiles';
 import { MicButton } from '../../core/voice/MicButton';
 
-/** The look of the message box's icon buttons; 44px on a phone, for a finger. */
+/** The look of the message box's icon buttons; 44px for a finger (a phone, a touch screen). */
 const TOOL_BUTTON =
-  'grid size-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition duration-300 hover:border-sky-400/40 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 sm:size-10';
+  'grid size-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition duration-300 hover:border-sky-400/40 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 sm:size-10 pointer-coarse:size-11';
 
 const SEND_BUTTON =
-  'grid size-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-600 via-indigo-600 to-purple-600 text-white transition duration-300 enabled:hover:shadow-[0_0_24px_rgba(99,102,241,0.6)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-40 sm:size-10';
+  'grid size-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-600 via-indigo-600 to-purple-600 text-white transition duration-300 enabled:hover:shadow-[0_0_24px_rgba(99,102,241,0.6)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400 disabled:cursor-not-allowed disabled:opacity-40 sm:size-10 pointer-coarse:size-11';
 
 /** The link field of the message box: whether it is open, and the button that opens it. */
 export interface LinkField {

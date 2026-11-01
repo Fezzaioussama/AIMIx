@@ -118,6 +118,16 @@ describe('MicButton', () => {
     expect(transcribeClip).not.toHaveBeenCalled();
   });
 
+  it('is 44px square for a finger on a touch screen, 40px with a mouse', () => {
+    render(<MicButton label={LABEL} onTranscript={vi.fn()} />);
+
+    // jsdom matches no media query: these classes size it for each kind of pointer.
+    expect(screen.getByRole('button', { name: LABEL })).toHaveClass(
+      'size-10',
+      'pointer-coarse:size-11',
+    );
+  });
+
   it('is hidden where the browser cannot record', () => {
     vi.stubGlobal('MediaRecorder', undefined);
 

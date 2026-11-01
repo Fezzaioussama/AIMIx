@@ -1,5 +1,5 @@
 import { FileText, Globe, X } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useLayoutEffect, useRef, type Ref } from 'react';
 
 import { Spinner } from '../../core/ui/Spinner';
@@ -21,6 +21,31 @@ const CHIP_MOTION = {
     filter: 'blur(2px)',
     transition: { duration: 0.15, ease: EASE },
   },
+};
+
+/** Under reduced motion a chip only fades, and quickly: no scale, no blur. */
+const CHIP_FADE = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.15, ease: EASE } },
+  exit: { opacity: 0, transition: { duration: 0.15, ease: EASE } },
+};
+
+/**
+ * The chips stop growing at an eighth of the screen's height and scroll, so on a short
+ * screen the conversation above keeps most of it; the cap usually cuts a chip in two,
+ * which shows there is more. A chip that gets keyboard focus scrolls into view, as any
+ * focused control does.
+ */
+const CHIPS_AREA = 'max-h-[max(4.5rem,12dvh)] overflow-y-auto overscroll-y-contain scroll-py-1';
+
+/**
+ * How a chip fits its name: a link's label is already cut in the middle (`sourceLabel`),
+ * so it shows whole, breaking anywhere if it must; a file's own name is cut at its end.
+ * Either way the title holds it whole.
+ */
+const NAME_FIT: Record<PendingDocument['kind'], string> = {
+  link: 'wrap-anywhere',
+  file: 'max-w-56 truncate',
 };
 
 /** The remove button is small, but its target reaches 44px on a phone. */
@@ -96,7 +121,10 @@ export function ComposerAttachments(props: ComposerAttachmentsProps) {
 
   return (
     <div className="relative">
-      <ul aria-label="Attached documents" className="flex flex-wrap gap-1.5 px-1 pt-1 empty:p-0">
+      <ul
+        aria-label="Attached documents"
+        className={`flex flex-wrap gap-1.5 px-1 pt-1 empty:p-0 ${CHIPS_AREA}`}
+      >
         <AnimatePresence initial={false}>
           {items.map((item, index) => (
             <Chip
@@ -128,23 +156,36 @@ interface ChipProps {
   buttonRef: Ref<HTMLButtonElement>;
 }
 
+/**
+ * One document: its icon, its name and details (wrapping in their own column), and ×,
+ * which stays at the top right however the text wraps. The icon and × line up with the
+ * first line of text.
+ */
 function Chip({ item, onRemove, buttonRef }: ChipProps) {
   const name = sourceLabel(item.state === 'read' ? item.document.filename : item.source);
   const Icon = item.kind === 'link' ? Globe : FileText;
   const failed = item.state === 'failed';
+  const reduced = useReducedMotion();
   return (
     <motion.li
-      {...CHIP_MOTION}
-      className={`flex max-w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border py-1 pr-1 pl-2 text-xs ${failed ? 'basis-full border-amber-300/25 bg-amber-300/[0.06]' : 'border-white/10 bg-white/[0.05]'}`}
+      {...(reduced ? CHIP_FADE : CHIP_MOTION)}
+      className={`grid max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 rounded-lg border py-1 pr-1 pl-2 text-xs ${failed ? 'basis-full border-amber-300/25 bg-amber-300/[0.06]' : 'border-white/10 bg-white/[0.05]'}`}
     >
-      <Icon
-        aria-hidden="true"
-        className={`size-3.5 shrink-0 ${failed ? 'text-amber-300' : 'text-sky-300'}`}
-      />
-      <span title={item.source} className="max-w-56 min-w-0 truncate font-medium text-slate-100">
-        {name}
+      <span className="flex h-6 items-center">
+        <Icon
+          aria-hidden="true"
+          className={`size-3.5 ${failed ? 'text-amber-300' : 'text-sky-300'}`}
+        />
       </span>
-      <ChipDetails item={item} />
+      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 py-1">
+        <span
+          title={item.source}
+          className={`min-w-0 font-medium text-slate-100 ${NAME_FIT[item.kind]}`}
+        >
+          {name}
+        </span>
+        <ChipDetails item={item} />
+      </span>
       <button
         ref={buttonRef}
         type="button"
@@ -155,7 +196,7 @@ function Chip({ item, onRemove, buttonRef }: ChipProps) {
         <X aria-hidden="true" className="size-3.5" />
       </button>
       {item.state === 'failed' && (
-        <span role="alert" className="basis-full pb-0.5 text-amber-300">
+        <span role="alert" className="col-span-2 col-start-2 pb-0.5 text-amber-300">
           {item.error}
         </span>
       )}
@@ -173,7 +214,7 @@ function ChipDetails({ item }: { item: PendingDocument }) {
     );
   }
   if (item.state === 'read') {
-    return <span className="shrink-0 text-slate-400">{documentDetails(item.document)}</span>;
+    return <span className="text-slate-400">{documentDetails(item.document)}</span>;
   }
   return null;
 }

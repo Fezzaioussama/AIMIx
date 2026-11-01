@@ -11,7 +11,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.deps import page_downloader
+from api.document_deps import page_downloader
 from api.services.addresses import Resolver
 from api.services.outbound import OutboundPolicy, guarded_transport
 from api.services.web_download import PageDownloader

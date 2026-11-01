@@ -201,7 +201,7 @@ export function MissionComposer({
       <LinkSuggestion text={value} documents={documents} onRead={() => ref.current?.focus()} />
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         {onRun && (
-          <GlowButton size="sm" onClick={onRun}>
+          <GlowButton size="sm" onClick={onRun} className="pointer-coarse:min-h-11">
             <Play aria-hidden="true" className="size-4" />
             Run it
           </GlowButton>

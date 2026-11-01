@@ -144,12 +144,20 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `TemplateUse` | The user, a session and their `StepDefaults` (model list, default first, and tool discovery that runs only once the template is found), for `POST /templates/{slug}/use` |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
 | `Integrations` | An `IntegrationAccess` (session, user, `SecretBox`, `IntegrationRules`) for the Integrations endpoints; `host_resolver` supplies the DNS lookup its address checks use, so tests swap in a fake |
-| `DocumentLimits` / `DocumentOcr` | The `ExtractionLimits` from settings / the OCR engine `create_app()` built once (`app.state.ocr`), or `None` when OCR is off or Tesseract or a language is missing |
-| `PageImports` | A `PageImporter` for `POST /documents/import-url`: the `PageDownloader` from `page_downloader` (`WEB_TIMEOUT_SECONDS`, `DOCUMENT_URL_MAX_SECONDS`; tests override it with a fake network), the document limits and OCR engine, and `DOCUMENT_URL_MIN_TEXT_CHARS` |
 | `UserFiles` | The signed-in user's `WorkspaceStorage` (their `user-<id>` folder, with `WORKSPACE_MAX_TOTAL_BYTES` and `WORKSPACE_MAX_FILES`) |
 | `FileUploads` | The `UploadPolicy`: `DOCUMENT_MAX_BYTES` per file and `WORKSPACE_UPLOAD_EXTENSIONS` |
 
 Tests replace any of these with `app.dependency_overrides`.
+
+### `document_deps.py`
+
+The documents' part of `deps.py`: what reading an uploaded document or a web page needs at
+the HTTP boundary. Tests override these the same way.
+
+| Dependency | Gives the endpoint |
+|---|---|
+| `DocumentLimits` / `DocumentOcr` | The `ExtractionLimits` from settings / the OCR engine `create_app()` built once (`app.state.ocr`), or `None` when OCR is off or Tesseract or a language is missing |
+| `PageImports` | A `PageImporter` for `POST /documents/import-url`: the `PageDownloader` from `page_downloader` (`WEB_TIMEOUT_SECONDS`, `DOCUMENT_URL_MAX_SECONDS`; tests override it with a fake network), the document limits and OCR engine, and `DOCUMENT_URL_MIN_TEXT_CHARS` |
 
 ### `throttling.py`
 
@@ -501,7 +509,7 @@ so tests can never reach a real LLM.
 | `default_model` | The active default model id |
 | `retry_fakes.py` | Provider failures as each SDK raises them, a `FakeClock` that records retry waits instead of sleeping, and ready `ProviderConfig`s |
 | `mcp_fakes.py`: `resolver(table)`, `FakeServers(behaviour)` | Offline DNS (override `host_resolver`) and MCP servers (patch `mcp_discovery.MultiServerMCPClient`) for the integration tests |
-| `site_fakes.py`: `use_site(app, handler, hosts)`, `use_network`, `serving`, `read_link` | Fake web sites for the page import tests: a `PageDownloader` over an `httpx.MockTransport` and an offline resolver (override `page_downloader`), or over the real guarded transport and `FakeNetwork` |
+| `site_fakes.py`: `use_site(app, handler, hosts)`, `use_network`, `serving`, `read_link` | Fake web sites for the page import tests: a `PageDownloader` over an `httpx.MockTransport` and an offline resolver (override `api.document_deps.page_downloader`), or over the real guarded transport and `FakeNetwork` |
 | `network_fakes.py`: `FakeNetwork`, `changing(*answers)` | Offline sockets for the guarded transport (which address a connection really went to, the TLS name, the bytes sent) and a DNS server that changes its answer (rebinding) |
 | `approval_fakes.py` | For the approval tests: `running_run` and `request_approval` (a run with a request waiting, written by hand), `ScriptedGate`, `recording_tool` / `integration_tool`, `ToolThenReport` (a chat model that calls a tool, then reports its result), `AskingAgent` (a step agent that stops at its step's gate) and `file_database`. The test settings turn `MCP_REQUIRE_APPROVAL` off, so tools faked as MCP tools act at once; the approval tests build their own policy |
 

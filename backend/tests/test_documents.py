@@ -22,7 +22,8 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
-from api.deps import app_settings, document_limits
+from api.deps import app_settings
+from api.document_deps import document_limits
 from api.exceptions import (
     DocumentReadersBusy,
     DocumentTooLarge,

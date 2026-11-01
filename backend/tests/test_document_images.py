@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image, TiffImagePlugin
 
-from api.deps import document_ocr
+from api.document_deps import document_ocr
 from api.exceptions import DocumentUnreadable
 from api.services.documents.extraction import TRUNCATION_NOTE, extract_document
 from api.services.documents.images import IMAGE_SUFFIXES

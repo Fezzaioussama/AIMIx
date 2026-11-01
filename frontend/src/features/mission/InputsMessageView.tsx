@@ -37,8 +37,15 @@ export function InputsMessageView({ message, context }: ViewProps<'inputs'>) {
   const takesFocus = message.id === run.newFormId;
 
   // The "Run it" button went away as the form came: focus goes to the form's first field.
+  // The log follows its new end in this same commit, after this effect; in the next frame,
+  // before it is painted, the field is brought back into view with its label (its scroll
+  // margin). Instantly on purpose, motion or not: a smooth scroll would show the end first.
   useEffect(() => {
-    if (takesFocus) form.current?.querySelector<HTMLElement>('textarea')?.focus();
+    const field = takesFocus ? form.current?.querySelector('textarea') : null;
+    if (!field) return;
+    field.focus({ preventScroll: true });
+    const frame = requestAnimationFrame(() => field.scrollIntoView?.({ block: 'nearest' }));
+    return () => cancelAnimationFrame(frame);
   }, [takesFocus]);
 
   if (message.id !== run.formId || team === null) return <Bubble>{DONE[message.state]}</Bubble>;

@@ -19,7 +19,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pypdf import PdfReader, PdfWriter
 
-from api.deps import app_settings, document_limits, document_ocr
+from api.deps import app_settings
+from api.document_deps import document_limits, document_ocr
 from api.services.documents.web_import import BUILT_IN_BROWSER, UNSUPPORTED
 from config.settings import Settings
 from tests.conftest import TEST_SETTINGS
