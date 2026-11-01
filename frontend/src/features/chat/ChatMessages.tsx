@@ -21,21 +21,21 @@ const AI_BUBBLE = 'rounded-bl-[0.3rem] border border-white/10 bg-slate-900/70 te
 
 const SUGGESTIONS = [
   {
-    title: 'What can I run?',
-    prompt: 'List my pipelines and tell me what each one does.',
+    title: 'Build a workflow',
+    prompt:
+      "Every Monday, find the week's news about my competitors and write me a one-page summary.",
   },
   {
-    title: 'Create a pipeline',
-    prompt:
-      'Create a pipeline that turns a blog post into a LinkedIn post and a short email, then run it on this post: ',
+    title: 'What can my agents use?',
+    prompt: 'Which tools can my agents use?',
+  },
+  {
+    title: 'What can I run?',
+    prompt: 'List my workflows and tell me what each one does.',
   },
   {
     title: 'Schedule a run',
-    prompt: 'Schedule my newest pipeline every weekday at 09:00 in Europe/Paris.',
-  },
-  {
-    title: 'Pause a schedule',
-    prompt: 'List my schedules and pause the one that runs the pipeline I no longer need.',
+    prompt: 'Run my newest workflow every weekday at 9:00.',
   },
 ] as const;
 

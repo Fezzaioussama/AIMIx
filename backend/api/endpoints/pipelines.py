@@ -16,7 +16,6 @@ from api.deps import (
     ToolCatalog,
     disk_room,
 )
-from api.models import Pipeline
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch, RunRequest, RunResponse
 from api.schemas.planning import (
@@ -36,19 +35,6 @@ from api.throttling import user_rate_limit
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
 
 
-def _changes(
-    body: PipelineIn | PipelinePatch, current: Pipeline | None = None
-) -> repository.PipelineChanges:
-    """What the body saves, once its conditions and review loops are known to
-    work in the pipeline it leaves (``current`` is what it replaces or patches)."""
-    return pipeline_service.changes(
-        body.name,
-        None if body.inputs is None else [field.model_dump() for field in body.inputs],
-        None if body.steps is None else [step.model_dump() for step in body.steps],
-        current,
-    )
-
-
 @router.get("/")
 def list_pipelines(user: CurrentUser, session: DbSession) -> list[PipelineOut]:
     return [PipelineOut.model_validate(p) for p in repository.for_user(session, user)]
@@ -60,7 +46,7 @@ SAVES = [Depends(disk_room)]
 
 @router.post("/", status_code=201, dependencies=SAVES)
 def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> PipelineOut:
-    pipeline = repository.create_with_steps(session, user, _changes(body))
+    pipeline = repository.create_with_steps(session, user, pipeline_service.body_changes(body))
     return PipelineOut.model_validate(pipeline)
 
 
@@ -106,7 +92,9 @@ def replace_pipeline(
     pipeline_id: int, body: PipelineIn, user: CurrentUser, session: DbSession
 ) -> PipelineOut:
     pipeline = repository.get_owned(session, user, pipeline_id)
-    updated = repository.replace_steps(session, pipeline, _changes(body, pipeline))
+    updated = repository.replace_steps(
+        session, pipeline, pipeline_service.body_changes(body, pipeline)
+    )
     return PipelineOut.model_validate(updated)
 
 
@@ -115,7 +103,9 @@ def update_pipeline(
     pipeline_id: int, body: PipelinePatch, user: CurrentUser, session: DbSession
 ) -> PipelineOut:
     pipeline = repository.get_owned(session, user, pipeline_id)
-    updated = repository.replace_steps(session, pipeline, _changes(body, pipeline))
+    updated = repository.replace_steps(
+        session, pipeline, pipeline_service.body_changes(body, pipeline)
+    )
     return PipelineOut.model_validate(updated)
 
 

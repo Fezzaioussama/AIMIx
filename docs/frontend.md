@@ -24,7 +24,7 @@ frontend/src/
   features/
     auth/           # LoginPage, RegisterPage, AuthCard, AuthLayout
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
-    chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream
+    chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream, chatStorage
     files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat
     legal/          # LegalPage: /legal, /privacy, /terms (French), operator facts
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
@@ -384,16 +384,16 @@ server would need a table and endpoints; that is not part of this version.
 ### `features/chat`
 
 - `useChatStream()` owns the transcript (`messages`), each reply's tool runs
-  (`tools`), `isLoading`, and `send()`. `send` appends the user message and an
-  empty AI message, then appends text and folds tool events into that message
-  as they stream. An `AbortController` in a ref cancels the stream on unmount.
-- `ChatPage` renders the header, a soft `Aurora`, the transcript and the
-  `ChatComposer`. `ChatMessages` animates each bubble in (AI messages via
-  `renderMarkdown`); an AI reply is drawn once it has text or has used a tool,
-  with the typing dots in its place until then. A finished write shows what it
-  created and links to it (a mission, or Schedules), so the chat is a control
-  centre and the other screens stay for configuration. A fresh conversation
-  offers starter prompts that fill the composer.
+  (`tools`), `isLoading`, `send()` and `reset()` ("New chat"). `send` passes the
+  messages before it (`historyOf`: not the greeting nor a `failed` reply) and the
+  browser's zone, then folds text and tool events into an empty AI message as they
+  stream. `chatStorage` keeps the transcript for the tab once each reply ends and
+  on unmount (an `AbortController` cancels the stream), and main.tsx forgets it with
+  the session. `ChatPage` renders the header, a soft `Aurora`, the transcript and the
+  `ChatComposer`; `ChatMessages` animates each bubble in (AI messages via
+  `renderMarkdown`), with typing dots until a reply has text or a tool. A finished
+  write links to what it made (a mission, or Schedules), so the chat builds and
+  runs everything; a fresh conversation offers starter prompts.
 
 ### `features/pipelines`
 

@@ -669,12 +669,22 @@ crash, startup recovery logs only how many runs it interrupted
 1. `useChatStream.send` adds the user message and an empty AI message, then
    iterates `streamChatReply()` → `client.streamText()`, which reads
    `response.body.getReader()` and splits decoded chunks into NDJSON events.
-2. `endpoints/chat.chat` validates `{"prompt"}` and calls
-   `services/chat.stream_reply(agent, prompt)`.
+   The server keeps no conversation: the hook sends the messages before this
+   one as `history` (not the greeting or a failed reply) and the browser's time
+   zone, and keeps the transcript for the tab (`chatStorage`) once each reply ends.
+2. `endpoints/chat.chat` validates `{"prompt", "history", "timezone"}`, and
+   `chat_conversation.conversation_of` keeps the newest turns that fit in
+   `CHAT_HISTORY_MAX_CHARS` and a zone the server knows; then it calls
+   `services/chat.stream_reply(agent, conversation)`.
 3. `services/agent` builds a chat-only LangGraph agent from the configured
-   model, binds the signed-in user's native pipeline and schedule tools, and
-   discovers tools from every server in `MCP_SERVERS` and the user's enabled
-   integrations. Graph execution runs in one producer task, which sends
+   model, with the assistant's instructions (`chat_prompts`: how to work with
+   people who are not technical, today's date and time in their zone) and the
+   earlier turns before the prompt. It binds the signed-in user's native tools
+   through a `ChatScope` (pipelines, runs and schedules from `agent_tools`; the
+   planner's `design_workflow` and `change_workflow`, and `list_tools`, from
+   `chat_tools/workflows`, so a team built by chatting is planned like a
+   mission's) and discovers tools from every server in `MCP_SERVERS` and the
+   user's enabled integrations. Graph execution runs in one producer task, which sends
    `ChatEvent`s through a queue: assistant text, and a callback handler's
    `tool` events (started, finished with the created resource, failed). Model
    and MCP calls have timeouts; tool output stays out of the events. Shared tool
@@ -694,7 +704,8 @@ crash, startup recovery logs only how many runs it interrupted
    the status, so it is logged (`chat.stream_interrupted`) and the stream ends.
 6. The hook appends text to the AI message and folds each `tool` event into the
    reply's tool list; a finished write offers an `action` the bubble links to
-   (the mission, or Schedules). Unmounting aborts the fetch.
+   (the mission, or Schedules). Unmounting aborts the fetch and keeps what came,
+   so following that link and coming back continues the conversation.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 

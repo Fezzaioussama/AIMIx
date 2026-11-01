@@ -21,7 +21,7 @@ export function ChatComposer({ value, disabled, onChange, onSend, ref }: ChatCom
           type="text"
           value={value}
           disabled={disabled}
-          placeholder="Ask anything…"
+          placeholder="Say what you want done…"
           onChange={(event) => onChange(event.target.value)}
           onKeyUp={(event) => event.key === 'Enter' && onSend()}
           className="min-w-0 flex-1 bg-transparent px-4 py-3 text-base text-white outline-none placeholder:text-slate-500"

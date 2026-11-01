@@ -23,6 +23,7 @@ from api.services.agent_runtime import AgentLimits, AgentToolset
 from api.services.approvals.guard import guard_tools
 from api.services.approvals.middleware import ApprovalMiddleware
 from api.services.approvals.policy import NO_APPROVALS, ApprovalPolicy, approval_policy_for
+from api.services.chat_conversation import Conversation
 from api.services.mcp import MCPConnections
 from api.services.tool_catalog import NATIVE_SOURCE, OPERATOR_MCP_SOURCE, source_of
 from config.settings import Settings
@@ -159,6 +160,6 @@ async def test_the_chat_is_not_offered_the_tools_that_ask(monkeypatch: pytest.Mo
     monkeypatch.setattr(agent_service, "create_agent", create_agent)
     agent = LangGraphChatAgent(object(), configured, AgentLimits(10, 9, 1))  # type: ignore[arg-type]
 
-    events = [part async for part in agent.stream("hello")]
+    events = [part async for part in agent.stream(Conversation("hello"))]
     assert [event.text for event in events if event.kind == "text"] == ["Hi"]
     assert offered == [["calculator", "docs_search"]]

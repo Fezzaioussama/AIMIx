@@ -71,6 +71,9 @@ def encode(event: ChatEvent) -> str:
 TOOL_LABELS: dict[str, str] = {
     "list_pipelines": "Listing your pipelines",
     "inspect_pipeline": "Inspecting a pipeline",
+    "list_tools": "Listing the tools agents can use",
+    "design_workflow": "Designing your workflow",
+    "change_workflow": "Changing a workflow",
     "create_pipeline": "Creating a pipeline",
     "update_pipeline": "Updating a pipeline",
     "run_pipeline": "Running a pipeline",
@@ -81,6 +84,8 @@ TOOL_LABELS: dict[str, str] = {
 
 #: Which tools create a thing the screen can link to, and what that thing is.
 ACTION_KINDS: dict[str, ActionKind] = {
+    "design_workflow": "pipeline",
+    "change_workflow": "pipeline",
     "create_pipeline": "pipeline",
     "update_pipeline": "pipeline",
     "create_schedule": "schedule",

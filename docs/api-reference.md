@@ -434,8 +434,24 @@ call and starts no sandbox.
 ### `POST /chat`
 
 ```json
-{ "prompt": "Explain JWT in two sentences." }
+{
+  "prompt": "Make it run every Monday at 9.",
+  "history": [
+    { "role": "user", "content": "Build a digest of this week's AI news for my team." },
+    { "role": "assistant", "content": "Done: AI news digest, with a researcher and a writer." }
+  ],
+  "timezone": "Europe/Paris"
+}
 ```
+
+Only `prompt` is required. The server keeps no conversation: the chat screen sends
+what was said before in `history` (oldest first, `role` `user` or `assistant`, at
+most 200 turns of at most 100,000 characters each), and the assistant reads the
+newest turns whose texts fit in `CHAT_HISTORY_MAX_CHARS` together (24,000 by
+default; `0` makes each message stand alone). `timezone` is the browser's IANA
+zone: the assistant is told today's date and the time there, and schedules use it
+unless the person names another. A zone the server does not know is ignored, and
+the assistant then asks for one before scheduling.
 
 `200` with `Accept: application/x-ndjson`: one JSON event per line
 (`Content-Type: application/x-ndjson; charset=utf-8`), streamed as the agent
@@ -458,10 +474,21 @@ out. The events are:
 link to: `kind` is `pipeline` (open it at `/mission/<id>`) or `schedule` (open
 Schedules). `detail` carries a short human-readable result or failure.
 
+The assistant is told who it is and how to work with people who are not
+technical (`services/chat_prompts.py`): plain words in their language, one to
+three questions when something essential is missing, never an API key or a
+password. It builds a new workflow with `design_workflow(description)` and
+changes one with `change_workflow(pipeline_id, change)`: both ask the same
+planner as Missions (`POST /pipelines/generate` and `/revise`), with the same
+team guide, your own tools and models, and the final check, then save the result
+like the pipeline endpoints. `list_tools()` lists what your agents can use, as
+`GET /agent-tools` does.
+
 A refused write is a `status: "failed"` event (and an error result the model
 explains), not the end of the stream. The agent can call, for the signed-in
 user: `list_pipelines()`,
-`inspect_pipeline(pipeline_id)`, `list_models()`,
+`inspect_pipeline(pipeline_id)`, `list_models()`, `list_tools()`,
+`design_workflow(description)`, `change_workflow(pipeline_id, change)`,
 `create_pipeline(name, steps, inputs)`,
 `update_pipeline(pipeline_id, name?, steps?, inputs?)`,
 `run_pipeline(pipeline_id, input_text, inputs)`, `list_schedules(pipeline_id?)`,
@@ -482,8 +509,8 @@ asks first is not offered to it (`MCP_REQUIRE_APPROVAL=false` and an
 integration's `require_approval: false` let their tools act at once, in chat
 too). Tool output stays out of the text events; the `tool` events say what ran
 and what it made. An integration that cannot be reached is skipped. The
-configured provider supplies the model; there is no conversation history across
-requests.
+configured provider supplies the model. Tool results are not part of `history`:
+a later message finds a workflow again by its name (`list_pipelines`).
 
 A provider or MCP failure **before** the first `text` event returns a normal
 error status (502/503/504), including `502 tool_unavailable` if an MCP server

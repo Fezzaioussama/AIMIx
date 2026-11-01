@@ -6,9 +6,19 @@
 
 export type ChatToolStatus = 'started' | 'finished' | 'failed';
 
+/** One earlier message, sent with the next one so the assistant remembers the conversation. */
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** What a finished tool can link to. */
+export const CHAT_ACTION_KINDS = ['pipeline', 'schedule'] as const;
+export type ChatActionKind = (typeof CHAT_ACTION_KINDS)[number];
+
 /** A thing a finished tool created, which the chat offers as a link. */
 export interface ChatAction {
-  kind: 'pipeline' | 'schedule';
+  kind: ChatActionKind;
   id: number;
   title: string;
   subtitle: string;

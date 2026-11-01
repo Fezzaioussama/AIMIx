@@ -15,6 +15,7 @@ from typing import Any, TypeVar
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
 from api.models import Pipeline
 from api.repositories import pipelines as repository
+from api.schemas.pipelines import PipelineIn, PipelinePatch
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
 from api.services.final_check import with_final_check
@@ -66,6 +67,19 @@ def changes(
     changes = repository.PipelineChanges(name=name, inputs=inputs, steps=steps)
     ensure_valid_flow(changes, current)
     return changes
+
+
+def body_changes(
+    body: PipelineIn | PipelinePatch, current: Pipeline | None = None
+) -> repository.PipelineChanges:
+    """``changes`` for a validated pipeline body, so the pipeline endpoints and the
+    chat's tools save exactly alike (§3)."""
+    return changes(
+        body.name,
+        None if body.inputs is None else [field.model_dump() for field in body.inputs],
+        None if body.steps is None else [step.model_dump() for step in body.steps],
+        current,
+    )
 
 
 def run(

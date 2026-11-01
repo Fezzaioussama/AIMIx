@@ -1,3 +1,4 @@
+import { SquarePen } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Aurora } from '../../core/ui/reactbits/Aurora';
@@ -6,24 +7,36 @@ import { ChatComposer } from './ChatComposer';
 import { ChatSuggestions, MessageBubble, TypingIndicator } from './ChatMessages';
 import { useChatStream } from './useChatStream';
 
-/** The screen's name and the (decorative) online status above the transcript. */
-function ChatHeader() {
+/** The screen's name, a way to start over once there is a conversation, and the (decorative) online status. */
+function ChatHeader({ onNewChat }: { onNewChat?: () => void }) {
   return (
     <header className="flex items-center justify-between border-b border-white/[0.06] bg-slate-950/30 px-4 py-4 sm:px-8">
       <h1 className="text-xl font-extrabold tracking-tight">Chat</h1>
-      <div className="flex items-center gap-2 text-sm text-slate-400">
-        <span className="relative flex size-2">
-          <span className="absolute inline-flex size-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
-          <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
-        </span>
-        Online
+      <div className="flex items-center gap-4">
+        {onNewChat && (
+          <button
+            type="button"
+            onClick={onNewChat}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300 transition hover:border-white/20 hover:text-white"
+          >
+            <SquarePen aria-hidden="true" className="size-4" />
+            New chat
+          </button>
+        )}
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full rounded-full bg-emerald-400 opacity-60 motion-safe:animate-ping" />
+            <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
+          </span>
+          Online
+        </div>
       </div>
     </header>
   );
 }
 
 export function ChatPage() {
-  const { messages, isLoading, send } = useChatStream();
+  const { messages, isLoading, send, reset } = useChatStream();
   const [input, setInput] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,7 +73,7 @@ export function ChatPage() {
         mouseInteraction={false}
         dpr={0.75}
       />
-      <ChatHeader />
+      <ChatHeader onNewChat={isFresh ? undefined : reset} />
 
       <div className="flex-1 overflow-y-auto px-4 py-8 sm:px-8">
         <div className="mx-auto flex max-w-4xl flex-col gap-6">

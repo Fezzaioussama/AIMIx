@@ -21,6 +21,7 @@ from api.services.account_data import workspace_of
 from api.services.addresses import Resolver, resolve_host
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
+from api.services.chat_tools.scope import ChatScope
 from api.services.documents.contracts import ExtractionLimits, OcrEngine
 from api.services.documents.extraction import extraction_limits
 from api.services.files.disk import disk_reserve
@@ -34,7 +35,7 @@ from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.run_executor import RunExecutor
 from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
-from api.services.runs import RunService, launcher
+from api.services.runs import RunService
 from api.services.schedules.service import ScheduleAccess
 from api.services.templates.use import StepDefaults
 from api.services.tool_catalog import PipelineToolCatalog
@@ -294,8 +295,9 @@ def agent_factory(
     """Defer agent construction until after the chat request is validated. Its
     run_pipeline tool records runs like the Runs screen does, and its schedule
     tools use the signed-in user's own schedules."""
-    launch = launcher(context.runs, user, context.agents)
-    return partial(get_chat_agent, request.app.state.database, user, profile, launch, schedules)
+    database = request.app.state.database
+    scope = ChatScope(database, user, profile, context.runs, context.agents, schedules)
+    return partial(get_chat_agent, scope)
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]

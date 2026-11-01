@@ -1,5 +1,5 @@
 import { ApiError, streamText } from './client';
-import type { ChatEvent } from './chatTypes';
+import type { ChatEvent, ChatTurn } from './chatTypes';
 import { API } from './endpoints';
 
 /** Decodes one NDJSON line; anything else means the server broke its contract. */
@@ -11,6 +11,13 @@ function parseEvent(line: string): ChatEvent {
   }
 }
 
+/** What the assistant is given with a message: the conversation before it, and where the person is. */
+export interface ChatContext {
+  history: ChatTurn[];
+  /** The browser's IANA time zone, so "every Monday at 9" means 9 where the person is. */
+  timezone: string;
+}
+
 /**
  * Streams a chat reply's events as they arrive. The endpoint answers one JSON
  * object per line (NDJSON), so a line that spans chunks is buffered until its
@@ -18,10 +25,12 @@ function parseEvent(line: string): ChatEvent {
  */
 export async function* streamChatReply(
   prompt: string,
+  context: ChatContext,
   signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
   let buffer = '';
-  for await (const chunk of streamText(API.chat, { prompt }, signal, 'application/x-ndjson')) {
+  const body = { prompt, ...context };
+  for await (const chunk of streamText(API.chat, body, signal, 'application/x-ndjson')) {
     buffer += chunk;
     let newline = buffer.indexOf('\n');
     while (newline >= 0) {

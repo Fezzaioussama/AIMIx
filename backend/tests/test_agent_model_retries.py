@@ -27,6 +27,7 @@ from api.exceptions import ProviderUnavailable
 from api.services import agent_runtime
 from api.services.agent import LangGraphChatAgent
 from api.services.agent_runtime import AgentLimits, AgentToolset, as_agent_error
+from api.services.chat_conversation import Conversation
 from llm.agent_models import create_agent_model
 from llm.retry import RetryPolicy
 from tests.retry_fakes import CONFIG, INSTANT, openrouter_status
@@ -180,6 +181,6 @@ async def test_the_chat_agent_delivers_a_retried_reply_exactly_once(
     model = create_agent_model("openrouter", INSTANT)
     agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9, 1))
 
-    events = [part async for part in agent.stream("hi")]
+    events = [part async for part in agent.stream(Conversation("hi"))]
     assert "".join(event.text for event in events if event.kind == "text") == "Hello"
     assert len(calls) == 2

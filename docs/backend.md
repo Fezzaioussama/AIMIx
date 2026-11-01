@@ -51,6 +51,7 @@ process-wide instance, and `pin_settings()` fixes it for tests and one-off tools
 | `llm_timeout_seconds` | `LLM_TIMEOUT_SECONDS` | Per provider call; 3600 (one hour) |
 | `llm_planner_timeout_seconds` / `llm_planner_max_output_tokens` | `LLM_PLANNER_TIMEOUT_SECONDS` / `LLM_PLANNER_MAX_OUTPUT_TOKENS` | The planner's calls (generate and revise), which hold a request: their own timeout (300 seconds) and the most tokens one answer may have (32,000) |
 | `chat_max_tokens` | `CHAT_MAX_TOKENS` | Tokens (in and out) the model calls behind one chat message may use; empty (the default) is no limit |
+| `chat_history_max_chars` | `CHAT_HISTORY_MAX_CHARS` | Of the earlier messages a chat request carries, the assistant reads the newest whose texts fit in this many characters (24,000); 0 makes each message stand alone |
 | `llm_max_retries` / `llm_retry_base_delay_seconds` / `llm_retry_max_delay_seconds` | `LLM_MAX_RETRIES` / `LLM_RETRY_BASE_DELAY_SECONDS` / `LLM_RETRY_MAX_DELAY_SECONDS` | Retries of a transient model failure (2; at most 10, 0 turns them off) / backoff base and cap in seconds (1 / 20). See [the retry policy](llm-providers.md#retry-policy) |
 | `agent_timeout_seconds` / `agent_recursion_limit` | `AGENT_TIMEOUT_SECONDS` / `AGENT_RECURSION_LIMIT` | Per chat or pipeline step agent limit (3600 seconds) / graph step limit (25) |
 | `agent_tool_description_max_chars` | `AGENT_TOOL_DESCRIPTION_MAX_CHARS` | Maximum tool description length in the catalogue and planner prompt (300) |
@@ -220,7 +221,7 @@ shared in-memory connection.
 | Endpoint module | Routes | Schemas (`api/schemas/`) |
 |---|---|---|
 | `auth.py` | `POST /register`, `POST /login`, `POST /token/refresh` (public); `GET /protected` | `auth.py`: `RegisterRequest`, `LoginRequest`, `TokenPairResponse`, `RefreshRequest`, `AccessTokenResponse`, `WhoAmIResponse` |
-| `chat.py` | `POST /chat` (streams `text/plain`) | `chat.py`: `ChatRequest` (non-blank `prompt`, at most `CHAT_PROMPT_MAX_LENGTH`) |
+| `chat.py` | `POST /chat` (streams NDJSON events, or `text/plain`) | `chat.py`: `ChatRequest` (non-blank `prompt`, at most `CHAT_PROMPT_MAX_LENGTH`; `history`, at most `CHAT_HISTORY_MAX_TURNS` `ChatTurnIn`; an optional `timezone`) |
 | `health.py` | `GET /health` (public — the platform's health check) | `health.py`: `HealthResponse` |
 | `models.py` | `GET /models` | `pipelines.py`: `ModelsResponse` |
 | `llm_settings.py` | `GET`/`PUT /llm-settings`, `DELETE /llm-settings/keys/{provider}` | `llm_settings.py`: `LLMSettingsIn`, `ProviderSettingsIn`, `LLMSettingsOut`, `ProviderSettingsOut` |
@@ -318,7 +319,10 @@ Each write commits its own transaction.
 | `final_check.py` | `with_final_check`: a new plan that holds no reviewer gets one last stage with an "Orchestrator" reviewer that quotes the request and sends the work back, at most twice, to the earliest stage making a deliverable. Generation only. |
 | `plan_questions.py` | The questions the planner may ask before planning (`questions_in` reads and bounds them: at most 4, each with at most 4 options), the `Answer`s, and `Clarification` (may it ask; it asks once at most). |
 | `chat.py` | `stream_reply` — eager first chunk, then an async generator that logs mid-stream failures. |
-| `agent.py` | Builds and streams the chat-only LangGraph agent. Its model is `metered_chat_model`: a `UsageCallback` whose `ChatMeter` counts the calls behind one message and refuses the next one (`BudgetExceeded`) once they reach `CHAT_MAX_TOKENS`. |
+| `chat_conversation.py` | What one chat message carries (`Conversation`: the prompt, the earlier `ChatTurn`s, a known zone): `conversation_of` keeps the newest turns that fit in `CHAT_HISTORY_MAX_CHARS`, `model_messages` lays them out for the model. |
+| `chat_prompts.py` | The chat assistant's instructions (Builder): who it is, how to build and manage workflows for people who are not technical, and the date and time in their zone. |
+| `chat_tools/` | The chat's tools by area, bound through `scope.ChatScope` (the person, their profile, the run and schedule services, and the planner and tool catalogue it builds from them): `workflows.py` (`design_workflow` and `change_workflow` through the Missions planner, `list_tools`) and `common.py` (`refused`, `session_user`, and `save_new` / `save_patch`, which save a pipeline body like the endpoints). |
+| `agent.py` | Builds and streams the chat-only LangGraph agent from a `ChatScope` (`chat_tools` gathers its native tools). Its model is `metered_chat_model`: a `UsageCallback` whose `ChatMeter` counts the calls behind one message and refuses the next one (`BudgetExceeded`) once they reach `CHAT_MAX_TOKENS`. |
 | `agent_runtime.py` | Shared chat/pipeline tool policy (`AgentToolset` carries the `ApprovalPolicy`), limits, and third-party failure translation. |
 | `agent_types.py` | Immutable step task (with the `meter` its agent reports to, and `run_step`, the run and step it belongs to when recorded), agent outcome (with its `usage`), tool descriptor, and tool call trace. |
 | `agent_tools.py` | Authenticated `list_pipelines`, `inspect_pipeline`, and `run_pipeline` functions. Each call opens its own session and uses the ownership-scoped repository; `run_pipeline` goes through the run service (`PipelineLauncher`), so chat runs are recorded. `native_tools` adds the built-in toolbox, built for the user's own workspace folder and with `sandbox_quota`, their hourly `run_python` allowance, and `meta_tools`, Muse Image and SAM 3.1 on their Meta key (`MetaTools`, or None, which leaves `generate_image` and `find_objects` out). |

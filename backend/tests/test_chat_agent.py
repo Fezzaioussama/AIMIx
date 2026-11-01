@@ -17,6 +17,7 @@ from api.services import agent as agent_service
 from api.services import agent_runtime
 from api.services.agent import LangGraphChatAgent
 from api.services.agent_runtime import AgentLimits, AgentToolset
+from api.services.chat_conversation import ChatTurn, Conversation
 from api.services.chat_events import ChatEvent, text_event
 from api.services.mcp import MCPConnections, connections
 from config.settings import Settings
@@ -85,7 +86,7 @@ async def test_agent_streams_model_text_and_hides_tool_output(
     monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
     monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
     agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
-    events = [part async for part in agent.stream("hello")]
+    events = [part async for part in agent.stream(Conversation("hello"))]
     assert [event.text for event in events if event.kind == "text"] == ["Hello ", "world"]
     assert all("secret tool output" not in f"{event.text}{event.detail}" for event in events)
     assert captured["tools"] == [local_tool, example_tool]
@@ -101,7 +102,7 @@ async def test_mcp_discovery_failure_is_a_domain_error(monkeypatch: pytest.Monke
     monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
     agent = LangGraphChatAgent(object(), AgentToolset({}, []), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
     with pytest.raises(ToolUnavailable):
-        _ = [part async for part in agent.stream("hello")]
+        _ = [part async for part in agent.stream(Conversation("hello"))]
 
 
 def test_chat_empty_reply_is_a_502(app: FastAPI, auth_client: TestClient) -> None:
@@ -145,7 +146,7 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
         ]
     )
     agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9, 1))
-    events = [part async for part in agent.stream("add one to two")]
+    events = [part async for part in agent.stream(Conversation("add one to two"))]
     assert "".join(event.text for event in events if event.kind == "text") == "Result is 3"
     assert [(event.tool, event.status) for event in events if event.kind == "tool"] == [
         ("increment", "started"),
@@ -182,7 +183,7 @@ async def test_a_refused_tool_is_reported_and_the_reply_continues(
         model, AgentToolset(MCPConnections(), [refuse]), AgentLimits(10, 9, 1)
     )
 
-    events = [part async for part in agent.stream("create it")]
+    events = [part async for part in agent.stream(Conversation("create it"))]
     assert [(event.tool, event.status) for event in events if event.kind == "tool"] == [
         ("refuse", "started"),
         ("refuse", "failed"),
@@ -218,7 +219,7 @@ def test_mcp_failure_before_text_has_standard_error_shape(
     app: FastAPI, auth_client: TestClient
 ) -> None:
     class BrokenAgent:
-        async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
+        async def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]:
             raise ToolUnavailable("An MCP server is unavailable.")
             yield text_event("")  # pragma: no cover - keeps this an async generator
 
@@ -233,7 +234,7 @@ def test_mcp_failure_before_text_has_standard_error_shape(
 
 def test_mcp_failure_after_text_ends_stream(app: FastAPI, auth_client: TestClient) -> None:
     class BrokenAgent:
-        async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
+        async def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]:
             yield text_event("partial")
             raise ToolUnavailable("An MCP server is unavailable.")
 
@@ -247,3 +248,42 @@ def test_mcp_failure_after_text_ends_stream(app: FastAPI, auth_client: TestClien
     assert [json.loads(line) for line in response.text.splitlines()] == [
         {"type": "text", "text": "partial"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_agent_reads_its_instructions_and_the_earlier_turns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def fake_discover(configured: object, native: list[Any], timeout: float) -> list[Any]:
+        return native
+
+    class FakeGraph:
+        async def astream(self, state: object, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+            captured["state"] = state
+            yield {
+                "type": "messages",
+                "data": (AIMessageChunk(content="Done."), {"langgraph_node": "model"}),
+            }
+
+    def fake_create_agent(model: object, tools: object, **kwargs: Any) -> FakeGraph:
+        captured["system_prompt"] = kwargs["system_prompt"]
+        return FakeGraph()
+
+    monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
+    monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
+    agent = LangGraphChatAgent(object(), AgentToolset({}, []), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
+    earlier = (ChatTurn("user", "Build a news digest"), ChatTurn("assistant", "Done: two agents."))
+
+    _ = [part async for part in agent.stream(Conversation("Weekly", earlier, "Europe/Paris"))]
+
+    assert captured["state"] == {
+        "messages": [
+            {"role": "user", "content": "Build a news digest"},
+            {"role": "assistant", "content": "Done: two agents."},
+            {"role": "user", "content": "Weekly"},
+        ]
+    }
+    assert captured["system_prompt"].startswith("You are the AIMIx assistant.")
+    assert "in the person's time zone, Europe/Paris" in captured["system_prompt"]

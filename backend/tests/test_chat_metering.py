@@ -17,14 +17,17 @@ from api.models import User
 from api.services import agent as agent_service
 from api.services.agent import ChatMeter, LangGraphChatAgent, get_chat_agent
 from api.services.agent_runtime import AgentLimits, AgentToolset
+from api.services.chat_conversation import Conversation
+from api.services.chat_tools.scope import ChatScope
 from api.services.llm import LLMProfile
 from api.services.mcp import MCPConnections
 from api.services.run_budget import RunBudget
 from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
+from api.services.runs import RunService
 from api.services.schedules.service import ScheduleAccess
 from llm.usage import TokenUsage, UsageCallback, metered
-from tests.conftest import TEST_SETTINGS
+from tests.conftest import TEST_SETTINGS, FakeProvider, InlineRunExecutor
 
 
 @tool
@@ -76,12 +79,12 @@ def test_the_meter_refuses_the_call_after_the_limit_is_reached() -> None:
 @pytest.mark.asyncio
 async def test_a_message_stops_once_its_calls_reach_the_limit() -> None:
     with pytest.raises(BudgetExceeded):
-        _ = [part async for part in chat_agent(1000).stream("add one to two")]
+        _ = [part async for part in chat_agent(1000).stream(Conversation("add one to two"))]
 
 
 @pytest.mark.asyncio
 async def test_without_a_limit_the_calls_are_counted_and_never_refused() -> None:
-    events = [part async for part in chat_agent(None).stream("add one")]
+    events = [part async for part in chat_agent(None).stream(Conversation("add one"))]
     assert "".join(event.text for event in events if event.kind == "text") == "Result is 3"
 
 
@@ -96,9 +99,9 @@ def test_the_chat_agent_meters_its_model(
         schedules = ScheduleAccess(
             db, user, settings.schedules_max_per_user, utcnow(), run_policy(settings).limits
         )
-    agent = get_chat_agent(  # type: ignore[arg-type,return-value]
-        app.state.database, user, profile, lambda *_: None, schedules
-    )
+    runs = RunService(app.state.database, InlineRunExecutor(), max_parallel_steps=1)
+    scope = ChatScope(app.state.database, user, profile, runs, FakeProvider, schedules)
+    agent = get_chat_agent(scope)
 
     callbacks = agent._model.callbacks
     assert isinstance(callbacks, list)

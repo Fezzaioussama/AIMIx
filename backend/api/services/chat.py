@@ -7,23 +7,24 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 
 from api.exceptions import DomainError, UpstreamResponseInvalid
+from api.services.chat_conversation import Conversation
 from api.services.chat_events import ChatEvent
 
 logger = logging.getLogger(__name__)
 
 
 class ChatAgent(Protocol):
-    def stream(self, prompt: str) -> AsyncIterator[ChatEvent]: ...
+    def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]: ...
 
 
-async def stream_reply(agent: ChatAgent, prompt: str) -> AsyncIterator[ChatEvent]:
+async def stream_reply(agent: ChatAgent, conversation: Conversation) -> AsyncIterator[ChatEvent]:
     """Pull until the first text before the endpoint commits a streaming response.
 
     Tool events that happened before it are held back and sent with it, so a
     failure (a refused budget, an unreachable provider) still reaches the client
     as a proper HTTP status instead of a truncated 200 stream.
     """
-    stream = agent.stream(prompt)
+    stream = agent.stream(conversation)
     pending: list[ChatEvent] = []
     try:
         first = await anext(stream)

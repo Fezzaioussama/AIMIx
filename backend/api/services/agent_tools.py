@@ -9,7 +9,6 @@ from typing import Any
 
 from langchain.tools import tool
 from langchain_core.tools import BaseTool, ToolException
-from sqlalchemy.orm import Session
 
 from api.db import Database
 from api.exceptions import DomainError, ProviderNotConfigured, Throttled
@@ -20,9 +19,8 @@ from api.schemas.pipelines import PipelineIn, PipelinePatch
 from api.schemas.schedules import ScheduleIn, SchedulePatch
 from api.security import secret_box_for
 from api.services import llm_settings
-from api.services import pipelines as pipeline_service
 from api.services.catalog import known_model_ids
-from api.services.files.disk import disk_reserve
+from api.services.chat_tools.common import refused, save_new, save_patch, session_user
 from api.services.files.storage import user_workspace_dir
 from api.services.llm import get_image_generator, get_object_finder
 from api.services.multiagent.contracts import RunResult
@@ -163,22 +161,9 @@ def _schedule_summary(view: ScheduleView) -> dict[str, Any]:
     }
 
 
-def _refused(cause: Exception) -> ToolException:
-    """A refused write reaches the agent as a tool error it can explain."""
-    return ToolException(str(cause))
-
-
 def _numbered(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Steps numbered by position unless they already say where they go."""
     return [{"order": index, **step} for index, step in enumerate(steps, start=1)]
-
-
-def _session_user(session: Session, user: User) -> User:
-    """The same account in the tool's own session, so a write can attach it."""
-    owner = session.get(User, user.id)
-    if owner is None:
-        raise ToolException("Your account is no longer available.")
-    return owner
 
 
 def built_in_tools(
@@ -217,17 +202,10 @@ def built_in_tools(
             body = PipelineIn.model_validate(
                 {"name": name, "steps": _numbered(steps), "inputs": inputs or []}
             )
-            disk_reserve(get_settings()).ensure_room()
-            changes = pipeline_service.changes(
-                body.name,
-                [field.model_dump() for field in body.inputs],
-                [step.model_dump() for step in body.steps],
-            )
             with database.session() as session:
-                owner = _session_user(session, user)
-                return _pipeline_summary(repository.create_with_steps(session, owner, changes))
+                return _pipeline_summary(save_new(session, user, body))
         except (ValueError, DomainError) as cause:
-            raise _refused(cause) from cause
+            raise refused(cause) from cause
 
     @tool
     def update_pipeline(
@@ -247,18 +225,10 @@ def built_in_tools(
             if steps is not None:
                 data["steps"] = _numbered(steps)
             body = PipelinePatch.model_validate(data)
-            disk_reserve(get_settings()).ensure_room()
             with database.session() as session:
-                pipeline = repository.get_owned(session, _session_user(session, user), pipeline_id)
-                changes = pipeline_service.changes(
-                    body.name,
-                    None if body.inputs is None else [field.model_dump() for field in body.inputs],
-                    None if body.steps is None else [step.model_dump() for step in body.steps],
-                    pipeline,
-                )
-                return _pipeline_summary(repository.replace_steps(session, pipeline, changes))
+                return _pipeline_summary(save_patch(session, user, pipeline_id, body))
         except (ValueError, DomainError) as cause:
-            raise _refused(cause) from cause
+            raise refused(cause) from cause
 
     @tool
     def list_schedules(pipeline_id: int | None = None) -> list[dict[str, Any]]:
@@ -266,7 +236,7 @@ def built_in_tools(
         (see list_pipelines), with when each runs and whether it is on."""
         with database.session() as session:
             access = replace(
-                schedules, session=session, user=_session_user(session, user), now=utcnow()
+                schedules, session=session, user=session_user(session, user), now=utcnow()
             )
             views = schedule_service.list_views(access, pipeline_id)
             return [_schedule_summary(view) for view in views]
@@ -303,13 +273,13 @@ def built_in_tools(
             )
             with database.session() as session:
                 access = replace(
-                    schedules, session=session, user=_session_user(session, user), now=utcnow()
+                    schedules, session=session, user=session_user(session, user), now=utcnow()
                 )
                 return _schedule_summary(
                     schedule_service.create(access, schedule_requests.draft_of(body))
                 )
         except (ValueError, DomainError) as cause:
-            raise _refused(cause) from cause
+            raise refused(cause) from cause
 
     @tool
     def update_schedule(
@@ -341,7 +311,7 @@ def built_in_tools(
             raise ToolException("Send at least one field to change.")
         try:
             with database.session() as session:
-                owner = _session_user(session, user)
+                owner = session_user(session, user)
                 # input and inputs replace each other; keep the untouched one.
                 if (input_text is None) != (inputs is None):
                     current = schedule_repository.get_owned(session, owner, schedule_id)
@@ -361,7 +331,7 @@ def built_in_tools(
                     schedule_service.update(access, schedule_id, schedule_requests.edit_of(body))
                 )
         except (ValueError, DomainError) as cause:
-            raise _refused(cause) from cause
+            raise refused(cause) from cause
 
     return [
         *native,

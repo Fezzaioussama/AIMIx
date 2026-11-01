@@ -27,6 +27,7 @@ from api.repositories import users
 from api.security import hash_password
 from api.services.agent_types import AgentOutcome, AgentTask
 from api.services.chat import ChatAgent
+from api.services.chat_conversation import Conversation
 from api.services.chat_events import ChatEvent, text_event
 from api.services.pipelines import StepGenerator
 from config.settings import Settings, pin_settings
@@ -150,9 +151,11 @@ class FakeAgent:
     def __init__(self, chunks: list[str] | None = None) -> None:
         self.chunks = chunks if chunks is not None else ["fake ", "reply"]
         self.prompts: list[str] = []
+        self.conversations: list[Conversation] = []
 
-    async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
-        self.prompts.append(prompt)
+    async def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]:
+        self.prompts.append(conversation.prompt)
+        self.conversations.append(conversation)
         for chunk in self.chunks:
             yield text_event(chunk)
 
