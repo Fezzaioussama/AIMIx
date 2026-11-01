@@ -93,8 +93,10 @@ def test_the_instructions_send_building_to_the_planner_tools() -> None:
 
     assert "design_workflow" in prompt
     assert "change_workflow" in prompt
-    # It answered in French when only the digest was to be in French: the rule comes last.
+    # It answered in French when only the digest was to be in French: the rule comes last,
+    # with that very case as its example.
     assert prompt.endswith(CHAT_LANGUAGE_RULE)
+    assert "asked in English for a weekly digest in French, you answer in English" in prompt
     assert "Never ask for, repeat or keep passwords or API keys" in prompt
 
 
