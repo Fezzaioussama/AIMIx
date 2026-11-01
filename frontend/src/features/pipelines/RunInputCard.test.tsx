@@ -87,7 +87,10 @@ describe('RunInputCard', () => {
       expect(screen.getByRole('textbox', { name: 'Run input' })).toHaveValue(
         'Summarise this:\n\n[Document: report.pdf]\nRevenue grew.',
       );
-      expect(screen.getByRole('button', { name: 'Run Pipeline' })).toBeEnabled();
+      // The form hears that the read is over one render after the text lands.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Run Pipeline' })).toBeEnabled(),
+      );
     });
 
     it('offers a document and a web page for each named input', () => {
