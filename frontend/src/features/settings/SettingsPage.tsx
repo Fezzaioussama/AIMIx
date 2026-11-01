@@ -6,11 +6,13 @@ import { AccountSection } from './AccountSection';
 import { IntegrationsSection } from './IntegrationsSection';
 import { ProvidersSection } from './ProvidersSection';
 import { UsageSection } from './UsageSection';
+import { WebhooksSection } from './WebhooksSection';
 
 /** Each tab by its address (/settings/<slug>, the first at /settings itself) and its section. */
 const TABS = [
   { slug: '', label: 'Providers', Section: ProvidersSection },
   { slug: 'integrations', label: 'Integrations', Section: IntegrationsSection },
+  { slug: 'webhooks', label: 'Webhooks', Section: WebhooksSection },
   { slug: 'usage', label: 'Usage', Section: UsageSection },
   { slug: 'account', label: 'Account', Section: AccountSection },
 ] as const;
@@ -25,9 +27,13 @@ const tabClass = (active: boolean) =>
       : 'border-transparent text-slate-400 hover:text-slate-50',
   ].join(' ');
 
+/** The tab row; on a phone it wraps onto a second line rather than widen the page. */
 function SettingsTabs({ current }: { current: string }) {
   return (
-    <nav aria-label="Settings sections" className="flex gap-5 border-b border-white/10">
+    <nav
+      aria-label="Settings sections"
+      className="flex flex-wrap gap-x-5 gap-y-1 border-b border-white/10"
+    >
       {TABS.map((tab) => (
         <Link
           key={tab.slug}
@@ -53,7 +59,7 @@ export function SettingsPage() {
     <Page>
       <PageHeader
         title="Settings"
-        description="Your model providers, the services your agents can reach, what your runs cost, and your account."
+        description="Your model providers, the services your agents can reach, the webhooks that link your workflows to other apps, what your runs cost, and your account."
       />
       <SettingsTabs current={tab.slug} />
       <div className="max-w-3xl">

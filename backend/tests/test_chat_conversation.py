@@ -98,6 +98,8 @@ def test_the_instructions_send_building_to_the_planner_tools() -> None:
     assert prompt.endswith(CHAT_LANGUAGE_RULE)
     assert "asked in English for a weekly digest in French, you answer in English" in prompt
     assert "Never ask for, repeat or keep passwords or API keys" in prompt
+    # What the chat cannot delete, the person deletes on a screen the chat can name.
+    assert "Settings → Webhooks" in prompt
 
 
 def test_the_chat_hands_the_agent_the_conversation_and_a_known_zone(

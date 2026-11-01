@@ -1,4 +1,6 @@
+import type { Delivery } from '../../core/api/deliveryTypes';
 import type { Integration, LLMSettings } from '../../core/api/types';
+import type { Webhook } from '../../core/api/webhookTypes';
 
 /** Shared by the Integrations tests: one server with a saved Authorization header. */
 export const INTEGRATION: Integration = {
@@ -9,6 +11,30 @@ export const INTEGRATION: Integration = {
   require_approval: true,
   headers: [{ name: 'Authorization', hint: '1234' }],
   created_at: '2026-10-24T10:00:00Z',
+};
+
+/** Shared by the Webhooks tests: a link another app called, which started a run. */
+export const WEBHOOK: Webhook = {
+  id: 7,
+  pipeline_id: 3,
+  pipeline_name: 'Weekly digest',
+  enabled: true,
+  last_called_at: '2026-10-30T08:00:00Z',
+  last_error: null,
+};
+
+/** Shared by the Webhooks tests: a Slack address set by chat, still waiting for its OK. */
+export const DELIVERY: Delivery = {
+  id: 9,
+  pipeline_id: 4,
+  pipeline_name: 'Sales report',
+  destination: 'hooks.slack.com',
+  hint: 'XyZ9',
+  service: 'Slack',
+  confirmed: false,
+  enabled: true,
+  last_sent_at: null,
+  last_error: null,
 };
 
 /** Shared by the Settings tests: one provider with a saved key, one without. */

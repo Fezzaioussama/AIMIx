@@ -60,6 +60,11 @@ def set_enabled(session: Session, webhook: Webhook, enabled: bool) -> None:
     session.commit()
 
 
+def delete(session: Session, webhook: Webhook) -> None:
+    session.delete(webhook)
+    session.commit()
+
+
 def record_call(session: Session, webhook: Webhook, at: datetime, error: str) -> None:
     """When the webhook was last called, and why that call started no run ("" if it did)."""
     webhook.last_called_at = at

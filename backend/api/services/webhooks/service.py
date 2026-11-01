@@ -1,6 +1,6 @@
-"""A person's webhooks (the chat's tools, ``GET /webhooks``): give a pipeline its secret
-link, switch it off or on, or renew it. The token is made here and handed only to its
-owner's screen; the chat's model never reads it (AGENTS.md §6)."""
+"""A person's webhooks (the chat's tools, Settings → Webhooks): give a pipeline its
+secret link, switch it off or on, renew it or delete it. The token is made here and
+handed only to its owner's screen; the chat's model never reads it (AGENTS.md §6)."""
 
 from __future__ import annotations
 
@@ -100,6 +100,14 @@ def renew(access: WebhookAccess, webhook_id: int) -> WebhookView:
     repository.set_token(access.session, webhook, *_sealed_token(access.box))
     logger.info("webhook.renewed webhook_id=%s", webhook.id)
     return view_of(webhook)
+
+
+def remove(access: WebhookAccess, webhook_id: int) -> None:
+    """Delete a webhook: its link stops working, and its pipeline has none until the
+    chat makes a new one."""
+    webhook = repository.get_owned(access.session, access.user, webhook_id)
+    repository.delete(access.session, webhook)
+    logger.info("webhook.deleted webhook_id=%s", webhook_id)
 
 
 def link_of(access: WebhookAccess, webhook_id: int) -> WebhookLink:

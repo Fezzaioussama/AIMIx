@@ -1,6 +1,7 @@
-"""The webhooks' part of ``deps.py``: another app calling a pipeline's webhook link, and a
-run's results posted to another app's webhook address (result deliveries). Tests swap
-these functions through ``app.dependency_overrides`` like any other dependency."""
+"""The webhooks' part of ``deps.py``: the signed-in user's webhooks and result deliveries,
+another app calling a pipeline's webhook link, and a run's results posted to another
+app's webhook address. Tests swap these functions through ``app.dependency_overrides``
+like any other dependency."""
 
 from __future__ import annotations
 
@@ -8,10 +9,28 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
-from api.deps import AppSettings, Runs, Secrets
+from api.deps import AppSettings, CurrentUser, DbSession, Runs, Secrets
 from api.services.deliveries.sender import SendPolicy, send_policy
+from api.services.deliveries.service import DeliveryAccess
 from api.services.schedules.scheduler import ProfileAgents
 from api.services.webhooks.calls import CallPolicy, WebhookCalls
+from api.services.webhooks.service import WebhookAccess
+
+
+def webhook_access(user: CurrentUser, session: DbSession, box: Secrets) -> WebhookAccess:
+    """The signed-in user's webhooks (Settings → Webhooks, the chat's link card)."""
+    return WebhookAccess(session, user, box)
+
+
+Webhooks = Annotated[WebhookAccess, Depends(webhook_access)]
+
+
+def delivery_access(user: CurrentUser, session: DbSession, box: Secrets) -> DeliveryAccess:
+    """The signed-in user's result deliveries (Settings → Webhooks, the chat's card)."""
+    return DeliveryAccess(session, user, box)
+
+
+Deliveries = Annotated[DeliveryAccess, Depends(delivery_access)]
 
 
 def webhook_calls(

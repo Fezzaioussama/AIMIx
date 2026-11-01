@@ -5,6 +5,7 @@ import { SwitchButton } from '../../core/ui/SwitchButton';
 import { ToggleSwitch } from '../../core/ui/ToggleSwitch';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
 import { actionButtonClass } from './actionButton';
+import { ConfirmAction } from './ConfirmAction';
 import { ConnectionTestResult, toolCount } from './ConnectionTestResult';
 import { hostOf } from './integrationDraft';
 import type { ConnectionTest } from './useIntegrations';
@@ -56,40 +57,6 @@ function headerSummary(integration: Integration): string {
   const count = integration.headers.length;
   if (count === 0) return 'No headers';
   return count === 1 ? `1 header: ${integration.headers[0].name}` : `${count} headers`;
-}
-
-interface DeleteConfirmProps {
-  name: string;
-  busy: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function DeleteConfirm({ name, busy, onConfirm, onCancel }: DeleteConfirmProps) {
-  return (
-    <div
-      role="group"
-      aria-label={`Delete ${name}?`}
-      className="mt-4 rounded-lg border border-red-400/30 bg-red-500/5 p-3 text-sm"
-    >
-      <p className="text-slate-200">
-        Delete {name}? Steps that use its tools stop working until you connect it again.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={busy}
-          className={actionButtonClass('danger')}
-        >
-          Delete {name}
-        </button>
-        <button type="button" onClick={onCancel} autoFocus className={actionButtonClass()}>
-          Keep it
-        </button>
-      </div>
-    </div>
-  );
 }
 
 type CardHeadingProps = Pick<IntegrationCardProps, 'integration' | 'test' | 'busy' | 'onToggle'> & {
@@ -172,8 +139,11 @@ export function IntegrationCard({
         </button>
       </div>
       {confirming && (
-        <DeleteConfirm
-          name={integration.name}
+        <ConfirmAction
+          question={`Delete ${integration.name}?`}
+          consequence="Steps that use its tools stop working until you connect it again."
+          confirmLabel={`Delete ${integration.name}`}
+          keepLabel="Keep it"
           busy={busy}
           onConfirm={onDelete}
           onCancel={() => {

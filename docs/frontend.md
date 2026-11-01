@@ -32,7 +32,7 @@ frontend/src/
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, useRun, the run history, and report/: RunReport, one run as one document
     schedules/      # the Schedule panel (builder) and the Schedules screen
-    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Usage, Account
+    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Webhooks, Usage, Account
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -53,7 +53,7 @@ frontend/src/
 | `/runs`, `/runs/:runId` | `RunsPage` (one route, `/runs/:runId?`) | guarded |
 | `/schedules` | `SchedulesPage` (`SCHEDULES_PATH`) | guarded |
 | `/runs/schedules` | redirect to `/schedules`, its old address (`OLD_SCHEDULES_PATH`; a fixed path, so it wins over `:runId`) | guarded |
-| `/settings`, `/settings/:tab` | `SettingsPage` (one route, `/settings/:tab?`: Providers at `/settings`, then `integrations`, `usage`, `account`; an unknown tab redirects to `/settings`) | guarded |
+| `/settings`, `/settings/:tab` | `SettingsPage` (one route, `/settings/:tab?`: Providers at `/settings`, then `integrations`, `webhooks`, `usage`, `account`; an unknown tab redirects to `/settings`) | guarded |
 | `*` | redirect to `/login` | — |
 
 Guarded routes sit behind `RequireAuth`, then inside `AppShell`: a static
@@ -510,12 +510,21 @@ Integrations (the user's own MCP servers):
 | File | Role |
 |---|---|
 | `IntegrationsSection.tsx` | Heading, a plain-words explanation, the list, "+ Add an integration" and the section's notice |
-| `IntegrationCard.tsx` | One server: name, host, an on/off `ToggleSwitch`, an "Ask me before its tools act" switch (on by default; says in words that chat cannot use the tools of an integration that asks), header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline confirmation that takes focus ("Keep it") and gives it back |
+| `IntegrationCard.tsx` | One server: name, host, an on/off `ToggleSwitch`, an "Ask me before its tools act" switch (on by default; says in words that chat cannot use the tools of an integration that asks), header names, the number of tools once tested, "Test connection", Edit, and Delete with an inline `ConfirmAction` that takes focus ("Keep it") and gives it back |
 | `ConnectionTestResult.tsx` | An always-present `aria-live` region: "Connecting…", the tools found (name and description), or why the test failed |
 | `IntegrationForm.tsx`, `HeaderRows.tsx` | Add or edit: name (typed as snake_case), server URL, and header rows whose values are password fields; a saved value shows only as "Saved value ending in …", and is kept when its field is left empty |
 | `integrationDraft.ts` | Pure helpers: the form draft, `draftProblem` (mirrors the backend rules: name pattern, URL, header names and values; every value again when the address changes), `toCreate`, `toPatch` (only what changed; a kept header is sent without its value) |
 | `useIntegrations.ts` | Loads the list, creates, updates, switches on/off (`setEnabled`, and `setRequireApproval` for "Ask me before its tools act") and deletes through `useSubmission`, and keeps each connection test's result while the page is open (tests still running are cancelled on unmount) |
 | `actionButton.ts` | The small secondary button styles the section uses (the page keeps one `GlowButton`) |
+
+Webhooks (set up by chat; this tab shows and changes them):
+
+| File | Role |
+|---|---|
+| `WebhooksSection.tsx` | Heading, a plain-words explanation, the two lists ("Start a workflow from another app", "Send results to another app") with what to ask the chat while one is empty, and the section's notice |
+| `WebhookItem.tsx` | One webhook: the workflow, its last call, an on/off switch, "Show link" (the chat's `WebhookCard`, which reads the link only then), "New link" and Delete, each asked first through `ConfirmAction.tsx` (`QUESTIONS`, one entry per action; the Integrations card uses it too); a renewed link is read again |
+| `DeliveryItem.tsx` | One delivery: the workflow, the service with the address's host and last characters, where sending stands, Confirm while it waits for the OK (then an on/off switch), and Remove |
+| `useWebhooks.ts` | Loads both lists together, then switches, renews and deletes webhooks and confirms, switches and removes deliveries through `useSubmission` |
 
 ### `features/landing`
 
@@ -610,7 +619,7 @@ hooks have `core/hooks/useCancellableRequest.test.tsx` and `useLatest.test.tsx`.
 Settings page has `SettingsPage.test.tsx`, `useLLMSettings.test.tsx`, and for
 integrations `IntegrationsSection.test.tsx` (list, add, validation, test
 connection, delete confirmation, switch, edit with hints), `useIntegrations.test.tsx`
-and `integrationDraft.test.ts`; `testData.ts` holds their fixtures and `byPath`,
+and `integrationDraft.test.ts`, and `WebhooksSection.test.tsx` for webhooks; `testData.ts` holds their fixtures and `byPath`,
 a fetch stand-in that answers each API path. For
 runs: `core/api/runs.test.ts`, `features/runs/useRun.test.tsx` (polling with
 fake timers, abort on unmount, stop, resume, adopt), `useLatestRun.test.tsx` (`checked`

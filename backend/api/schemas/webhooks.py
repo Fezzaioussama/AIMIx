@@ -28,6 +28,12 @@ class WebhookLinkOut(WebhookOut):
     token: str
 
 
+class WebhookPatch(BaseModel):
+    """Switch a webhook off (its link answers like an unknown one) or on again."""
+
+    enabled: bool
+
+
 class WebhookCallOut(BaseModel):
     """What a webhook call answers: the run it queued, to follow by its owner."""
 

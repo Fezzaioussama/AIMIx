@@ -1,19 +1,18 @@
-"""Webhooks: another app starts a run by calling a secret link (public), and its owner
-reads one webhook with its link (the chat's link card). Making, switching and renewing
-a webhook happen by chat (``services/chat_tools/webhooks.py``)."""
+"""Webhooks: another app starts a run by calling a secret link (public). Their owner lists
+them, switches one off or on, renews or deletes its link (Settings → Webhooks), and reads
+one with its link (the chat's link card, the screen's Copy link). Making one happens by
+chat (``services/chat_tools/webhooks.py``)."""
 
 from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from starlette.concurrency import run_in_threadpool
 
-from api.deps import CurrentUser, DbSession, Secrets
-from api.schemas.webhooks import WebhookCallOut, WebhookLinkOut
+from api.schemas.webhooks import WebhookCallOut, WebhookLinkOut, WebhookOut, WebhookPatch
 from api.services.webhooks import service
-from api.services.webhooks.service import WebhookAccess
-from api.webhook_deps import WebhookCallers
+from api.webhook_deps import WebhookCallers, Webhooks
 
 public_router = APIRouter(tags=["webhooks"])
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -28,9 +27,29 @@ async def call_webhook(token: str, request: Request, calls: WebhookCallers) -> W
     return WebhookCallOut(run_id=run_id)
 
 
+@router.get("")
+def list_webhooks(access: Webhooks) -> list[WebhookOut]:
+    return [WebhookOut.model_validate(view) for view in service.views(access)]
+
+
 @router.get("/{webhook_id}")
-def get_webhook(
-    webhook_id: int, user: CurrentUser, session: DbSession, box: Secrets
-) -> WebhookLinkOut:
-    link = service.link_of(WebhookAccess(session, user, box), webhook_id)
+def get_webhook(webhook_id: int, access: Webhooks) -> WebhookLinkOut:
+    link = service.link_of(access, webhook_id)
     return WebhookLinkOut.model_validate({**asdict(link.view), "token": link.token})
+
+
+@router.patch("/{webhook_id}")
+def update_webhook(webhook_id: int, body: WebhookPatch, access: Webhooks) -> WebhookOut:
+    return WebhookOut.model_validate(service.set_enabled(access, webhook_id, body.enabled))
+
+
+@router.post("/{webhook_id}/renew")
+def renew_webhook(webhook_id: int, access: Webhooks) -> WebhookOut:
+    """A new link; the old one stops working at once."""
+    return WebhookOut.model_validate(service.renew(access, webhook_id))
+
+
+@router.delete("/{webhook_id}", status_code=204)
+def delete_webhook(webhook_id: int, access: Webhooks) -> Response:
+    service.remove(access, webhook_id)
+    return Response(status_code=204)

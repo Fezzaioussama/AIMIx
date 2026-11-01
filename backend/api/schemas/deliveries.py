@@ -26,3 +26,9 @@ class DeliveryOut(BaseModel):
     last_sent_at: UtcDateTime | None
     #: Why the latest sending failed; null when it was delivered.
     last_error: Annotated[str | None, BeforeValidator(none_if_empty)]
+
+
+class DeliveryPatch(BaseModel):
+    """Stop sending a workflow's results, or send them again (once confirmed)."""
+
+    enabled: bool

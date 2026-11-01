@@ -45,7 +45,10 @@ export const API = {
   integrations: '/api/integrations',
   integration: (integrationId: number) => `/api/integrations/${integrationId}`,
   testIntegration: (integrationId: number) => `/api/integrations/${integrationId}/test`,
+  webhooks: '/api/webhooks',
   webhook: (webhookId: number) => `/api/webhooks/${webhookId}`,
+  renewWebhook: (webhookId: number) => `/api/webhooks/${webhookId}/renew`,
+  deliveries: '/api/deliveries',
   delivery: (deliveryId: number) => `/api/deliveries/${deliveryId}`,
   confirmDelivery: (deliveryId: number) => `/api/deliveries/${deliveryId}/confirm`,
   /** The secret link another app calls to start a workflow (public: the token is the key). */

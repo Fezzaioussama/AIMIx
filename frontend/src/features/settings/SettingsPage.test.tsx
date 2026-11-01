@@ -43,7 +43,7 @@ describe('SettingsPage', () => {
       within(tabs)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Providers', 'Integrations', 'Usage', 'Account']);
+    ).toEqual(['Providers', 'Integrations', 'Webhooks', 'Usage', 'Account']);
     expect(within(tabs).getByRole('link', { name: 'Providers' })).toHaveAttribute(
       'aria-current',
       'page',

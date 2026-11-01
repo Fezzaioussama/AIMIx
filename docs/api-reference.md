@@ -1825,7 +1825,8 @@ pipelines.
 A webhook is a pipeline's secret link: another app (a form, Zapier, Make, your own
 code) calls it to start a run, **as the pipeline's owner**, on their key and under
 their limits. You make, switch and renew webhooks by chat (`create_webhook`,
-`set_webhook`, `renew_webhook_link`, `list_webhooks`); a pipeline has at most one,
+`set_webhook`, `renew_webhook_link`, `list_webhooks`); Settings → Webhooks lists,
+switches, renews and deletes them with the routes below. A pipeline has at most one,
 and deleting the pipeline deletes it. The token is 256 random bits, stored as a
 SHA-256 hash (to find the webhook) and sealed with the server's secret box (so
 its owner can read the link again); it never passes through the chat's model, and
@@ -1862,7 +1863,11 @@ other (`trigger: "webhook"`).
 | `429 too_many_runs`, `503`, `507` | As for any run start: the owner's active runs, no key, a nearly full disk |
 
 A refused call is kept as the webhook's `last_error` (the chat's
-`list_webhooks` shows it); a call that starts a run clears it.
+`list_webhooks` and Settings → Webhooks show it); a call that starts a run clears it.
+
+### `GET /webhooks`
+
+`200` → your webhooks, oldest first, each as below **without** `token`.
 
 ### `GET /webhooks/<id>`
 
@@ -1881,7 +1886,25 @@ shows it as a card with a copy button):
 }
 ```
 
-The link is `/api/hooks/<token>` on this server. Another account's webhook is `404`.
+The link is `/api/hooks/<token>` on this server.
+
+### `PATCH /webhooks/<id>`
+
+`{"enabled": false}` switches it off: its link then answers `404` like an unknown
+one; `true` switches it on again. `200` → the webhook without `token`;
+`400 validation_error` when `enabled` is missing or not a boolean.
+
+### `POST /webhooks/<id>/renew`
+
+A new token: the old link stops working at once. `200` → the webhook without
+`token`; read the new link with `GET /webhooks/<id>`.
+
+### `DELETE /webhooks/<id>`
+
+`204`: the link stops working, and the pipeline has none until the chat makes a
+new one.
+
+Another account's webhook is `404` on every route.
 
 ---
 
@@ -1891,7 +1914,8 @@ A delivery posts a pipeline's result to an address each time one of its runs
 ends, finished or failed: a Slack or Discord incoming-webhook link, or any other
 `https` address, which gets JSON. You set it by chat (`send_results_to(pipeline_id,
 address)`; `set_delivery` stops or restarts it; `list_deliveries`), one per
-pipeline, deleted with it. **An address set by chat sends nothing until you
+pipeline, deleted with it; Settings → Webhooks lists, confirms, switches and
+removes them with the routes below. **An address set by chat sends nothing until you
 confirm it on screen**: the chat can propose where results go, a page it read
 cannot send them away. The address is sealed with the server's secret box; you
 and the chat only ever see its host and last characters.
@@ -1908,6 +1932,10 @@ A failed run sends its error in place of the result. Posting goes through the
 same guarded client as `fetch_url` (public addresses only, no redirect, a bounded
 answer), waits at most `DELIVERY_TIMEOUT_SECONDS` and is not retried; a failure is
 kept as the delivery's `last_error` and never changes the run.
+
+### `GET /deliveries`
+
+`200` → your deliveries, oldest first, each as below.
 
 ### `GET /deliveries/<id>`
 
@@ -1935,6 +1963,13 @@ here"`) and, once the address accepts it, sends every run's result there. `200` 
 the delivery, `confirmed: true`. `502 delivery_failed` when the address does not
 accept it (`detail`: `hooks.slack.com answered 404.`, `… is not a public
 address.`, `… could not be reached (ConnectTimeout).`); nothing changes then.
+Rate limited per account (`USER_RATE_LIMIT_*`, `429 throttled`), like every
+route that reaches out.
+
+### `PATCH /deliveries/<id>`
+
+`{"enabled": false}` stops sending results there; `true` sends them again (once
+confirmed). `200` → the delivery.
 
 ### `DELETE /deliveries/<id>`
 
