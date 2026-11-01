@@ -444,6 +444,29 @@ sequenceDiagram
   when none matches); otherwise the body is the run's text. A body is bounded like
   any JSON request (`REQUEST_MAX_JSON_BYTES`) and a run's inputs like any run's.
 
+### Result deliveries
+
+When a run ends, finished or failed, its result can be posted to an address its
+owner chose: Slack, Discord, or any `https` address (JSON). `RunService._finish`
+records the end and, only when this attempt ended the run, calls
+`RunPolicy.deliveries.send(database, run_id)` (`deliveries/sender.ResultDeliveries`);
+`run_policy(settings)` builds it, so runs started from a screen, a schedule, the
+chat or a webhook all deliver. `send` never raises: a failure is the delivery's
+`last_error`, and the run keeps the status it ended with.
+
+- **Confirmed by a click.** The chat's `send_results_to` stores the address
+  sealed by the secret box, with `confirmed = false`; a new address replaces the
+  old one and is unconfirmed again. Only `POST /deliveries/<id>/confirm`, the
+  Confirm button on the chat's card, turns it on, after posting a first message
+  the address accepted. A prompt-injected chat can therefore propose an address,
+  never send a person's results to it.
+- **The shape.** `deliveries/formats.KINDS` maps each kind of address to how it is
+  recognised and what it is sent (Strategy + Registry): a new service is one entry.
+- **The connection.** The guarded outbound client (`outbound.py`: every address
+  checked public, no redirect, a 64 KB answer at most) within
+  `DELIVERY_TIMEOUT_SECONDS`, no retry. The sending holds the run's executor slot
+  that long at most.
+
 ### Built-in tools
 
 `api/services/toolbox/` gives agents real work to do without any MCP server.

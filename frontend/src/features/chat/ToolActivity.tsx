@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { ChatAction, ChatActionKind } from '../../core/api/chatTypes';
 import { missionPath, runPath } from '../../core/routes';
 import { SCHEDULES_PATH } from '../schedules/paths';
+import { DeliveryCard } from './DeliveryCard';
 import type { ChatToolRun } from './useChatStream';
 import { WebhookCard } from './WebhookCard';
 
@@ -32,6 +33,7 @@ const ACTION_VIEWS: Record<ChatActionKind, (action: ChatAction) => ReactNode> = 
   schedule: (action) => <ActionLink action={action} to={SCHEDULES_PATH} />,
   run: (action) => <ActionLink action={action} to={runPath(action.id)} />,
   webhook: (action) => <WebhookCard webhookId={action.id} />,
+  delivery: (action) => <DeliveryCard deliveryId={action.id} />,
 };
 
 /** One tool the reply used: what it did, and what it made. */

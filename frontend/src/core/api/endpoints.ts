@@ -45,6 +45,8 @@ export const API = {
   integration: (integrationId: number) => `/api/integrations/${integrationId}`,
   testIntegration: (integrationId: number) => `/api/integrations/${integrationId}/test`,
   webhook: (webhookId: number) => `/api/webhooks/${webhookId}`,
+  delivery: (deliveryId: number) => `/api/deliveries/${deliveryId}`,
+  confirmDelivery: (deliveryId: number) => `/api/deliveries/${deliveryId}/confirm`,
   /** The secret link another app calls to start a workflow (public: the token is the key). */
   hook: (token: string) => `/api/hooks/${token}`,
 } as const;

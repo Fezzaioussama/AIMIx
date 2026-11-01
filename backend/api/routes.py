@@ -15,6 +15,7 @@ from api.endpoints import (
     approvals,
     auth,
     chat,
+    deliveries,
     documents,
     files,
     health,
@@ -51,6 +52,7 @@ PROTECTED_ROUTERS = (
     schedules.router,
     voice.router,
     webhooks.router,
+    deliveries.router,
 )
 
 

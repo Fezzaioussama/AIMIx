@@ -22,6 +22,7 @@ from api.services.addresses import Resolver, resolve_host
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.chat_tools.scope import ChatScope
+from api.services.deliveries.sender import SendPolicy, send_policy
 from api.services.documents.contracts import ExtractionLimits, OcrEngine
 from api.services.documents.extraction import extraction_limits
 from api.services.files.disk import disk_reserve
@@ -359,3 +360,11 @@ def webhook_calls(
 
 
 WebhookCallers = Annotated[WebhookCalls, Depends(webhook_calls)]
+
+
+def delivery_sending(settings: AppSettings) -> SendPolicy:
+    """How a delivery's first message is posted (DELIVERY_*); tests swap the transport."""
+    return send_policy(settings)
+
+
+DeliverySending = Annotated[SendPolicy, Depends(delivery_sending)]

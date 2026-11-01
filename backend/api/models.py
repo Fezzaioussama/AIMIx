@@ -46,6 +46,8 @@ TOOL_SOURCE_MAX_LENGTH = 64
 TIMEZONE_MAX_LENGTH = 64
 #: A SHA-256 digest in hex, how a webhook's secret token is looked up.
 TOKEN_HASH_LENGTH = 64
+#: The longest host name DNS allows.
+HOST_MAX_LENGTH = 253
 
 
 def _utcnow() -> datetime:
@@ -487,6 +489,36 @@ class Webhook(Base):
     token_encrypted: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(default=True)
     last_called_at: Mapped[datetime | None]
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    pipeline: Mapped[Pipeline] = relationship()
+
+
+class Delivery(Base):
+    """Where a pipeline's results are posted when one of its runs ends: a Slack,
+    Discord or any other webhook address, sealed by the server's secret box.
+
+    Set by chat, it sends nothing until its owner confirms it on screen
+    (``confirmed``), so a page the assistant read cannot send their results away. One
+    per pipeline; deleting the pipeline deletes it. ``kind`` is a key of
+    ``deliveries.formats.KINDS``; ``last_error`` says why the latest sending failed.
+    """
+
+    __tablename__ = "deliveries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    pipeline_id: Mapped[int] = mapped_column(
+        ForeignKey("pipelines.id", ondelete="CASCADE"), unique=True
+    )
+    url_encrypted: Mapped[str] = mapped_column(Text)
+    host: Mapped[str] = mapped_column(String(HOST_MAX_LENGTH))
+    hint: Mapped[str] = mapped_column(String(STATUS_MAX_LENGTH))
+    kind: Mapped[str] = mapped_column(String(STATUS_MAX_LENGTH))
+    confirmed: Mapped[bool] = mapped_column(default=False)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    last_sent_at: Mapped[datetime | None]
     last_error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 

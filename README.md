@@ -55,7 +55,7 @@ step closer to the machinery.
 | Workspace | Best for | What happens |
 |---|---|---|
 | **Missions** | Getting something done without building anything | Describe what you want in the conversation, typed or spoken (the microphone transcribes it with Meta's speech model, and you read it before sending). Agents can draw pictures with Meta's Muse Image and find and count things in your photos with SAM 3.1; the pictures land in your files and in the PDF or Word deliverables that show them. When the request leaves something essential open, AIMIx first asks a few questions (pick a suggested answer or write your own, or skip them); then it builds a team of agents, ending with an orchestrator that checks the results and sends work back for fixes, and tells you who does what. Change the team by talking to it (you review each change before it applies), press **Run it**, and watch the team work on one screen: the team graph in the middle, the deliverables followed by what each other agent did, the full run and your newest files on the right. Select an agent to edit it in a drawer; reopen any mission later, or hand it to the Pipeline Builder. On a phone the three panes are tabs. |
-| **Chat** | Exploring ideas and invoking saved workflows | A streaming LangGraph agent can inspect or run only the signed-in user's pipelines and configured MCP tools. |
+| **Chat** | Setting up and running everything by talking, with no drag and drop | Say in plain words what you want. The assistant remembers the conversation, asks when something essential is missing, and designs the team of agents and tools with the same planner as Missions, then saves it. By chat you also schedule a workflow, give it a webhook link another app calls to start it, send its results to Slack, Discord or any webhook (only once you click Confirm), follow, stop and resume runs, start from a template, and change your default model. Keys, approvals and new app connections stay on their screens. |
 | **Pipeline Builder** | Repeatable multi-stage workflows | You declare the named inputs each run takes (typed, or read from an attached PDF, Word, Excel, PowerPoint, HTML, CSV, text file or image, scans included) and choose every role, model, prompt, expected output, deliverable, and tool policy; stages run in order and agents within one stage run concurrently. Runs execute in the background: watch each step finish live, stop a run, resume a failed or stopped one where it left off, and find every run again in the run history. |
 | **Auto Pipeline** | Turning a goal into an editable starting point | The planner proposes the run's inputs, stages, roles, models, expected outputs, deliverables, and available tools without saving anything until you review it. |
 
@@ -170,11 +170,15 @@ the same recorded run and waits for it.
 
 ### Chat streaming
 
-The chat endpoint runs a LangGraph agent using the configured provider model.
-Its native tools list, inspect, and run the signed-in user's saved pipelines.
+The chat endpoint runs a LangGraph agent using the configured provider model,
+told how to work with people who are not technical and the date and time in
+their zone; the screen sends the conversation so far with each message. Its
+native tools act only for the signed-in user (workflows, runs, schedules,
+webhooks, result deliveries, templates, settings; see
+[the API reference](docs/api-reference.md#chat)).
 It also loads the tools from the MCP servers in `MCP_SERVERS` that need no
 approval (chat has no run to pause, so tools that ask first are not offered; see
-`MCP_REQUIRE_APPROVAL`) and streams only the agent's text. `api/services/chat.py` pulls the first chunk eagerly, so a
+`MCP_REQUIRE_APPROVAL`) and streams the agent's text and tool events. `api/services/chat.py` pulls the first chunk eagerly, so a
 failure before the response is committed still becomes a proper status code.
 
 On the client, `core/api/client.ts` reads `response.body.getReader()` in a loop

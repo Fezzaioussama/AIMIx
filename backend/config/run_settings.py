@@ -58,3 +58,9 @@ class RunSettings(BaseModel):
     webhook_rate_limit_window_seconds: int = Field(
         3600, ge=1, validation_alias="WEBHOOK_RATE_LIMIT_WINDOW_SECONDS"
     )
+    # --- Result deliveries (api/services/deliveries) -----------------------------
+    # Posting a run's result to its delivery's address waits at most this long
+    # (seconds), without retry; a JSON delivery carries at most this many
+    # characters of the result (Slack and Discord messages have their own bound).
+    delivery_timeout_seconds: float = Field(10.0, gt=0, validation_alias="DELIVERY_TIMEOUT_SECONDS")
+    delivery_max_chars: int = Field(20_000, ge=1, validation_alias="DELIVERY_MAX_CHARS")

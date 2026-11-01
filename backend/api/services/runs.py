@@ -251,21 +251,31 @@ class RunService:
             recorder.end(run_recorder.interrupted())
             raise
         except DomainError as error:
-            recorder.end(run_recorder.failed(error.code, error.detail))
+            await self._finish(recorder, run_id, run_recorder.failed(error.code, error.detail))
             return RunOutcome(error=error)
         except Exception as error:
             # The job's boundary, like api/errors._unexpected_error for a request:
             # nobody else would ever see this failure, and the run must not stay
             # "running". Recorded as failed, never as a success.
             logger.exception("run.crashed run_id=%s", run_id)
-            recorder.end(
+            await self._finish(
+                recorder,
+                run_id,
                 run_recorder.failed(
                     run_recorder.SERVER_ERROR_CODE, run_recorder.SERVER_ERROR_DETAIL
-                )
+                ),
             )
             return RunOutcome(error=error)
-        recorder.end(run_recorder.succeeded(result.final_output))
+        await self._finish(recorder, run_id, run_recorder.succeeded(result.final_output))
         return RunOutcome(result=result)
+
+    async def _finish(
+        self, recorder: RunRecorder, run_id: int, ending: repository.RunEnding
+    ) -> None:
+        """Record how the run ended and, when this attempt ended it, send its result
+        where its pipeline's delivery says (``RunPolicy.deliveries``)."""
+        if recorder.end(ending) and self._policy.deliveries is not None:
+            await self._policy.deliveries.send(self._database, run_id)
 
 
 def launcher(

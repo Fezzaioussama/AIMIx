@@ -474,8 +474,10 @@ out. The events are:
 `action` is present when the tool created or changed something the chat can
 link to: `kind` is `pipeline` (open it at `/mission/<id>`), `schedule` (open
 Schedules), `run` (open it at `/runs/<id>`; its subtitle says where it is, such
-as "Finished" or "Waiting for your OK") or `webhook` (the screen shows the link
-from `GET /webhooks/<id>`; see [Webhooks](#webhooks)). `detail` carries a short human-readable
+as "Finished" or "Waiting for your OK"), `webhook` (the screen shows the link
+from `GET /webhooks/<id>`; see [Webhooks](#webhooks)) or `delivery` (the screen
+shows where results go, with Confirm and Cancel; see
+[Result deliveries](#result-deliveries)). `detail` carries a short human-readable
 result or failure.
 
 The assistant is told who it is and how to work with people who are not
@@ -512,8 +514,8 @@ user: `list_pipelines()`,
 `design_workflow(description)`, `change_workflow(pipeline_id, change)`,
 `list_runs`, `get_run`, `stop_run`, `resume_run`, `list_templates`,
 `use_template`, `show_settings`, `set_default_model`, `create_webhook`,
-`list_webhooks`, `set_webhook`, `renew_webhook_link`,
-`create_pipeline(name, steps, inputs)`,
+`list_webhooks`, `set_webhook`, `renew_webhook_link`, `send_results_to`,
+`list_deliveries`, `set_delivery`, `create_pipeline(name, steps, inputs)`,
 `update_pipeline(pipeline_id, name?, steps?, inputs?)`,
 `run_pipeline(pipeline_id, input_text, inputs)`, `list_schedules(pipeline_id?)`,
 `create_schedule(pipeline_id, frequency, time, timezone, weekday?,
@@ -1749,3 +1751,62 @@ shows it as a card with a copy button):
 ```
 
 The link is `/api/hooks/<token>` on this server. Another account's webhook is `404`.
+
+---
+
+## Result deliveries
+
+A delivery posts a pipeline's result to an address each time one of its runs
+ends, finished or failed: a Slack or Discord incoming-webhook link, or any other
+`https` address, which gets JSON. You set it by chat (`send_results_to(pipeline_id,
+address)`; `set_delivery` stops or restarts it; `list_deliveries`), one per
+pipeline, deleted with it. **An address set by chat sends nothing until you
+confirm it on screen**: the chat can propose where results go, a page it read
+cannot send them away. The address is sealed with the server's secret box; you
+and the chat only ever see its host and last characters.
+
+What each kind of address receives (`services/deliveries/formats.py`):
+
+| Kind | Recognised by | Body |
+|---|---|---|
+| Slack | host `hooks.slack.com` | `{"text": "<workflow> finished\n\n<result>"}`, at most 3,500 characters |
+| Discord | `discord.com` or `discordapp.com`, path `/api/webhooks/…` | `{"content": …}`, at most 1,900 characters |
+| Webhook | any other `https` address | `{"event": "run.ended", "run_id", "workflow", "status", "result"}`, the result cut at `DELIVERY_MAX_CHARS` |
+
+A failed run sends its error in place of the result. Posting goes through the
+same guarded client as `fetch_url` (public addresses only, no redirect, a bounded
+answer), waits at most `DELIVERY_TIMEOUT_SECONDS` and is not retried; a failure is
+kept as the delivery's `last_error` and never changes the run.
+
+### `GET /deliveries/<id>`
+
+`200` → one of your deliveries:
+
+```json
+{
+  "id": 5,
+  "pipeline_id": 9,
+  "pipeline_name": "News digest",
+  "destination": "hooks.slack.com",
+  "hint": "XyZ9",
+  "service": "Slack",
+  "confirmed": false,
+  "enabled": true,
+  "last_sent_at": null,
+  "last_error": null
+}
+```
+
+### `POST /deliveries/<id>/confirm`
+
+Your click: posts a first message there (`"<workflow> will send its results
+here"`) and, once the address accepts it, sends every run's result there. `200` →
+the delivery, `confirmed: true`. `502 delivery_failed` when the address does not
+accept it (`detail`: `hooks.slack.com answered 404.`, `… is not a public
+address.`, `… could not be reached (ConnectTimeout).`); nothing changes then.
+
+### `DELETE /deliveries/<id>`
+
+Cancels it: `204`, and the pipeline's results are no longer sent anywhere.
+
+Another account's delivery is `404` on every route.

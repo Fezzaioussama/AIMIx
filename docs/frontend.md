@@ -389,11 +389,11 @@ server would need a table and endpoints; that is not part of this version.
   browser's zone, then folds text and tool events into an empty AI message as they
   stream. `chatStorage` keeps the transcript for the tab once each reply ends and
   on unmount (an `AbortController` cancels the stream), and main.tsx forgets it with
-  the session. `ChatPage` renders the header, a soft `Aurora`, the transcript and the
-  `ChatComposer`; `ChatMessages` animates each bubble in (AI messages via
-  `renderMarkdown`), with typing dots until a reply has text or a tool. A finished
-  write shows what it made (`ToolActivity`'s `ACTION_VIEWS`: a link, or a `WebhookCard`
-  whose link `useWebhookLink` reads, never stored); a fresh chat offers starters.
+  the session. `ChatPage` renders the header, an `Aurora`, the transcript, the composer;
+  `ChatMessages` animates each bubble in (`renderMarkdown`), typing dots until a reply
+  has text or a tool. What a tool made shows through `ToolActivity`'s `ACTION_VIEWS`: a
+  link, a `WebhookCard` (`useWebhookLink` reads the link, never stored) or a
+  `DeliveryCard` (Confirm or Cancel through `useDelivery`). A fresh chat offers starters.
 
 ### `features/pipelines`
 

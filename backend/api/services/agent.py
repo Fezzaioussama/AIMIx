@@ -43,6 +43,7 @@ from api.services.chat_events import (
     tool_started,
 )
 from api.services.chat_prompts import chat_system_prompt
+from api.services.chat_tools.deliveries import delivery_tools
 from api.services.chat_tools.runs import run_tools
 from api.services.chat_tools.scope import ChatScope
 from api.services.chat_tools.settings import settings_tools
@@ -227,7 +228,7 @@ class LangGraphChatAgent:
 def chat_tools(scope: ChatScope) -> list[BaseTool]:
     """Every native tool of the chat: pipelines, runs and schedules (``agent_tools``),
     then one module per area of ``chat_tools``: the planner's design and change
-    tools, runs, templates, settings and webhooks."""
+    tools, runs, templates, settings, webhooks and result deliveries."""
     launch = launcher(scope.runs, scope.user, scope.agents)
     return [
         *built_in_tools(scope.database, scope.user, launch, scope.schedules),
@@ -236,6 +237,7 @@ def chat_tools(scope: ChatScope) -> list[BaseTool]:
         *template_tools(scope),
         *settings_tools(scope),
         *webhook_tools(scope),
+        *delivery_tools(scope),
     ]
 
 

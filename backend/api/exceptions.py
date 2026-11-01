@@ -109,6 +109,13 @@ class ToolUnavailable(DomainError):
     status_code = 502
 
 
+class DeliveryFailed(DomainError):
+    """A delivery's address did not accept what was posted to it."""
+
+    code = "delivery_failed"
+    status_code = 502
+
+
 class ProviderTimedOut(DomainError):
     code = "provider_timeout"
     status_code = 504
