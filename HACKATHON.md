@@ -60,6 +60,7 @@ from October 26 up to it only edit `AGENTS.md`, the contributor rules.
 | [`5304fe9`](https://github.com/Fezzaioussama/AIMIx/commit/5304fe9), [`5f19725`](https://github.com/Fezzaioussama/AIMIx/commit/5f19725) | Agents read whole PDFs and scans, and web pages from a link; Missions take documents and links where you type |
 | [`259952a`](https://github.com/Fezzaioussama/AIMIx/commit/259952a), [`a1c551b`](https://github.com/Fezzaioussama/AIMIx/commit/a1c551b), [`1133115`](https://github.com/Fezzaioussama/AIMIx/commit/1133115) | The Chat builds workflows and schedules too, remembers the conversation, and follows and steers runs |
 | [`0e26803`](https://github.com/Fezzaioussama/AIMIx/commit/0e26803), [`e5bcbe4`](https://github.com/Fezzaioussama/AIMIx/commit/e5bcbe4) | Another app starts a workflow through its secret link; results go out to Slack, Discord or any webhook |
+| [`67d9e99`](https://github.com/Fezzaioussama/AIMIx/commit/67d9e99), [`1d4a995`](https://github.com/Fezzaioussama/AIMIx/commit/1d4a995) | Pictures agents save show in the results; a PDF reports its page count, and a review round replaces its own draft, so a one-page brief stays one page |
 
 ## How Meta's models work together
 
@@ -100,8 +101,8 @@ on every push that passes CI.
   model calls, and left a JPEG hero picture and a PDF launch plan with the picture
   in the user's files.
 - **Built to run for real users:** accounts with encrypted per-user API keys, a
-  cost and token ceiling on every run, usage and cost per workflow, GDPR export and
-  deletion, and legal pages.
+  cost and token limit on any run (and a cap for every run that the operator sets),
+  usage and cost per workflow, GDPR export and deletion, and legal pages.
 - **Hardened:** HTTPS with HSTS preload, a strict Content Security Policy, the
   microphone allowed for the site itself only, login lockout and rate limits, one
   Docker image built and smoke-tested in CI before it ships.
@@ -114,12 +115,13 @@ demo login with the submission.
 - One provider registry: Meta was added as one registry entry and one client
   module. Speech and images reuse that client, the same retries and the same error
   contract.
-- Spending stays bounded: every run has a cost and token ceiling, and Meta calls
-  are priced from the catalogue because the API reports no cost.
+- Spending stays bounded: any run can carry a cost and token limit (the run form
+  asks for one, and `RUN_MAX_COST_USD` caps them all), and Meta calls are priced from
+  the catalogue because the API reports no cost.
 - Privacy by design: recordings are never stored, and the cheaper `-contributor`
   models (which let Meta train on requests) are left out on purpose. Meta marks
   each picture as AI-generated in its metadata, and AIMIx keeps that mark.
-- Every change ships with tests: about 1,790 backend tests (pytest) and 890
+- Every change ships with tests: about 2,090 backend tests (pytest) and 1,490
   frontend tests (vitest) run on every push, alongside lint, type checks and the build.
 
 ## Run it
