@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderMarkdown } from './renderMarkdown';
+import { renderMarkdown, WORKSPACE_PICTURE } from './renderMarkdown';
 
 /** The rendered HTML as the screen would hold it, to query like a page. */
 function rendered(text: string): HTMLElement {
@@ -96,6 +96,32 @@ describe('renderMarkdown against content injected into model output', () => {
     }
     expect(links[0]).toHaveAttribute('href', 'https://example.com');
   });
+});
+
+describe('renderMarkdown and the pictures agents saved', () => {
+  it('moves a workspace path out of src, so the browser fetches nothing broken', () => {
+    const image = rendered('![The hero loaf](images/hero.jpg)').querySelector('img');
+
+    expect(image).not.toHaveAttribute('src');
+    expect(image).toHaveAttribute(WORKSPACE_PICTURE, 'images/hero.jpg');
+    expect(image).toHaveAttribute('alt', 'The hero loaf');
+  });
+
+  it('reads the path as the agent wrote it, without "./" or URL escapes', () => {
+    const image = rendered('![x](./images/pain%20d%C3%A9pice.jpg)').querySelector('img');
+
+    expect(image).toHaveAttribute(WORKSPACE_PICTURE, 'images/pain dépice.jpg');
+  });
+
+  it.each(['https://example.com/a.png', '/logo.png', 'data:image/png;base64,AAAA'])(
+    'leaves any other address in src: %s',
+    (src) => {
+      const image = rendered(`![x](${src})`).querySelector('img');
+
+      expect(image).toHaveAttribute('src', src);
+      expect(image).not.toHaveAttribute(WORKSPACE_PICTURE);
+    },
+  );
 });
 
 describe('renderMarkdown keeps what Markdown makes', () => {

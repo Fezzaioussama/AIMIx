@@ -42,11 +42,38 @@ function toTaskCheckbox(input: Element): void {
   if (checked) input.setAttribute('checked', '');
 }
 
+/** Where a picture the agents saved keeps its workspace path once its `src` is gone. */
+export const WORKSPACE_PICTURE = 'data-workspace-path';
+
+/** A relative address such as "images/hero.jpg": no scheme, not rooted at the site. */
+const WORKSPACE_PATH = /^(?![a-z][\w+.-]*:)[^/]/i;
+
+function decodedPath(src: string): string {
+  try {
+    return decodeURI(src);
+  } catch {
+    return src;
+  }
+}
+
+/**
+ * An agent shows a picture it saved by its workspace path. The browser would fetch
+ * that from the page's own address, without the session header, and draw a broken
+ * image; so the path moves to WORKSPACE_PICTURE for useWorkspacePictures to load.
+ */
+function toWorkspacePicture(image: Element): void {
+  const src = image.getAttribute('src') ?? '';
+  if (!WORKSPACE_PATH.test(src)) return;
+  image.removeAttribute('src');
+  image.setAttribute(WORKSPACE_PICTURE, decodedPath(src).replace(/^\.\//, ''));
+}
+
 /** What a kept element must look like once its attributes are sanitised (Strategy, by tag). */
 const HARDEN_BY_TAG: Partial<Record<string, (element: Element) => void>> = {
   // A link opens in the same tab, as before (DOMPurify drops `target`), and never hands
   // the destination this window or the app's address.
   a: (link) => link.setAttribute('rel', 'noopener noreferrer'),
+  img: toWorkspacePicture,
   input: toTaskCheckbox,
 };
 

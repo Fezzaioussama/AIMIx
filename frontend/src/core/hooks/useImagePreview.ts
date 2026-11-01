@@ -14,16 +14,22 @@ function dataUrl(blob: Blob): Promise<string> {
 
 /**
  * A picture of the user's workspace, fetched with the session header (a token never
- * goes in a URL), ready for an <img>; null while it loads or if it cannot be loaded.
- * Unmounting cancels the download.
+ * goes in a URL), as a URL an <img> can show.
+ */
+export function loadPicture(path: string, signal: AbortSignal): Promise<string> {
+  return downloadFile(path, signal).then(dataUrl);
+}
+
+/**
+ * A workspace picture ready for an <img> (loadPicture); null while it loads or if it
+ * cannot be loaded. Unmounting cancels the download.
  */
 export function useImagePreview(path: string): string | null {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    downloadFile(path, controller.signal)
-      .then(dataUrl)
+    loadPicture(path, controller.signal)
       .then((url) => {
         if (!controller.signal.aborted) setSrc(url);
       })

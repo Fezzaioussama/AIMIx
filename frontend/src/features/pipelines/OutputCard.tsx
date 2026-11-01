@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import { useWorkspacePictures } from '../../core/hooks/useWorkspacePictures';
 import { renderMarkdown } from '../../core/markdown/renderMarkdown';
 import { useCopyToClipboard } from './useCopyToClipboard';
 
@@ -30,6 +31,8 @@ export function OutputCard({
   const { copied, copy } = useCopyToClipboard();
   const card = useRef<HTMLDivElement>(null);
   const folded = foldable && !expanded && output.length > FOLD_THRESHOLD_CHARS;
+  const html = useMemo(() => renderMarkdown(output), [output]);
+  const pictures = useWorkspacePictures(html);
 
   // Bring the card into view when the diagram points at it.
   useEffect(() => {
@@ -69,8 +72,9 @@ export function OutputCard({
           </pre>
         ) : (
           <div
+            ref={pictures}
             className="prose-output text-slate-100"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(output) }}
+            dangerouslySetInnerHTML={{ __html: html }}
           />
         )}
         {folded && (
