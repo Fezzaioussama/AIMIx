@@ -113,7 +113,7 @@ class LangGraphStepAgent:
                 tools = guarded.tools
                 system_prompt = step_agent_system_prompt(
                     task.role,
-                    has_tools=bool(tools),
+                    tools=[tool.name for tool in tools],
                     expected_output=task.expected_output,
                     reviewer=task.reviewer,
                 )

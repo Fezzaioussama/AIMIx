@@ -4,10 +4,23 @@ and the OCR port they read images through (§5 D)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from PIL import Image
+
+
+class SlotPool(Enum):
+    """Whose turns a reading slot is (``gate``): each pool has slots of its own."""
+
+    #: Uploads and links, read while a person waits for the answer.
+    PEOPLE = "people"
+    #: Agents reading workspace files: their OCR can hold a slot for minutes, so it
+    #: never keeps a person's upload waiting.
+    AGENTS = "agents"
+    #: Links being downloaded and read: each holds a body of up to max_bytes.
+    LINKS = "links"
 
 
 @dataclass(frozen=True)
@@ -32,10 +45,14 @@ class ExtractionLimits:
     ocr_max_seconds: float
     #: Resolution a PDF page is rendered at for OCR (lower if over max_image_pixels).
     ocr_dpi: int
-    #: Documents read at once in the process, whoever asks.
+    #: Documents read at once in the process by everyone of ``pool``.
     max_concurrent: int
     #: How long a document waits for its turn, or for the PDF renderer, before giving up.
     wait_seconds: float
+    #: A PDF page with less text than this whose pictures cover most of it is read
+    #: by OCR too (a scan with a page number on top); 0 never does.
+    ocr_min_page_chars: int = 0
+    pool: SlotPool = SlotPool.PEOPLE
 
 
 class OcrEngine(Protocol):
@@ -55,6 +72,14 @@ class ReadContext:
     limits: ExtractionLimits
     #: None when OCR is turned off or not installed: pages that need it are skipped.
     ocr: OcrEngine | None = None
+    #: The page (from 1) a PDF is read from; the pages before it are not read at all.
+    first_page: int = 1
+    #: The caller reads on from where this read stops (an agent with start_page): a
+    #: page OCR's page or time budget would skip ends the read instead of being named,
+    #: so the next read, with a budget of its own, starts there.
+    read_on: bool = False
+    #: The charset the Content-Type header names, for what a link holds; else None.
+    charset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +95,28 @@ class ReadResult:
     omissions: tuple[str, ...] = ()
     #: Pages sent to OCR, for the log.
     ocr_pages: int = 0
+    #: The last page in ``text``, for a reader that reads whole pages (PDF); else None.
+    last_page: int | None = None
+
+
+@dataclass(frozen=True)
+class DocumentText:
+    """A document's tidied text, and what was left out of it, before any note says
+    so: the upload endpoint and the agents' workspace word those notes differently."""
+
+    filename: str
+    #: Lower-case extension without the dot, e.g. "pdf".
+    format: str
+    #: Cut at the character limit when longer (``clipped``).
+    text: str
+    pages: int | None
+    #: The reader stopped before the end, e.g. after ``last_page`` or at a limit.
+    cut_short: bool
+    clipped: bool
+    #: One sentence per gap inside the text, e.g. pages OCR skipped.
+    omissions: tuple[str, ...]
+    #: The last page in ``text``, for a PDF; else None.
+    last_page: int | None = None
 
 
 @dataclass(frozen=True)

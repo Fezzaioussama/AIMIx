@@ -23,7 +23,6 @@ from api.repositories import pipelines
 from api.services.artifacts.contracts import RenderOptions
 from api.services.catalog import default_model_id
 from api.services.documents.contracts import ExtractionLimits
-from api.services.documents.extraction import TRUNCATION_NOTE
 from api.services.files.storage import WorkspaceStorage
 from api.services.llm import LLMProfile
 from api.services.multiagent import step_agent
@@ -177,7 +176,7 @@ def test_workspace_lists_reads_searches_and_parses_csv(tmp_path: Path) -> None:
     workspace = local_workspace(tmp_path)
 
     assert workspace.list_files() == "notes.md\nsales.csv"
-    assert workspace.read_file("notes.md") == "Quarterly revenue grew 12%."
+    assert workspace.read_file("notes.md").text == "Quarterly revenue grew 12%."
     assert workspace.search_files("REVENUE") == "notes.md:1: Quarterly revenue grew 12%."
     assert workspace.read_csv("sales.csv") == (
         '[{"name": "Alpha", "total": "42"}, {"name": "Beta", "total": "7"}]'
@@ -227,7 +226,7 @@ def test_save_artifact_lays_markdown_out_as_a_document(
 
     assert workspace.save_artifact(path, "# Brief\n\nRevenue grew **12%**.") == f"Saved {path}"
     opens(BytesIO((tmp_path / path).read_bytes()))  # a real file of that format
-    assert "Revenue grew 12%." in workspace.read_file(path)
+    assert "Revenue grew 12%." in workspace.read_file(path).text
 
 
 def test_save_artifact_writes_html_as_given_and_names_what_it_cannot(tmp_path: Path) -> None:
@@ -261,8 +260,8 @@ def test_workspace_reads_pdf_and_word_files_as_text(tmp_path: Path) -> None:
     (tmp_path / "broken.pdf").write_bytes(b"%PDF-1.4 not really")
     workspace = local_workspace(tmp_path)
 
-    assert "Revenue grew by ten percent" in workspace.read_file("report.pdf")
-    assert workspace.read_file("report.docx").startswith("Quarterly report")
+    assert "Revenue grew by ten percent" in workspace.read_file("report.pdf").text
+    assert workspace.read_file("report.docx").text.startswith("Quarterly report")
     with pytest.raises(ToolException, match="could not be read"):
         workspace.read_file("broken.pdf")
 
@@ -271,10 +270,10 @@ def test_a_long_document_is_cut_at_the_output_limit(tmp_path: Path) -> None:
     (tmp_path / "long.pdf").write_bytes(make_pdf(["word " * 60, "more " * 60]))
     workspace = local_workspace(tmp_path, replace(WORKSPACE_LIMITS, max_output_chars=100))
 
-    text = workspace.read_file("long.pdf")
+    shown = workspace.read_file("long.pdf")
 
-    assert text.endswith(TRUNCATION_NOTE.strip())
-    assert len(text) <= 100 + len(TRUNCATION_NOTE)
+    assert shown.text.endswith("characters: the rest of it is not shown.]")
+    assert (shown.first, shown.last, shown.total) == (1, 1, 2)
 
 
 def test_pipeline_agent_uses_built_in_tools_and_survives_a_failing_one(

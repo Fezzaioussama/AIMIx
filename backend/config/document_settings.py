@@ -68,10 +68,15 @@ class DocumentSettings(BaseModel):
     document_max_xml_part_bytes: int = Field(
         10_000_000, ge=1, validation_alias="DOCUMENT_MAX_XML_PART_BYTES"
     )
-    # Documents read at once in the process (uploads and agents alike); another
+    # Documents people read at once in the process (uploads and links); another
     # waits up to DOCUMENT_EXTRACTION_WAIT_SECONDS for a turn, then is refused.
     document_max_concurrent_extractions: int = Field(
         2, ge=1, validation_alias="DOCUMENT_MAX_CONCURRENT_EXTRACTIONS"
+    )
+    # Workspace files agents read at once, in turns of their own: an agent's OCR
+    # never keeps a person's upload waiting. Another waits as long, then is refused.
+    document_agent_max_concurrent_reads: int = Field(
+        2, ge=1, validation_alias="DOCUMENT_AGENT_MAX_CONCURRENT_READS"
     )
     document_extraction_wait_seconds: float = Field(
         30.0, gt=0, validation_alias="DOCUMENT_EXTRACTION_WAIT_SECONDS"
@@ -99,7 +104,27 @@ class DocumentSettings(BaseModel):
     document_ocr_max_seconds: float = Field(
         120.0, gt=0, validation_alias="DOCUMENT_OCR_MAX_SECONDS"
     )
+    # A PDF page with less text than this, all small print, whose pictures cover
+    # most of it, is a scan with a page number or scanner footer on top: OCR reads it
+    # too. 0: never.
+    document_ocr_min_page_chars: int = Field(
+        50, ge=0, validation_alias="DOCUMENT_OCR_MIN_PAGE_CHARS"
+    )
     document_ocr_dpi: int = Field(300, ge=72, validation_alias="DOCUMENT_OCR_DPI")
+    # --- Web pages read from a link (POST /documents/import-url) ---------------
+    # The whole download, every redirect included; each request is also bounded
+    # by WEB_TIMEOUT_SECONDS, and the page by DOCUMENT_MAX_BYTES.
+    document_url_max_seconds: float = Field(60.0, gt=0, validation_alias="DOCUMENT_URL_MAX_SECONDS")
+    # Links downloaded and read at once in the process, each holding up to
+    # DOCUMENT_MAX_BYTES in memory; one more is refused at once (503).
+    document_url_max_concurrent: int = Field(
+        8, ge=1, validation_alias="DOCUMENT_URL_MAX_CONCURRENT"
+    )
+    # A web page with less text is taken for one built in the browser by
+    # JavaScript, which is refused with advice; 0 turns the check off.
+    document_url_min_text_chars: int = Field(
+        200, ge=0, validation_alias="DOCUMENT_URL_MIN_TEXT_CHARS"
+    )
 
     @field_validator("workspace_upload_extensions", mode="after")
     @classmethod

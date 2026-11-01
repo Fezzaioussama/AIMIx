@@ -19,9 +19,13 @@ from api.security import hash_password
 from api.services import agent as agent_service
 from api.services import agent_tools
 from api.services.agent_tools import built_in_tools
+from api.services.documents import ocr
+from api.services.documents.ocr import OcrConfig
+from api.services.files.storage import user_workspace_dir
 from api.services.multiagent.contracts import StepAgent
 from api.services.runs import RunService, launcher
 from tests.conftest import FakeProvider, InlineRunExecutor, use_pipeline_generator
+from tests.test_document_scans import FakeOcr, scanned_pdf
 
 
 def chat_tools(app: FastAPI, user: User, agent: StepAgent) -> dict[str, BaseTool]:
@@ -137,6 +141,36 @@ def test_workspace_tools_are_scoped_to_the_authenticated_user(
     denied = theirs["read_workspace_file"].invoke({"path": "private.txt"})
     assert "does not exist" in denied
     assert "owner secret" not in denied
+
+
+def test_agents_read_scanned_pdfs_with_the_ocr_engine_of_the_server(
+    app: FastAPI, user: User, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Agents run outside any request, so they get the process's engine, not app.state's."""
+    engine = FakeOcr()
+
+    def installed(config: OcrConfig) -> FakeOcr | None:
+        return engine if config.enabled else None
+
+    monkeypatch.setattr(ocr, "ocr_engine", installed)
+    ocr.shared_ocr_engine.cache_clear()
+    settings = agent_tools.get_settings().model_copy(
+        update={
+            "workspace_dir": tmp_path,
+            "agent_builtin_tools": ["read_workspace_file"],
+            "document_ocr_enabled": True,
+        }
+    )
+    try:
+        tools = agent_tools.native_tools(app.state.database, user, settings)
+    finally:
+        ocr.shared_ocr_engine.cache_clear()
+    (user_workspace_dir(tmp_path, user.id) / "scan.pdf").write_bytes(scanned_pdf(1))
+
+    read = next(tool for tool in tools if tool.name == "read_workspace_file")
+
+    assert read.invoke({"path": "scan.pdf"}) == "Recognised text 1"
+    assert len(engine.images) == 1
 
 
 def test_authenticated_chat_can_call_a_native_tool(

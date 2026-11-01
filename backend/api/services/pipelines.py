@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
@@ -35,8 +35,9 @@ from api.services.multiagent.mapper import snapshot_pipeline
 from api.services.multiagent.reviews import review_from_data
 from api.services.pipeline_flow import ensure_valid_spec, flow_problems, flow_step
 from api.services.pipeline_inputs import bind_run_inputs, input_name_error
-from api.services.plan_prompts import pipeline_generation_prompt
-from api.services.plan_questions import Clarification, ClarifyingQuestion, questions_in
+from api.services.plan_documents import with_documents_input
+from api.services.plan_prompts import PlanRequest, pipeline_generation_prompt
+from api.services.plan_questions import ClarifyingQuestion, questions_in
 from config.settings import get_settings
 from llm import exceptions as llm_exceptions
 from llm.base import LLMProvider
@@ -78,17 +79,6 @@ def run(
 
 
 @dataclass(frozen=True)
-class PlanRequest:
-    """What to plan; no ``planner_model`` means the profile's default model. The
-    ``clarification`` says whether the planner may ask questions first (Missions),
-    and holds the answers to the ones it asked."""
-
-    description: str
-    planner_model: str | None = None
-    clarification: Clarification = field(default_factory=Clarification)
-
-
-@dataclass(frozen=True)
 class Plan:
     """What a generation gave: a pipeline, or else the questions to answer first."""
 
@@ -112,15 +102,20 @@ def generate(
     tools: list[ToolDescriptor] | None = None,
 ) -> Plan:
     """Ask the planner model for a pipeline definition and validate the result; a
-    plan without a reviewer gets the final check. When the planner may ask and
-    replies with questions instead, return those (it asks once)."""
+    plan made with documents gets the input their text reaches the team through,
+    and a plan without a reviewer gets the final check. When the planner may ask
+    and replies with questions instead, return those (it asks once)."""
     clarification = request.clarification
-    prompt = pipeline_generation_prompt(request.description, profile.models, tools, clarification)
+    prompt = pipeline_generation_prompt(request, profile.models, tools)
     raw = _planner_reply(provider, profile, PlannerCall(prompt, request.planner_model))
     questions = questions_in(_decoded(raw)) if clarification.asking else ()
     if questions:
         return Plan(None, questions)
     plan = parse_plan(raw, profile.models, _tool_names(tools))
+    if request.documents:
+        with_documents_input(plan)
+        # Making room for it may have set aside an input that a condition looked at.
+        _drop_unusable_flow(plan["steps"], plan["inputs"])
     with_final_check(plan, request.description, clarification.answers, profile.default_model)
     return Plan(plan)
 

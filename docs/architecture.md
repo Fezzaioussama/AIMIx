@@ -280,7 +280,11 @@ stage, next to `{input}`, the stage's input.
 Each agent uses its selected model and optional role, and a system prompt from
 `prompts.step_agent_system_prompt` that states the step's expected output when
 it has one and, when the agent has tools, tells it to use them instead of
-guessing, cite web sources and adapt when a tool fails.
+guessing and adapt when a tool fails (`tool_prompts.tool_guidance`). Only a step
+with `fetch_url` or `web_search` (`OUTBOUND_TOOLS`) is told about web pages and to
+cite the URL of every web source. Every agent, with or without tools, is told that
+it cannot open links unless one of its tools can, and never to describe a page it
+has not read.
 `allowed_tools: null` grants the signed-in user's pipeline list and inspect
 tools, the enabled built-in web, calculation, clock and local workspace tools
 (see below), all configured MCP tools and the tools of the user's enabled
@@ -427,7 +431,9 @@ so stored HTML never runs as a page of the app's origin.
 `fetch_url` only reaches public addresses: every redirect hop is resolved and
 refused if any address is loopback, private, link-local, multicast, site-local
 or otherwise non-global (an IPv6 address carrying an IPv4 one, such as NAT64
-`64:ff9b::/96` or 6to4, is judged by the IPv4 address), which keeps a
+`64:ff9b::/96`, 6to4 or IPv4-translated `::ffff:0:0:0/96`, is judged by the IPv4
+address), and so is a hop that carries a user name or password or names a host
+httpx cannot encode (IDNA 2008), which keeps a
 prompt-injected agent out of the server's network and cloud metadata endpoint.
 The connection itself goes through `api/services/outbound.py`: its httpcore
 network backend resolves the host, checks every address and connects to one of
@@ -441,7 +447,12 @@ pieces (any other encoding is refused), so a compressed bomb stops at
 `WEB_FETCH_MAX_BYTES` like any page. The text handed to the model stops at
 `WEB_FETCH_MAX_CHARS`, each request at `WEB_TIMEOUT_SECONDS`, and the whole
 call, redirects included, at `WEB_FETCH_MAX_SECONDS`, with no retries. A page
-whose charset is not a text codec (`zlib`, `idna`) is read as UTF-8.
+is read in the charset its byte order mark names, else its header's, else (HTML)
+its own `<meta>` tag's, the order `toolbox/html_text.py` keeps for uploads and
+page imports too; a charset that is not a text codec (`zlib`, `idna`) is read as
+UTF-8, and table cells are separated by ` | `. The redirects, the checks
+and the bounded download live in `api/services/web_download.py`, which the pages
+users read from a link share (below).
 
 `generate_image` draws a picture with Meta's Muse Image (`llm/images.py`,
 through the Meta client) and saves it as a new JPEG of the workspace, offered
@@ -502,6 +513,41 @@ outbound traffic, so the code can only hand data back to the agent. The code
 (which can embed anything in the agent's context) and the input files the
 agent names do leave the server for E2B, the operator's chosen provider, the
 way prompts go to the LLM provider.
+
+### Web pages read from a link
+
+`POST /api/documents/import-url` lets a user give a run a web page, or a PDF,
+Office file, picture or text file behind a link, the way they attach a document.
+It is the server, not an agent, that reads it, once, when the user adds it: no
+agent gets an outbound tool for this, and the toolbox's rule that workspace
+readers and web tools are not offered together stays as it is.
+
+```
+endpoints/documents.import_document_url (async, rate-limited per account)
+  → deps.PageImports → documents/web_import.PageImporter.read(url)
+      → one of DOCUMENT_URL_MAX_CONCURRENT link slots, else 503 at once
+      → web_download.PageDownloader.download(url, DOCUMENT_MAX_BYTES, readable?)
+          every hop: absolute http(s), no user name or password, a host httpx
+          can encode, resolving to public addresses only
+          connection: outbound.guarded_transport (checked address, bounded bodies)
+          WEB_TIMEOUT_SECONDS per request, DOCUMENT_URL_MAX_SECONDS in all
+      → refused past DOCUMENT_MAX_BYTES (413), never cut
+      → SUFFIX_BY_MEDIA_TYPE picks the reader (bare bytes: %PDF-, else the extension)
+      → extraction.read_document in a worker thread (limits, OCR, reading slots,
+        the header's charset)
+      → a web page under DOCUMENT_URL_MIN_TEXT_CHARS: 422, built by JavaScript
+  → DocumentOut, filename = the address the link ended at
+```
+
+The answer has the shape of an upload's, so the client puts it in a run input
+the same way (`[Document: <url>]` and the text). Failures keep the error shape:
+`PageImporter`'s `FAILURES` map turns each kind of failed download into one
+domain error, a private host or an unusable link into `400 validation_error`, a
+site that refuses, fails, does not resolve, loops or answers slowly into `502
+page_unreachable`. Nothing is stored, and the URL is never logged: the log line
+`documents.url_imported` has the outcome, format, bytes, characters and duration.
+Because the text is read once, a scheduled run keeps the page as it was when it
+was added ([known-issues.md](known-issues.md)).
 
 ### MCP servers and tool discovery
 
@@ -748,8 +794,9 @@ sequenceDiagram
    fields, stages, reply format) plus the revision rules: change only what was
    asked, copy every other step exactly, keep `{input}` and `{name}` valid, add
    or remove inputs only when needed. The draft (as JSON) and the instruction
-   are user data, so each sits in its own tagged block; the tags are stripped
-   from the content, so it cannot close its block and pass for instructions.
+   are user data, so each sits in its own tagged block; every form of the tag
+   is stripped from the content, again until none is left (removing one can
+   join another), so it cannot close its block and pass for instructions.
 3. `pipelines.ask_planner` is the one call-and-parse path, shared with
    `generate`: provider failures map through `PROVIDER_ERROR_MAP`, and the
    answer goes through `parse_plan` (unusable output → 502).
@@ -827,6 +874,8 @@ server — never a 200 with an error inside.
 | Decorator (retry) | `llm/retry.Retrier`, `llm/agent_models.RetryingChatModel` | One bounded retry policy around every model call, direct or LangChain |
 | Strategy + Registry | `api/services/artifacts/registry.RENDERERS`, `docx_writer` / `pdf_writer` (`singledispatch` per block) | New artifact format = one renderer and one entry; new Markdown block = one writer each |
 | Gateway | `api/services/files/storage.WorkspaceStorage` | One set of path, overwrite and quota rules for the agents' tools and the Files page |
+| Gateway | `api/services/web_download.PageDownloader` | One guarded download (redirects checked hop by hop, bounded body, deadline) for `fetch_url` and the pages users read from a link |
+| Strategy + Registry | `api/services/documents/web_import.SUFFIX_BY_MEDIA_TYPE`, `FAILURES` | A new readable media type is one entry; each kind of failed download becomes the user's error in one place |
 | Repository | `api/repositories/pipelines.py`, `users.py` | Ownership-scoped queries and atomic writes |
 | Graph orchestration | `api/services/multiagent/graph.py` | Concurrent agent nodes and a stage join with deterministic output order |
 | Observer + Null Object | `StepObserver` / `SILENT_OBSERVER` in `multiagent/contracts.py`, `services/run_recorder.RunRecorder` | The graph reports step events without knowing who listens; persistence is one listener |

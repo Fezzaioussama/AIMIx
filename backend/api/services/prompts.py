@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,6 +18,7 @@ from api.services.flow_prompts import (
     NO_FEEDBACK_DETAIL,
     REVIEWER_RULE,
 )
+from api.services.tool_prompts import LINKS_PLANNER_GUIDE, tool_guidance
 
 #: What every planner prompt explains — tools, inputs, step fields, stages and the
 #: reply format — shared by generation and revision (§3). ``{tools}``, ``{models}``
@@ -75,6 +76,7 @@ each one. Group independent deliverables in the same stage so they can run in \
 parallel; add a later synthesis stage only if the request calls for one.
 
 """
+    + LINKS_PLANNER_GUIDE
     + FLOW_PLANNER_GUIDE
     + """\
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
@@ -160,12 +162,6 @@ STEP_AGENT_TEMPLATE = (
 STEP_AGENT_OUTPUT_TEMPLATE = (
     "Your final reply must match this expected output in content and format: {expected_output}"
 )
-STEP_AGENT_TOOL_GUIDANCE = (
-    "Use your tools whenever the task depends on something you cannot be sure of, such "
-    "as current events, figures, calculations or the content of a web page, instead of "
-    "guessing. Cite the URL of every web source you rely on. When a tool returns an "
-    "error, adapt: try another query or source, or say what could not be verified."
-)
 
 
 def planner_fields(
@@ -202,24 +198,28 @@ def pipeline_revision_prompt(
 
 
 def fenced(tag: str, text: str) -> str:
-    """``text`` inside a ``<tag>`` block. That tag is removed from the text first,
-    so untrusted content cannot end the block early and pass for instructions."""
-    inner = re.sub(rf"<\s*/?\s*{tag}\s*>", "", text, flags=re.IGNORECASE)
+    """``text`` inside a ``<tag>`` block. Every form of the tag (any case, spaces,
+    attributes, ``/>``, no ``>``) is removed from the text, again until none is left
+    (removing one can join another: ``<</tag>/tag>``), so untrusted content cannot end
+    the block early and pass for instructions."""
+    tags = re.compile(rf"<\s*/?\s*{re.escape(tag)}\b(?:[^<>]*>)?", re.IGNORECASE)
+    inner, found = text, 1
+    while found:
+        inner, found = tags.subn("", inner)
     return f"<{tag}>\n{inner}\n</{tag}>"
 
 
 def step_agent_system_prompt(
-    role: str, has_tools: bool, expected_output: str = "", reviewer: bool = False
+    role: str, tools: Collection[str], expected_output: str = "", reviewer: bool = False
 ) -> str:
     """The system prompt for one step's agent: its identity, the result it must
-    deliver when the step names one, tool guidance only when it has tools, and,
-    for a reviewer, the rule to end with a verdict line."""
+    deliver when the step names one, what it is told about its tools (by name) and
+    links (``tool_prompts``), and, for a reviewer, the rule to end with a verdict line."""
     identity = f"the {role} agent" if role else "an agent"
     parts = [STEP_AGENT_TEMPLATE.format(identity=identity)]
     if expected_output.strip():
         parts.append(STEP_AGENT_OUTPUT_TEMPLATE.format(expected_output=expected_output.strip()))
-    if has_tools:
-        parts.append(STEP_AGENT_TOOL_GUIDANCE)
+    parts.extend(tool_guidance(tools))
     if reviewer:
         parts.append(REVIEWER_RULE)
     return "\n\n".join(parts)

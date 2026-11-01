@@ -30,6 +30,7 @@ from api.schemas.planning import (
 from api.services import pipeline_flow
 from api.services import pipeline_revision as revision_service
 from api.services import pipelines as pipeline_service
+from api.services.plan_documents import PlannedDocument
 from api.services.plan_questions import Answer, Clarification
 from api.services.runs import RunStart
 from api.throttling import user_rate_limit
@@ -72,7 +73,13 @@ def generate_pipeline(
 ) -> GenerateResponse:
     answers = tuple(Answer(item.question, item.answer) for item in body.answers)
     clarification = Clarification(body.may_ask, answers)
-    request = pipeline_service.PlanRequest(body.description, body.planner_model, clarification)
+    documents = tuple(
+        PlannedDocument(item.name, item.pages, item.characters, item.excerpt)
+        for item in body.documents
+    )
+    request = pipeline_service.PlanRequest(
+        body.description, body.planner_model, clarification, documents
+    )
     plan = pipeline_service.generate(providers(), profile, request, catalog.available_sync())
     return GenerateResponse(
         generated_pipeline=plan.pipeline,

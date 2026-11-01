@@ -390,9 +390,10 @@ def test_the_size_guard_refuses_a_declared_oversize_body_and_passes_the_rest() -
     async def echo(request: Request) -> PlainTextResponse:
         return PlainTextResponse(str(len(await request.body())))
 
+    caps = {"max_bytes": 10, "max_json_bytes": 10, "max_file_bytes": 5}
     guarded = Starlette(
         routes=[Route("/", echo, methods=["POST"])],
-        middleware=[Middleware(RequestSizeLimitMiddleware, max_bytes=10, max_json_bytes=10)],
+        middleware=[Middleware(RequestSizeLimitMiddleware, **caps)],
     )
     client = TestClient(guarded)
     assert client.post("/", content=b"x" * 10).text == "10"

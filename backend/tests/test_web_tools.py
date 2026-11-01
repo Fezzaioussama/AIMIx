@@ -21,7 +21,8 @@ from langchain_core.tools import ToolException
 from api.services.outbound import OutboundPolicy, guarded_transport
 from api.services.toolbox.config import toolbox_config
 from api.services.toolbox.tools import TRUNCATED_NOTE, fetch_url_tool, web_search_tool
-from api.services.toolbox.web import MAX_REDIRECTS, WebGateway
+from api.services.toolbox.web import WebGateway
+from api.services.web_download import MAX_REDIRECTS
 from tests.conftest import TEST_SETTINGS, UNUSED_WORKSPACE, tool_call
 from tests.network_fakes import FakeNetwork, changing
 
@@ -249,6 +250,17 @@ async def test_fetch_url_still_honours_a_real_charset() -> None:
     page = httpx.Response(200, content="café".encode("latin-1"), headers=headers)
 
     assert (await gateway(lambda request: page).fetch("https://site.test/")).text == "café"
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_reads_a_page_in_the_charset_its_meta_tag_declares() -> None:
+    markup = '<html><head><meta charset="shift_jis"></head><body><p>吾輩は猫である。</p></body>'
+    headers = {"content-type": "text/html"}  # no charset in the header
+    page = httpx.Response(200, content=markup.encode("shift_jis"), headers=headers)
+
+    fetched = await gateway(lambda request: page).fetch("https://site.test/")
+
+    assert fetched.text == "吾輩は猫である。"
 
 
 @pytest.mark.asyncio

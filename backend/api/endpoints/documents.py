@@ -7,8 +7,8 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, UploadFile
 
-from api.deps import DocumentLimits, DocumentOcr
-from api.schemas.documents import DocumentOut
+from api.deps import DocumentLimits, DocumentOcr, PageImports
+from api.schemas.documents import DocumentOut, PageImportRequest
 from api.services.documents import extraction
 from api.throttling import user_rate_limit
 
@@ -25,4 +25,15 @@ def extract_document(file: UploadFile, limits: DocumentLimits, ocr: DocumentOcr)
     # without reading the rest of an oversized upload into memory.
     data = file.file.read(limits.max_bytes + 1)
     result = extraction.extract_document(file.filename or "", data, limits, ocr)
+    return DocumentOut.model_validate(asdict(result))
+
+
+@router.post("/import-url", dependencies=[Depends(user_rate_limit)])
+async def import_document_url(body: PageImportRequest, pages: PageImports) -> DocumentOut:
+    """Read the web page, or the PDF, Office file, picture or text file, a link
+    points to, and return its text as an upload's is returned.
+
+    Async because it awaits the download; nothing is stored.
+    """
+    result = await pages.read(body.url)
     return DocumentOut.model_validate(asdict(result))

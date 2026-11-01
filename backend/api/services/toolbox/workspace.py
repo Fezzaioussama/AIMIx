@@ -2,9 +2,10 @@
 
 Where a path may lead, overwrites and the storage quota are ``WorkspaceStorage``'s
 rules, the same ones the Files page follows. This gateway adds what a model needs
-on top: bounded text, search, CSV rows, PDF and Word files read as text, and
-artifacts saved in real document formats. A refusal reaches the model as a
-ToolException it can react to, never as an aborted run.
+on top: text in pages it can read on through, search, CSV rows, PDF and Word files
+read as text (scanned pages by OCR), and artifacts saved in real document formats.
+A refusal reaches the model as a ToolException it can react to, never as an
+aborted run.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import codecs
 import csv
 import json
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -24,14 +26,22 @@ from PIL import Image
 from api.exceptions import DomainError, FileTooLarge
 from api.services.artifacts.contracts import RenderOptions
 from api.services.artifacts.registry import render_artifact
-from api.services.documents.contracts import ExtractionLimits
-from api.services.documents.extraction import extract_document, megabytes
+from api.services.documents.contracts import ExtractionLimits, OcrEngine, ReadContext
+from api.services.documents.extraction import (
+    extract_document,
+    megabytes,
+    omission_notes,
+    read_document,
+)
+from api.services.documents.scans import no_such_page
 from api.services.files.storage import WorkspaceStorage
 
 #: Read and searched as they are; any other file is read through the document
 #: readers (PDF, Word, ...), which refuse what they cannot read.
 TEXT_SUFFIXES = frozenset({".csv", ".html", ".json", ".md", ".txt", ".yaml", ".yml"})
 CSV_SUFFIX = ".csv"
+#: Read in its own whole pages; any other file in pages of the output limit.
+PDF_SUFFIX = ".pdf"
 #: The pictures a saved .docx or .pdf may show: what python-docx and ReportLab both embed.
 PICTURE_FORMATS = ("PNG", "JPEG")
 
@@ -45,6 +55,17 @@ class WorkspaceLimits:
     csv_max_rows: int
     #: What reading one PDF or Word file may cost: the run-document limits.
     documents: ExtractionLimits
+
+
+@dataclass(frozen=True)
+class FilePages:
+    """What one read shows of a file: its pages ``first`` to ``last`` of ``total``.
+    A PDF's pages are its own; any other file is cut into pages of the output limit."""
+
+    text: str
+    first: int
+    last: int
+    total: int
 
 
 def _spreadsheet_safe(path: str, content: bytes, options: RenderOptions) -> bytes:
@@ -86,11 +107,16 @@ class LocalWorkspace:
     """Gateway that confines every file operation to one user's directory."""
 
     def __init__(
-        self, storage: WorkspaceStorage, limits: WorkspaceLimits, render: RenderOptions
+        self,
+        storage: WorkspaceStorage,
+        limits: WorkspaceLimits,
+        render: RenderOptions,
+        ocr: OcrEngine | None = None,
     ) -> None:
         self._storage = storage
         self._limits = limits
         self._render = render
+        self._ocr = ocr
 
     def list_files(self, directory: str = ".") -> str:
         base = self._resolve(directory, directory=True)
@@ -101,11 +127,16 @@ class LocalWorkspace:
                 break
         return "\n".join(sorted(files)) or "No files found."
 
-    def read_file(self, path: str) -> str:
+    def read_file(self, path: str, start_page: int = 1) -> FilePages:
+        """A file's text from page ``start_page`` on, as much as one read shows."""
+        if start_page < 1:
+            raise ToolException("start_page counts from 1.")
         target = self._resolve(path)
-        if target.suffix.lower() in TEXT_SUFFIXES:
-            return self._bounded_text(target)
-        return self._document_text(target)
+        suffix = target.suffix.lower()
+        if suffix == PDF_SUFFIX:
+            return self._pdf_pages(target, start_page)
+        text = self._whole_text(target) if suffix in TEXT_SUFFIXES else self._document_text(target)
+        return _page_of(text, start_page, self._limits.max_output_chars)
 
     def search_files(self, query: str, directory: str = ".") -> str:
         needle = query.strip().casefold()
@@ -192,9 +223,11 @@ class LocalWorkspace:
         ]
 
     def _bounded_text(self, path: Path) -> str:
+        return self._whole_text(path)[: self._limits.max_output_chars]
+
+    def _whole_text(self, path: Path) -> str:
         try:
-            text = self._within_size_limit(path).read_text(encoding="utf-8")
-            return text[: self._limits.max_output_chars]
+            return self._within_size_limit(path).read_text(encoding="utf-8")
         except UnicodeError as cause:
             raise ToolException("The file is not valid UTF-8 text.") from cause
         except OSError as cause:
@@ -220,14 +253,44 @@ class LocalWorkspace:
         except ToolException:
             return None
 
+    def _pdf_pages(self, path: Path, start_page: int) -> FilePages:
+        """A PDF's whole pages from ``start_page`` on, as many as the output limit and
+        OCR's budget allow; the pages before it are not read, nor OCR'd, again."""
+        cap = self._limits.max_output_chars
+        limits = replace(self._limits.documents, max_chars=cap)
+        context = ReadContext(limits, self._ocr, first_page=start_page, read_on=True)
+        with _tool_errors():
+            document = read_document(path.name, self._document_bytes(path), context)
+        text = document.text
+        if document.clipped:
+            text += (
+                f"\n\n[Page {start_page} is longer than {cap:,} characters: "
+                "the rest of it is not shown.]"
+            )
+        last = document.last_page or start_page
+        return FilePages(
+            text + omission_notes(document.omissions), start_page, last, document.pages or last
+        )
+
     def _document_text(self, path: Path) -> str:
-        """A PDF, Word or other document as text, cut at the output limit."""
-        limits = replace(self._limits.documents, max_chars=self._limits.max_output_chars)
+        """A Word, Excel, PowerPoint, HTML or image file as text, up to the run-document
+        limit, ending with a note on whatever was left out."""
+        limits = self._limits.documents
+        with _tool_errors():
+            return extract_document(path.name, self._document_bytes(path), limits, self._ocr).text
+
+    def _document_bytes(self, path: Path) -> bytes:
         try:
             with path.open("rb") as handle:
                 # One byte past the cap is enough for the reader to refuse the file.
-                data = handle.read(limits.max_bytes + 1)
+                return handle.read(self._limits.documents.max_bytes + 1)
         except OSError as cause:
             raise ToolException("The file could not be read.") from cause
-        with _tool_errors():
-            return extract_document(path.name, data, limits).text
+
+
+def _page_of(text: str, number: int, size: int) -> FilePages:
+    """Page ``number`` of ``text`` cut into pages of ``size`` characters."""
+    total = max(1, math.ceil(len(text) / size))
+    if number > total:
+        raise ToolException(no_such_page("This file", total, number))
+    return FilePages(text[(number - 1) * size : number * size], number, number, total)

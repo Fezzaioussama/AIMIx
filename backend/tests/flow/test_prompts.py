@@ -19,19 +19,19 @@ FEEDBACK = Feedback("Cut the intro.", round=2, rounds=3)
 
 
 def test_a_reviewer_is_asked_to_end_with_a_verdict_line() -> None:
-    prompt = step_agent_system_prompt("QA", has_tools=False, reviewer=True)
+    prompt = step_agent_system_prompt("QA", [], reviewer=True)
 
     assert "VERDICT: PASS" in prompt and "VERDICT: REVISE" in prompt
     assert prompt.startswith("You are the QA agent in an AIMIx pipeline.")
 
 
 def test_any_other_step_is_not_asked_for_a_verdict() -> None:
-    assert "VERDICT" not in step_agent_system_prompt("Writer", has_tools=True)
-    assert "VERDICT" not in step_agent_system_prompt("Writer", has_tools=False, reviewer=False)
+    assert "VERDICT" not in step_agent_system_prompt("Writer", ["calculator"])
+    assert "VERDICT" not in step_agent_system_prompt("Writer", [], reviewer=False)
 
 
 def test_the_verdict_rule_comes_after_the_expected_output_and_the_tool_guidance() -> None:
-    prompt = step_agent_system_prompt("QA", True, "A short critique", reviewer=True)
+    prompt = step_agent_system_prompt("QA", ["calculator"], "A short critique", reviewer=True)
 
     expected, tools, verdict = (
         prompt.index("A short critique"),

@@ -18,12 +18,17 @@ from starlette.types import Message
 from api.main import create_app
 from api.middleware import RequestSizeLimitMiddleware
 from api.models import Base
+from api.services.documents.extraction import megabytes
 from config.settings import MULTIPART_OVERHEAD_BYTES, pin_settings
 from tests.conftest import TEST_SETTINGS
 
 DOCUMENT_MAX_BYTES = 100
 JSON_MAX_BYTES = 1_000
 MULTIPART_CAP = DOCUMENT_MAX_BYTES + MULTIPART_OVERHEAD_BYTES
+UPLOAD_TOO_LARGE = (
+    f"The upload is larger than the {megabytes(DOCUMENT_MAX_BYTES)} limit. "
+    f"Send one file at a time, each up to {megabytes(DOCUMENT_MAX_BYTES)}."
+)
 
 
 @pytest.fixture
@@ -72,6 +77,41 @@ def test_a_chunked_upload_over_the_cap_is_refused_before_authentication(
     assert_too_large(response)
 
 
+@pytest.mark.parametrize("chunks", [False, True])
+def test_an_oversize_upload_is_refused_with_the_file_limit_people_know(
+    capped: TestClient, chunks: bool
+) -> None:
+    """The cap has room for the multipart framing, but the refusal names the file limit."""
+    body, headers = multipart(MULTIPART_CAP)
+
+    response = capped.post(
+        "/api/documents/extract", content=chunked(body) if chunks else body, headers=headers
+    )
+
+    assert_too_large(response)
+    assert response.json()["detail"] == UPLOAD_TOO_LARGE
+
+
+def test_several_small_files_are_not_told_one_of_them_is_too_large() -> None:
+    """POST /api/files takes several files: two under the file limit can pass the cap."""
+    guarded = RequestSizeLimitMiddleware(
+        FastAPI(), max_bytes=2_000_000, max_json_bytes=10, max_file_bytes=1_500_000
+    )
+    two_parts = b"".join(multipart(1_200_000)[0] for _ in range(2))
+    response = TestClient(guarded).post("/", content=two_parts, headers=multipart(0)[1])
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == (
+        "The upload is larger than the 1.5 MB limit. Send one file at a time, each up to 1.5 MB."
+    )
+
+
+def test_an_oversize_json_body_still_names_the_request_limit(capped: TestClient) -> None:
+    response = capped.post("/api/login", json={"username": "u", "password": "p" * JSON_MAX_BYTES})
+    detail = f"The request is larger than the {megabytes(JSON_MAX_BYTES)} limit."
+    assert response.json()["detail"] == detail
+
+
 def test_a_chunked_upload_under_the_cap_still_reaches_authentication(capped: TestClient) -> None:
     body, headers = multipart(10)
     response = capped.post("/api/documents/extract", content=chunked(body), headers=headers)
@@ -114,7 +154,10 @@ async def test_reading_stops_at_the_cap_without_draining_the_body() -> None:
         return PlainTextResponse(str(len(await request.body())))
 
     guarded = RequestSizeLimitMiddleware(
-        Starlette(routes=[Route("/", echo, methods=["POST"])]), max_bytes=10, max_json_bytes=10
+        Starlette(routes=[Route("/", echo, methods=["POST"])]),
+        max_bytes=10,
+        max_json_bytes=10,
+        max_file_bytes=5,
     )
     chunks = [{"type": "http.request", "body": b"abcd", "more_body": True} for _ in range(10)]
     pulled: list[Message] = []
@@ -140,4 +183,5 @@ def test_the_real_app_uses_the_configured_caps(app: FastAPI) -> None:
     assert guard.kwargs == {
         "max_bytes": TEST_SETTINGS.max_request_bytes,
         "max_json_bytes": TEST_SETTINGS.request_max_json_bytes,
+        "max_file_bytes": TEST_SETTINGS.document_max_bytes,
     }

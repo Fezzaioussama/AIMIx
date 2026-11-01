@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from api.services.pipelines import parse_plan, sanitise_step
-from api.services.plan_prompts import pipeline_generation_prompt
+from api.services.plan_prompts import PlanRequest, pipeline_generation_prompt
 from api.services.prompts import pipeline_revision_prompt
 
 BLOG_ONLY = {"source": "previous_output", "operator": "contains", "value": "blog"}
@@ -203,7 +203,7 @@ def test_a_template_step_gets_no_condition_and_no_review() -> None:
 
 
 def test_the_generation_prompt_tells_the_planner_about_both_fields() -> None:
-    prompt = pipeline_generation_prompt("a blog post", ["m"])
+    prompt = pipeline_generation_prompt(PlanRequest("a blog post"), ["m"])
 
     assert '"condition"' in prompt and '"review"' in prompt
     assert '{"source": "previous_output", "operator": "contains", "value": "blog"}' in prompt

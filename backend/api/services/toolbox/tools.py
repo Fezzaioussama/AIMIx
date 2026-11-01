@@ -18,7 +18,7 @@ from api.services.toolbox.images import ImageStudio
 from api.services.toolbox.sandbox import INPUT_DIR, OUTPUT_DIR
 from api.services.toolbox.vision import ObjectSpotter
 from api.services.toolbox.web import WebGateway
-from api.services.toolbox.workspace import LocalWorkspace
+from api.services.toolbox.workspace import FilePages, LocalWorkspace
 
 #: Tool names: the keys of the registry and of AGENT_BUILTIN_TOOLS.
 WEB_SEARCH = "web_search"
@@ -122,11 +122,33 @@ def list_workspace_files_tool(workspace: LocalWorkspace) -> BaseTool:
 
 
 def read_workspace_file_tool(workspace: LocalWorkspace) -> BaseTool:
+    def read_workspace_file(path: str, start_page: int = 1) -> str:
+        shown = workspace.read_file(path, start_page)
+        return shown.text + _read_on(shown)
+
     return make_tool(
         READ_WORKSPACE_FILE,
         "Read a file from the user's workspace: text, Markdown, JSON, YAML, HTML and CSV "
-        "as written, PDF and Word files as their text. The output is bounded.",
-        func=workspace.read_file,
+        "as written; PDF, Word and the other document formats as their text, with "
+        "scanned pages read by OCR. One call shows a bounded part of a long file and "
+        "ends by saying the start_page to call again with to read on. For a PDF, "
+        "start_page is its page number, so it can also jump to a page.",
+        func=read_workspace_file,
+    )
+
+
+def _read_on(shown: FilePages) -> str:
+    """The note after part of a file: which pages it holds, and how to read on."""
+    if shown.first == 1 and shown.last >= shown.total:
+        return ""
+    pages = (
+        f"page {shown.first}" if shown.first == shown.last else f"pages {shown.first}-{shown.last}"
+    )
+    if shown.last >= shown.total:
+        return f"\n\n[Shown: {pages} of {shown.total}, the end of the file.]"
+    return (
+        f"\n\n[Shown: {pages} of {shown.total}. To read on, call {READ_WORKSPACE_FILE} "
+        f"again with start_page={shown.last + 1}.]"
     )
 
 

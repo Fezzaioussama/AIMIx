@@ -1,17 +1,35 @@
 """The planner's prompt for a new pipeline (§5 S, Builder): the guide every planner
 prompt shares (``prompts``), plus what only a new plan needs. That is the final
-reviewer each new team ends with, and either the questions the planner may ask
-instead of guessing or the answers the person already gave.
+reviewer each new team ends with, either the questions the planner may ask instead
+of guessing or the answers the person already gave, and the documents they added
+(``plan_documents``). It is built from a ``PlanRequest``.
 
 The parts added here are appended after ``str.format`` has filled the guide, so
 their braces are literal."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from api.services.agent_types import ToolDescriptor
 from api.services.flow_prompts import FINAL_REVIEW_GUIDE
+from api.services.plan_documents import PlannedDocument, documents_block
 from api.services.plan_questions import MAX_OPTIONS, MAX_QUESTIONS, Clarification
 from api.services.prompts import PIPELINE_PLANNER_GUIDE, fenced, planner_fields
+
+
+@dataclass(frozen=True)
+class PlanRequest:
+    """What to plan; no ``planner_model`` means the profile's default model. The
+    ``clarification`` says whether the planner may ask questions first (Missions),
+    and holds the answers to the ones it asked; ``documents`` are the documents and
+    web pages the person added to the mission."""
+
+    description: str
+    planner_model: str | None = None
+    clarification: Clarification = field(default_factory=Clarification)
+    documents: tuple[PlannedDocument, ...] = ()
+
 
 PIPELINE_GENERATION_INTRO = """You are an AI pipeline architect. Given a user's \
 description of a workflow, generate a structured multi-step pipeline.
@@ -52,16 +70,18 @@ def _answers_block(clarification: Clarification) -> str:
 
 
 def pipeline_generation_prompt(
-    description: str,
+    request: PlanRequest,
     available_models: list[str],
     tools: list[ToolDescriptor] | None = None,
-    clarification: Clarification = Clarification(),
 ) -> str:
-    """Render the planner prompt for a workflow description: the shared guide, the
-    final reviewer, then the questions it may ask or the answers it got."""
+    """Render the planner prompt for a mission: the shared guide, the final reviewer,
+    then the questions it may ask or the answers it got, the documents the person
+    added, and the description."""
     header = PIPELINE_GENERATION_TEMPLATE.format(**planner_fields(available_models, tools))
+    clarification = request.clarification
     asking = QUESTIONS_GUIDE if clarification.asking else ""
+    documents = documents_block(request.documents, clarification.asking)
     return (
-        f"{header}{FINAL_REVIEW_GUIDE}{asking}{_answers_block(clarification)}"
-        f"User's workflow description:\n{description}"
+        f"{header}{FINAL_REVIEW_GUIDE}{asking}{_answers_block(clarification)}{documents}"
+        f"User's workflow description:\n{request.description}"
     )
