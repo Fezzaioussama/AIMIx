@@ -6,7 +6,7 @@ import { ResumeControl } from '../ResumeControl';
 import { RUN_BUTTON } from '../runButtons';
 import { isActive, isResumable } from '../runStatus';
 import type { RunControls } from '../useRun';
-import type { OutcomeKind } from './reportModel';
+import { reportIds, type OutcomeKind } from './reportModel';
 
 interface StateActionProps {
   run: Run;
@@ -83,7 +83,7 @@ export function ActionRow({ run, control, onAct, outcome, actions }: ActionRowPr
   const detail = serviceDetail(run, outcome);
   const hasAction = isActive(run.status) || isResumable(run.status) || Boolean(actions);
   if (!hasAction && detail === '' && control.error === '') return null;
-  const saidId = `run-${run.id}-service-said`;
+  const saidId = reportIds(run.id).serviceSaid;
   return (
     <div className="mt-4">
       <div className="flex flex-wrap items-center gap-2">

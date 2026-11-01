@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { Run } from '../../../core/api/types';
+import { FOCUS_RING } from '../../../core/ui/focus';
 import { makeApproval } from '../testData';
 import { reportIds, reportModel } from './reportModel';
 import { ENDED, stepOf, teamRun, type StepState } from './reportTestData';
@@ -171,6 +172,23 @@ describe('TeamWork', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Blog post' })).toHaveFocus();
   });
 
+  it('offers no way up to a deliverable that is being revised: there is nothing to read yet', async () => {
+    // The check sent the writers back; their rows still hold round 1 until they restart.
+    const run = teamRun([
+      ['succeeded'],
+      ['succeeded'],
+      ['succeeded'],
+      ['succeeded', { verdict: 'revise' }],
+    ]);
+
+    await renderOpen(run);
+
+    expect(screen.queryByRole('link', { name: 'Read it above' })).not.toBeInTheDocument();
+    for (const writer of ['Blog post', 'LinkedIn post']) {
+      expect(within(row(writer)).queryByRole('button')).not.toBeInTheDocument();
+    }
+  });
+
   it('links the check’s row to the full check above', async () => {
     const onReadCheck = vi.fn();
     const run = finished();
@@ -212,10 +230,22 @@ describe('TeamWork', () => {
 
     const hides = within(row('Research')).getAllByRole('button', { name: 'Hide what it wrote' });
     expect(hides).toHaveLength(2);
-    await user.click(hides[1]);
+    // jsdom has no scrollIntoView: record which element the jump brings into view.
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled(this);
+    };
+    try {
+      await user.click(hides[1]);
+    } finally {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    }
 
     expect(show).toHaveFocus();
     expect(show).toHaveAttribute('aria-expanded', 'false');
+    // The toggle itself, not its row: a row taller than the screen is "in view" already,
+    // and would leave the focused toggle above it.
+    expect(scrolled).toHaveBeenCalledExactlyOnceWith(show);
   });
 
   it('lists what the team was given, only when it was given something', async () => {
@@ -237,5 +267,9 @@ describe('TeamWork', () => {
 
     expect(screen.getByRole('heading', { level: 3, name: 'The team' })).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Pipeline diagram' })).toBeInTheDocument();
+    // Read-only, it holds nothing to focus: its scroller takes the keyboard instead.
+    const scroller = screen.getByRole('group', { name: 'Team diagram' });
+    expect(scroller).toHaveAttribute('tabindex', '0');
+    expect(scroller).toHaveClass(...FOCUS_RING.split(' '));
   });
 });

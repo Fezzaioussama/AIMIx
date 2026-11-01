@@ -108,8 +108,9 @@ export function DeliverableDoc({ run, view, check, level }: DeliverableDocProps)
           ground is a layer behind the row, not the row itself: a backdrop-filter on the row
           would keep the Download menu, which hangs below it, from painting its background.
           Where the browser can tell (a scroll-state container), the ground shows only while
-          the row is stuck, so no darker band sits on the page's glow; elsewhere it stays. */}
-      <div className="sticky top-[var(--sticky-top,0px)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/[0.06] py-2 [container-type:scroll-state] before:absolute before:inset-0 before:-z-10 before:bg-ground/90 before:backdrop-blur-md before:transition-opacity before:duration-150 before:ease-out [@container_not_scroll-state(stuck:top)]:before:opacity-0">
+          the row is stuck, so no darker band sits on the page's glow; elsewhere it stays. On
+          a phone it reaches into the 16px gutters, where the glow would frame it. */}
+      <div className="sticky top-[var(--sticky-top,0px)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/[0.06] py-2 [container-type:scroll-state] before:absolute before:inset-0 before:-z-10 max-sm:before:-inset-x-4 before:bg-ground/90 before:backdrop-blur-md before:transition-opacity before:duration-150 before:ease-out [@container_not_scroll-state(stuck:top)]:before:opacity-0">
         <Heading
           level={level}
           id={ids.title(order)}

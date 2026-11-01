@@ -233,13 +233,16 @@ becomes one. Links open in the same tab, as before, with `rel="noopener noreferr
 The hooks doing this live on the module's own instance, added once.
 
 `renderDocument(text, headingBase)` is the same sanitising for a deliverable read as a
-document: the text's own headings start at `headingBase` (an `h1` becomes `h3` under an
-`h2` title, never past `h6`) and carry `data-level` for their size; each table is wrapped
-in a focusable, labelled scroller (`md-table-scroll`); number cells get `data-num`, so they
-right-align with tabular figures. It drops the model's own `data-*` attributes, so only it
-can set those, except the picture path the shared hook moves to `data-workspace-path`.
-`RenderedMarkdown` renders it (`prose-output prose-document`, the reading styles in
-`styles.css`) and loads those pictures with `useWorkspacePictures`; `documentText.ts` holds `plainTextOf(html)` (the plain text a copy
+document: the text's own top heading starts at `headingBase` (an `h1`, or the `##` of a
+text that starts there, becomes `h3` under an `h2` title, so no level is skipped; never
+past `h6`) and carries `data-level` for its size; each table is wrapped in a focusable,
+labelled scroller (`md-table-scroll`) and each code block is focusable the same way
+("Code"); number cells, with a short unit or currency code too ("3.9 s", "EUR 2.40"), get
+`data-num`, so they right-align with tabular figures. It drops the model's own `data-*`
+attributes, so only it can set those, except the picture path the shared hook moves to
+`data-workspace-path`. `RenderedMarkdown` renders it (`prose-output prose-document`, the
+reading styles in `styles.css`) and loads those pictures with `useWorkspacePictures`;
+`documentText.ts` holds `plainTextOf(html)` (the plain text a copy
 carries: bullets, numbers, tab-separated table rows, links as "text (address)", no Markdown
 marks) and `countWords` (`Intl.Segmenter`, with a fallback).
 

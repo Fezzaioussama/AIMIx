@@ -190,19 +190,20 @@ Every model output is rendered exactly once on the page.
    `RenderedMarkdown` with its own headings from h`L+1`. Copy (`DeliverableActions`)
    writes formatted text and plain text at once (`copyRich`); Download offers .html, .txt
    and .md (`DOWNLOAD_FORMATS` in `deliverableFiles.ts`) in a small menu that Escape, a
-   choice or a press outside closes. A deliverable not ready yet is a dashed slot
+   choice, a press outside or the keyboard leaving it closes. A deliverable not ready yet is a dashed slot
    (`DeliverableSlot`) exactly where its document will land, with its state in words
    ("Being written · 5.0 s", "Starts when Research is done", "Waiting for your OK ·
    Review the request", "Not made: its condition was not met…").
 4. **Saved during this run** (`RunFiles`, `useRunFiles`): the workspace files saved
-   between the run's start and end (±2 s; there is no per-run record of files yet),
+   between the run's start and end (±2 s, open-ended while it works, since the files'
+   times are the server's; there is no per-run record of files yet),
    pictures first with a preview (`PicturePreview`), each downloadable (`FileRow` without
    Delete), and "All files". Looked up only when an agent had a file-saving tool, again
    as steps finish; a failed lookup hides the part.
 5. **How your team got there** (`TeamWork`), folded at first: "What each agent did" (one
    `TimelineRow` per agent, by stage, with its status, cost, model, round and its tool
-   use in words from `toolWords.ts`, then "Read it above", "Read the check above" or
-   "Show what it wrote"), "What your team was given" (`RunGiven`: each typed text,
+   use in words from `toolWords.ts`, then "Read it above" (a deliverable that is ready),
+   "Read the check above" or "Show what it wrote"), "What your team was given" (`RunGiven`: each typed text,
    document and page with its size, the server's notes on what was cut or not read, and
    an excerpt), and on the Runs page "The team", the run's own diagram.
 
@@ -220,15 +221,21 @@ sent back reads "Being revised · round 2 of 3" until it is done again.
 Orchestrator.", "Approved by the Orchestrator after 1 round of fixes.", "The Orchestrator
 is checking the work…", "The Orchestrator asked for fixes." or "Not checked: …", with
 "Read the full check" opening the reviewer's
-whole answer beside a 1px brand-gradient rule. A long check (over 1,500 characters) or a
-long agent text gets a second "Hide …" at its end (`BottomHide`), which takes focus back
-to its toggle.
+whole answer beside a 1px brand-gradient rule. A byline carries the check only for a
+deliverable the reviewer reads: the stage just before its own, and the deliverables of
+its loop's earlier stages (as `StepNode._work` hands them over), never one before its
+loop. A long check (over 1,500 characters) or a long agent text gets a second "Hide …" at
+its end (`BottomHide`), which brings its toggle into view and takes focus back to it.
 
 **For screen readers.** `useRunAnnouncements` turns each poll into at most one sentence
 ("Draft ready.", "Your team finished: 2 deliverables ready, approved by the
 Orchestrator.", "The Orchestrator asked for fixes. Round 2 of 3 has started.", "Your team
-needs your OK: …", "You stopped the run."), silent on the first render; `core/ui/Announcer`
-speaks it from a polite status line under `<body>`. Jumps (`useJump`) scroll smoothly (at
+needs your OK: …", "You stopped the run.", "Your team is working again." after a resume
+or an answered request), silent on the first render; `core/ui/Announcer` speaks it from a
+polite status line under `<body>`, and the conversation's run bubble updates its line
+without speaking it (`aria-live="off"`), so nothing is said twice. The outcome heading is
+named by its current words (`aria-label`), so the focus it takes after Stop or Resume
+never reads the old words still swapping out. Jumps (`useJump`) scroll smoothly (at
 once under reduced motion) and then focus the target heading or toggle without a second
 scroll; ids come from `reportIds(run.id)`.
 

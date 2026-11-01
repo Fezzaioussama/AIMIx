@@ -5,11 +5,11 @@
  */
 import { useState } from 'react';
 
-import type { Run } from '../../../core/api/types';
+import type { Run, RunStatus } from '../../../core/api/types';
 import { countOf } from '../../../core/usageFormat';
 import { joinWords } from '../../pipelines/revision';
 import { roundLabel } from '../../pipelines/roundNotes';
-import { askedBy } from '../PendingApprovals';
+import { askedBy } from '../approvalFormat';
 import { isResumable } from '../runStatus';
 import { approvalAsk } from '../toolWords';
 import { OUTCOME_COPY, type OutcomeFacts } from './outcomeCopy';
@@ -64,11 +64,16 @@ const ON_ARRIVAL: Partial<Record<OutcomeKind, (facts: OutcomeFacts) => string>> 
 
 type Line = (previous: OutcomeFacts, next: OutcomeFacts) => string;
 
+/** A run that goes on again: resumed, or past the request you just answered. */
+function goesOnAgain(previous: RunStatus): boolean {
+  return isResumable(previous) || previous === 'waiting';
+}
+
 const statusLine: Line = (previous, next) => {
   if (previous.run.status === next.run.status) return '';
   const say = ON_ARRIVAL[next.model.outcome];
   if (say !== undefined) return say(next);
-  return isResumable(previous.run.status) ? 'Your team is working again.' : '';
+  return goesOnAgain(previous.run.status) ? 'Your team is working again.' : '';
 };
 
 /** "The Orchestrator asked for fixes. Round 2 of 3 has started." when it has just asked. */

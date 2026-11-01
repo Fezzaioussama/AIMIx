@@ -5,7 +5,7 @@
  * Registry, AGENTS §7): a new built-in tool is a new entry, never a new branch.
  */
 import type { RunApproval, StepResult } from '../../core/api/types';
-import { toolLabel } from './approvalFormat';
+import { capitalised, toolLabel } from './approvalFormat';
 
 /** Where AIMIx's own tools come from (`tool_catalog.NATIVE_SOURCE` on the server). */
 const NATIVE_SOURCE = 'AIMIx';
@@ -172,6 +172,5 @@ export function approvalAsk(approval: RunApproval): string {
 export function approvalHeading(approval: RunApproval): string {
   const ask = plainAsk(approval);
   if (ask === undefined) return `Allow “${toolLabel(approval.tool_name, approval.tool_source)}”?`;
-  const words = ask(approval.arguments);
-  return `${words.charAt(0).toUpperCase()}${words.slice(1)}?`;
+  return `${capitalised(ask(approval.arguments))}?`;
 }

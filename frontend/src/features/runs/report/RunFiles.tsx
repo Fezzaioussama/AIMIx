@@ -5,6 +5,7 @@ import { Heading } from '../../../core/ui/Heading';
 import { isPicture } from '../../files/fileFormat';
 import { FileRow } from '../../files/FileRow';
 import { PicturePreview } from '../../files/PicturePreview';
+import { reportIds } from './reportModel';
 import { TEXT_LINK } from './textStyles';
 import { useRunFiles } from './useRunFiles';
 
@@ -21,7 +22,7 @@ interface RunFilesProps {
 export function RunFiles({ run, level }: RunFilesProps) {
   const { files, busyPath, rowError, download } = useRunFiles(run);
   if (!files?.length) return null;
-  const headingId = `run-${run.id}-files`;
+  const headingId = reportIds(run.id).files;
   return (
     <section aria-labelledby={headingId}>
       <div className="flex items-center justify-between gap-3">

@@ -13,7 +13,7 @@ import {
 import { useCopyToClipboard, type CopyStatus } from '../../../core/hooks/useCopyToClipboard';
 import { saveBlob } from '../../../core/saveBlob';
 import { FOCUS_RING, TOUCH } from '../../../core/ui/focus';
-import { BLUR, DURATION, EASE_SMOOTH_OUT, ICON_SPRING } from '../../../core/ui/motionTokens';
+import { BLUR, DURATION, EASE_SMOOTH_OUT, FADE, ICON_SPRING } from '../../../core/ui/motionTokens';
 import { RUN_BUTTON } from '../runButtons';
 import {
   DOWNLOAD_FORMATS,
@@ -39,14 +39,6 @@ const MENU_MOTION = {
     scale: 0.99,
     transition: { duration: DURATION.quick, ease: EASE_SMOOTH_OUT },
   },
-} as const;
-
-/** Reduced motion keeps only a 150ms fade, for the icon and the menu alike. */
-const FADING = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  exit: { opacity: 0 },
-  transition: { duration: DURATION.quick },
 } as const;
 
 /** What the copy status says: the screen reader hears a copy; everyone sees a failure. */
@@ -76,7 +68,7 @@ interface CopyButtonProps {
 }
 
 function CopyButton({ title, copied, onCopy }: CopyButtonProps) {
-  const swap = useReducedMotion() ? FADING : ICON_SWAP;
+  const swap = useReducedMotion() ? FADE : ICON_SWAP;
   const Icon = copied ? Check : Copy;
   return (
     <button
@@ -113,7 +105,7 @@ interface FormatMenuProps {
 
 /** The formats to download, anchored under Download's right edge. */
 function FormatMenu({ id, title, onChoose }: FormatMenuProps) {
-  const look = useReducedMotion() ? FADING : MENU_MOTION;
+  const look = useReducedMotion() ? FADE : MENU_MOTION;
   return (
     <motion.div
       id={id}
@@ -166,9 +158,17 @@ function useCloseOnPressOutside(
   }, [open, area, trigger, onClose]);
 }
 
+/** Saves the deliverable as "{Title}.{ext}" in `format`. */
+function saveDeliverable(parts: DeliverableParts, format: DownloadFormat): void {
+  const spec = DOWNLOAD_FORMATS[format];
+  const blob = new Blob([spec.body(parts)], { type: spec.mime });
+  saveBlob(blob, `${safeFileName(parts.title)}.${spec.extension}`);
+}
+
 /**
  * Download, then a format. Escape, a choice or a press outside closes the menu and gives
- * the focus back to Download (a press on another control keeps it there).
+ * the focus back to Download (a press on another control keeps it there); the keyboard
+ * leaving it closes it too.
  */
 function DownloadMenu({ parts }: { parts: DeliverableParts }) {
   const [open, setOpen] = useState(false);
@@ -184,9 +184,7 @@ function DownloadMenu({ parts }: { parts: DeliverableParts }) {
   }
 
   function choose(format: DownloadFormat) {
-    const spec = DOWNLOAD_FORMATS[format];
-    const blob = new Blob([spec.body(parts)], { type: spec.mime });
-    saveBlob(blob, `${safeFileName(parts.title)}.${spec.extension}`);
+    saveDeliverable(parts, format);
     close();
   }
 
@@ -196,6 +194,11 @@ function DownloadMenu({ parts }: { parts: DeliverableParts }) {
       className="relative"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) close();
+      }}
+      // The keyboard moving on (Tab past the last format, Shift+Tab back past Download)
+      // closes it where the focus went, so no open menu is left over the text.
+      onBlur={(event) => {
+        if (open && !area.current?.contains(event.relatedTarget as Node | null)) dismiss();
       }}
     >
       <button

@@ -47,18 +47,20 @@ describe('savedDuringRun', () => {
       file('edge-end.md', '2026-10-24T10:05:02Z'),
       file('late.md', '2026-10-24T10:05:02.001Z'),
     ];
-    expect(savedDuringRun(files, ended, 0).map((item) => item.path)).toEqual([
+    expect(savedDuringRun(files, ended).map((item) => item.path)).toEqual([
       'edge-end.md',
       'middle.md',
       'edge-start.md',
     ]);
   });
 
-  it('runs the window until now while the run still works', () => {
-    const files = [file('new.md', '2026-10-24T10:09:00Z')];
-    const now = Date.parse('2026-10-24T10:10:00Z');
-    expect(savedDuringRun(files, makeRun(), now)).toHaveLength(1);
-    expect(savedDuringRun(files, makeRun(), Date.parse('2026-10-24T10:08:00Z'))).toEqual([]);
+  it('leaves the window open while the run still works, whatever the browser’s clock says', () => {
+    // Saved by the server at 10:09; the browser's clock may read 10:08 (it runs behind).
+    const files = [
+      file('early.md', '2026-10-24T09:59:00Z'),
+      file('new.md', '2026-10-24T10:09:00Z'),
+    ];
+    expect(savedDuringRun(files, makeRun()).map((item) => item.path)).toEqual(['new.md']);
   });
 
   it('puts pictures first, then the newest', () => {
@@ -68,7 +70,7 @@ describe('savedDuringRun', () => {
       file('new.md', '2026-10-24T10:03:00Z'),
       file('hero.jpg', '2026-10-24T10:04:00Z', 'jpg'),
     ];
-    expect(savedDuringRun(files, ended, 0).map((item) => item.path)).toEqual([
+    expect(savedDuringRun(files, ended).map((item) => item.path)).toEqual([
       'hero.jpg',
       'chart.png',
       'new.md',
@@ -78,6 +80,6 @@ describe('savedDuringRun', () => {
 
   it('has none for a run that has not started', () => {
     const queued = makeRun({ status: 'queued', started_at: null });
-    expect(savedDuringRun([file('a.md', '2026-10-24T10:00:00Z')], queued, Date.now())).toEqual([]);
+    expect(savedDuringRun([file('a.md', '2026-10-24T10:00:00Z')], queued)).toEqual([]);
   });
 });

@@ -90,17 +90,23 @@ export function renderMarkdown(text: string): string {
 }
 
 const HEADINGS = 'h1, h2, h3, h4, h5, h6';
-/** A cell holding one number, maybe signed, priced or a percentage: "1,900", "-$4.60", "12 %". */
-const NUMERIC_CELL = /^[-+−]?[$€£¥]?\s?\d[\d\s.,]*%?$/;
+/**
+ * A cell holding one number, maybe signed, priced, a percentage or with a short unit:
+ * "1,900", "-$4.60", "12 %", "3.9 s", "4.6 MB", "EUR 2.40".
+ */
+const NUMERIC_CELL = /^(?:[A-Z]{3}\s?)?[-+−]?[$€£¥]?\s?\d[\d\s.,]*(?:%|[A-Za-zµ]{1,3})?$/;
 
 /**
- * Moves a text's own headings under the page's: its `#` becomes h{base}, `##`
- * h{base + 1}, capped at h6. `data-level` keeps the size the writer meant.
+ * Moves a text's own headings under the page's: its top heading becomes h{base} (`#`
+ * usually, `##` in a text that starts there), the next level h{base + 1}, capped at h6, so
+ * the outline skips no level. `data-level` keeps the size the writer meant.
  */
 function nestHeadings(root: DocumentFragment, base: number): void {
-  for (const heading of root.querySelectorAll(HEADINGS)) {
+  const headings = [...root.querySelectorAll(HEADINGS)];
+  const top = Math.min(...headings.map((heading) => Number(heading.localName[1])));
+  for (const heading of headings) {
     const level = Number(heading.localName[1]);
-    const nested = document.createElement(`h${Math.min(6, base + level - 1)}`);
+    const nested = document.createElement(`h${Math.min(6, base + level - top)}`);
     for (const { name, value } of heading.attributes) nested.setAttribute(name, value);
     nested.dataset.level = String(level);
     nested.append(...heading.childNodes);
@@ -108,17 +114,27 @@ function nestHeadings(root: DocumentFragment, base: number): void {
   }
 }
 
+/** A box that scrolls sideways, reachable by keyboard and named for what it holds. */
+function asScroller(box: HTMLElement, label: string): void {
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', label);
+  box.tabIndex = 0;
+}
+
 /** A wide table scrolls sideways in its own focusable box instead of breaking words. */
 function wrapTables(root: DocumentFragment): void {
   for (const table of root.querySelectorAll('table')) {
     const scroller = document.createElement('div');
     scroller.className = 'md-table-scroll';
-    scroller.setAttribute('role', 'group');
-    scroller.setAttribute('aria-label', 'Table');
-    scroller.tabIndex = 0;
+    asScroller(scroller, 'Table');
     table.replaceWith(scroller);
     scroller.append(table);
   }
+}
+
+/** A code block scrolls sideways too (`pre` overflows), so it is focusable the same way. */
+function focusableCode(root: DocumentFragment): void {
+  for (const block of root.querySelectorAll('pre')) asScroller(block, 'Code');
 }
 
 function markNumbers(root: DocumentFragment): void {
@@ -129,7 +145,7 @@ function markNumbers(root: DocumentFragment): void {
 
 /**
  * A model's Markdown as a reading document: sanitised like `renderMarkdown`, then its
- * headings nested from `headingBase`, its tables in scrollers and its number cells
+ * headings nested from `headingBase`, its tables and code blocks scrollable by keyboard and its number cells
  * marked for right alignment. The marks are added to the sanitised DOM, never parsed
  * from text, and the model's own `data-*` attributes are dropped, so only this code
  * sets `data-level`, `data-num` or the scroller's class.
@@ -143,6 +159,7 @@ export function renderDocument(text: string, headingBase: number): string {
   });
   nestHeadings(root, headingBase);
   wrapTables(root);
+  focusableCode(root);
   markNumbers(root);
   const host = document.createElement('div');
   host.append(root);

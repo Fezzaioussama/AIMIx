@@ -1,10 +1,24 @@
 /** A request to approve a tool call, in plain words (the card's pure helpers). */
+import type { Run } from '../../core/api/types';
+import { stepLabel } from '../pipelines/stages';
 
 /** A value longer than this, or with more lines, is folded behind "Show all". */
 export const FOLD_AFTER_CHARS = 160;
 const FOLD_AFTER_LINES = 4;
 /** How much of a folded value stays visible. */
 const PREVIEW_CHARS = 100;
+
+/** `words` with a capital first letter, to start a sentence or a heading with. */
+export function capitalised(words: string): string {
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** The step and its agent's role, e.g. "Draft email (Writer)", as the card says who asks. */
+export function askedBy(run: Run, stepOrder: number): string {
+  const step = run.definition.steps.find((item) => item.order === stepOrder);
+  const name = stepLabel({ order: stepOrder, title: step?.title ?? '' });
+  return step?.role.trim() ? `${name} (${step.role.trim()})` : name;
+}
 
 /**
  * "Send email" from `crm_send_email` of `crm`: the integration's prefix and the
@@ -13,7 +27,7 @@ const PREVIEW_CHARS = 100;
 export function toolLabel(name: string, source: string): string {
   const bare = name.startsWith(`${source}_`) ? name.slice(source.length + 1) : name;
   const words = bare.replace(/[_-]+/g, ' ').trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : name;
+  return words ? capitalised(words) : name;
 }
 
 /** One argument as people read it. */

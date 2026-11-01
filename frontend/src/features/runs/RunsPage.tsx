@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { Page, PageHeader } from '../../core/ui/Page';
+import { TEXT_LINK } from './report/textStyles';
 import { RunDetail } from './RunDetail';
 import { RunHistoryList } from './RunHistoryList';
-import { useRun } from './useRun';
+import { useRun, type LiveRunState } from './useRun';
 import { useRunHistory } from './useRunHistory';
 
 /** The run id in /runs/:runId, or null for the list alone. */
@@ -13,29 +14,63 @@ function parseRunId(param: string | undefined): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+interface DetailColumnProps {
+  runId: number | null;
+  live: LiveRunState;
+  /** Deletes a run; true once it is gone. */
+  remove: (id: number) => Promise<boolean>;
+}
+
+/**
+ * The open run beside the list (instead of it, on a phone, with the way back), or the
+ * invitation to choose one. Below lg the window scrolls under the 60px top bar, so sticky
+ * rows stop under it. A deleted run sends the page back to the list.
+ */
+function DetailColumn({ runId, live, remove }: DetailColumnProps) {
+  const navigate = useNavigate();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(id: number) {
+    setDeleting(true);
+    const deleted = await remove(id);
+    setDeleting(false);
+    if (deleted) navigate('/runs');
+  }
+
+  return (
+    <div
+      className={`[--sticky-top:60px] lg:[--sticky-top:0px] ${runId === null ? 'hidden lg:block' : 'min-w-0'}`}
+    >
+      {runId === null ? (
+        <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">
+          Choose a run to see its steps and results.
+        </p>
+      ) : (
+        <>
+          <Link to="/runs" className={`mb-4 text-sm ${TEXT_LINK} lg:hidden`}>
+            ← All runs
+          </Link>
+          <RunDetail live={live} onDelete={() => void handleDelete(runId)} deleting={deleting} />
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * Run history at /runs: every run, newest first. /runs/:runId opens one beside
  * the list (instead of it, on a phone) to follow it live, stop, resume or delete it.
  */
 export function RunsPage() {
   const runId = parseRunId(useParams().runId);
-  const navigate = useNavigate();
   const history = useRunHistory();
   const live = useRun(runId);
-  const [deleting, setDeleting] = useState(false);
   const { update } = history;
 
   // The open run is polled; keep its line in the list in step with it.
   useEffect(() => {
     if (live.run) update(live.run);
   }, [live.run, update]);
-
-  async function handleDelete(id: number) {
-    setDeleting(true);
-    const deleted = await history.remove(id);
-    setDeleting(false);
-    if (deleted) navigate('/runs');
-  }
 
   return (
     <Page>
@@ -61,30 +96,7 @@ export function RunsPage() {
             onLoadMore={() => void history.loadMore()}
           />
         </div>
-        {/* Below lg the window scrolls under the 60px top bar: sticky rows stop under it. */}
-        <div
-          className={`[--sticky-top:60px] lg:[--sticky-top:0px] ${runId === null ? 'hidden lg:block' : 'min-w-0'}`}
-        >
-          {runId === null ? (
-            <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-slate-400">
-              Choose a run to see its steps and results.
-            </p>
-          ) : (
-            <>
-              <Link
-                to="/runs"
-                className="mb-4 inline-block text-sm text-sky-300 underline-offset-2 hover:underline lg:hidden"
-              >
-                ← All runs
-              </Link>
-              <RunDetail
-                live={live}
-                onDelete={() => void handleDelete(runId)}
-                deleting={deleting}
-              />
-            </>
-          )}
-        </div>
+        <DetailColumn runId={runId} live={live} remove={history.remove} />
       </div>
     </Page>
   );

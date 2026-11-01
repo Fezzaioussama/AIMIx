@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { FOCUS_RING, TOUCH } from '../../core/ui/focus';
 import { ResumeControl } from './ResumeControl';
 import { makeRun, runStep, usageOf } from './testData';
 
@@ -50,6 +51,15 @@ describe('ResumeControl', () => {
     expect(screen.getByLabelText('Raise the limit to')).toHaveValue('1.04');
     expect(screen.getByText('It has used $0.52 so far.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
+  });
+
+  it('draws the limit field with the sky ring under keyboard focus, as tall as a finger needs', () => {
+    render(<ResumeControl run={overLimit} onResume={vi.fn()} busy={false} />);
+
+    const field = screen.getByLabelText('Raise the limit to');
+    // `outline-none` would turn Tailwind's outline style off, ring and all.
+    expect(field).not.toHaveClass('outline-none');
+    expect(field).toHaveClass(...FOCUS_RING.split(' '), ...TOUCH.split(' '));
   });
 
   it('resumes under the new limit', async () => {

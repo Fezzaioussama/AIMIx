@@ -71,6 +71,26 @@ describe('announcementFor', () => {
     expect(said(draftDone, allDone)).toBe('Your team finished: 2 deliverables ready.');
   });
 
+  it('never says the work was approved when the reviewer still asked for fixes', () => {
+    const lastRound = teamRun([
+      ['succeeded'],
+      ['succeeded', { rounds: 3 }],
+      ['succeeded', { rounds: 3 }],
+      ['running', { rounds: 3 }],
+    ]);
+    const kept = teamRun(
+      [
+        ['succeeded'],
+        ['succeeded', { rounds: 3 }],
+        ['succeeded', { rounds: 3 }],
+        ['succeeded', { rounds: 3, verdict: 'revise' }],
+      ],
+      { status: 'succeeded', ...ENDED },
+    );
+
+    expect(said(lastRound, kept)).toBe('Your team finished: 2 deliverables ready.');
+  });
+
   it('says when the team finished with no deliverable', () => {
     const skipped = makeRun({
       status: 'succeeded',
@@ -142,8 +162,14 @@ describe('announcementFor', () => {
     const stopped = stoppedShort({ status: 'cancelled' });
 
     expect(said(stopped, makeRun({ status: 'running' }))).toBe('Your team is working again.');
-    // A run going on after you answered its request is not news.
-    expect(said(makeRun({ status: 'waiting' }), going)).toBe('');
+    // Queued to running is not news.
+    expect(said(makeRun({ status: 'queued' }), going)).toBe('');
+  });
+
+  it('confirms an answer to a request: the team is working again', () => {
+    const waiting = makeRun({ status: 'waiting', pending_approvals: [makeApproval()] });
+
+    expect(said(waiting, going)).toBe('Your team is working again.');
   });
 
   it('puts a change of status before the deliverables that came with it', () => {

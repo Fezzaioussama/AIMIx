@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import type { Run } from '../../../core/api/types';
 import { useNow } from '../../../core/hooks/useNow';
+import { runPath } from '../../../core/routes';
 import { elapsedMs, formatDuration } from '../../../core/time';
 import { RunCost } from '../RunCost';
 import { RunStatusBadge } from '../RunStatusBadge';
@@ -42,7 +43,7 @@ export function MetaLine({ run, linkToRuns = false }: MetaLineProps) {
         </Fact>
         {linkToRuns && (
           <Fact>
-            <Link to={`/runs/${run.id}`} className={TEXT_LINK}>
+            <Link to={runPath(run.id)} className={TEXT_LINK}>
               Open in Runs
             </Link>
           </Fact>

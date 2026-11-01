@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import type { Pipeline } from '../../core/api/types';
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { BusyNotice } from '../../core/ui/BusyNotice';
@@ -41,7 +42,6 @@ export function PipelineBuilderPage() {
   const isSaving = status === 'saving';
   const isStarting = status === 'running';
   const isRunning = isStarting || followed.active;
-  const stageCount = new Set(pipeline.steps.map((step) => step.stage)).size;
 
   function editStep(order: number) {
     document.getElementById(`step-editor-${order}`)?.scrollIntoView?.({ behavior: 'smooth' });
@@ -133,29 +133,7 @@ export function PipelineBuilderPage() {
       <main className="min-w-0 flex-1 px-4 sm:px-8 xl:overflow-y-auto 2xl:px-12">
         <div className="mx-auto max-w-6xl py-4 sm:py-8 2xl:py-12">
           <div className="mb-8">
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="mb-1 text-xs font-semibold tracking-widest uppercase">
-                  <ShinyText className="text-sky-400/80">Workflow canvas</ShinyText>
-                </p>
-                <h1 className="text-2xl font-bold tracking-tight">
-                  {pipeline.name || 'New Pipeline'}
-                </h1>
-                <div className="mt-3">
-                  <OpenInMissionLink pipelineId={pipeline.id} dirty={dirty} />
-                </div>
-              </div>
-              <p className="text-sm text-slate-400">
-                <CountUp to={stageCount} duration={0.6} className="font-semibold text-slate-200" />{' '}
-                {stageCount === 1 ? 'stage' : 'stages'} ·{' '}
-                <CountUp
-                  to={pipeline.steps.length}
-                  duration={0.6}
-                  className="font-semibold text-slate-200"
-                />{' '}
-                {pipeline.steps.length === 1 ? 'step' : 'steps'}
-              </p>
-            </div>
+            <CanvasHeader pipeline={pipeline} dirty={dirty} />
             <RevisePanel
               pipeline={pipeline}
               onApply={actions.replace}
@@ -188,6 +166,34 @@ export function PipelineBuilderPage() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+/** The canvas's title: the pipeline's name, the way to its mission, and its size. */
+function CanvasHeader({ pipeline, dirty }: { pipeline: Pipeline; dirty: boolean }) {
+  const stageCount = new Set(pipeline.steps.map((step) => step.stage)).size;
+  return (
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p className="mb-1 text-xs font-semibold tracking-widest uppercase">
+          <ShinyText className="text-sky-400/80">Workflow canvas</ShinyText>
+        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{pipeline.name || 'New Pipeline'}</h1>
+        <div className="mt-3">
+          <OpenInMissionLink pipelineId={pipeline.id} dirty={dirty} />
+        </div>
+      </div>
+      <p className="text-sm text-slate-400">
+        <CountUp to={stageCount} duration={0.6} className="font-semibold text-slate-200" />{' '}
+        {stageCount === 1 ? 'stage' : 'stages'} ·{' '}
+        <CountUp
+          to={pipeline.steps.length}
+          duration={0.6}
+          className="font-semibold text-slate-200"
+        />{' '}
+        {pipeline.steps.length === 1 ? 'step' : 'steps'}
+      </p>
     </div>
   );
 }

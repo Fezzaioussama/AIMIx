@@ -37,7 +37,7 @@ function useSavedFiles(run: Run): WorkspaceFile[] | null {
     const controller = new AbortController();
     listFiles(controller.signal)
       // Filtered inside the chain, so a malformed answer counts as a failed load.
-      .then((listing) => savedDuringRun(listing.files, latest.current, Date.now()))
+      .then((listing) => savedDuringRun(listing.files, latest.current))
       .then((saved) => {
         if (!controller.signal.aborted) setFiles(saved);
       })

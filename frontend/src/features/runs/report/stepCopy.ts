@@ -2,7 +2,7 @@
  * What a run's steps are doing, in plain words (brief §7): a deliverable's slot while it is
  * not a document yet, and an agent's row in "How your team got there". Pure.
  */
-import type { Run, RunStatus, RunStep } from '../../../core/api/types';
+import type { Run, RunStatus, RunStep, RunStepStatus } from '../../../core/api/types';
 import { elapsedMs, formatDuration } from '../../../core/time';
 import { liveNodeStatus, type NodeStatus } from '../../pipelines/pipelineGraph';
 import { joinWords } from '../../pipelines/revision';
@@ -27,6 +27,8 @@ export interface RowStatus {
   words: string;
 }
 
+type SlotRule = (step: RunStep, run: Run) => string;
+
 /** "round 2 of 3": the round a step is in, to follow other words. */
 function roundWords(step: RunStep, run: Run): string {
   const { round, total } = roundOf(step, run);
@@ -47,6 +49,8 @@ function runsOnlyIf(step: RunStep, run: Run): string {
   return described === null ? '' : ` It runs only if ${described}.`;
 }
 
+const NOT_STARTED = 'Not started yet';
+const NEEDS_OK = 'Waiting for your OK';
 const RUN_STOPPED = 'Not finished: the run stopped before it was done.';
 
 /** A step stopped while it ran, by why its run ended. */
@@ -55,23 +59,27 @@ const STOPPED_BY: Partial<Record<RunStatus, string>> = {
   interrupted: 'Not finished: the server restarted before it was done.',
 };
 
-function unfinished(step: RunStep, run: Run): string {
-  if (step.status === 'pending') return 'Not finished: the run stopped before it started.';
-  if (step.status === 'failed' && step.error !== null) {
-    return `Not finished: it stopped because ${failureReason(step.error.code)}.`;
-  }
-  return (step.status === 'cancelled' ? STOPPED_BY[run.status] : undefined) ?? RUN_STOPPED;
-}
+/** Why a deliverable never came, by its step's status (Strategy + Registry). */
+const UNFINISHED_BY: Partial<Record<RunStepStatus, SlotRule>> = {
+  pending: () => 'Not finished: the run stopped before it started.',
+  failed: (step) =>
+    step.error === null
+      ? RUN_STOPPED
+      : `Not finished: it stopped because ${failureReason(step.error.code)}.`,
+  cancelled: (_step, run) => STOPPED_BY[run.status] ?? RUN_STOPPED,
+};
 
-type SlotRule = (step: RunStep, run: Run) => string;
+function unfinished(step: RunStep, run: Run): string {
+  return UNFINISHED_BY[step.status]?.(step, run) ?? RUN_STOPPED;
+}
 
 /** A slot's words by the deliverable's state (Strategy + Registry, AGENTS.md §7). */
 const SLOT_WORDS: Record<Exclude<DeliverableState, 'ready'>, SlotRule> = {
-  queued: () => 'Not started yet',
+  queued: () => NOT_STARTED,
   waiting: startsWhen,
   writing: () => 'Being written',
   revising: (step, run) => `Being revised · ${roundWords(step, run)}`,
-  needsOk: () => 'Waiting for your OK',
+  needsOk: () => NEEDS_OK,
   notFinished: unfinished,
   skipped: (step, run) => `Not made: its condition was not met.${runsOnlyIf(step, run)}`,
 };
@@ -94,7 +102,7 @@ const ROW_WORDS: Record<NodeStatus, RowRule> = {
   done: (step, _run, now) => withTime('Done', step, now),
   running: (step, run, now) =>
     withTime(step.rounds > 1 ? `Working on ${roundWords(step, run)}` : 'Working', step, now),
-  waiting: (step, run) => (run.status === 'queued' ? 'Not started yet' : startsWhen(step, run)),
+  waiting: (step, run) => (run.status === 'queued' ? NOT_STARTED : startsWhen(step, run)),
   pending: () => 'Did not run.',
   failed: (step) =>
     step.error === null
@@ -109,7 +117,7 @@ const ROW_WORDS: Record<NodeStatus, RowRule> = {
  * a running step's time keeps ticking.
  */
 export function rowStatus(step: RunStep, run: Run, now: number = Date.now()): RowStatus {
-  if (asksForOk(step, run)) return { icon: 'needsOk', words: 'Waiting for your OK' };
+  if (asksForOk(step, run)) return { icon: 'needsOk', words: NEEDS_OK };
   const status = liveNodeStatus(step, isActive(run.status));
   return { icon: status, words: ROW_WORDS[status](step, run, now) };
 }

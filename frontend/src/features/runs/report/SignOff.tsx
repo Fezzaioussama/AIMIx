@@ -2,7 +2,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
 import type { Run } from '../../../core/api/types';
 import { RenderedMarkdown } from '../../../core/markdown/RenderedMarkdown';
-import { BLUR, DISTANCE, DURATION, EASE_SMOOTH_OUT } from '../../../core/ui/motionTokens';
+import {
+  BLUR,
+  DISTANCE,
+  DURATION,
+  EASE_SMOOTH_OUT,
+  FADE,
+  QUICK_EXIT,
+} from '../../../core/ui/motionTokens';
 import { ShinyText } from '../../../core/ui/reactbits/ShinyText';
 import { DisclosureButton, Foldable } from '../../pipelines/FoldablePanel';
 import { BottomHide } from './BottomHide';
@@ -29,14 +36,7 @@ const LANDING = {
     transition: { duration: DURATION.slow, ease: EASE_SMOOTH_OUT, delay: DURATION.quick },
     transitionEnd: { filter: 'none' },
   },
-  exit: { opacity: 0, transition: { duration: DURATION.quick, ease: 'easeInOut' } },
-} as const;
-
-/** Reduced motion keeps a 150ms fade each way, with no delay. */
-const FADING = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1, transition: { duration: DURATION.quick } },
-  exit: { opacity: 0, transition: { duration: DURATION.quick } },
+  exit: { opacity: 0, transition: QUICK_EXIT },
 } as const;
 
 /** The element ids of a run's sign-off toggle and its full check. */
@@ -141,7 +141,7 @@ export function SignOff({ run, reviewer, level, open, onToggle }: SignOffProps) 
           key={view.key}
           id={reportIds(run.id).signOff}
           className="mt-4 scroll-mt-[calc(var(--sticky-top,0px)+1rem)]"
-          {...(reduced ? FADING : LANDING)}
+          {...(reduced ? FADE : LANDING)}
         >
           <p className="flex items-start gap-2 text-sm">
             <tone.Icon aria-hidden="true" className={`mt-0.5 size-4 shrink-0 ${tone.icon}`} />

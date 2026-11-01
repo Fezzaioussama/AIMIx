@@ -19,3 +19,13 @@ export const BLUR = { small: 'blur(2px)', icon: 'blur(4px)', none: 'blur(0px)' }
 
 /** An icon swapping in its slot: a spring with no overshoot. */
 export const ICON_SPRING = { type: 'spring', duration: 0.3, bounce: 0 } as const;
+
+/** A close, or a text swap either way: quick, eased in and out. */
+export const QUICK_EXIT = { duration: DURATION.quick, ease: 'easeInOut' } as const;
+
+/** What reduced motion keeps of an enter or exit: a 150ms fade each way, nothing moves. */
+export const FADE = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: DURATION.quick } },
+  exit: { opacity: 0, transition: { duration: DURATION.quick } },
+} as const;

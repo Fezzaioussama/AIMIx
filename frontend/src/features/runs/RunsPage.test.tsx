@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from '../../core/api/endpoints';
+import { FOCUS_RING, TOUCH } from '../../core/ui/focus';
 import { RunsPage } from './RunsPage';
 import { json, makeRun, runStep } from './testData';
 import { summaryOf as summary } from './useRunHistory';
@@ -55,6 +56,17 @@ describe('RunsPage', () => {
       'aria-current',
       'page',
     );
+  });
+
+  it('rings its links under keyboard focus, the way back as large as a finger', async () => {
+    serveHistory();
+    renderAt(`/runs/${finished.id}`);
+
+    const back = await screen.findByRole('link', { name: '← All runs' });
+    const pipeline = await screen.findByRole('link', { name: 'Open the pipeline' });
+
+    for (const link of [back, pipeline]) expect(link).toHaveClass(...FOCUS_RING.split(' '));
+    expect(back).toHaveClass(...TOUCH.split(' '));
   });
 
   it('deletes a finished run only after a confirmation', async () => {

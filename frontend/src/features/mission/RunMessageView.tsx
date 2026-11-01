@@ -35,7 +35,11 @@ function runLine(run: Run): string {
   return RUN_LINES[run.status]?.(run) ?? `Run: ${RUN_STATUS_STYLES[run.status].label}.`;
 }
 
-/** A run started from the conversation: live while it is the mission's newest run. */
+/**
+ * A run started from the conversation: live while it is the mission's newest run. Its line
+ * changes in place without being spoken (the log only speaks what is added to it): the run
+ * report's announcer already says each change, and nothing is said twice.
+ */
 export function RunMessageView({ message, context }: ViewProps<'run'>) {
   const run = context.latestRun?.id === message.runId ? context.latestRun : null;
   if (run === null) {
@@ -50,7 +54,7 @@ export function RunMessageView({ message, context }: ViewProps<'run'>) {
   }
   return (
     <Bubble>
-      <div className="flex flex-wrap items-center gap-2">
+      <div aria-live="off" className="flex flex-wrap items-center gap-2">
         <RunStatusBadge status={run.status} />
         <span>{runLine(run)}</span>
       </div>

@@ -28,8 +28,11 @@ import { roundOf } from './reviewRounds';
 import { rowStatus, type RowIcon } from './stepCopy';
 import { TEXT_LINK } from './textStyles';
 
-/** What a row's agent made: a deliverable, the check of the work, or work for the others. */
-export type RowRole = 'deliverable' | 'reviewer' | 'work';
+/**
+ * What a row's agent made: a deliverable, the check of the work, or work for the others;
+ * `slot` for a deliverable not ready to read yet.
+ */
+export type RowRole = 'deliverable' | 'slot' | 'reviewer' | 'work';
 
 /** Each row status's icon, in the diagram's colours (needsOk: amber, like the slot). */
 const ROW_ICON: Record<RowIcon, { Icon: LucideIcon; className: string }> = {
@@ -112,7 +115,7 @@ function OwnOutput({ run, step, level }: ActionProps) {
         <BottomHide
           text={step.output}
           label="Hide what it wrote"
-          targetId={rowId}
+          targetId={toggleId}
           toggleId={toggleId}
           onClose={() => setOpen(false)}
         />
@@ -124,6 +127,7 @@ function OwnOutput({ run, step, level }: ActionProps) {
 /** The way from a row to its agent's text, by what the agent made (Strategy + Registry). */
 const ROW_ACTION: Record<RowRole, (props: ActionProps) => ReactNode> = {
   deliverable: ReadAbove,
+  slot: () => null,
   reviewer: ReadCheck,
   work: OwnOutput,
 };

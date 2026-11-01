@@ -86,11 +86,14 @@ export function OutcomeHeader(props: OutcomeHeaderProps) {
   const focusAfter = useFocusAfterAction(heading, control.busy, run.status);
   return (
     <header>
+      {/* Named by the current words: the old ones are still swapping out (M2) when Stop or
+          Resume moves the focus here, and must not be read as the outcome. */}
       <Heading
         level={level}
         id={reportIds(run.id).outcome}
         ref={heading}
         tabIndex={-1}
+        aria-label={words.heading}
         className={`rounded-sm text-xl font-semibold tracking-tight text-balance text-white sm:text-2xl ${FOCUS_RING}`}
       >
         <SwapText text={words.heading} />

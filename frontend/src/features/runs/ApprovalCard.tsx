@@ -21,6 +21,52 @@ interface ApprovalCardProps {
   onDecline?: () => void;
 }
 
+type AnswerProps = Pick<ApprovalCardProps, 'busy' | 'onApprove' | 'onDecline'>;
+
+/** Approve and Decline, the one pressed reading "Approving…" or "Declining…" meanwhile. */
+function Answers({ busy, onApprove, onDecline }: AnswerProps) {
+  const [choice, setChoice] = useState<Choice | null>(null);
+  if (!onApprove || !onDecline) {
+    return <p className="mt-3 text-xs text-slate-400">Answer it from the run in Runs.</p>;
+  }
+  const answer = (next: Choice, send: () => void) => {
+    setChoice(next);
+    send();
+  };
+  const pending = busy ? choice : null;
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => answer('approve', onApprove)}
+        disabled={busy}
+        className={RUN_BUTTON.resume}
+      >
+        {pending === 'approve' ? 'Approving…' : 'Approve'}
+      </button>
+      <button
+        type="button"
+        onClick={() => answer('decline', onDecline)}
+        disabled={busy}
+        className={RUN_BUTTON.stop}
+      >
+        {pending === 'decline' ? 'Declining…' : 'Decline'}
+      </button>
+    </div>
+  );
+}
+
+/** "27 min left · No answer counts as a decline.", ticking. */
+function TimeLeft({ expiresAt }: { expiresAt: string }) {
+  const now = useNow(true);
+  return (
+    <p className="mt-3 text-xs text-slate-400">
+      <span className="tabular-nums">{formatTimeLeft(Date.parse(expiresAt) - now)}</span> · No
+      answer counts as a decline.
+    </p>
+  );
+}
+
 /**
  * One tool call waiting for the run's owner: what it asks in plain words (a
  * built-in tool's request, or the tool's name), which step wants it, what it will
@@ -28,14 +74,7 @@ interface ApprovalCardProps {
  * once the time is up. No motion on purpose: PendingApprovals keeps the focus.
  */
 export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: ApprovalCardProps) {
-  const [choice, setChoice] = useState<Choice | null>(null);
-  const now = useNow(true);
   const headingId = `approval-${approval.id}`;
-  const answer = (next: Choice, send: () => void) => {
-    setChoice(next);
-    send();
-  };
-  const pending = busy ? choice : null;
   const plain = isPlainAsk(approval);
 
   return (
@@ -65,34 +104,8 @@ export function ApprovalCard({ approval, askedBy, busy, onApprove, onDecline }: 
           Long values are shortened here. The tool uses them in full.
         </p>
       )}
-      {onApprove && onDecline ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => answer('approve', onApprove)}
-            disabled={busy}
-            className={RUN_BUTTON.resume}
-          >
-            {pending === 'approve' ? 'Approving…' : 'Approve'}
-          </button>
-          <button
-            type="button"
-            onClick={() => answer('decline', onDecline)}
-            disabled={busy}
-            className={RUN_BUTTON.stop}
-          >
-            {pending === 'decline' ? 'Declining…' : 'Decline'}
-          </button>
-        </div>
-      ) : (
-        <p className="mt-3 text-xs text-slate-400">Answer it from the run in Runs.</p>
-      )}
-      <p className="mt-3 text-xs text-slate-400">
-        <span className="tabular-nums">
-          {formatTimeLeft(Date.parse(approval.expires_at) - now)}
-        </span>{' '}
-        · No answer counts as a decline.
-      </p>
+      <Answers busy={busy} onApprove={onApprove} onDecline={onDecline} />
+      <TimeLeft expiresAt={approval.expires_at} />
     </section>
   );
 }

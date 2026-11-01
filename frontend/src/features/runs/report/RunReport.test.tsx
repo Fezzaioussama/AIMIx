@@ -1,10 +1,12 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MotionGlobalConfig } from 'motion/react';
 import { describe, expect, it } from 'vitest';
 
 import type { Run } from '../../../core/api/types';
 import { AI_NOTICE } from '../../../core/ui/AiNotice';
 import { makeApproval, runStep } from '../testData';
+import { defined, ENDED, runOf } from './reportTestData';
 import {
   announcer,
   appendix,
@@ -133,7 +135,8 @@ describe('RunReport', () => {
       expect(within(article).getByText(/^by Writer/)).toBeInTheDocument();
     }
     const draft = screen.getByRole('article', { name: 'Draft' });
-    expect(within(draft).getByRole('heading', { level: 5, name: 'Heading' })).toBeInTheDocument();
+    // Its text starts at ##: that is its top level, just under the title (no h4 skipped).
+    expect(within(draft).getByRole('heading', { level: 4, name: 'Heading' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Stop|Resume/ })).not.toBeInTheDocument();
     expect(container.querySelector('[data-look]')).toHaveAttribute('data-look', 'complete');
 
@@ -160,7 +163,17 @@ describe('RunReport', () => {
     expect(outcome('2 deliverables ready', 2)).toBeInTheDocument();
     const draft = screen.getByRole('article', { name: 'Draft' });
     expect(within(draft).getByRole('heading', { level: 2, name: 'Draft' })).toBeInTheDocument();
-    expect(within(draft).getByRole('heading', { level: 4, name: 'Heading' })).toBeInTheDocument();
+    expect(within(draft).getByRole('heading', { level: 3, name: 'Heading' })).toBeInTheDocument();
+  });
+
+  it('offers no jump links for a single deliverable', () => {
+    const team = [defined(1, 1, 'Research'), defined(2, 2, 'Blog post', { is_output: true })];
+    renderReport(runOf(team, [['succeeded'], ['succeeded']], { status: 'succeeded', ...ENDED }));
+
+    expect(outcome('1 deliverable ready')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Deliverables in this result' }),
+    ).not.toBeInTheDocument();
   });
 
   it('explains a failure in plain words, keeps the service’s own, and offers Resume', async () => {
@@ -234,6 +247,24 @@ describe('RunReport', () => {
     poll(stopped({ status: 'cancelled', error: null }));
 
     expect(await screen.findByRole('heading', { name: 'You stopped the run' })).toHaveFocus();
+  });
+
+  it('names the focused heading by the new outcome while the old words still swap out', async () => {
+    MotionGlobalConfig.skipAnimations = false;
+    try {
+      const user = userEvent.setup();
+      const { poll } = renderReport(going);
+
+      await user.click(screen.getByRole('button', { name: 'Stop the run' }));
+      poll(stopped({ status: 'cancelled', error: null }));
+
+      const heading = screen.getByRole('heading', { level: 3, name: 'You stopped the run' });
+      expect(heading).toHaveFocus();
+      // The old words are still on their way out (M2), yet the heading already says the new.
+      expect(heading).toHaveTextContent('Your team is working');
+    } finally {
+      MotionGlobalConfig.skipAnimations = true;
+    }
   });
 
   it('leaves the focus alone when a poll changes the run by itself', async () => {

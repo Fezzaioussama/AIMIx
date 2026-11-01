@@ -8,18 +8,23 @@ import { Foldable, PanelToggle } from '../../pipelines/FoldablePanel';
 import { PipelineGraph } from '../../pipelines/PipelineGraph';
 import { groupByStage } from '../../pipelines/stages';
 import { isActive } from '../runStatus';
-import { inRunOrder, type ReportModel } from './reportModel';
+import { inRunOrder, reportIds, type ReportModel } from './reportModel';
 import { givenParts } from './runGiven';
 import { RunGiven } from './RunGiven';
 import { TimelineRow, type RowRole } from './TimelineRow';
 
 const SUBHEADING = 'text-sm font-semibold text-white';
 
-/** What each step made, as its row in the timeline links to it. */
+/**
+ * What each step made, as its row in the timeline links to it. A deliverable that is not a
+ * document yet (being revised, say) has nothing above to read, even with an older text.
+ */
 function roleOf(step: RunStep, model: ReportModel): RowRole {
   const order = step.step_order;
   if (model.reviewer?.step.step_order === order) return 'reviewer';
-  return model.deliverables.some((view) => view.step.step_order === order) ? 'deliverable' : 'work';
+  const view = model.deliverables.find((item) => item.step.step_order === order);
+  if (view === undefined) return 'work';
+  return view.state === 'ready' ? 'deliverable' : 'slot';
 }
 
 interface TimelineProps {
@@ -99,7 +104,7 @@ export function TeamWork({
   const parts = useMemo(() => givenParts(run), [run]);
   const stages = new Set(run.steps.map((step) => step.stage)).size;
   const sub = (level + 1) as HeadingLevel;
-  const id = `run-${run.id}-team`;
+  const id = reportIds(run.id).team;
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.02]">
       <PanelToggle

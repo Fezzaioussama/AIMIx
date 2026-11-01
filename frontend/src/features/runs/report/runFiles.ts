@@ -30,11 +30,15 @@ export function mayHaveSavedFiles(run: Run): boolean {
   );
 }
 
-/** The files modified while the run worked (until `now` while it still does), pictures first, then newest first. */
-export function savedDuringRun(files: WorkspaceFile[], run: Run, now: number): WorkspaceFile[] {
+/**
+ * The files modified while the run worked, pictures first, then newest first. The window
+ * stays open while the run works: the files' times are the server's, and the browser's
+ * clock may run behind it.
+ */
+export function savedDuringRun(files: WorkspaceFile[], run: Run): WorkspaceFile[] {
   if (run.started_at === null) return [];
   const from = Date.parse(run.started_at) - WINDOW_SLACK_MS;
-  const until = (run.finished_at === null ? now : Date.parse(run.finished_at)) + WINDOW_SLACK_MS;
+  const until = run.finished_at === null ? Infinity : Date.parse(run.finished_at) + WINDOW_SLACK_MS;
   return files
     .filter((file) => {
       const modified = Date.parse(file.modified_at);

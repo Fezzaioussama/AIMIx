@@ -283,16 +283,21 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* In a table, which scrolls instead, a link or code keeps its words whole ("Squoosh"). */
+.prose-document :is(td, th) :is(a, code) {
+  overflow-wrap: normal;
+}
+
 .prose-document a {
   text-underline-offset: 0.2em;
 }
 
-/* A focused link or table never hides under the sticky title row (WCAG 2.4.11). */
+/* A focused link, table or code block never hides under the sticky title row (WCAG 2.4.11). */
 .prose-document :is(a, [tabindex]) {
   scroll-margin-top: calc(var(--sticky-top, 0px) + 5rem);
 }
 
-.prose-document :is(a, .md-table-scroll):focus-visible {
+.prose-document :is(a, .md-table-scroll, pre):focus-visible {
   outline: 2px solid var(--color-sky-400);
   outline-offset: 2px;
 }

@@ -3,13 +3,25 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Run } from '../../core/api/types';
+import { WIDE_LAYOUT } from './missionPanes';
 import { renderMission } from './testRender';
-import { COMMON_ROUTES, SAVED, deferred, finishedRun, routeFetch, runningRun } from './testData';
+import {
+  COMMON_ROUTES,
+  GENERATED,
+  SAVED,
+  deferred,
+  finishedRun,
+  routeFetch,
+  runningRun,
+  storeAs,
+} from './testData';
 
 const HISTORY = 'GET /api/runs?limit=1&offset=0&pipeline_id=7';
 const THREE_PANES = 'grid-cols-[20rem_minmax(0,1fr)_22rem]';
 
 const log = () => screen.getByRole('log', { name: 'Conversation with AIMIx' });
+const composer = () =>
+  screen.getByRole('textbox', { name: /Describe your mission|Message AIMIx about your team/ });
 const panel = (pane: string) => document.getElementById(`mission-${pane}-panel`) as HTMLElement;
 const greeted = () => within(log()).findByText(/Here’s your “Competitor brief” team/);
 
@@ -35,6 +47,30 @@ function stubWideScreen() {
     addEventListener: () => {},
     removeEventListener: () => {},
   })) as unknown as typeof window.matchMedia;
+}
+
+/**
+ * A window whose width can cross the wide layout's breakpoint, as a zoom or a resize
+ * does; it matches no other media query.
+ */
+function stubResizableScreen(wide: boolean) {
+  const listeners = new Set<() => void>();
+  let isWide = wide;
+  window.matchMedia = ((query: string) => ({
+    get matches() {
+      return query === WIDE_LAYOUT && isWide;
+    },
+    media: query,
+    addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+  })) as unknown as typeof window.matchMedia;
+  return {
+    resize: (next: boolean) =>
+      act(() => {
+        isWide = next;
+        listeners.forEach((listener) => listener());
+      }),
+  };
 }
 
 /** Every class list an element of the page has had since this was called. */
@@ -167,6 +203,66 @@ describe('the mission layout on a wide screen', () => {
     );
     expect(panel('team')).toHaveClass('hidden');
     expect(screen.getByRole('textbox', { name: 'Message AIMIx about your team' })).toHaveFocus();
+  });
+
+  it('keeps the focus on the tab in front when the layout changes under it', async () => {
+    const window_ = stubResizableScreen(true);
+    missionWithRun(finishedRun());
+    renderMission('/mission/7');
+    const compact = await screen.findByRole('tab', { name: 'Results, run done' });
+    await waitFor(() => expect(compact).toHaveAttribute('aria-selected', 'true'));
+    act(() => compact.focus());
+
+    // Zoomed in past the breakpoint: the compact bar gives way to the full one.
+    await window_.resize(false);
+
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: 'Results, run done' })).toHaveFocus();
+
+    await window_.resize(true);
+
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByRole('tab', { name: 'Results, run done' })).toHaveFocus();
+  });
+
+  it('leaves the focus alone when the layout changes while it is elsewhere', async () => {
+    const window_ = stubResizableScreen(true);
+    missionWithRun(finishedRun());
+    renderMission('/mission/7');
+    await screen.findByRole('heading', { name: '1 deliverable ready', level: 3 });
+    const copy = screen.getByRole('button', { name: /^Copy / });
+    act(() => copy.focus());
+
+    await window_.resize(false);
+
+    expect(copy).toHaveFocus();
+  });
+
+  it('keeps the panes set out while a mission’s first save looks up its runs', async () => {
+    const user = userEvent.setup();
+    const listed = deferred<object>();
+    const started = deferred<object>();
+    const server = routeFetch({
+      ...COMMON_ROUTES,
+      'POST /api/pipelines/generate': GENERATED,
+      'POST /api/pipelines/': storeAs(7),
+      'POST /api/pipelines/7/runs': () => started.promise,
+      [HISTORY]: () => listed.promise,
+    });
+    renderMission();
+    await user.type(composer(), 'Compare my competitors{Enter}');
+    await within(log()).findByText(/Here’s the team I put together/);
+    await waitFor(() => expect(panel('team')).not.toHaveClass('hidden'));
+
+    await user.type(composer(), 'Run it please{Enter}');
+    await user.type(await within(log()).findByLabelText(/Your company/), 'Acme');
+    await user.click(within(log()).getByRole('button', { name: 'Run Pipeline' }));
+    // Saved: the mission has an id now, and its run history has not answered yet.
+    await waitFor(() => expect(server.to('POST', '/api/pipelines/7/runs')).toHaveLength(1));
+
+    expect(screen.queryByText('Loading your mission…')).not.toBeInTheDocument();
+    expect(panel('team')).not.toHaveClass('hidden');
+    expect(panel('results')).not.toHaveClass('hidden');
   });
 
   it('keeps the team in front once picked while the same run goes on', async () => {

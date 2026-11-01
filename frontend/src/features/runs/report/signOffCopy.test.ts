@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Run, RunStatus } from '../../../core/api/types';
 import { makeRun } from '../testData';
 import { reportModel, reviewerOf, type DeliverableView } from './reportModel';
-import { ENDED, flowRun, TEAM, teamRun, type StepState } from './reportTestData';
+import { defined, ENDED, flowRun, runOf, TEAM, teamRun, type StepState } from './reportTestData';
 import {
   bylineCheck,
   reviewerName,
@@ -262,6 +262,69 @@ describe('bylineCheck', () => {
     );
     expect(bylineOf(run, 2)).toEqual({ words: 'Approved by the reviewer', tone: 'approved' });
     expect(bylineOf(run, 4)).toBeNull();
+  });
+
+  it('has nothing to say for a deliverable in the reviewer’s own stage', () => {
+    const team = [
+      ...TEAM.slice(0, 3),
+      defined(4, 3, 'Final check', {
+        role: 'Orchestrator',
+        is_output: true,
+        review: { send_back_to_stage: 2, max_rounds: 2 },
+      }),
+      defined(5, 3, 'Summary', { is_output: true }),
+    ];
+    const run = runOf(
+      team,
+      [
+        ['succeeded'],
+        ['succeeded'],
+        ['succeeded'],
+        ['succeeded', { verdict: 'pass' }],
+        ['succeeded'],
+      ],
+      { status: 'succeeded', ...ENDED },
+    );
+    expect(bylineOf(run, 2)).toEqual({ words: 'Approved by the Orchestrator', tone: 'approved' });
+    expect(bylineOf(run, 5)).toBeNull();
+  });
+
+  it('has nothing to say for a deliverable the reviewer never reads (before its loop)', () => {
+    // The reviewer reads the stage just before its own and its loop's earlier deliverables
+    // (StepNode._work and loops._loop on the server), never a stage before the loop.
+    const team = [
+      defined(1, 1, 'Research brief', { is_output: true }),
+      defined(2, 2, 'Blog post', { is_output: true }),
+      defined(3, 3, 'Final check', {
+        role: 'Orchestrator',
+        review: { send_back_to_stage: 2, max_rounds: 2 },
+      }),
+    ];
+    const run = runOf(team, [['succeeded'], ['succeeded'], ['succeeded', { verdict: 'pass' }]], {
+      status: 'succeeded',
+      ...ENDED,
+    });
+    expect(bylineOf(run, 1)).toBeNull();
+    expect(bylineOf(run, 2)).toEqual({ words: 'Approved by the Orchestrator', tone: 'approved' });
+  });
+
+  it('credits the last reviewer only with the deliverables of its own loop', () => {
+    const team = [
+      defined(1, 1, 'Research brief', { is_output: true }),
+      defined(2, 2, 'First check', { review: { send_back_to_stage: 1, max_rounds: 1 } }),
+      defined(3, 3, 'Blog post', { is_output: true }),
+      defined(4, 4, 'Final check', {
+        role: 'Orchestrator',
+        review: { send_back_to_stage: 3, max_rounds: 1 },
+      }),
+    ];
+    const pass: StepState = ['succeeded', { verdict: 'pass' }];
+    const run = runOf(team, [['succeeded'], pass, ['succeeded'], pass], {
+      status: 'succeeded',
+      ...ENDED,
+    });
+    expect(bylineOf(run, 1)).toBeNull();
+    expect(bylineOf(run, 3)).toEqual({ words: 'Approved by the Orchestrator', tone: 'approved' });
   });
 
   it('has nothing to say without a reviewer', () => {

@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react';
 
 import type { Run, RunBudget } from '../../core/api/types';
+import { FOCUS_RING, TOUCH } from '../../core/ui/focus';
 import { RUN_BUTTON } from './runButtons';
 import {
   limitBudget,
@@ -18,8 +19,8 @@ interface ResumeControlProps {
   busy: boolean;
 }
 
-const FIELD =
-  'w-24 rounded-lg border border-white/15 bg-slate-950/60 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-sky-400/60 focus-visible:outline-2 focus-visible:outline-sky-400';
+/** The limit field: the sky ring under keyboard focus (no `outline-none`, which would hide it). */
+const FIELD = `w-24 rounded-lg border border-white/15 bg-slate-950/60 px-2 py-1.5 text-sm tabular-nums focus:border-sky-400/60 ${TOUCH} ${FOCUS_RING}`;
 
 /**
  * Resume a stopped run. One that stopped at its spending limit cannot continue

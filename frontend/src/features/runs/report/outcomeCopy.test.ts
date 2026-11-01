@@ -179,6 +179,17 @@ describe('OUTCOME_COPY', () => {
     });
   });
 
+  it('failed: names the failed step that has the error, not the first one cancelled with it', () => {
+    const run = failedRun('provider_timeout');
+    const [, draft, summary] = run.steps;
+    draft.error = null;
+    summary.error = { code: 'provider_timeout', detail: 'The agent timed out.' };
+
+    expect(words(run).sentence).toMatch(
+      /^Summary stopped because the AI service did not answer in time\./,
+    );
+  });
+
   it('failed with no failed step', () => {
     const run = makeRun({
       status: 'failed',

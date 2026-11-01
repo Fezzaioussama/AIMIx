@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 
 import type { Run } from '../../core/api/types';
-import { stepLabel } from '../pipelines/stages';
 import { ApprovalCard } from './ApprovalCard';
+import { askedBy } from './approvalFormat';
 
 interface PendingApprovalsProps {
   run: Run;
@@ -11,13 +11,6 @@ interface PendingApprovalsProps {
   onDecline?: (approvalId: number) => void;
   /** An answer is on its way. */
   busy?: boolean;
-}
-
-/** The step and its agent's role, e.g. "Draft email (Writer)", as the card says who asks. */
-export function askedBy(run: Run, stepOrder: number): string {
-  const step = run.definition.steps.find((item) => item.order === stepOrder);
-  const name = stepLabel({ order: stepOrder, title: step?.title ?? '' });
-  return step?.role.trim() ? `${name} (${step.role.trim()})` : name;
 }
 
 /**

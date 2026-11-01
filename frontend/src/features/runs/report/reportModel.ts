@@ -68,6 +68,12 @@ export interface ReportIds {
   deliverable: (order: number) => string;
   title: (order: number) => string;
   agent: (order: number) => string;
+  /** "What the service said": the raw error behind a failure. */
+  serviceSaid: string;
+  /** "How your team got there". */
+  team: string;
+  /** "Saved during this run". */
+  files: string;
 }
 
 export function reportIds(runId: number): ReportIds {
@@ -78,6 +84,9 @@ export function reportIds(runId: number): ReportIds {
     deliverable: (order) => `${base}-deliverable-${order}`,
     title: (order) => `${base}-deliverable-${order}-title`,
     agent: (order) => `${base}-agent-${order}`,
+    serviceSaid: `${base}-service-said`,
+    team: `${base}-team`,
+    files: `${base}-files`,
   };
 }
 

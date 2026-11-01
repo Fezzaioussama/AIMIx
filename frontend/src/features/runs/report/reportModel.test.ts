@@ -102,6 +102,13 @@ describe('deliverablesOf and reviewerOf', () => {
     expect(reviewerOf(run)?.definition.role).toBe('Orchestrator');
   });
 
+  it('leaves a reviewer that is an output out, beside the other outputs', () => {
+    const definition = TEAM.map((step) => (step.order === 4 ? { ...step, is_output: true } : step));
+    const run = runOf(definition, [['succeeded'], ['succeeded'], ['succeeded'], ['running']]);
+    expect(ORDERS(deliverablesOf(run))).toEqual([2, 3]);
+    expect(reviewerOf(run)?.step.step_order).toBe(4);
+  });
+
   it('orders by stage, then by order within a stage', () => {
     const definition = [
       defined(1, 2, 'Late', { is_output: true }),
@@ -340,12 +347,24 @@ describe('reportModel', () => {
 describe('reportIds', () => {
   it('gives every part of a run’s report its own id', () => {
     const ids = reportIds(7);
-    expect([ids.outcome, ids.signOff, ids.deliverable(2), ids.title(2), ids.agent(3)]).toEqual([
+    expect([
+      ids.outcome,
+      ids.signOff,
+      ids.deliverable(2),
+      ids.title(2),
+      ids.agent(3),
+      ids.serviceSaid,
+      ids.team,
+      ids.files,
+    ]).toEqual([
       'run-7-outcome',
       'run-7-sign-off',
       'run-7-deliverable-2',
       'run-7-deliverable-2-title',
       'run-7-agent-3',
+      'run-7-service-said',
+      'run-7-team',
+      'run-7-files',
     ]);
   });
 });

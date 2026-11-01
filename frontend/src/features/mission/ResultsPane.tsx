@@ -1,7 +1,7 @@
 import { ListChecks } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
-import { DISTANCE, DURATION, EASE_SMOOTH_OUT } from '../../core/ui/motionTokens';
+import { DISTANCE, DURATION, EASE_SMOOTH_OUT, FADE, QUICK_EXIT } from '../../core/ui/motionTokens';
 import { RunReport } from '../runs/report/RunReport';
 import { PaneHeader } from './PaneHeader';
 import { PlannedDeliverables } from './PlannedDeliverables';
@@ -14,14 +14,7 @@ const CHANGED_NOTE = 'Your team has changed since this run. Run it again to use 
 const ARRIVING = {
   initial: { opacity: 0, y: DISTANCE.base },
   animate: { opacity: 1, y: 0, transition: { duration: DURATION.fast, ease: EASE_SMOOTH_OUT } },
-  exit: { opacity: 0, transition: { duration: DURATION.quick, ease: 'easeInOut' } },
-} as const;
-
-/** Reduced motion: a 150ms fade each way, nothing moves. */
-const FADING = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1, transition: { duration: DURATION.quick } },
-  exit: { opacity: 0, transition: { duration: DURATION.quick } },
+  exit: { opacity: 0, transition: QUICK_EXIT },
 } as const;
 
 /**
@@ -31,7 +24,7 @@ const FADING = {
 function ResultsBody({ mission }: { mission: Mission }) {
   const { followed, team } = mission;
   const { run } = followed;
-  const swap = useReducedMotion() ? FADING : ARRIVING;
+  const swap = useReducedMotion() ? FADE : ARRIVING;
   return (
     <AnimatePresence initial={false} mode="wait">
       <motion.div key={run?.id ?? 'planned'} {...swap}>

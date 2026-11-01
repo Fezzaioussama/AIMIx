@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 
 import type { Run } from '../../core/api/types';
 import { formatDateTime } from '../../core/time';
+import { FOCUS_RING } from '../../core/ui/focus';
 import { hasTriggerTag, RunTriggerTag } from './RunTriggerTag';
 
 /**
@@ -25,7 +26,7 @@ export function RunByline({ run }: { run: Run }) {
           <Link
             to="/pipeline"
             state={{ pipelineId: run.pipeline_id }}
-            className="text-sky-300 underline-offset-2 hover:underline"
+            className={`rounded-sm text-sky-300 underline-offset-2 hover:underline ${FOCUS_RING}`}
           >
             Open the pipeline
           </Link>

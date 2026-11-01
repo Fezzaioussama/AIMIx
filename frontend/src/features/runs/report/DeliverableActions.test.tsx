@@ -172,6 +172,34 @@ describe('DeliverableActions: Download', () => {
     expect(downloadButton()).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('closes when the keyboard leaves it, past the last format', async () => {
+    const user = userEvent.setup();
+    renderDraft();
+    await user.click(downloadButton());
+    await user.tab();
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /Markdown/ })).toHaveFocus();
+
+    await user.tab();
+
+    await waitFor(() => expect(screen.queryByRole('group')).not.toBeInTheDocument());
+    expect(downloadButton()).toHaveAttribute('aria-expanded', 'false');
+    expect(downloadButton()).not.toHaveFocus();
+  });
+
+  it('closes when the keyboard goes back past Download, leaving the focus on Copy', async () => {
+    const user = userEvent.setup();
+    renderDraft();
+    await user.click(downloadButton());
+
+    await user.tab({ shift: true });
+
+    await waitFor(() => expect(screen.queryByRole('group')).not.toBeInTheDocument());
+    expect(copyButton()).toHaveFocus();
+    expect(downloadButton()).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('closes on a press outside, the focus going back to Download', async () => {
     const user = userEvent.setup();
     renderDraft();

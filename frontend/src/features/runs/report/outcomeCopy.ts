@@ -7,7 +7,7 @@ import { elapsedMs, formatDuration } from '../../../core/time';
 import { countOf } from '../../../core/usageFormat';
 import { joinWords } from '../../pipelines/revision';
 import { roundLabel } from '../../pipelines/roundNotes';
-import { askedBy } from '../PendingApprovals';
+import { askedBy } from '../approvalFormat';
 import { BUDGET_ERROR_CODE } from '../runBudget';
 import { approvalAsk } from '../toolWords';
 import {

@@ -5,10 +5,11 @@
  */
 import type { PipelineStep, Run, RunStepStatus } from '../../../core/api/types';
 import { countOf } from '../../../core/usageFormat';
+import { capitalised } from '../approvalFormat';
 import { isActive } from '../runStatus';
 import { failureReason } from './outcomeCopy';
 import type { DeliverableView, ReviewerView } from './reportModel';
-import { sendsWorkBack } from './reviewRounds';
+import { loopRounds, sendsWorkBack } from './reviewRounds';
 
 /** How a check reads: its icon and colour. */
 export type SignOffTone = 'checking' | 'fixes' | 'approved' | 'concern' | 'notChecked';
@@ -39,11 +40,6 @@ const FIXES_ASKED: CheckToggle = {
   close: 'Hide what needs fixing',
 };
 
-/** `words` to start a sentence with. */
-function atStart(words: string): string {
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
 /** "the Orchestrator", by the reviewer's role; "the reviewer" when it has none. */
 export function reviewerName(definition: Pick<PipelineStep, 'role'>): string {
   const role = definition.role.trim();
@@ -52,7 +48,7 @@ export function reviewerName(definition: Pick<PipelineStep, 'role'>): string {
 
 /** "The Orchestrator", to start a sentence with. */
 export function reviewerNameAtStart(definition: Pick<PipelineStep, 'role'>): string {
-  return atStart(reviewerName(definition));
+  return capitalised(reviewerName(definition));
 }
 
 function maxRounds(reviewer: ReviewerView): number {
@@ -84,18 +80,18 @@ const VERDICT_LINES: Record<'pass' | 'revise' | 'none', (name: string, fixed: nu
   }),
   revise: (name, fixed) => ({
     tone: 'concern',
-    line: `${atStart(name)} still asked for fixes after ${countOf(fixed, 'round')}, so the last version was kept. Read the check before you use it.`,
+    line: `${capitalised(name)} still asked for fixes after ${countOf(fixed, 'round')}, so the last version was kept. Read the check before you use it.`,
   }),
   none: (name) => ({
     tone: 'concern',
-    line: `${atStart(name)} gave no clear verdict, so the work was kept as it is.`,
+    line: `${capitalised(name)} gave no clear verdict, so the work was kept as it is.`,
   }),
 };
 
 function answered(reviewer: ReviewerView, run: Run, name: string): Check {
   if (sendsWorkBack(reviewer.step, maxRounds(reviewer))) {
     const check = isActive(run.status)
-      ? { tone: 'fixes' as const, line: `${atStart(name)} asked for fixes.` }
+      ? { tone: 'fixes' as const, line: `${capitalised(name)} asked for fixes.` }
       : stoppedFirst(name);
     return { ...check, fixes: true };
   }
@@ -110,7 +106,7 @@ const CHECK_BY_STATUS: Record<RunStepStatus, CheckRule> = {
   pending: (_reviewer, run, name) => (isActive(run.status) ? null : stoppedFirst(name)),
   running: (reviewer, _run, name) => ({
     tone: 'checking',
-    line: `${atStart(name)} is checking the ${reviewer.step.rounds > 1 ? 'revised ' : ''}work…`,
+    line: `${capitalised(name)} is checking the ${reviewer.step.rounds > 1 ? 'revised ' : ''}work…`,
   }),
   succeeded: answered,
   failed: (reviewer, run, name) => ({
@@ -161,7 +157,7 @@ const VERDICT_BYLINES: Record<
     words: fixed === 0 ? `Approved by ${name}` : `Approved by ${name} after fixes`,
     tone: 'approved',
   }),
-  revise: (name) => ({ words: `${atStart(name)} still asked for fixes`, tone: 'concern' }),
+  revise: (name) => ({ words: `${capitalised(name)} still asked for fixes`, tone: 'concern' }),
   none: (name) => ({ words: `No clear verdict from ${name}`, tone: 'concern' }),
 };
 
@@ -174,7 +170,9 @@ function answeredByline({ name, reviewer, view, run }: BylineFacts): BylineCheck
       : STOPPED_CHECK;
   }
   if (sendsWorkBack(reviewer.step, maxRounds(reviewer))) {
-    return active ? { words: `${atStart(name)} asked for fixes`, tone: 'fixes' } : STOPPED_CHECK;
+    return active
+      ? { words: `${capitalised(name)} asked for fixes`, tone: 'fixes' }
+      : STOPPED_CHECK;
   }
   return VERDICT_BYLINES[reviewer.step.verdict ?? 'none'](name, reviewer.step.rounds - 1);
 }
@@ -191,17 +189,26 @@ const BYLINE_BY_STATUS: Record<RunStepStatus, (facts: BylineFacts) => BylineChec
 };
 
 /**
+ * Whether the reviewer reads the deliverable: the server hands it the stage just before its
+ * own and its loop's earlier deliverables (StepNode._work, loops._loop), never a stage
+ * before its loop, its own stage or a later one.
+ */
+function readsIt(reviewer: ReviewerView, view: DeliverableView, run: Run): boolean {
+  const loop = loopRounds(run).find((item) => item.reviewer === reviewer.step.step_order);
+  const stage = view.step.stage;
+  return loop !== undefined && stage >= loop.first && stage < reviewer.step.stage;
+}
+
+/**
  * The check state a ready deliverable's byline carries; null for a slot, without a reviewer,
- * and for a deliverable the reviewer does not see (one in its stage or after it).
+ * and for a deliverable the reviewer does not read.
  */
 export function bylineCheck(
   reviewer: ReviewerView | null,
   view: DeliverableView,
   run: Run,
 ): BylineCheck | null {
-  if (reviewer === null || view.state !== 'ready' || view.step.stage >= reviewer.step.stage) {
-    return null;
-  }
+  if (reviewer === null || view.state !== 'ready' || !readsIt(reviewer, view, run)) return null;
   const name = reviewerName(reviewer.definition);
   return BYLINE_BY_STATUS[reviewer.step.status]({ name, reviewer, view, run });
 }

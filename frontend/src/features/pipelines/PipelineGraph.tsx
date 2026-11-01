@@ -1,6 +1,8 @@
 import { motion } from 'motion/react';
+import type { ReactNode } from 'react';
 
 import type { PipelineInput, PipelineStep, RunStep } from '../../core/api/types';
+import { FOCUS_RING } from '../../core/ui/focus';
 import {
   ConditionBadge,
   GraphNodeCard,
@@ -71,7 +73,7 @@ export function PipelineGraph({
   };
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/50 bg-[radial-gradient(rgba(148,163,184,0.09)_1px,transparent_1px)] bg-[size:18px_18px] p-6">
+    <GraphFrame readOnly={!onEditStep && !onAddParallel && !onAddAfter}>
       <p className="mb-8 text-xs text-slate-400">
         Each stage receives the previous stage’s result. Steps in one stage share its input and run
         in parallel. Mark steps as Output to keep their results.
@@ -109,6 +111,21 @@ export function PipelineGraph({
         conditions={nodes.some((node) => node.condition !== null)}
         reviews={loops.length > 0}
       />
+    </GraphFrame>
+  );
+}
+
+/**
+ * The diagram's dotted ground, which scrolls sideways when the diagram is wider. A
+ * read-only diagram holds nothing focusable, so the scroller itself takes the keyboard.
+ */
+function GraphFrame({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  return (
+    <div
+      {...(readOnly && { tabIndex: 0, role: 'group', 'aria-label': 'Team diagram' })}
+      className={`overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/50 bg-[radial-gradient(rgba(148,163,184,0.09)_1px,transparent_1px)] bg-[size:18px_18px] p-6 ${readOnly ? FOCUS_RING : ''}`}
+    >
+      {children}
     </div>
   );
 }

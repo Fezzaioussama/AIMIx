@@ -138,6 +138,9 @@ describe('DeliverableList', () => {
     const row = screen.getByRole('heading', { name: 'Blog post' }).parentElement as HTMLElement;
     expect(row).toHaveClass('sticky', '[container-type:scroll-state]', 'before:bg-ground/90');
     expect(row).toHaveClass('[@container_not_scroll-state(stuck:top)]:before:opacity-0');
+    // On a phone the stuck ground reaches into the 16px gutters, so no darker box sits on
+    // the page's glow beside it.
+    expect(row).toHaveClass('max-sm:before:-inset-x-4');
   });
 
   it('counts no characters for a text of 300 words or more, and no cost before any use', () => {
@@ -188,9 +191,12 @@ describe('DeliverableList hand-over (M5)', () => {
 
     poll(teamRun([['succeeded'], ['succeeded'], ['succeeded', { output }], ['pending']]));
 
-    // The slot leaves through a 2px blur while the document arrives in its place.
-    await waitFor(() => expect(slot.style.filter).toMatch(/blur/));
-    expect(Number(slot.style.opacity)).toBeLessThan(1);
+    // The slot leaves through a 2px blur while the document arrives in its place. Both
+    // are waited for: on a busy machine the first frame may show the blur at full opacity.
+    await waitFor(() => {
+      expect(slot.style.filter).toMatch(/blur/);
+      expect(Number(slot.style.opacity)).toBeLessThan(1);
+    });
     return arrivingBeside(slot, 'LinkedIn post');
   }
 

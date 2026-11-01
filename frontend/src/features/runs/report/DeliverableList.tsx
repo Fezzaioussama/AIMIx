@@ -2,7 +2,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 
 import type { Run } from '../../../core/api/types';
 import { AiNotice } from '../../../core/ui/AiNotice';
-import { BLUR, DISTANCE, DURATION, EASE_SMOOTH_OUT } from '../../../core/ui/motionTokens';
+import {
+  BLUR,
+  DISTANCE,
+  DURATION,
+  EASE_SMOOTH_OUT,
+  FADE,
+  QUICK_EXIT,
+} from '../../../core/ui/motionTokens';
 import { DeliverableDoc } from './DeliverableDoc';
 import { DeliverableSlot } from './DeliverableSlot';
 import type { DeliverableView, ReportModel } from './reportModel';
@@ -10,8 +17,6 @@ import { bylineCheck } from './signOffCopy';
 
 /** Longer than this, a document arriving skips the blur: blurring a long page is costly. */
 const BLUR_MAX_CHARS = 1500;
-
-const QUICK_EXIT = { duration: DURATION.quick, ease: 'easeInOut' } as const;
 
 /**
  * M5, the hand-over: the document rises 8px into place over 400ms (out of a 2px blur when
@@ -39,13 +44,6 @@ const SLOT_MOTION = {
   exit: { opacity: 0, filter: BLUR.small, transition: QUICK_EXIT },
 };
 
-/** Reduced motion: a 150ms fade each way, nothing moves or blurs. */
-const FADING = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1, transition: { duration: DURATION.quick } },
-  exit: { opacity: 0, transition: { duration: DURATION.quick } },
-};
-
 interface DeliverableListProps {
   run: Run;
   model: ReportModel;
@@ -62,7 +60,7 @@ function Deliverable({
   const reduced = useReducedMotion();
   const ready = view.state === 'ready';
   const short = view.step.output.length <= BLUR_MAX_CHARS;
-  const look = reduced ? FADING : ready ? documentArrives(short) : SLOT_MOTION;
+  const look = reduced ? FADE : ready ? documentArrives(short) : SLOT_MOTION;
   return (
     <div className="relative">
       <AnimatePresence initial={false} mode="popLayout">

@@ -197,9 +197,17 @@ describe('renderDocument', () => {
     expect(levels(asDocument('# A\n\n## B\n\n### C', 2))).toEqual(['h2:1', 'h3:2', 'h4:3']);
   });
 
+  it('starts a text that opens at ## at the base level too, so no level is skipped', () => {
+    expect(levels(asDocument('## Final check\n\n### Notes\n\n## Verdict', 4))).toEqual([
+      'h4:2',
+      'h5:3',
+      'h4:2',
+    ]);
+  });
+
   it('never goes deeper than h6', () => {
     expect(levels(asDocument('## B\n\n### C\n\n#### D\n\n###### F', 5))).toEqual([
-      'h6:2',
+      'h5:2',
       'h6:3',
       'h6:4',
       'h6:6',
@@ -236,6 +244,26 @@ describe('renderDocument', () => {
     const marked = [...shown.querySelectorAll('td[data-num]')].map((cell) => cell.textContent);
     expect(marked).toEqual(['1,900', '4.6', '-12 %', '$1.00']);
     expect(shown.querySelectorAll('th[data-num]')).toHaveLength(0);
+  });
+
+  it('marks a number with its unit or currency code as a number too', () => {
+    const shown = asDocument(
+      '| Load | Wait | Size | Walk | Price | Note |\n|--|--|--|--|--|--|\n' +
+        '| 3.9 s | 310 ms | 4.6 MB | 350 m | EUR 2.40 | 2 days |',
+    );
+
+    const marked = [...shown.querySelectorAll('td[data-num]')].map((cell) => cell.textContent);
+    expect(marked).toEqual(['3.9 s', '310 ms', '4.6 MB', '350 m', 'EUR 2.40']);
+  });
+
+  it('puts each code block in a focusable box, so a wide one can be scrolled by keyboard', () => {
+    const shown = asDocument('```html\n<link rel="preload" href="/hero.avif">\n```\n\ntext');
+
+    const code = shown.querySelector('pre');
+    expect(code).toHaveAttribute('tabindex', '0');
+    expect(code).toHaveAttribute('role', 'group');
+    expect(code).toHaveAttribute('aria-label', 'Code');
+    expect(code?.querySelector('code')).toHaveTextContent('<link rel="preload" href="/hero.avif">');
   });
 
   it('lets no model claim the scroller’s class or the document’s marks', () => {

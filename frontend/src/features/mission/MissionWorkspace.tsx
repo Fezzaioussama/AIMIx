@@ -1,4 +1,11 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type ReactNode,
+} from 'react';
 
 import type { PipelineStep } from '../../core/api/types';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
@@ -6,7 +13,15 @@ import { useModels } from '../../core/hooks/useModels';
 import { BusyNotice } from '../../core/ui/BusyNotice';
 import { FULL_SCREEN_HEIGHT } from '../../core/ui/screen';
 import { ConversationPane } from './ConversationPane';
-import { GRID, MAIN_PANES, mainPane, panePlace, paneIds, type PaneId } from './missionPanes';
+import {
+  GRID,
+  MAIN_PANES,
+  mainPane,
+  panePlace,
+  paneIds,
+  type Layout,
+  type PaneId,
+} from './missionPanes';
 import { restoreMission } from './missionStorage';
 import { MissionTabs } from './MissionTabs';
 import { ResultsPane } from './ResultsPane';
@@ -148,6 +163,27 @@ function PaneGrid({ mission, panes, shape, onStartOver }: PaneGridProps) {
   );
 }
 
+/**
+ * A change of layout (a zoom or a resize across the breakpoint) swaps one tab bar for the
+ * other, and the focused tab goes with it. The focus moves to the same pane's tab in the
+ * new bar, but only if it was on a tab and the swap dropped it. Returns the focus listener
+ * for the workspace.
+ */
+function useTabFocusAcrossLayouts(layout: Layout, active: PaneId) {
+  const onTab = useRef(false);
+  const shown = useRef(layout);
+  useLayoutEffect(() => {
+    const swapped = shown.current !== layout;
+    shown.current = layout;
+    if (!swapped || !onTab.current || document.activeElement !== document.body) return;
+    const pane = layout === 'twoUp' ? mainPane(active) : active;
+    document.getElementById(paneIds(pane).tab)?.focus();
+  }, [layout, active]);
+  return (event: FocusEvent) => {
+    onTab.current = event.target.getAttribute('role') === 'tab';
+  };
+}
+
 interface MissionWorkspaceProps {
   /** The mission the address names; undefined for a new one. */
   routeId: number | undefined;
@@ -165,13 +201,17 @@ export function MissionWorkspace({ routeId, onStartOver }: MissionWorkspaceProps
   const mission = useMission(routeId, seed);
   const panes = usePanes();
   const shape = useMissionLayout(mission, panes);
+  const noteFocus = useTabFocusAcrossLayouts(shape.layout, panes.active);
 
   // The screen is exactly as tall as the window: each pane scrolls inside itself, and
   // nothing may make the page scroll. Hidden text (`sr-only` is absolutely positioned)
   // is contained by the scrolling areas, decoration is clipped by the panes, and the
   // root clips what is left.
   return (
-    <div className={`flex min-h-0 flex-col overflow-clip text-slate-50 ${FULL_SCREEN_HEIGHT}`}>
+    <div
+      onFocus={noteFocus}
+      className={`flex min-h-0 flex-col overflow-clip text-slate-50 ${FULL_SCREEN_HEIGHT}`}
+    >
       <h1 className="sr-only">Missions</h1>
       {shape.layout === 'tabs' && (
         <MissionTabs
