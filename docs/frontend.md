@@ -392,8 +392,8 @@ server would need a table and endpoints; that is not part of this version.
   the session. `ChatPage` renders the header, a soft `Aurora`, the transcript and the
   `ChatComposer`; `ChatMessages` animates each bubble in (AI messages via
   `renderMarkdown`), with typing dots until a reply has text or a tool. A finished
-  write links to what it made (`ACTION_PATHS`: a mission, a run, Schedules), so the
-  chat builds and runs everything; a fresh conversation offers starter prompts.
+  write shows what it made (`ToolActivity`'s `ACTION_VIEWS`: a link, or a `WebhookCard`
+  whose link `useWebhookLink` reads, never stored); a fresh chat offers starters.
 
 ### `features/pipelines`
 
@@ -492,7 +492,7 @@ builds on the diagram pieces of `features/pipelines` (`PipelineRunView`,
 | `RunStatusBadge.tsx` | A run status as a pill; `RUN_STATUS_STYLES` holds the words (Queued, Running, Waiting for you, Done, Failed, Stopped, Interrupted) and colours; "Waiting for you" is the one amber, pulsing pill of an active run |
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger) |
 | `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount` (succeeded or skipped), and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen, conditions and review loops included |
-| `RunTriggerTag.tsx` | A small clock and "Scheduled" for a run a schedule started (`trigger === 'schedule'`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
+| `RunTriggerTag.tsx` | A small icon and "Scheduled" or "From a webhook" for a run a schedule or another app started (`TRIGGER_TAGS`, `hasTriggerTag`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
 | `RunByline.tsx` | The line under a run's title in `RunDetail`: "Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a scheduled run, the link only while the pipeline exists) |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail shows the run's inputs and the live run; Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 

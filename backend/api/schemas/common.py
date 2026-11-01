@@ -49,6 +49,11 @@ def _assume_utc(value: datetime) -> datetime:
 UtcDateTime = Annotated[datetime, AfterValidator(_assume_utc)]
 
 
+def none_if_empty(value: object) -> object:
+    """A stored "" (nothing to report) sent as null."""
+    return value or None
+
+
 def ensure_member(kind: str, value: str, allowed: list[str]) -> str:
     """Return ``value`` if it is one of ``allowed``, else raise naming the options."""
     if value not in allowed:

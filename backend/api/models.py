@@ -44,6 +44,8 @@ TOOL_NAME_MAX_LENGTH = 64
 TOOL_SOURCE_MAX_LENGTH = 64
 #: Long enough for any IANA time zone name ("America/Argentina/ComodRivadavia").
 TIMEZONE_MAX_LENGTH = 64
+#: A SHA-256 digest in hex, how a webhook's secret token is looked up.
+TOKEN_HASH_LENGTH = 64
 
 
 def _utcnow() -> datetime:
@@ -263,11 +265,13 @@ class ApprovalStatus(str, Enum):
 
 class RunTrigger(str, Enum):
     """What started a run: its owner (the builder, the Runs screen or the API),
-    one of their schedules, or the chat agent's run_pipeline tool."""
+    one of their schedules, the chat agent's run_pipeline tool, or another app
+    calling the pipeline's webhook."""
 
     MANUAL = "manual"
     SCHEDULE = "schedule"
     CHAT = "chat"
+    WEBHOOK = "webhook"
 
 
 def _status_type(statuses: type[Enum]) -> SQLEnum:
@@ -457,6 +461,32 @@ class Schedule(Base):
     max_tokens: Mapped[int | None]
     enabled: Mapped[bool] = mapped_column(default=True)
     next_run_at: Mapped[datetime | None] = mapped_column(index=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    pipeline: Mapped[Pipeline] = relationship()
+
+
+class Webhook(Base):
+    """A secret link another app calls to start a run of one of its owner's pipelines.
+
+    Its token is kept twice: ``token_hash`` (SHA-256) finds the webhook when it is
+    called, and ``token_encrypted`` (the server's secret box) lets its owner read the
+    link again. One per pipeline; deleting the pipeline deletes it. ``last_error``
+    says why its latest call started no run; "" means it started one.
+    """
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    pipeline_id: Mapped[int] = mapped_column(
+        ForeignKey("pipelines.id", ondelete="CASCADE"), unique=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(TOKEN_HASH_LENGTH), unique=True)
+    token_encrypted: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    last_called_at: Mapped[datetime | None]
     last_error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 

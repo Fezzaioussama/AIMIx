@@ -167,7 +167,7 @@ export interface RunApproval {
 }
 
 /** What started a run: its owner (by hand or through the API), a schedule, or the chat agent. */
-export type RunTrigger = 'manual' | 'schedule' | 'chat';
+export type RunTrigger = 'manual' | 'schedule' | 'chat' | 'webhook';
 
 /** A run in the history list (GET /api/runs): no inputs, outputs or steps. */
 export interface RunSummary extends SpendingLimits {

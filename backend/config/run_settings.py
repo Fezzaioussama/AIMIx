@@ -50,3 +50,11 @@ class RunSettings(BaseModel):
     # this late.
     scheduler_tick_seconds: float = Field(30.0, gt=0, validation_alias="SCHEDULER_TICK_SECONDS")
     schedules_max_per_user: int = Field(20, ge=0, validation_alias="SCHEDULES_MAX_PER_USER")
+    # --- Webhooks (api/services/webhooks) ----------------------------------------
+    # How many runs one webhook may start per window; a call past it is a 429.
+    webhook_rate_limit_requests: int = Field(
+        60, ge=1, validation_alias="WEBHOOK_RATE_LIMIT_REQUESTS"
+    )
+    webhook_rate_limit_window_seconds: int = Field(
+        3600, ge=1, validation_alias="WEBHOOK_RATE_LIMIT_WINDOW_SECONDS"
+    )

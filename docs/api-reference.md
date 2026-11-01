@@ -28,7 +28,8 @@ an unexpected failure). A validation error's `detail` lists each problem as
 `/runs/<id>/resume`, `/schedules/<id>/run` and `/templates/<slug>/use` each allow
 `USER_RATE_LIMIT_REQUESTS` (30) requests per `USER_RATE_LIMIT_WINDOW_SECONDS` (60)
 per account (ids in the path share one counter); past it, `429 throttled` with
-`Retry-After`.
+`Retry-After`. The public `POST /hooks/<token>` is limited per webhook instead
+([Webhooks](#webhooks)).
 
 ---
 
@@ -472,8 +473,9 @@ out. The events are:
 
 `action` is present when the tool created or changed something the chat can
 link to: `kind` is `pipeline` (open it at `/mission/<id>`), `schedule` (open
-Schedules) or `run` (open it at `/runs/<id>`; its subtitle says where it is, such
-as "Finished" or "Waiting for your OK"). `detail` carries a short human-readable
+Schedules), `run` (open it at `/runs/<id>`; its subtitle says where it is, such
+as "Finished" or "Waiting for your OK") or `webhook` (the screen shows the link
+from `GET /webhooks/<id>`; see [Webhooks](#webhooks)). `detail` carries a short human-readable
 result or failure.
 
 The assistant is told who it is and how to work with people who are not
@@ -509,7 +511,8 @@ user: `list_pipelines()`,
 `inspect_pipeline(pipeline_id)`, `list_models()`, `list_tools()`,
 `design_workflow(description)`, `change_workflow(pipeline_id, change)`,
 `list_runs`, `get_run`, `stop_run`, `resume_run`, `list_templates`,
-`use_template`, `show_settings`, `set_default_model`,
+`use_template`, `show_settings`, `set_default_model`, `create_webhook`,
+`list_webhooks`, `set_webhook`, `renew_webhook_link`,
 `create_pipeline(name, steps, inputs)`,
 `update_pipeline(pipeline_id, name?, steps?, inputs?)`,
 `run_pipeline(pipeline_id, input_text, inputs)`, `list_schedules(pipeline_id?)`,
@@ -1096,9 +1099,10 @@ unless the run is `waiting`); see [Approvals](#approvals).
 
 `trigger` says what started the run: `manual` (you, from the app or the API),
 `schedule` (one of your [schedules](#schedules); `schedule_id` names it, and
-becomes `null` once the schedule is deleted while `trigger` stays) or `chat`
-(the chat agent's `run_pipeline` tool). Runs recorded before schedules existed
-read as `manual`.
+becomes `null` once the schedule is deleted while `trigger` stays), `chat`
+(the chat agent's `run_pipeline` tool) or `webhook` (another app called the
+pipeline's [webhook](#webhooks)). Runs recorded before schedules existed read as
+`manual`.
 
 `rounds` and `verdict` describe a [review loop](#conditions-and-review-loops).
 `rounds` is the round the step's row is in: 1, or more when a loop sent the work
@@ -1682,3 +1686,66 @@ pipelines.
 | 429 | `throttled` | Over the per-account rate limit of the spending routes (see the top of this page) |
 | 502 | `tool_unavailable` | A configured MCP server could not be reached while listing the caller's tools |
 | 503 | `provider_not_configured` | The caller's saved key can no longer be decrypted (as for `GET /models`) |
+
+---
+
+## Webhooks
+
+A webhook is a pipeline's secret link: another app (a form, Zapier, Make, your own
+code) calls it to start a run, **as the pipeline's owner**, on their key and under
+their limits. You make, switch and renew webhooks by chat (`create_webhook`,
+`set_webhook`, `renew_webhook_link`, `list_webhooks`); a pipeline has at most one,
+and deleting the pipeline deletes it. The token is 256 random bits, stored as a
+SHA-256 hash (to find the webhook) and sealed with the server's secret box (so
+its owner can read the link again); it never passes through the chat's model, and
+the access log prints `/api/hooks/<token>` in its place.
+
+### `POST /hooks/<token>` — public
+
+The token in the path is the credential. The body is any JSON or text (up to
+`REQUEST_MAX_JSON_BYTES`), read in this order:
+
+1. A JSON object with `input` or `inputs` is a run request, as
+   [`POST /pipelines/<id>/runs`](#post-pipelinesidruns) takes it.
+2. Otherwise a pipeline with named inputs takes the object's fields of those
+   names (other fields are ignored; a value that is not text is sent as JSON); one
+   with a single named input takes the whole body when no field has its name.
+3. Otherwise the body is the run's text: JSON laid out readably, anything else as
+   sent.
+
+```bash
+curl -X POST https://<your-server>/api/hooks/<token> \
+  -H 'Content-Type: application/json' -d '{"topic": "bees", "tone": "playful"}'
+```
+
+`202` → `{"run_id": 42, "status": "queued"}`. Its owner follows the run like any
+other (`trigger: "webhook"`).
+
+| Status | When |
+|---|---|
+| `404 not_found` | No webhook has this token, or its owner switched it off (the two look the same) |
+| `400 validation_error` | The body cannot become this pipeline's inputs (for example text for a pipeline with several named inputs), or a run would be given more than 500,000 characters |
+| `429 throttled` | The webhook started `WEBHOOK_RATE_LIMIT_REQUESTS` runs within `WEBHOOK_RATE_LIMIT_WINDOW_SECONDS` (60 per 3600 by default), with `Retry-After` |
+| `429 too_many_runs`, `503`, `507` | As for any run start: the owner's active runs, no key, a nearly full disk |
+
+A refused call is kept as the webhook's `last_error` (the chat's
+`list_webhooks` shows it); a call that starts a run clears it.
+
+### `GET /webhooks/<id>`
+
+`200` → one of your webhooks, **with its token**, for your own screen (the chat
+shows it as a card with a copy button):
+
+```json
+{
+  "id": 4,
+  "pipeline_id": 9,
+  "pipeline_name": "News digest",
+  "enabled": true,
+  "last_called_at": "2026-11-01T10:05:00Z",
+  "last_error": null,
+  "token": "uJ0x…"
+}
+```
+
+The link is `/api/hooks/<token>` on this server. Another account's webhook is `404`.

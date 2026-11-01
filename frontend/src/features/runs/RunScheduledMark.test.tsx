@@ -38,6 +38,11 @@ describe('the Scheduled mark on runs', () => {
     expect(screen.queryByText('Scheduled')).toBeNull();
   });
 
+  it('marks the runs another app started through a webhook', () => {
+    render(<RunTriggerTag trigger="webhook" />);
+    expect(screen.getByText('From a webhook')).toBeInTheDocument();
+  });
+
   it('shows in the history list beside the runs’ dates', () => {
     render(
       <MemoryRouter>

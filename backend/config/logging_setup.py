@@ -4,8 +4,24 @@ from __future__ import annotations
 
 import logging
 import logging.config
+import re
 
 QUIET_LIBRARIES = ("httpx", "mcp")
+#: A webhook's link is its credential (api/endpoints/webhooks.py, /api/hooks/<token>).
+WEBHOOK_TOKEN = re.compile(r"(/api/hooks/)[^/?#\s]+")
+
+
+class WebhookTokenFilter(logging.Filter):
+    """Keeps webhook tokens out of the access log: the path it prints is the link
+    another app calls, so the token is replaced before the line is written."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                WEBHOOK_TOKEN.sub(r"\1<token>", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
 
 
 def _at_least_info(level: str) -> str:
@@ -36,3 +52,8 @@ def configure_logging(level: str) -> None:
             },
         }
     )
+    # Added to uvicorn's own access logger (configuring it above would drop its
+    # handler), once however many apps this process creates.
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(item, WebhookTokenFilter) for item in access.filters):
+        access.addFilter(WebhookTokenFilter())

@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 ChatEventKind = Literal["text", "tool"]
 ToolStatus = Literal["started", "finished", "failed"]
-ActionKind = Literal["pipeline", "schedule", "run"]
+ActionKind = Literal["pipeline", "schedule", "run", "webhook"]
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,10 @@ TOOL_LABELS: dict[str, str] = {
     "use_template": "Starting from a ready-made workflow",
     "show_settings": "Reading your settings",
     "set_default_model": "Changing your default model",
+    "create_webhook": "Making a webhook link",
+    "list_webhooks": "Listing your webhooks",
+    "set_webhook": "Switching a webhook",
+    "renew_webhook_link": "Renewing a webhook link",
     "list_schedules": "Listing your schedules",
     "create_schedule": "Creating a schedule",
     "update_schedule": "Updating a schedule",
@@ -100,6 +104,9 @@ ACTION_KINDS: dict[str, ActionKind] = {
     "get_run": "run",
     "stop_run": "run",
     "resume_run": "run",
+    "create_webhook": "webhook",
+    "set_webhook": "webhook",
+    "renew_webhook_link": "webhook",
     "create_pipeline": "pipeline",
     "update_pipeline": "pipeline",
     "create_schedule": "schedule",
@@ -152,11 +159,17 @@ def _run_texts(payload: dict[str, Any]) -> tuple[str, str]:
     return _text(payload.get("workflow"), "Run"), RUN_STATUS_WORDS.get(status, "Open the run")
 
 
+def _webhook_texts(payload: dict[str, Any]) -> tuple[str, str]:
+    on = payload.get("on") is not False
+    return _text(payload.get("workflow"), "Webhook"), "Webhook on" if on else "Webhook off"
+
+
 #: The title and subtitle of each kind's link (§5 O: a new kind is one entry).
 ACTION_TEXTS: dict[ActionKind, Callable[[dict[str, Any]], tuple[str, str]]] = {
     "pipeline": _pipeline_texts,
     "schedule": _schedule_texts,
     "run": _run_texts,
+    "webhook": _webhook_texts,
 }
 
 

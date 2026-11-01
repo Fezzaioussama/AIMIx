@@ -1,12 +1,9 @@
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
 
-import type { ChatAction, ChatActionKind } from '../../core/api/chatTypes';
-import { missionPath, runPath } from '../../core/routes';
 import { renderMarkdown } from '../../core/markdown/renderMarkdown';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
-import { SCHEDULES_PATH } from '../schedules/paths';
-import type { ChatMessage, ChatToolRun } from './useChatStream';
+import { ToolActivity } from './ToolActivity';
+import type { ChatMessage } from './useChatStream';
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   hour: 'numeric',
@@ -38,50 +35,6 @@ const SUGGESTIONS = [
     prompt: 'Run my newest workflow every weekday at 9:00.',
   },
 ] as const;
-
-/** Where a finished tool's result opens in the app, by what it is. */
-const ACTION_PATHS: Record<ChatActionKind, (id: number) => string> = {
-  pipeline: missionPath,
-  schedule: () => SCHEDULES_PATH,
-  run: runPath,
-};
-
-function actionPath(action: ChatAction): string {
-  return ACTION_PATHS[action.kind](action.id);
-}
-
-const STATUS_DOT = {
-  started: 'bg-sky-400 animate-pulse',
-  finished: 'bg-emerald-400',
-  failed: 'bg-rose-400',
-} as const;
-
-/** One tool the reply used: what it did, and a link to what it made. */
-function ToolActivity({ run }: { run: ChatToolRun }) {
-  return (
-    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
-      <div className="flex items-center gap-2 text-xs">
-        <span
-          aria-hidden="true"
-          className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT[run.status]}`}
-        />
-        <span className={run.status === 'failed' ? 'text-rose-300' : 'text-slate-300'}>
-          {run.label}
-        </span>
-        {run.detail && <span className="text-slate-500">· {run.detail}</span>}
-      </div>
-      {run.action && (
-        <Link
-          to={actionPath(run.action)}
-          className="mt-1.5 flex items-center justify-between gap-3 rounded-md bg-sky-400/10 px-2.5 py-1.5 transition hover:bg-sky-400/20"
-        >
-          <span className="truncate text-sm font-medium text-sky-200">{run.action.title}</span>
-          <span className="shrink-0 text-xs text-sky-300/70">{run.action.subtitle} →</span>
-        </Link>
-      )}
-    </div>
-  );
-}
 
 function AssistantAvatar() {
   return (

@@ -398,6 +398,52 @@ sequenceDiagram
   `next_run_after` the scheduler uses, so what the form promises is what the
   server does, daylight saving included.
 
+### Webhooks
+
+A webhook lets another app start a run of one pipeline: it POSTs to the pipeline's
+secret link, `/api/hooks/<token>`, the only public route that starts a run. The
+person makes, switches and renews it by chat; the chat's tools return everything
+but the link, which the chat screen reads from `GET /api/webhooks/<id>` and shows
+with a copy button, so the token never reaches the model or its provider.
+
+```mermaid
+sequenceDiagram
+    participant X as Another app
+    participant E as endpoints/webhooks (public)
+    participant W as webhooks/calls.WebhookCalls
+    participant R as repositories/webhooks
+    participant V as services/runs.RunService
+    X->>E: POST /api/hooks/<token> (any JSON or text)
+    E->>W: trigger(token, body), in the threadpool
+    W->>R: by_token_hash(sha256(token))
+    alt unknown, or switched off
+        W-->>X: 404 not_found (the same for both)
+    else found
+        W->>W: per-webhook allowance (rate-limit table: 429 throttled past it)
+        W->>W: inputs.call_start(pipeline inputs, body) → RunStart(trigger=webhook)
+        W->>V: start(owner, pipeline, start, ProfileAgents(owner))
+        W->>R: record_call(now, "" or the refusal)
+        W-->>X: 202 {"run_id", "status": "queued"}
+    end
+```
+
+- **The owner's run.** The run starts as a schedule's does: the owner's LLM
+  profile and key (`ProfileAgents`), the server's default limits, the owner's
+  active-run cap, and `Run.trigger = webhook` in the history. A refusal (inputs the
+  pipeline does not take, no key, too many runs) is answered to the caller and kept
+  as the webhook's `last_error`.
+- **The token.** 256 random bits (`secrets.token_urlsafe(32)`). The table keeps
+  its SHA-256 (`token_hash`, unique: how a call finds the webhook) and the token
+  sealed by the server's `SecretBox` (so its owner can read the link again);
+  renewing replaces both at once, and the old link is then unknown. Uvicorn's
+  access log prints the path a call used, so `logging_setup.WebhookTokenFilter`
+  writes `/api/hooks/<token>` in its place; the service logs ids only.
+- **What a call sends** (`webhooks/inputs.call_start`, pure): a JSON object with
+  `input`/`inputs` is a run request; otherwise a pipeline's named inputs are read
+  from the object's fields of those names (one named input takes the whole body
+  when none matches); otherwise the body is the run's text. A body is bounded like
+  any JSON request (`REQUEST_MAX_JSON_BYTES`) and a run's inputs like any run's.
+
 ### Built-in tools
 
 `api/services/toolbox/` gives agents real work to do without any MCP server.

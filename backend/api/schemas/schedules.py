@@ -17,7 +17,13 @@ from pydantic import (
 )
 
 from api.models import TIMEZONE_MAX_LENGTH, RunStatus, ScheduleFrequency
-from api.schemas.common import RunInputValues, Trimmed, UtcDateTime, ensure_run_input_size
+from api.schemas.common import (
+    RunInputValues,
+    Trimmed,
+    UtcDateTime,
+    ensure_run_input_size,
+    none_if_empty,
+)
 from api.schemas.pipelines import PipelineInputField, RunRequest
 from api.schemas.usage import BudgetIn
 from api.services.schedules.timing import time_zone_error
@@ -32,10 +38,6 @@ def _known_zone(name: str) -> str:
 def _clock_text(value: object) -> object:
     """A stored ``time`` as "HH:MM"."""
     return value.strftime("%H:%M") if isinstance(value, time) else value
-
-
-def _none_if_empty(value: object) -> object:
-    return value or None
 
 
 #: "HH:MM" on a 24-hour clock, e.g. "09:00".
@@ -142,7 +144,7 @@ class ScheduleOut(BaseModel):
     next_run_at: UtcDateTime | None
     last_run: LastRunOut | None
     #: Why its latest time could not start a run; null when it did.
-    last_error: Annotated[str | None, BeforeValidator(_none_if_empty)]
+    last_error: Annotated[str | None, BeforeValidator(none_if_empty)]
     created_at: UtcDateTime
 
 

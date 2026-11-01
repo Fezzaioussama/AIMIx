@@ -5,10 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../core/api/client';
 import { streamChatReply } from '../../core/api/chat';
+import { getWebhook } from '../../core/api/webhooks';
 import type { ChatEvent } from '../../core/api/chatTypes';
 import { ChatPage } from './ChatPage';
 
 vi.mock('../../core/api/chat', () => ({ streamChatReply: vi.fn() }));
+vi.mock('../../core/api/webhooks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../core/api/webhooks')>()),
+  getWebhook: vi.fn(),
+}));
 
 async function* events(...items: ChatEvent[]) {
   yield* items;
@@ -99,6 +104,37 @@ describe('ChatPage', () => {
 
     const link = await screen.findByRole('link', { name: /News digest/ });
     expect(link).toHaveAttribute('href', '/runs/12');
+  });
+
+  it('shows a webhook it made as its secret link, read from the server', async () => {
+    vi.mocked(getWebhook).mockResolvedValue({
+      id: 4,
+      pipeline_id: 9,
+      pipeline_name: 'News digest',
+      enabled: true,
+      last_called_at: null,
+      last_error: null,
+      token: 'tok-456',
+    });
+    vi.mocked(streamChatReply).mockReturnValue(
+      events(
+        {
+          type: 'tool',
+          tool: 'create_webhook',
+          label: 'Making a webhook link',
+          status: 'finished',
+          action: { kind: 'webhook', id: 4, title: 'News digest', subtitle: 'Webhook on' },
+        },
+        { type: 'text', text: 'Here is its link.' },
+      ),
+    );
+    renderChat();
+
+    await say('Let my form start the digest');
+
+    const url = `${window.location.origin}/api/hooks/tok-456`;
+    expect(await screen.findByText(url)).toBeInTheDocument();
+    expect(vi.mocked(getWebhook).mock.calls[0]?.[0]).toBe(4);
   });
 
   it('sends the conversation so far, and the time zone, with a follow-up', async () => {

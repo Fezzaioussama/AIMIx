@@ -1,14 +1,26 @@
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, Webhook, type LucideIcon } from 'lucide-react';
 
 import type { RunTrigger } from '../../core/api/types';
 
-/** Marks a run that a schedule started, with a small clock; any other run shows nothing. */
+/** The runs worth marking: those nobody started from a screen. */
+const TRIGGER_TAGS: Partial<Record<RunTrigger, { icon: LucideIcon; label: string }>> = {
+  schedule: { icon: CalendarClock, label: 'Scheduled' },
+  webhook: { icon: Webhook, label: 'From a webhook' },
+};
+
+export function hasTriggerTag(trigger: RunTrigger): boolean {
+  return trigger in TRIGGER_TAGS;
+}
+
+/** Marks a run a schedule or a webhook started, with a small icon; any other run shows nothing. */
 export function RunTriggerTag({ trigger }: { trigger: RunTrigger }) {
-  if (trigger !== 'schedule') return null;
+  const tag = TRIGGER_TAGS[trigger];
+  if (!tag) return null;
+  const Icon = tag.icon;
   return (
     <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-sky-300">
-      <CalendarClock aria-hidden="true" className="size-3.5" />
-      Scheduled
+      <Icon aria-hidden="true" className="size-3.5" />
+      {tag.label}
     </span>
   );
 }

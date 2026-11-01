@@ -27,11 +27,12 @@ from api.endpoints import (
     templates,
     usage,
     voice,
+    webhooks,
 )
 
 API_PREFIX = "/api"
 
-PUBLIC_ROUTERS = (auth.public_router, health.router)
+PUBLIC_ROUTERS = (auth.public_router, health.router, webhooks.public_router)
 PROTECTED_ROUTERS = (
     auth.router,
     account.router,
@@ -49,6 +50,7 @@ PROTECTED_ROUTERS = (
     approvals.router,
     schedules.router,
     voice.router,
+    webhooks.router,
 )
 
 
