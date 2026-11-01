@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,23 +13,43 @@ from langchain_core.tools import BaseTool
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotFound, ValidationFailed
-from api.models import Pipeline, Run, RunStatus, User
+from api.models import Pipeline, Run, RunStatus, Schedule, User
 from api.repositories import pipelines, users
 from api.repositories.pipelines import PipelineChanges
 from api.security import hash_password
 from api.services import agent as agent_service
 from api.services import agent_tools
 from api.services.agent_tools import built_in_tools
+from api.services.catalog import default_model_id
 from api.services.multiagent.contracts import StepAgent
+from api.services.run_policy import run_policy
+from api.services.run_recorder import utcnow
 from api.services.runs import RunService, launcher
+from api.services.schedules.service import ScheduleAccess
 from tests.conftest import FakeProvider, InlineRunExecutor, use_pipeline_generator
 
 
 def chat_tools(app: FastAPI, user: User, agent: StepAgent) -> dict[str, BaseTool]:
     database = app.state.database
     service = RunService(database, InlineRunExecutor(), max_parallel_steps=2)
-    tools = built_in_tools(database, user, launcher(service, user, lambda: agent))
+    settings = agent_tools.get_settings()
+    # The tools open their own session for each call; this one only carries the
+    # account and the server's limits.
+    with database.session() as placeholder:
+        schedules = ScheduleAccess(
+            placeholder,
+            user,
+            settings.schedules_max_per_user,
+            utcnow(),
+            run_policy(settings).limits,
+        )
+    tools = built_in_tools(database, user, launcher(service, user, lambda: agent), schedules)
     return {item.name: item for item in tools}
+
+
+def chat_text(response: Any) -> str:
+    events = [json.loads(line) for line in response.text.splitlines()]
+    return "".join(event.get("text", "") for event in events)
 
 
 def one_step(name: str, prompt: str, **fields: Any) -> PipelineChanges:
@@ -170,9 +191,13 @@ def test_authenticated_chat_can_call_a_native_tool(
         return original(db_session, owner)
 
     monkeypatch.setattr(agent_tools.repository, "for_user", tracked_list)
-    response = auth_client.post("/api/chat", json={"prompt": "List my pipelines"})
+    response = auth_client.post(
+        "/api/chat",
+        json={"prompt": "List my pipelines"},
+        headers={"Accept": "application/x-ndjson"},
+    )
     assert response.status_code == 200
-    assert response.text == "Found your pipeline."
+    assert chat_text(response) == "Found your pipeline."
     assert seen_users == [user.id]
 
 
@@ -211,8 +236,91 @@ def test_chat_can_run_a_pipeline_through_the_graph(
     monkeypatch.setattr(FakeMessagesListChatModel, "bind_tools", lambda self, tools, **kw: self)
     monkeypatch.setattr(agent_service, "get_agent_model", lambda profile: model)
 
-    response = auth_client.post("/api/chat", json={"prompt": "Run my summary pipeline"})
+    response = auth_client.post(
+        "/api/chat",
+        json={"prompt": "Run my summary pipeline"},
+        headers={"Accept": "application/x-ndjson"},
+    )
 
     assert response.status_code == 200
-    assert response.text == "Pipeline complete."
+    assert chat_text(response) == "Pipeline complete."
     assert provider.calls == [("Summarise hello", "m")]
+
+
+def test_chat_tools_create_and_update_a_pipeline(
+    app: FastAPI, session: Session, user: User
+) -> None:
+    tools = chat_tools(app, user, FakeProvider())
+    created = tools["create_pipeline"].invoke(
+        {
+            "name": "Digest",
+            "steps": [{"prompt": "Summarise {input}", "model": default_model_id()}],
+        }
+    )
+    assert created["name"] == "Digest"
+    details = tools["inspect_pipeline"].invoke({"pipeline_id": created["id"]})
+    assert details["steps"][0]["prompt"] == "Summarise {input}"
+
+    renamed = tools["update_pipeline"].invoke(
+        {"pipeline_id": created["id"], "name": "Weekly digest"}
+    )
+    assert renamed["name"] == "Weekly digest"
+    assert session.get(Pipeline, created["id"]).name == "Weekly digest"
+
+
+def test_chat_tools_refuse_an_invalid_pipeline(app: FastAPI, user: User) -> None:
+    from langchain_core.tools import ToolException
+
+    tools = chat_tools(app, user, FakeProvider())
+    with pytest.raises(ToolException, match="at least one step"):
+        tools["create_pipeline"].invoke({"name": "Empty", "steps": []})
+
+
+def test_chat_tools_create_list_and_pause_a_schedule(
+    app: FastAPI, session: Session, user: User
+) -> None:
+    saved = pipelines.create_with_steps(session, user, one_step("Digest", "Summarise {input}"))
+    tools = chat_tools(app, user, FakeProvider())
+
+    created = tools["create_schedule"].invoke(
+        {
+            "pipeline_id": saved.id,
+            "frequency": "daily",
+            "time": "09:00",
+            "timezone": "Europe/Paris",
+            "input_text": "hello",
+        }
+    )
+    assert created["enabled"] is True
+    assert created["pipeline_name"] == "Digest"
+    assert [item["id"] for item in tools["list_schedules"].invoke({})] == [created["id"]]
+
+    paused = tools["update_schedule"].invoke({"schedule_id": created["id"], "enabled": False})
+    assert paused["enabled"] is False
+    assert paused["next_run_at"] is None
+
+
+def test_chat_tools_keep_named_inputs_when_only_the_text_changes(
+    app: FastAPI, session: Session, user: User
+) -> None:
+    topic = {"name": "topic", "label": "Topic", "description": "What to write about"}
+    saved = pipelines.create_with_steps(
+        session, user, one_step("Post", "Write about {topic}", inputs=[topic])
+    )
+    tools = chat_tools(app, user, FakeProvider())
+    created = tools["create_schedule"].invoke(
+        {
+            "pipeline_id": saved.id,
+            "frequency": "daily",
+            "time": "09:00",
+            "timezone": "Europe/Paris",
+            "inputs": {"topic": "bees"},
+        }
+    )
+
+    tools["update_schedule"].invoke({"schedule_id": created["id"], "input_text": ""})
+
+    session.expire_all()
+    stored = session.get(Schedule, created["id"])
+    assert stored is not None
+    assert stored.input_values == {"topic": "bees"}

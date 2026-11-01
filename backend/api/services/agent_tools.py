@@ -4,23 +4,34 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from langchain.tools import tool
 from langchain_core.tools import BaseTool, ToolException
+from sqlalchemy.orm import Session
 
 from api.db import Database
-from api.exceptions import ProviderNotConfigured, Throttled
+from api.exceptions import DomainError, ProviderNotConfigured, Throttled
 from api.models import Pipeline, User
 from api.repositories import pipelines as repository
+from api.repositories import schedules as schedule_repository
+from api.schemas.pipelines import PipelineIn, PipelinePatch
+from api.schemas.schedules import ScheduleIn, SchedulePatch
 from api.security import secret_box_for
 from api.services import llm_settings
+from api.services import pipelines as pipeline_service
+from api.services.catalog import known_model_ids
+from api.services.files.disk import disk_reserve
 from api.services.files.storage import user_workspace_dir
 from api.services.llm import get_image_generator, get_object_finder
 from api.services.multiagent.contracts import RunResult
 from api.services.rate_limits import RateLimitRequest, enforce
+from api.services.run_recorder import utcnow
 from api.services.runs import RunStart
+from api.services.schedules import requests as schedule_requests
+from api.services.schedules import service as schedule_service
+from api.services.schedules.service import ScheduleAccess, ScheduleView
 from api.services.toolbox.config import MetaTools, SandboxQuota, toolbox_config
 from api.services.toolbox.registry import toolbox_tools
 from config.settings import Settings, get_settings
@@ -131,8 +142,53 @@ def native_tools(database: Database, user: User, settings: Settings) -> list[Bas
     ]
 
 
-def built_in_tools(database: Database, user: User, launch: PipelineLauncher) -> list[BaseTool]:
-    """Bind pipeline functions to the authenticated user for one agent run."""
+def _pipeline_summary(pipeline: Pipeline) -> dict[str, Any]:
+    """The short pipeline shape a chat tool returns to the model."""
+    return {"id": pipeline.id, "name": pipeline.name, "step_count": len(pipeline.steps)}
+
+
+def _schedule_summary(view: ScheduleView) -> dict[str, Any]:
+    """The short schedule shape a chat tool returns to the model."""
+    return {
+        "id": view.id,
+        "pipeline_id": view.pipeline_id,
+        "pipeline_name": view.pipeline_name,
+        "frequency": view.frequency.value,
+        "time": view.at.strftime("%H:%M"),
+        "timezone": view.timezone,
+        "weekday": view.weekday,
+        "day_of_month": view.day_of_month,
+        "enabled": view.enabled,
+        "next_run_at": None if view.next_run_at is None else view.next_run_at.isoformat(),
+    }
+
+
+def _refused(cause: Exception) -> ToolException:
+    """A refused write reaches the agent as a tool error it can explain."""
+    return ToolException(str(cause))
+
+
+def _numbered(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Steps numbered by position unless they already say where they go."""
+    return [{"order": index, **step} for index, step in enumerate(steps, start=1)]
+
+
+def _session_user(session: Session, user: User) -> User:
+    """The same account in the tool's own session, so a write can attach it."""
+    owner = session.get(User, user.id)
+    if owner is None:
+        raise ToolException("Your account is no longer available.")
+    return owner
+
+
+def built_in_tools(
+    database: Database, user: User, launch: PipelineLauncher, schedules: ScheduleAccess
+) -> list[BaseTool]:
+    """Bind the chat's pipeline and schedule functions to the authenticated user.
+
+    Destructive actions (deleting a pipeline or a schedule) stay on their screens:
+    a chat message has nowhere to ask for the confirmation those need.
+    """
     native = native_tools(database, user, get_settings())
 
     @tool
@@ -144,4 +200,176 @@ def built_in_tools(database: Database, user: User, launch: PipelineLauncher) -> 
         inspect_pipeline), a value for each of them in inputs."""
         return asdict(launch(pipeline_id, RunStart(input_text, inputs or {})))
 
-    return [*native, run_pipeline]
+    @tool
+    def list_models() -> list[str]:
+        """List the model ids a pipeline step may name."""
+        return known_model_ids()
+
+    @tool
+    def create_pipeline(
+        name: str, steps: list[dict[str, Any]], inputs: list[dict[str, str]] | None = None
+    ) -> dict[str, Any]:
+        """Create and save a new AIMIx pipeline. Each step needs a prompt and a
+        model; its order defaults to its position, and it may also set stage,
+        title, role, allowed_tools, is_output and expected_output. Each input is
+        {name, label, description}."""
+        try:
+            body = PipelineIn.model_validate(
+                {"name": name, "steps": _numbered(steps), "inputs": inputs or []}
+            )
+            disk_reserve(get_settings()).ensure_room()
+            changes = pipeline_service.changes(
+                body.name,
+                [field.model_dump() for field in body.inputs],
+                [step.model_dump() for step in body.steps],
+            )
+            with database.session() as session:
+                owner = _session_user(session, user)
+                return _pipeline_summary(repository.create_with_steps(session, owner, changes))
+        except (ValueError, DomainError) as cause:
+            raise _refused(cause) from cause
+
+    @tool
+    def update_pipeline(
+        pipeline_id: int,
+        name: str | None = None,
+        steps: list[dict[str, Any]] | None = None,
+        inputs: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """Change one of your saved pipelines: rename it, replace its steps, and/or
+        redeclare its inputs. Send at least one of name, steps or inputs. A step
+        keeps an explicit order, else its position is used."""
+        sent = {"name": name, "steps": steps, "inputs": inputs}
+        data = {key: value for key, value in sent.items() if value is not None}
+        if not data:
+            raise ToolException("Send at least one of name, steps or inputs.")
+        try:
+            if steps is not None:
+                data["steps"] = _numbered(steps)
+            body = PipelinePatch.model_validate(data)
+            disk_reserve(get_settings()).ensure_room()
+            with database.session() as session:
+                pipeline = repository.get_owned(session, _session_user(session, user), pipeline_id)
+                changes = pipeline_service.changes(
+                    body.name,
+                    None if body.inputs is None else [field.model_dump() for field in body.inputs],
+                    None if body.steps is None else [step.model_dump() for step in body.steps],
+                    pipeline,
+                )
+                return _pipeline_summary(repository.replace_steps(session, pipeline, changes))
+        except (ValueError, DomainError) as cause:
+            raise _refused(cause) from cause
+
+    @tool
+    def list_schedules(pipeline_id: int | None = None) -> list[dict[str, Any]]:
+        """List your scheduled runs, optionally only those of one pipeline
+        (see list_pipelines), with when each runs and whether it is on."""
+        with database.session() as session:
+            access = replace(
+                schedules, session=session, user=_session_user(session, user), now=utcnow()
+            )
+            views = schedule_service.list_views(access, pipeline_id)
+            return [_schedule_summary(view) for view in views]
+
+    @tool
+    def create_schedule(
+        pipeline_id: int,
+        frequency: str,
+        time: str,
+        timezone: str,
+        weekday: int | None = None,
+        day_of_month: int | None = None,
+        input_text: str = "",
+        inputs: dict[str, str] | None = None,
+        enabled: bool = True,
+    ) -> dict[str, Any]:
+        """Schedule one of your saved pipelines. frequency is hourly, daily,
+        weekdays, weekly or monthly; time is "HH:MM" in an IANA timezone
+        ("Europe/Paris"). weekly takes a weekday (0 is Monday), monthly a
+        day_of_month. Give what each run is passed as input_text or inputs."""
+        try:
+            body = ScheduleIn.model_validate(
+                {
+                    "pipeline_id": pipeline_id,
+                    "frequency": frequency,
+                    "time": time,
+                    "timezone": timezone,
+                    "weekday": weekday,
+                    "day_of_month": day_of_month,
+                    "input": input_text,
+                    "inputs": inputs or {},
+                    "enabled": enabled,
+                }
+            )
+            with database.session() as session:
+                access = replace(
+                    schedules, session=session, user=_session_user(session, user), now=utcnow()
+                )
+                return _schedule_summary(
+                    schedule_service.create(access, schedule_requests.draft_of(body))
+                )
+        except (ValueError, DomainError) as cause:
+            raise _refused(cause) from cause
+
+    @tool
+    def update_schedule(
+        schedule_id: int,
+        frequency: str | None = None,
+        time: str | None = None,
+        timezone: str | None = None,
+        weekday: int | None = None,
+        day_of_month: int | None = None,
+        input_text: str | None = None,
+        inputs: dict[str, str] | None = None,
+        enabled: bool | None = None,
+    ) -> dict[str, Any]:
+        """Change one of your schedules: its timing, what each run is passed,
+        or whether it is on (enabled=false pauses it). Omitted fields keep
+        their value."""
+        sent: dict[str, Any] = {
+            "frequency": frequency,
+            "time": time,
+            "timezone": timezone,
+            "weekday": weekday,
+            "day_of_month": day_of_month,
+            "input": input_text,
+            "inputs": inputs,
+            "enabled": enabled,
+        }
+        data = {key: value for key, value in sent.items() if value is not None}
+        if not data:
+            raise ToolException("Send at least one field to change.")
+        try:
+            with database.session() as session:
+                owner = _session_user(session, user)
+                # input and inputs replace each other; keep the untouched one.
+                if (input_text is None) != (inputs is None):
+                    current = schedule_repository.get_owned(session, owner, schedule_id)
+                    if input_text is None:
+                        input_text = current.input_text
+                    if inputs is None:
+                        inputs = dict(current.input_values)
+                body = SchedulePatch.model_validate(
+                    {
+                        **{key: value for key, value in sent.items() if value is not None},
+                        "input": input_text,
+                        "inputs": inputs,
+                    }
+                )
+                access = replace(schedules, session=session, user=owner, now=utcnow())
+                return _schedule_summary(
+                    schedule_service.update(access, schedule_id, schedule_requests.edit_of(body))
+                )
+        except (ValueError, DomainError) as cause:
+            raise _refused(cause) from cause
+
+    return [
+        *native,
+        list_models,
+        run_pipeline,
+        create_pipeline,
+        update_pipeline,
+        list_schedules,
+        create_schedule,
+        update_schedule,
+    ]

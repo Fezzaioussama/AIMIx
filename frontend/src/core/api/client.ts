@@ -82,14 +82,17 @@ interface RequestOptions {
   timeoutMs?: number;
   /** Lets the caller cancel, e.g. when its component unmounts. */
   signal?: AbortSignal;
+  /** What the caller accepts, for endpoints that stream more than one format. */
+  accept?: string;
 }
 
 async function send(path: string, options: RequestOptions): Promise<Response> {
-  const { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS, signal } = options;
+  const { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS, signal, accept } = options;
   const isForm = body instanceof FormData;
-  const headers = authHeaders(
-    body === undefined || isForm ? undefined : { 'Content-Type': 'application/json' },
-  );
+  const extra: Record<string, string> = {};
+  if (body !== undefined && !isForm) extra['Content-Type'] = 'application/json';
+  if (accept) extra.Accept = accept;
+  const headers = authHeaders(extra);
   const timeout = AbortSignal.timeout(timeoutMs);
 
   try {
@@ -171,8 +174,15 @@ export async function* streamText(
   path: string,
   body: unknown,
   signal?: AbortSignal,
+  accept?: string,
 ): AsyncGenerator<string> {
-  const options = { method: 'POST' as const, body, signal, timeoutMs: GENERATION_TIMEOUT_MS };
+  const options = {
+    method: 'POST' as const,
+    body,
+    signal,
+    timeoutMs: GENERATION_TIMEOUT_MS,
+    accept,
+  };
   const response = await sendChecked(path, options);
   if (!response.body)
     throw new ApiError('Streaming is not supported by this browser.', 0, 'unsupported');

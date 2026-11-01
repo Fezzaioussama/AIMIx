@@ -17,39 +17,11 @@ from api.schemas.schedules import (
     SchedulePatch,
     SchedulePreviewOut,
     ScheduleTimingIn,
-    clock_time,
 )
-from api.services.runs import RunStart
-from api.services.schedules import service
-from api.services.schedules.timing import Timing
+from api.services.schedules import requests, service
 from api.throttling import user_rate_limit
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
-
-
-def _timing(body: ScheduleTimingIn) -> Timing:
-    return Timing(
-        frequency=body.frequency,
-        timezone=body.timezone,
-        at=clock_time(body.time),
-        weekday=body.weekday,
-        day_of_month=body.day_of_month,
-    )
-
-
-def _edit(body: SchedulePatch) -> service.ScheduleEdit:
-    timing = service.TimingEdit(
-        frequency=body.frequency,
-        at=None if body.time is None else clock_time(body.time),
-        weekday=body.weekday,
-        day_of_month=body.day_of_month,
-        timezone=body.timezone,
-    )
-    sent_inputs = body.input is not None or body.inputs is not None
-    start = RunStart(body.input or "", body.inputs or {}) if sent_inputs else None
-    return service.ScheduleEdit(
-        timing, start, body.enabled, body.budget if body.sends_budget else None
-    )
 
 
 @router.get("")
@@ -62,20 +34,18 @@ def list_schedules(
 
 @router.post("", status_code=201)
 def create_schedule(body: ScheduleIn, access: Schedules) -> ScheduleOut:
-    start = RunStart(body.input, body.inputs, body.budget)
-    draft = service.ScheduleDraft(body.pipeline_id, _timing(body), start, body.enabled)
-    return ScheduleOut.model_validate(service.create(access, draft))
+    return ScheduleOut.model_validate(service.create(access, requests.draft_of(body)))
 
 
 # Declared before the "/{schedule_id}" routes, so no id route can claim the path.
 @router.post("/preview")
 def preview_schedule(body: ScheduleTimingIn, now: Now) -> SchedulePreviewOut:
-    return SchedulePreviewOut(next_run_at=service.preview(_timing(body), now))
+    return SchedulePreviewOut(next_run_at=service.preview(requests.timing_of(body), now))
 
 
 @router.patch("/{schedule_id}")
 def update_schedule(schedule_id: int, body: SchedulePatch, access: Schedules) -> ScheduleOut:
-    return ScheduleOut.model_validate(service.update(access, schedule_id, _edit(body)))
+    return ScheduleOut.model_validate(service.update(access, schedule_id, requests.edit_of(body)))
 
 
 @router.delete("/{schedule_id}", status_code=204)

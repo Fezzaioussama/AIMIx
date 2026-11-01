@@ -10,13 +10,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from time import monotonic
+from typing import Any
+from uuid import UUID
 
 import anyio
 from langchain.agents import create_agent
+from langchain.agents.middleware import ToolCallRequest, wrap_tool_call
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import ToolException
 
 from api.db import Database
 from api.exceptions import BudgetExceeded
@@ -31,9 +36,17 @@ from api.services.agent_runtime import (
 from api.services.agent_tools import PipelineLauncher, built_in_tools
 from api.services.approvals.guard import guard_tools
 from api.services.approvals.policy import approval_policy_for
+from api.services.chat_events import (
+    ChatEvent,
+    text_event,
+    tool_failed,
+    tool_finished,
+    tool_started,
+)
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model, model_info
 from api.services.run_budget import RunBudget, limit_reached
+from api.services.schedules.service import ScheduleAccess
 from config.settings import get_settings
 from llm.usage import NO_USAGE, TokenUsage, UsageCallback, metered
 
@@ -72,24 +85,90 @@ def metered_chat_model(profile: LLMProfile, max_tokens: int | None) -> BaseChatM
     return metered(get_agent_model(profile), usage)
 
 
+@wrap_tool_call
+async def refusals_as_results(
+    request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]]
+) -> Any:
+    """A refused write reaches the model as an error result, not as a dead chat.
+
+    LangGraph's ToolNode re-raises a plain ``ToolException``, which would end the
+    reply; this middleware turns it into the error message the model explains.
+    """
+    try:
+        return await handler(request)
+    except ToolException as cause:
+        return ToolMessage(
+            content=f"The tool refused: {cause}",
+            name=str(request.tool_call["name"]),
+            tool_call_id=str(request.tool_call["id"]),
+            status="error",
+        )
+
+
+class _ToolEvents(BaseCallbackHandler):
+    """Turns a tool's start, end and failure into chat events for the screen."""
+
+    def __init__(
+        self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue[ChatEvent | None]
+    ) -> None:
+        self._loop = loop
+        self._queue = queue
+        self._names: dict[UUID, str] = {}
+        self._lock = threading.Lock()
+
+    def _emit(self, event: ChatEvent) -> None:
+        # Tools may run in a worker thread; the queue belongs to the event loop.
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, event)
+
+    def _take(self, run_id: UUID) -> str | None:
+        with self._lock:
+            return self._names.pop(run_id, None)
+
+    def on_tool_start(
+        self,
+        serialized: dict[str, Any],
+        input_str: str,
+        *,
+        run_id: UUID,
+        **kwargs: Any,
+    ) -> None:
+        name = serialized.get("name")
+        if not isinstance(name, str):
+            return
+        with self._lock:
+            self._names[run_id] = name
+        self._emit(tool_started(name))
+
+    def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
+        if name := self._take(run_id):
+            self._emit(tool_finished(name, output))
+
+    def on_tool_error(self, error: BaseException, *, run_id: UUID, **kwargs: Any) -> None:
+        if name := self._take(run_id):
+            self._emit(tool_failed(name, str(error)[:300]))
+
+
 class LangGraphChatAgent:
     def __init__(self, model: BaseChatModel, toolset: AgentToolset, limits: AgentLimits) -> None:
         self._model = model
         self._toolset = toolset
         self._limits = limits
 
-    async def _execute(self, prompt: str, queue: asyncio.Queue[str | None]) -> None:
+    async def _execute(self, prompt: str, queue: asyncio.Queue[ChatEvent | None]) -> None:
         started = monotonic()
         with anyio.fail_after(self._limits.timeout_seconds):
             resolved = await resolve_tools(self._toolset, None, self._limits.mcp_timeout_seconds)
             # A chat has no run to pause: the tools that must ask first are left out.
             tools = guard_tools(self._toolset, resolved, None).tools
-            graph = create_agent(self._model, tools)
+            graph = create_agent(self._model, tools, middleware=[refusals_as_results])
             events = graph.astream(
                 {"messages": [{"role": "user", "content": prompt}]},
                 stream_mode="messages",
                 version="v2",
-                config={"recursion_limit": self._limits.recursion_limit},
+                config={
+                    "recursion_limit": self._limits.recursion_limit,
+                    "callbacks": [_ToolEvents(asyncio.get_running_loop(), queue)],
+                },
             )
             async for event in events:
                 if event["type"] != "messages":
@@ -100,14 +179,14 @@ class LangGraphChatAgent:
                     and isinstance(message, AIMessage)
                     and (text := message.text)
                 ):
-                    queue.put_nowait(text)
+                    queue.put_nowait(text_event(text))
         logger.info(
             "chat.agent_completed tools=%d duration_ms=%.1f",
             len(tools),
             (monotonic() - started) * 1000,
         )
 
-    async def _produce(self, prompt: str, queue: asyncio.Queue[str | None]) -> None:
+    async def _produce(self, prompt: str, queue: asyncio.Queue[ChatEvent | None]) -> None:
         try:
             await self._execute(prompt, queue)
         except AGENT_FAILURES as cause:
@@ -116,12 +195,12 @@ class LangGraphChatAgent:
         finally:
             queue.put_nowait(None)
 
-    async def stream(self, prompt: str) -> AsyncIterator[str]:
-        queue: asyncio.Queue[str | None] = asyncio.Queue()
+    async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
+        queue: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
         producer = asyncio.create_task(self._produce(prompt, queue))
         try:
-            while (chunk := await queue.get()) is not None:
-                yield chunk
+            while (event := await queue.get()) is not None:
+                yield event
             await producer
         finally:
             producer.cancel()
@@ -133,13 +212,14 @@ def get_chat_agent(
     user: User,
     profile: LLMProfile,
     launch: PipelineLauncher,
+    schedules: ScheduleAccess,
 ) -> LangGraphChatAgent:
     settings = get_settings()
     return LangGraphChatAgent(
         metered_chat_model(profile, settings.chat_max_tokens),
         AgentToolset(
             mcp_connections_for(database, user, settings),
-            built_in_tools(database, user, launch),
+            built_in_tools(database, user, launch, schedules),
             approval_policy_for(database, user, settings),
         ),
         AgentLimits(

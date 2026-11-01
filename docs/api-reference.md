@@ -1,6 +1,6 @@
 # API reference
 
-Base path: `/api`. JSON in and out, except `POST /chat` which streams plain text.
+Base path: `/api`. JSON in and out, except `POST /chat` which streams NDJSON events.
 
 **Auth:** every endpoint requires `Authorization: Bearer <access>` unless marked
 **public**. Routes are protected by default (`PROTECTED_ROUTERS` in
@@ -437,29 +437,64 @@ call and starts no sandbox.
 { "prompt": "Explain JWT in two sentences." }
 ```
 
-`200`, `Content-Type: text/plain; charset=utf-8`, agent answer streamed in
-chunks. The agent can call `list_pipelines()`, `inspect_pipeline(pipeline_id)`
-(which lists a pipeline's named inputs), and `run_pipeline(pipeline_id,
-input_text, inputs)` for the signed-in user; `inputs` holds the values of a
-pipeline's named inputs, under the same rules as a run request. A run started
-from chat is recorded in the run history like any other, and its steps ask for
-[approval](#approvals) where their tools require it. LangGraph also loads the
-tools of `MCP_SERVERS` and of your enabled integrations **that need no
-approval**: chat has no run to pause, so a tool that asks first is not offered
-to it (`MCP_REQUIRE_APPROVAL=false` and an integration's `require_approval:
-false` let their tools act at once, in chat too). Tool output stays out of the
-text stream. An integration that cannot be reached is skipped. The configured
-provider supplies the model; there is no conversation history across requests.
+`200` with `Accept: application/x-ndjson`: one JSON event per line
+(`Content-Type: application/x-ndjson; charset=utf-8`), streamed as the agent
+works. A client that does not ask for it (including every client written before
+the events existed) gets the old `text/plain` answer, with tool activity left
+out. The events are:
 
-A provider or MCP failure **before** the first text chunk returns a normal
+```json
+{"type": "text", "text": "Scheduled your pipeline."}
+{"type": "tool", "tool": "create_schedule", "label": "Creating a schedule", "status": "started"}
+{"type": "tool", "tool": "create_schedule", "label": "Creating a schedule",
+ "status": "finished", "detail": "Daily at 09:00 (Europe/Paris)",
+ "action": {"kind": "schedule", "id": 7, "title": "Weekly digest",
+            "subtitle": "Daily at 09:00 (Europe/Paris)"}}
+{"type": "tool", "tool": "create_pipeline", "label": "Creating a pipeline",
+ "status": "failed", "detail": "A pipeline needs at least one step."}
+```
+
+`action` is present when the tool created or changed something the chat can
+link to: `kind` is `pipeline` (open it at `/mission/<id>`) or `schedule` (open
+Schedules). `detail` carries a short human-readable result or failure.
+
+A refused write is a `status: "failed"` event (and an error result the model
+explains), not the end of the stream. The agent can call, for the signed-in
+user: `list_pipelines()`,
+`inspect_pipeline(pipeline_id)`, `list_models()`,
+`create_pipeline(name, steps, inputs)`,
+`update_pipeline(pipeline_id, name?, steps?, inputs?)`,
+`run_pipeline(pipeline_id, input_text, inputs)`, `list_schedules(pipeline_id?)`,
+`create_schedule(pipeline_id, frequency, time, timezone, weekday?,
+day_of_month?, input_text, inputs, enabled)` and `update_schedule(schedule_id,
+…, enabled)`. Pipeline and schedule inputs follow the same contracts as their
+endpoints (`PipelineIn`/`PipelinePatch`, `ScheduleIn`/`SchedulePatch`), so chat
+cannot save something the screens would refuse. A run started from chat is
+recorded in the run history like any other, and its steps ask for
+[approval](#approvals) where their tools require it. **Deleting a pipeline or a
+schedule stays on its screen**, because a chat message has nowhere to ask for
+the confirmation those actions need; `update_schedule(..., enabled=false)`
+pauses one instead.
+
+LangGraph also loads the tools of `MCP_SERVERS` and of your enabled
+integrations **that need no approval**: chat has no run to pause, so a tool that
+asks first is not offered to it (`MCP_REQUIRE_APPROVAL=false` and an
+integration's `require_approval: false` let their tools act at once, in chat
+too). Tool output stays out of the text events; the `tool` events say what ran
+and what it made. An integration that cannot be reached is skipped. The
+configured provider supplies the model; there is no conversation history across
+requests.
+
+A provider or MCP failure **before** the first `text` event returns a normal
 error status (502/503/504), including `502 tool_unavailable` if an MCP server
-cannot be reached. A failure **after** streaming starts is logged and ends
-the stream.
+cannot be reached. Tool events that happened first are held back until the
+first text event, so they never commit a stream that then fails. A failure
+**after** streaming starts is logged and ends the stream.
 
 `prompt` holds at most 100,000 characters (`400 validation_error` past it). The
 agent's model calls are counted like a run's; when the operator sets
 `CHAT_MAX_TOKENS`, the calls behind one message stop once they have used that
-many tokens (in and out): before the first text chunk that is a `409
+many tokens (in and out): before the first text event that is a `409
 budget_exceeded` (`"This reply stopped at 12,034 tokens because it reached its
 10,000-token limit."`), after it the stream ends. A pipeline that
 `run_pipeline` starts is an ordinary run, under the run limits below.

@@ -27,6 +27,7 @@ from api.repositories import users
 from api.security import hash_password
 from api.services.agent_types import AgentOutcome, AgentTask
 from api.services.chat import ChatAgent
+from api.services.chat_events import ChatEvent, text_event
 from api.services.pipelines import StepGenerator
 from config.settings import Settings, pin_settings
 from llm import exceptions as llm_exceptions
@@ -150,10 +151,10 @@ class FakeAgent:
         self.chunks = chunks if chunks is not None else ["fake ", "reply"]
         self.prompts: list[str] = []
 
-    async def stream(self, prompt: str) -> AsyncIterator[str]:
+    async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
         self.prompts.append(prompt)
         for chunk in self.chunks:
-            yield chunk
+            yield text_event(chunk)
 
 
 T = TypeVar("T")

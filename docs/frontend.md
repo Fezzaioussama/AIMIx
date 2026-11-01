@@ -103,7 +103,7 @@ resolves the session before the first render without a redirect flash.
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request`, `requestBlob` and `streamText` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
-| `chat.ts` | `streamChatReply` |
+| `chat.ts` | `streamChatReply`, which decodes the chat's NDJSON events (`chatTypes.ts`: text, tool started/finished/failed, and an `action` naming what to link to) |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal). `normalizePipeline` fills what older pipelines and plans leave out (inputs, role, tools, expected output, `condition` and `review` as `null`) |
@@ -383,14 +383,17 @@ server would need a table and endpoints; that is not part of this version.
 
 ### `features/chat`
 
-- `useChatStream()` owns the transcript (`messages`), `isLoading`, and `send()`.
-  `send` appends the user message and an empty AI message, then appends chunks
+- `useChatStream()` owns the transcript (`messages`), each reply's tool runs
+  (`tools`), `isLoading`, and `send()`. `send` appends the user message and an
+  empty AI message, then appends text and folds tool events into that message
   as they stream. An `AbortController` in a ref cancels the stream on unmount.
 - `ChatPage` renders the header, a soft `Aurora`, the transcript and the
   `ChatComposer`. `ChatMessages` animates each bubble in (AI messages via
-  `renderMarkdown`); an AI reply is drawn once its first token arrives, with
-  the typing dots in its place until then. A fresh conversation offers starter
-  prompts that fill the composer.
+  `renderMarkdown`); an AI reply is drawn once it has text or has used a tool,
+  with the typing dots in its place until then. A finished write shows what it
+  created and links to it (a mission, or Schedules), so the chat is a control
+  centre and the other screens stay for configuration. A fresh conversation
+  offers starter prompts that fill the composer.
 
 ### `features/pipelines`
 

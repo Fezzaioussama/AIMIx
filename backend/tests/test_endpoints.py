@@ -393,11 +393,26 @@ def test_generate_returns_a_plan_and_the_catalogue(
 def test_chat_streams_the_reply(app: FastAPI, auth_client: TestClient) -> None:
     agent = FakeAgent()
     use_agent(app, agent)
+    response = auth_client.post(
+        "/api/chat",
+        json={"prompt": "hello"},
+        headers={"Accept": "application/x-ndjson"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert "".join(event.get("text", "") for event in events) == "fake reply"
+    assert agent.prompts == ["hello"]
+
+
+def test_chat_keeps_the_plain_text_contract_for_clients_that_do_not_ask(
+    app: FastAPI, auth_client: TestClient
+) -> None:
+    use_agent(app, FakeAgent())
     response = auth_client.post("/api/chat", json={"prompt": "hello"})
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
     assert response.text == "fake reply"
-    assert agent.prompts == ["hello"]
 
 
 def test_chat_reports_an_unconfigured_provider_before_streaming(auth_client: TestClient) -> None:

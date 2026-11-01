@@ -20,6 +20,9 @@ from api.services.agent_runtime import AgentLimits, AgentToolset
 from api.services.llm import LLMProfile
 from api.services.mcp import MCPConnections
 from api.services.run_budget import RunBudget
+from api.services.run_policy import run_policy
+from api.services.run_recorder import utcnow
+from api.services.schedules.service import ScheduleAccess
 from llm.usage import TokenUsage, UsageCallback, metered
 from tests.conftest import TEST_SETTINGS
 
@@ -78,7 +81,8 @@ async def test_a_message_stops_once_its_calls_reach_the_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_without_a_limit_the_calls_are_counted_and_never_refused() -> None:
-    assert "".join([part async for part in chat_agent(None).stream("add one")]) == "Result is 3"
+    events = [part async for part in chat_agent(None).stream("add one")]
+    assert "".join(event.text for event in events if event.kind == "text") == "Result is 3"
 
 
 def test_the_chat_agent_meters_its_model(
@@ -87,7 +91,14 @@ def test_the_chat_agent_meters_its_model(
     monkeypatch.setattr(agent_service, "get_agent_model", lambda profile: tool_loop())
     profile = LLMProfile("openrouter", TEST_SETTINGS.openrouter_default_model, api_key="k")
 
-    agent = get_chat_agent(app.state.database, user, profile, lambda *_: None)  # type: ignore[arg-type,return-value]
+    settings = agent_service.get_settings()
+    with app.state.database.session() as db:
+        schedules = ScheduleAccess(
+            db, user, settings.schedules_max_per_user, utcnow(), run_policy(settings).limits
+        )
+    agent = get_chat_agent(  # type: ignore[arg-type,return-value]
+        app.state.database, user, profile, lambda *_: None, schedules
+    )
 
     callbacks = agent._model.callbacks
     assert isinstance(callbacks, list)

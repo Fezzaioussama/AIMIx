@@ -151,7 +151,7 @@ async def test_the_chat_is_not_offered_the_tools_that_ask(monkeypatch: pytest.Mo
                 "data": (AIMessageChunk(content="Hi"), {"langgraph_node": "model"}),
             }
 
-    def create_agent(model: object, offered_tools: list[BaseTool]) -> FakeGraph:
+    def create_agent(model: object, offered_tools: list[BaseTool], **kwargs: object) -> FakeGraph:
         offered.append([item.name for item in offered_tools])
         return FakeGraph()
 
@@ -159,5 +159,6 @@ async def test_the_chat_is_not_offered_the_tools_that_ask(monkeypatch: pytest.Mo
     monkeypatch.setattr(agent_service, "create_agent", create_agent)
     agent = LangGraphChatAgent(object(), configured, AgentLimits(10, 9, 1))  # type: ignore[arg-type]
 
-    assert [part async for part in agent.stream("hello")] == ["Hi"]
+    events = [part async for part in agent.stream("hello")]
+    assert [event.text for event in events if event.kind == "text"] == ["Hi"]
     assert offered == [["calculator", "docs_search"]]

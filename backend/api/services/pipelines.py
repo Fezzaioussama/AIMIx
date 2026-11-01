@@ -14,6 +14,7 @@ from typing import Any, TypeVar
 
 from api.exceptions import UpstreamResponseInvalid, ValidationFailed
 from api.models import Pipeline
+from api.repositories import pipelines as repository
 from api.services.agent_types import ToolDescriptor
 from api.services.errors import as_domain_error
 from api.services.final_check import with_final_check
@@ -22,7 +23,7 @@ from api.services.multiagent.contracts import PipelineSpec, RunInputs, RunResult
 from api.services.multiagent.contracts import StepAgent as StepGenerator
 from api.services.multiagent.graph import GraphPipelineRunner
 from api.services.multiagent.mapper import snapshot_pipeline
-from api.services.pipeline_flow import ensure_valid_spec
+from api.services.pipeline_flow import ensure_valid_flow, ensure_valid_spec
 from api.services.pipeline_inputs import bind_run_inputs
 from api.services.plan_parsing import decoded, on_default_model, parse_plan
 from api.services.plan_prompts import pipeline_generation_prompt
@@ -52,6 +53,19 @@ def prepare_run(
     spec = snapshot_pipeline(pipeline)
     ensure_valid_spec(spec)
     return PreparedRun(spec, bind_run_inputs(spec.inputs, initial_input, values or {}))
+
+
+def changes(
+    name: str | None,
+    inputs: list[dict[str, Any]] | None,
+    steps: list[dict[str, Any]] | None,
+    current: Pipeline | None = None,
+) -> repository.PipelineChanges:
+    """What a save writes, once its conditions and review loops are known to
+    work in the pipeline it leaves (``current`` is what it replaces or patches)."""
+    changes = repository.PipelineChanges(name=name, inputs=inputs, steps=steps)
+    ensure_valid_flow(changes, current)
+    return changes
 
 
 def run(

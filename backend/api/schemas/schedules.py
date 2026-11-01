@@ -52,12 +52,6 @@ Weekday = Annotated[int, Field(ge=0, le=6)]
 DayOfMonth = Annotated[int, Field(ge=1, le=31)]
 
 
-def clock_time(text: str) -> time:
-    """A validated "HH:MM" as a ``time``."""
-    hours, minutes = text.split(":")
-    return time(int(hours), int(minutes))
-
-
 class ScheduleTimingIn(BaseModel):
     """When a schedule runs. Also the body of POST /api/schedules/preview."""
 

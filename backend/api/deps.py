@@ -285,12 +285,17 @@ AgentFactory = Callable[[], ChatAgent]
 
 
 def agent_factory(
-    request: Request, user: CurrentUser, profile: Profile, context: PipelineRun
+    request: Request,
+    user: CurrentUser,
+    profile: Profile,
+    context: PipelineRun,
+    schedules: Schedules,
 ) -> AgentFactory:
     """Defer agent construction until after the chat request is validated. Its
-    run_pipeline tool records runs like the Runs screen does."""
+    run_pipeline tool records runs like the Runs screen does, and its schedule
+    tools use the signed-in user's own schedules."""
     launch = launcher(context.runs, user, context.agents)
-    return partial(get_chat_agent, request.app.state.database, user, profile, launch)
+    return partial(get_chat_agent, request.app.state.database, user, profile, launch, schedules)
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]

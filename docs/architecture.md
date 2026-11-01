@@ -668,25 +668,33 @@ crash, startup recovery logs only how many runs it interrupted
 
 1. `useChatStream.send` adds the user message and an empty AI message, then
    iterates `streamChatReply()` → `client.streamText()`, which reads
-   `response.body.getReader()` and yields decoded chunks.
+   `response.body.getReader()` and splits decoded chunks into NDJSON events.
 2. `endpoints/chat.chat` validates `{"prompt"}` and calls
    `services/chat.stream_reply(agent, prompt)`.
 3. `services/agent` builds a chat-only LangGraph agent from the configured
-   model, binds the signed-in user's native pipeline tools, and discovers tools
-   from every server in `MCP_SERVERS` and the user's enabled integrations. Graph execution runs in one producer
-   task, which sends assistant text through a queue. Model and MCP calls have
-   timeouts; tool results stay out of the text stream. Shared tool policy and
-   error mapping live in `services/agent_runtime`. A chat has no run to pause,
-   so tools that must ask the owner first (see [Approval gates](#approval-gates))
-   are not offered to it.
-4. `stream_reply` **pulls the first chunk eagerly**. If agent setup or a tool
-   fails before text appears, a `DomainError` is raised while the response is
-   still uncommitted, so the client gets a real 5xx error body.
-5. After the first chunk the response is a `StreamingResponse`
-   (`text/plain`); Starlette iterates the async generator. A failure
-   mid-stream can no longer change the status, so it is logged
-   (`chat.stream_interrupted`) and the stream simply ends.
-6. The hook appends each chunk to the AI message; unmounting aborts the fetch.
+   model, binds the signed-in user's native pipeline and schedule tools, and
+   discovers tools from every server in `MCP_SERVERS` and the user's enabled
+   integrations. Graph execution runs in one producer task, which sends
+   `ChatEvent`s through a queue: assistant text, and a callback handler's
+   `tool` events (started, finished with the created resource, failed). Model
+   and MCP calls have timeouts; tool output stays out of the events. Shared tool
+   policy and error mapping live in `services/agent_runtime`. A chat has no run
+   to pause, so tools that must ask the owner first (see
+   [Approval gates](#approval-gates)) are not offered to it.
+4. `stream_reply` **pulls until the first text event eagerly**, buffering the
+   tool events that came before it. If agent setup or a tool fails before text
+   appears, a `DomainError` is raised while the response is still uncommitted,
+   so the client gets a real 5xx error body.
+5. After the first text event the response is a `StreamingResponse`; a client
+   that sent `Accept: application/x-ndjson` gets `chat_events.encode`'s one
+   JSON object per line, and any other client gets the old plain text. A tool
+   refusal is an error `ToolMessage` from the `refusals_as_results` middleware
+   (LangGraph would otherwise end the reply), so the model can explain it and
+   the tool event reports `failed`. A failure mid-stream can no longer change
+   the status, so it is logged (`chat.stream_interrupted`) and the stream ends.
+6. The hook appends text to the AI message and folds each `tool` event into the
+   reply's tool list; a finished write offers an `action` the bubble links to
+   (the mission, or Schedules). Unmounting aborts the fetch.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 

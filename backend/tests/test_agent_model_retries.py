@@ -180,5 +180,6 @@ async def test_the_chat_agent_delivers_a_retried_reply_exactly_once(
     model = create_agent_model("openrouter", INSTANT)
     agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9, 1))
 
-    assert "".join([part async for part in agent.stream("hi")]) == "Hello"
+    events = [part async for part in agent.stream("hi")]
+    assert "".join(event.text for event in events if event.kind == "text") == "Hello"
     assert len(calls) == 2

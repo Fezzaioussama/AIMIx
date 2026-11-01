@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from pydantic import ValidationError
 
 from api.exceptions import ToolUnavailable
@@ -16,7 +17,8 @@ from api.services import agent as agent_service
 from api.services import agent_runtime
 from api.services.agent import LangGraphChatAgent
 from api.services.agent_runtime import AgentLimits, AgentToolset
-from api.services.mcp import connections
+from api.services.chat_events import ChatEvent, text_event
+from api.services.mcp import MCPConnections, connections
 from config.settings import Settings
 from tests.conftest import FakeAgent, use_agent
 from tests.mcp_fakes import fake_tool
@@ -76,17 +78,19 @@ async def test_agent_streams_model_text_and_hides_tool_output(
                 "data": (AIMessageChunk(content="world"), {"langgraph_node": "model"}),
             }
 
-    def fake_create_agent(model: object, tools: object) -> FakeGraph:
+    def fake_create_agent(model: object, tools: object, **kwargs: object) -> FakeGraph:
         captured["tools"] = tools
         return FakeGraph()
 
     monkeypatch.setattr(agent_runtime, "discover_tools", fake_discover)
     monkeypatch.setattr(agent_service, "create_agent", fake_create_agent)
     agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
-    assert [part async for part in agent.stream("hello")] == ["Hello ", "world"]
+    events = [part async for part in agent.stream("hello")]
+    assert [event.text for event in events if event.kind == "text"] == ["Hello ", "world"]
+    assert all("secret tool output" not in f"{event.text}{event.detail}" for event in events)
     assert captured["tools"] == [local_tool, example_tool]
     assert captured["state"] == {"messages": [{"role": "user", "content": "hello"}]}
-    assert captured["kwargs"]["config"] == {"recursion_limit": 9}
+    assert captured["kwargs"]["config"]["recursion_limit"] == 9
 
 
 @pytest.mark.asyncio
@@ -141,8 +145,51 @@ async def test_langgraph_executes_a_discovered_tool(monkeypatch: pytest.MonkeyPa
         ]
     )
     agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9, 1))
-    assert "".join([part async for part in agent.stream("add one to two")]) == "Result is 3"
+    events = [part async for part in agent.stream("add one to two")]
+    assert "".join(event.text for event in events if event.kind == "text") == "Result is 3"
+    assert [(event.tool, event.status) for event in events if event.kind == "tool"] == [
+        ("increment", "started"),
+        ("increment", "finished"),
+    ]
     assert called == [2]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_tool_is_reported_and_the_reply_continues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.tools import ToolException, tool
+
+    @tool
+    def refuse() -> str:
+        """Refuse the write."""
+        raise ToolException("A pipeline needs at least one step.")
+
+    monkeypatch.setattr(
+        FakeMessagesListChatModel,
+        "bind_tools",
+        lambda self, tools, **kwargs: self,
+        raising=False,
+    )
+    model = FakeMessagesListChatModel(
+        responses=[
+            AIMessage(content="", tool_calls=[{"name": "refuse", "args": {}, "id": "call-1"}]),
+            AIMessage(content="I could not create it."),
+        ]
+    )
+    agent = LangGraphChatAgent(
+        model, AgentToolset(MCPConnections(), [refuse]), AgentLimits(10, 9, 1)
+    )
+
+    events = [part async for part in agent.stream("create it")]
+    assert [(event.tool, event.status) for event in events if event.kind == "tool"] == [
+        ("refuse", "started"),
+        ("refuse", "failed"),
+    ]
+    assert "".join(event.text for event in events if event.kind == "text") == (
+        "I could not create it."
+    )
 
 
 def test_agent_model_factories_build_offline() -> None:
@@ -171,9 +218,9 @@ def test_mcp_failure_before_text_has_standard_error_shape(
     app: FastAPI, auth_client: TestClient
 ) -> None:
     class BrokenAgent:
-        async def stream(self, prompt: str) -> AsyncIterator[str]:
+        async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
             raise ToolUnavailable("An MCP server is unavailable.")
-            yield ""  # pragma: no cover - keeps this an async generator
+            yield text_event("")  # pragma: no cover - keeps this an async generator
 
     use_agent(app, BrokenAgent())
     response = auth_client.post("/api/chat", json={"prompt": "hello"})
@@ -186,11 +233,17 @@ def test_mcp_failure_before_text_has_standard_error_shape(
 
 def test_mcp_failure_after_text_ends_stream(app: FastAPI, auth_client: TestClient) -> None:
     class BrokenAgent:
-        async def stream(self, prompt: str) -> AsyncIterator[str]:
-            yield "partial"
+        async def stream(self, prompt: str) -> AsyncIterator[ChatEvent]:
+            yield text_event("partial")
             raise ToolUnavailable("An MCP server is unavailable.")
 
     use_agent(app, BrokenAgent())
-    response = auth_client.post("/api/chat", json={"prompt": "hello"})
+    response = auth_client.post(
+        "/api/chat",
+        json={"prompt": "hello"},
+        headers={"Accept": "application/x-ndjson"},
+    )
     assert response.status_code == 200
-    assert response.text == "partial"
+    assert [json.loads(line) for line in response.text.splitlines()] == [
+        {"type": "text", "text": "partial"}
+    ]

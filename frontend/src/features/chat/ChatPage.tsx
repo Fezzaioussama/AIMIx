@@ -27,8 +27,9 @@ export function ChatPage() {
   const [input, setInput] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // A reply is drawn once its first token lands; until then the typing dots stand in.
-  const visible = messages.filter((message) => message.text !== '');
+  // A reply is drawn as soon as it has text or has used a tool; the typing dots
+  // stand in until either lands.
+  const visible = messages.filter((message) => message.text !== '' || message.tools.length > 0);
   const isFresh = messages.length === 1;
 
   // Keep the newest message in view as tokens stream in. The optional call

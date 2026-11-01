@@ -27,7 +27,6 @@ from api.schemas.planning import (
     ReviseRequest,
     ReviseResponse,
 )
-from api.services import pipeline_flow
 from api.services import pipeline_revision as revision_service
 from api.services import pipelines as pipeline_service
 from api.services.plan_questions import Answer, Clarification
@@ -42,13 +41,12 @@ def _changes(
 ) -> repository.PipelineChanges:
     """What the body saves, once its conditions and review loops are known to
     work in the pipeline it leaves (``current`` is what it replaces or patches)."""
-    changes = repository.PipelineChanges(
-        name=body.name,
-        inputs=None if body.inputs is None else [field.model_dump() for field in body.inputs],
-        steps=None if body.steps is None else [step.model_dump() for step in body.steps],
+    return pipeline_service.changes(
+        body.name,
+        None if body.inputs is None else [field.model_dump() for field in body.inputs],
+        None if body.steps is None else [step.model_dump() for step in body.steps],
+        current,
     )
-    pipeline_flow.ensure_valid_flow(changes, current)
-    return changes
 
 
 @router.get("/")
