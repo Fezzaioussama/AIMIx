@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 from langchain_core.tools import BaseTool, ToolException
 from sqlalchemy.orm import Session
 
-from api.deps import delivery_sending
 from api.exceptions import DeliveryFailed
 from api.models import Delivery, Pipeline, Run, RunStatus, User
 from api.repositories import pipelines, users
@@ -35,6 +34,7 @@ from api.services.deliveries.sender import ResultDeliveries, SendPolicy, post
 from api.services.deliveries.service import DeliveryAccess
 from api.services.run_policy import RunPolicy
 from api.services.runs import RunService, RunStart
+from api.webhook_deps import delivery_sending
 from llm import exceptions as llm_exceptions
 from tests.chat_fakes import by_name, chat_scope
 from tests.conftest import TEST_SETTINGS, FailingProvider, FakeProvider, InlineRunExecutor, bearer

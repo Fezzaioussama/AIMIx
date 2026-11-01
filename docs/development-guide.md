@@ -40,9 +40,9 @@ make typecheck                                              # mypy only
 | Change agent or stage execution | `api/services/multiagent/contracts.py` for the step-agent contract; `mapper.py` for ORM snapshots; `graph.py` for stage barriers and result ordering; `step_agent.py` for model/tool behavior; `api/services/agent_runtime.py` for shared chat/pipeline policy | Put graph execution in an endpoint or mix it with planning and database queries |
 | Add a provider or model | `llm/` — see [llm-providers.md](llm-providers.md) | Add an `if provider ==` anywhere |
 | Add a built-in agent tool | A factory and name constant in `api/services/toolbox/tools.py` (raise `ToolException` for failures the agent can recover from), an entry in `toolbox/registry.py`, its default in `AGENT_BUILTIN_TOOLS` | Branch on tool names in an agent, or let an outbound call run without a timeout |
-| Add a schedule frequency | A member of `ScheduleFrequency` in `api/models.py` (a plain `VARCHAR`, so no migration), one rule in `FREQUENCIES` in `api/services/schedules/timing.py` (`test_every_frequency_has_a_rule` fails without it), the same name in `ScheduleFrequency` in `core/api/types.ts` and one rule in `FREQUENCIES` in `features/schedules/scheduleDraft.ts` (the type-check fails without it) | Add an `if frequency ==` branch |
+| Add a schedule frequency | A member of `ScheduleFrequency` in `api/models/automation.py` (a plain `VARCHAR`, so no migration), one rule in `FREQUENCIES` in `api/services/schedules/timing.py` (`test_every_frequency_has_a_rule` fails without it), the same name in `ScheduleFrequency` in `core/api/types.ts` and one rule in `FREQUENCIES` in `features/schedules/scheduleDraft.ts` (the type-check fails without it) | Add an `if frequency ==` branch |
 | Add a setting | A field on the area's model in `config/*_settings.py` (app and auth fields on `Settings` in `config/settings.py`), document in `backend/.env.example` | Hard-code a URL, key, model id, or limit |
-| Change a model field | `api/models.py` + an Alembic revision in the same commit | Edit an applied migration |
+| Change a model field | Its module in `api/models/` + an Alembic revision in the same commit | Edit an applied migration |
 | Add a UI screen | `features/<feature>/` page + `use<Feature>.ts` hook, route in `App.tsx` | `fetch` or `localStorage` in a component |
 | Share UI markup | A small component in the feature folder (or `core/ui/` if cross-feature) | Copy-paste JSX |
 | Add an animated effect | Adapt it from React Bits into `core/ui/reactbits/` (trimmed props, size budgets, reduced-motion and no-WebGL fallbacks) — see [frontend.md](frontend.md) | Paste a React Bits file unchanged, or add a second animation library |
@@ -82,7 +82,7 @@ Goal: `POST /api/pipelines/<id>/duplicate` returns a copy of an owned pipeline.
 ## Recipe: change a model field
 
 ```bash
-# edit backend/api/models.py
+# edit a model in backend/api/models/
 cd backend && uv run alembic revision --autogenerate -m "add pipeline tags"
 # review backend/migrations/versions/<rev>_add_pipeline_tags.py, then
 uv run alembic upgrade head       # or: make migrate

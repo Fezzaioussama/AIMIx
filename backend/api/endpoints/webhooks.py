@@ -9,10 +9,11 @@ from dataclasses import asdict
 from fastapi import APIRouter, Request
 from starlette.concurrency import run_in_threadpool
 
-from api.deps import CurrentUser, DbSession, Secrets, WebhookCallers
+from api.deps import CurrentUser, DbSession, Secrets
 from api.schemas.webhooks import WebhookCallOut, WebhookLinkOut
 from api.services.webhooks import service
 from api.services.webhooks.service import WebhookAccess
+from api.webhook_deps import WebhookCallers
 
 public_router = APIRouter(tags=["webhooks"])
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])

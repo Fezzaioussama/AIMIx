@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 from langchain_core.tools import BaseTool, ToolException
 from sqlalchemy.orm import Session
 
-from api.deps import webhook_calls
 from api.exceptions import ValidationFailed
 from api.models import Pipeline, Run, RunTrigger, User, Webhook
 from api.repositories import pipelines, users
@@ -27,6 +26,7 @@ from api.services.chat_tools.webhooks import webhook_tools
 from api.services.runs import RunService
 from api.services.webhooks.calls import CallPolicy, WebhookCalls
 from api.services.webhooks.inputs import call_start
+from api.webhook_deps import webhook_calls
 from config.logging_setup import WebhookTokenFilter
 from tests.chat_fakes import by_name, chat_scope
 from tests.conftest import TEST_SETTINGS, FakeProvider, InlineRunExecutor, bearer

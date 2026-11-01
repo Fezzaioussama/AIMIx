@@ -16,7 +16,7 @@ from httpx import Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.deps import host_resolver
+from api.integration_deps import host_resolver
 from api.models import Integration, User
 from api.repositories import integrations as repository
 from api.repositories import users

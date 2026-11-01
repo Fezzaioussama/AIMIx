@@ -209,7 +209,7 @@ backend/
       multiagent/         # contracts, ORM mapper, stage graph, step agent
       toolbox/            # built-in web, calculation, clock and local workspace tools
     repositories/        # data access; ownership filtering lives here
-    models.py            # SQLAlchemy: User, Pipeline, PipelineStep, Run, RunStep
+    models/              # SQLAlchemy: User, Pipeline, PipelineStep, Run, RunStep
     security.py          # password hashing + JWT signing
     exceptions.py        # domain errors (code + HTTP status)
     errors.py            # ★ the one place that shapes an error response
@@ -364,7 +364,7 @@ the component.
 
 **New backend endpoint**
 
-1. If you need storage, add a model in `api/models.py`, then
+1. If you need storage, add a model in `api/models/`, then
    `cd backend && uv run alembic revision --autogenerate -m "…"` (review it) and
    `make migrate`. Put query logic in `api/repositories/`.
 2. Declare the request and response contracts as pydantic models in `api/schemas/`.

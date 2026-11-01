@@ -118,10 +118,12 @@ backend/
     schemas/*.py         #   pydantic request + response contracts (one module per resource)
     deps.py              #   FastAPI dependencies: db session, settings, current user, provider
     document_deps.py     #   the documents' dependencies: limits, OCR engine, page downloads
+    integration_deps.py  #   the integrations' dependencies: a user's MCP servers, DNS lookup
+    webhook_deps.py      #   webhook calls by other apps, result deliveries
     throttling.py        #   rate-limit dependencies: client address, auth and per-account limits
     services/*.py        #   ALL business logic and orchestration
     repositories/*.py    #   data access (SQLAlchemy); ownership filtering lives here
-    models.py            #   SQLAlchemy models + invariants that belong to the entity
+    models/              #   SQLAlchemy models + invariants that belong to the entity, by area
     db.py                #   engine and session factory, built from settings
     security.py          #   password hashing and JWT signing — pure, no framework
     middleware.py        #   allowed hosts, CORS, security headers, request-body caps
@@ -217,11 +219,10 @@ and `services → llm`. `llm/` never imports `api/` or `config/` — it receives
   child component, extract a pure helper module, extract a strategy per variant (§7).
 
 **Files already over budget (technical debt).** None — no file in `backend/` or
-`frontend/src/` exceeds the 700-line cap. Seven source files are past the 300-line target
+`frontend/src/` exceeds the 700-line cap. Five source files are past the 300-line target
 and should be split before they grow: `frontend/src/core/api/types.ts` (406),
-`backend/api/models.py` (525), `backend/api/services/prompts.py` (313),
-`backend/api/deps.py` (351), `backend/api/services/agent_tools.py` (351),
-`frontend/src/styles.css` (313) and `backend/api/repositories/runs.py` (303). The largest
+`backend/api/services/prompts.py` (313), `backend/api/services/agent_tools.py` (351),
+`frontend/src/styles.css` (318) and `backend/api/repositories/runs.py` (303). The largest
 files overall are tests, the biggest being `frontend/src/features/mission/useMission.test.tsx`
 (563); tests past 300 lines also include
 `frontend/src/features/runs/report/reportModel.test.ts` (351),

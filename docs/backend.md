@@ -143,7 +143,6 @@ unknown `/api/...` paths stay a JSON `404`. Every router in `PROTECTED_ROUTERS` 
 | `ToolCatalog` | User-bound native and MCP tool discovery for the builder and planner |
 | `TemplateUse` | The user, a session and their `StepDefaults` (model list, default first, and tool discovery that runs only once the template is found), for `POST /templates/{slug}/use` |
 | `Agents` | A factory for the LangGraph chat agent, called after request validation |
-| `Integrations` | An `IntegrationAccess` (session, user, `SecretBox`, `IntegrationRules`) for the Integrations endpoints; `host_resolver` supplies the DNS lookup its address checks use, so tests swap in a fake |
 | `UserFiles` | The signed-in user's `WorkspaceStorage` (their `user-<id>` folder, with `WORKSPACE_MAX_TOTAL_BYTES` and `WORKSPACE_MAX_FILES`) |
 | `FileUploads` | The `UploadPolicy`: `DOCUMENT_MAX_BYTES` per file and `WORKSPACE_UPLOAD_EXTENSIONS` |
 
@@ -159,6 +158,16 @@ the HTTP boundary. Tests override these the same way.
 | `DocumentLimits` / `DocumentOcr` | The `ExtractionLimits` from settings / the OCR engine `create_app()` built once (`app.state.ocr`), or `None` when OCR is off or Tesseract or a language is missing |
 | `PageImports` | A `PageImporter` for `POST /documents/import-url`: the `PageDownloader` from `page_downloader` (`WEB_TIMEOUT_SECONDS`, `DOCUMENT_URL_MAX_SECONDS`; tests override it with a fake network), the document limits and OCR engine, and `DOCUMENT_URL_MIN_TEXT_CHARS` |
 
+### `integration_deps.py` and `webhook_deps.py`
+
+Two more parts of `deps.py`, overridden the same way.
+
+| Dependency | Gives the endpoint |
+|---|---|
+| `Integrations` (`integration_deps`) | An `IntegrationAccess` (session, user, `SecretBox`, `IntegrationRules`) for the Integrations endpoints; `host_resolver` supplies the DNS lookup its address checks use, so tests swap in a fake |
+| `WebhookCallers` (`webhook_deps`) | The `WebhookCalls` behind `POST /hooks/{token}`: each call starts a run as the webhook's owner, on their own key (`ProfileAgents`), within `WEBHOOK_RATE_LIMIT_REQUESTS` per `WEBHOOK_RATE_LIMIT_WINDOW_SECONDS`; tests override `webhook_calls` |
+| `DeliverySending` (`webhook_deps`) | The `SendPolicy` a delivery's first message is posted with (`DELIVERY_*`); tests override `delivery_sending` to swap the transport |
+
 ### `throttling.py`
 
 The rate-limit dependencies, each counter persisted through `services/rate_limits.py`
@@ -173,7 +182,9 @@ so every app process shares it.
 | `one_export_at_a_time` | On `GET /account/export`: one copy built at a time in the process (a lock held for the whole request, the JSON included), another meanwhile is `503 exports_busy` |
 | `user_rate_limit` | On routes that make the server spend (model calls, outbound calls, document parsing) and on the account routes: `USER_RATE_LIMIT_REQUESTS` per `USER_RATE_LIMIT_WINDOW_SECONDS`, per account and route template |
 
-### `models.py` and `db.py`
+### `models/` and `db.py`
+
+One module per area, all imported from `api.models`: `users` (`User`, `RateLimitBucket`, `ProviderSetting`, `Integration`), `pipelines`, `runs` (with the run, step and approval statuses) and `automation` (`Schedule`, `Webhook`, `Delivery`), on `base` (the declarative base, the constraint names and the column sizes).
 
 | Model (table) | Fields | Invariants |
 |---|---|---|
@@ -182,7 +193,7 @@ so every app process shares it.
 | `Pipeline` (`pipelines`) | `name`, `user_id` (FK, cascade), `created_at`, `inputs` | `steps` load ordered by `(stage, order)` |
 | `PipelineStep` (`pipeline_steps`) | `pipeline_id` (FK, cascade), `order`, `stage`, `title`, `role`, `allowed_tools`, `is_output`, `expected_output`, `prompt`, `model`, `condition`, `review` | **unique `(pipeline_id, order)`** |
 | `Integration` (`integrations`) | `user_id` (FK, cascade), `name`, `url`, `headers_encrypted` (one sealed JSON object), `header_hints` (JSON `{"name", "hint"}` list), `enabled`, `require_approval`, `created_at` | **unique `(user_id, name)`**; `name` matches `INTEGRATION_NAME_PATTERN`; `""` means no headers; `require_approval` ("Ask me before its tools act") is true unless switched off, also for rows that predate it |
-| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `trigger`, `schedule_id` (FK, **set null** when the schedule is deleted), `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at`, `max_cost_usd`, `max_tokens` | `status` is a `RunStatus`, `trigger` a `RunTrigger` (`manual`, `schedule`, `chat`; `manual` for runs recorded before schedules); `""` error fields mean none; the two limits are `NULL` for no limit; `steps` load ordered by `(stage, step_order)` |
+| `Run` (`runs`) | `user_id` (FK, cascade), `pipeline_id` (FK, **set null** when the pipeline is deleted), `pipeline_name`, `definition` (JSON snapshot of the pipeline it runs), `input_text`, `input_values`, `trigger`, `schedule_id` (FK, **set null** when the schedule is deleted), `status`, `final_output`, `error_code`, `error_detail`, `created_at`, `started_at`, `finished_at`, `max_cost_usd`, `max_tokens` | `status` is a `RunStatus`, `trigger` a `RunTrigger` (`manual`, `schedule`, `chat`, `webhook`; `manual` for runs recorded before schedules); `""` error fields mean none; the two limits are `NULL` for no limit; `steps` load ordered by `(stage, step_order)` |
 | `Schedule` (`schedules`) | `user_id` (FK, cascade), `pipeline_id` (FK, **cascade**: deleting a pipeline deletes its schedules), `frequency`, `hour`, `minute`, `weekday`, `day_of_month`, `timezone`, `input_text`, `input_values`, `enabled`, `next_run_at` (UTC, indexed; null while off), `last_error`, `created_at` | `frequency` is a `ScheduleFrequency` (`hourly`, `daily`, `weekdays`, `weekly`, `monthly`); `hour`/`minute` are wall-clock in `timezone` (an IANA name); `weekday` (0 = Monday) only for weekly and `day_of_month` only for monthly, `null` otherwise; `""` `last_error` means the latest time started |
 | `Webhook` (`webhooks`) | `user_id` (FK, cascade), `pipeline_id` (FK, **cascade**, unique: one per pipeline), `token_hash` (SHA-256 hex, unique), `token_encrypted` (sealed with the secret box), `enabled`, `last_called_at`, `last_error`, `created_at` | A call is matched by `token_hash`, so the table holds no usable link; `""` `last_error` means the latest call started a run |
 | `Delivery` (`deliveries`) | `user_id` (FK, cascade), `pipeline_id` (FK, **cascade**, unique: one per pipeline), `url_encrypted` (sealed with the secret box), `host`, `hint` (the address's last 4 characters), `kind` (`slack`, `discord`, `json`), `confirmed`, `enabled`, `last_sent_at`, `last_error`, `created_at` | Nothing is sent while `confirmed` is false; a new address sets it false again |
@@ -198,7 +209,7 @@ instead of resetting it. A run's totals are **computed** from its steps
 can never disagree with its steps. The two limits are stored on the run because
 they are set when it starts and raised when it resumes.
 
-The run statuses live in one place, `models.py`: `RunStatus` (`queued`,
+The run statuses live in one place, `models/runs.py`: `RunStatus` (`queued`,
 `running`, `waiting`, `succeeded`, `failed`, `cancelled`, `interrupted`),
 `StepStatus` (`pending`, `running`, `succeeded`, `failed`, `cancelled`,
 `skipped`), `ApprovalStatus` (`pending`, `approved`, `declined`, `expired`), and
@@ -219,7 +230,7 @@ missing on older rows) is what the run form starts with, e.g. what a mission's r
 already gave —
 and `expected_output` a step's deliverable (≤ 500 characters); existing rows
 get `[]` and `""`. The naming rule and limits for inputs are constants in
-`models.py` (`PIPELINE_INPUT_*`, `RESERVED_INPUT_NAME`, `FEEDBACK_PLACEHOLDER`).
+`models/base.py` (`PIPELINE_INPUT_*`, `RESERVED_INPUT_NAME`, `FEEDBACK_PLACEHOLDER`).
 `PipelineStep.condition` and `.review` are nullable JSON: `{"source",
 "operator", "value"}` and `{"send_back_to_stage", "max_rounds"}`, `NULL` for the
 plain step (every row that predates them). The rules are in
@@ -460,7 +471,7 @@ option, which the tests use) and runs in batch mode, so SQLite can `ALTER`.
 ```bash
 cd backend
 uv run alembic upgrade head                                   # make migrate
-uv run alembic revision --autogenerate -m "add pipeline tags"  # after changing models.py
+uv run alembic revision --autogenerate -m "add pipeline tags"  # after changing api/models/
 ```
 
 Review every autogenerated revision before committing it.

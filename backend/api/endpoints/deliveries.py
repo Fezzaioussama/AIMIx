@@ -7,10 +7,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Response
 
-from api.deps import CurrentUser, DbSession, DeliverySending, Secrets
+from api.deps import CurrentUser, DbSession, Secrets
 from api.schemas.deliveries import DeliveryOut
 from api.services.deliveries import service
 from api.services.deliveries.service import DeliveryAccess
+from api.webhook_deps import DeliverySending
 
 router = APIRouter(prefix="/deliveries", tags=["deliveries"])
 

@@ -27,7 +27,7 @@ graph TD
     endpoints --> services["api/services/*<br/>business logic"]
     endpoints --> repositories["api/repositories/*<br/>data access"]
     services --> repositories
-    services --> models["api/models.py<br/>SQLAlchemy"]
+    services --> models["api/models/<br/>SQLAlchemy"]
     repositories --> models
     services --> llm["llm/*<br/>provider layer (no web or DB)"]
     services -. raise .-> exceptions["api/exceptions.py<br/>DomainError"]

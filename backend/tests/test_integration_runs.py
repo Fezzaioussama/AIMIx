@@ -17,7 +17,8 @@ from mcp import McpError
 from mcp.types import ErrorData
 from sqlalchemy.orm import Session
 
-from api.deps import app_settings, host_resolver, secret_box
+from api.deps import app_settings, secret_box
+from api.integration_deps import host_resolver
 from api.models import Pipeline, User
 from api.repositories import pipelines
 from api.security import SecretBox

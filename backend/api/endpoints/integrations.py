@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response
 
-from api.deps import Integrations
+from api.integration_deps import Integrations
 from api.schemas.integrations import (
     HeaderIn,
     IntegrationIn,

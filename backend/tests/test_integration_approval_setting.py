@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.orm import Session
 
-from api.deps import host_resolver
+from api.integration_deps import host_resolver
 from api.models import Integration, User
 from api.repositories import users
 from api.security import hash_password
