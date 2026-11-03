@@ -13,13 +13,7 @@ import { deferred, hangUntilAborted, json } from './testData';
 import { useMissionDocuments, type DocumentSink } from './useMissionDocuments';
 
 // The microphone itself is covered in core/voice/MicButton.test.tsx: here it just speaks.
-vi.mock('../../core/voice/MicButton', () => ({
-  MicButton: ({ label, onTranscript }: { label: string; onTranscript: (text: string) => void }) => (
-    <button type="button" onClick={() => onTranscript('then a reviewer checks it')}>
-      {label}
-    </button>
-  ),
-}));
+vi.mock('../../core/voice/MicButton', () => import('../../core/voice/speakingMic'));
 
 const report: ExtractedDocument = {
   filename: 'report.pdf',

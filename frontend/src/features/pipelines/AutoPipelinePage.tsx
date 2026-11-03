@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { PLAN_DESCRIPTION_MAX_LENGTH } from '../../core/api/pipelines';
 import { useModels } from '../../core/hooks/useModels';
 import { useAgentTools } from '../../core/hooks/useAgentTools';
 import { BusyNotice } from '../../core/ui/BusyNotice';
@@ -8,6 +9,8 @@ import { GlowButton } from '../../core/ui/GlowButton';
 import { Page, PageHeader } from '../../core/ui/Page';
 import { AnimatedContent } from '../../core/ui/reactbits/AnimatedContent';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
+import { MicButton } from '../../core/voice/MicButton';
+import { appendDictation } from '../../core/voice/dictation';
 import { StartFromTemplateLink } from '../templates/StartFromTemplateLink';
 import { GeneratedSteps } from './GeneratedSteps';
 import { PipelineGraph } from './PipelineGraph';
@@ -87,6 +90,14 @@ export function AutoPipelinePage() {
             >
               {isGenerating ? 'Generating…' : 'Generate Pipeline'}
             </GlowButton>
+            {!isGenerating && (
+              <MicButton
+                label="Dictate your workflow"
+                onTranscript={(text) =>
+                  setDescription(appendDictation(description, text, PLAN_DESCRIPTION_MAX_LENGTH))
+                }
+              />
+            )}
           </div>
 
           {(errorMessage || modelsError || toolsError) && (

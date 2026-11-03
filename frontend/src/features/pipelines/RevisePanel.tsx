@@ -4,6 +4,8 @@ import { useId, useState, type SyntheticEvent } from 'react';
 import type { Pipeline } from '../../core/api/types';
 import { Spinner } from '../../core/ui/Spinner';
 import { ShinyText } from '../../core/ui/reactbits/ShinyText';
+import { MicButton } from '../../core/voice/MicButton';
+import { appendDictation } from '../../core/voice/dictation';
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from './buttonStyles';
 import { Foldable, PanelToggle } from './FoldablePanel';
 import { RevisionReview } from './RevisionReview';
@@ -135,19 +137,29 @@ function InstructionForm({
         className={FIELD_CLASS}
       />
       <ExampleInstructions disabled={busy} onPick={panel.pick} />
-      <AskButtons busy={busy} ready={ready} onCancel={cancel} />
+      <AskButtons
+        busy={busy}
+        ready={ready}
+        onCancel={cancel}
+        onDictate={(text) =>
+          panel.edit(appendDictation(panel.instruction, text, REVISION_INSTRUCTION_MAX_LENGTH))
+        }
+      />
     </form>
   );
 }
 
+/** "Propose changes", Stop while it works, and the microphone that says the change. */
 function AskButtons({
   busy,
   ready,
   onCancel,
+  onDictate,
 }: {
   busy: boolean;
   ready: boolean;
   onCancel: () => void;
+  onDictate: (text: string) => void;
 }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -155,10 +167,12 @@ function AskButtons({
         {busy && <Spinner decorative className="size-4" />}
         {busy ? 'Working on it…' : 'Propose changes'}
       </button>
-      {busy && (
+      {busy ? (
         <button type="button" onClick={onCancel} className={SECONDARY_BUTTON}>
           Stop
         </button>
+      ) : (
+        <MicButton label="Dictate the change" onTranscript={onDictate} />
       )}
     </div>
   );

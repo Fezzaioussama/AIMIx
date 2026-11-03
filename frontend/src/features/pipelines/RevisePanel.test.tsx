@@ -2,9 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { SPOKEN } from '../../core/voice/speakingMic';
 import { RevisePanel, type RevisePanelProps } from './RevisePanel';
 import { REVISION_EXAMPLES } from './revision';
 import { draft, json, pendingFetch, revision } from './revisionTestData';
+
+vi.mock('../../core/voice/MicButton', () => import('../../core/voice/speakingMic'));
 
 function renderPanel(props: Partial<RevisePanelProps> = {}) {
   const onApply = vi.fn();
@@ -22,6 +25,17 @@ async function ask(instruction = 'Add an SEO agent alongside the marketing agent
   await userEvent.type(box(), instruction);
   await userEvent.click(propose());
 }
+
+describe('RevisePanel dictation', () => {
+  it('adds the change that was said to the box', async () => {
+    renderPanel();
+    await userEvent.type(box(), 'Add an SEO agent');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dictate the change' }));
+
+    expect(box()).toHaveValue(`Add an SEO agent ${SPOKEN}`);
+  });
+});
 
 describe('RevisePanel', () => {
   afterEach(() => vi.restoreAllMocks());

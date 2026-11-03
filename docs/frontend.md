@@ -248,7 +248,9 @@ marks) and `countWords` (`Intl.Segmenter`, with a fallback).
 
 ## `core/voice/` — dictation
 
-`MicButton` sits in the Missions message box (`MissionComposer`): press to speak,
+`MicButton` sits in every box where you ask AIMIx for work: the Missions message box
+(`MissionComposer`), the Chat box (`ChatComposer`), the builder's "Ask AIMIx to change
+this pipeline" (`RevisePanel`) and Auto Pipeline's description. Press to speak,
 press again to stop; it shows the seconds while recording, a spinner while the clip
 is transcribed, and any failure as an alert above it. It renders nothing where the
 browser cannot record (`canRecordVoice()`). `useVoiceInput(onTranscript)` owns the
@@ -261,7 +263,8 @@ decoded with `AudioContext`, re-rendered by an `OfflineAudioContext` into one 16
 channel, written as 16-bit PCM WAV by `encodeWav`. `dictation.ts`
 (`appendDictation`) adds the words after what is typed, within the box's limit. The
 server sends `Permissions-Policy: microphone=(self)`, so only the app's own pages
-may ask for the microphone.
+may ask for the microphone. Tests swap the real button for `speakingMic.tsx`, whose
+button "says" `SPOKEN` (`vi.mock(…/MicButton, () => import(…/speakingMic))`).
 
 ## `core/ui/` — shared presentation and motion
 
@@ -369,9 +372,9 @@ with the run report the Results pane shares with the Runs page and the builder.
 | `CostLimitField.tsx` | The "Stop if it costs more than $…" field of the run form: optional, labelled, with its hint or problem under it as a polite live region. The draft keeps it as typed text (`RunDraft.maxCost`); `costLimitProblem` flags text that is not an amount above zero and `isRunReady` then blocks the run, because running without the cap the person asked for would be worse than not running. `runRequest` sends it as `max_cost_usd` |
 | `FoldablePanel.tsx` | `PanelToggle` (the bar: a heading holding one button with an icon, a title, an optional `summary` and a chevron that flips, `aria-expanded` / `aria-controls`), `Foldable` (the body, animated by its grid row with a fade and a 2px blur, `inert` while folded; `size` small opens in 250 ms and closes in 150, large in 350 and 250; `bodyClassName` replaces its padding) and `DisclosureButton` (an inline text button that opens a `Foldable`: "Read the full check"; its `id` lets a jump hand focus back to it). `RevisePanel`, `SchedulePanel` and the run report are built on them |
 | `usePipelineBuilder.ts` | State + transport: pipeline, saved list, dirty state, and actions for editing steps and inputs, adding parallel or following stages, replacing the whole draft (`replace`, for an accepted revision), saving and starting a run (`run` returns the started run for the page to follow). A changed pipeline must be saved before running. |
-| `AutoPipelinePage.tsx` | Describe → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
+| `AutoPipelinePage.tsx` | Describe (typed or said with the microphone) → generate → preview diagram → refine it in a sentence → edit inputs and steps → save |
 | `useAutoPipeline.ts` | Generation, editing (including the planned inputs), adding or removing output steps, `replace` (an accepted revision) and saving the proposed workflow (later saves update it) |
-| `RevisePanel.tsx` | "Ask AIMIx to change this pipeline": a foldable panel (open by default on the auto page) with the change box, clickable example instructions, a busy line with Stop, and the review. Ctrl/⌘ + Enter asks. Apply hands the revision to `onApply` (the page replaces its draft and leaves it unsaved); it never saves. Props: `pipeline`, `onApply`, optional `plannerModel`, `disabled`, `defaultOpen`, `headingLevel`. Mounted under the builder's title and under the auto page's diagram |
+| `RevisePanel.tsx` | "Ask AIMIx to change this pipeline": a foldable panel (open by default on the auto page) with the change box, clickable example instructions, a microphone to say the change, a busy line with Stop, and the review. Ctrl/⌘ + Enter asks. Apply hands the revision to `onApply` (the page replaces its draft and leaves it unsaved); it never saves. Props: `pipeline`, `onApply`, optional `plannerModel`, `disabled`, `defaultOpen`, `headingLevel`. Mounted under the builder's title and under the auto page's diagram |
 | `RevisionReview.tsx` | A proposal: the change list in plain words (added / changed / removed marks), a `PipelineGraph` preview, Apply and Discard; "Nothing to change" when the planner changed nothing. `ChangeList` is exported: the mission conversation shows the same list |
 | `useRevisePipeline.ts` | `useRevisePipeline(pipeline)` → `{ proposal, stale, busy, error, propose, cancel, discard }` over `POST /api/pipelines/revise`. The proposal keeps the draft's id (so a save updates it) and only applies to the draft it was made from: an edit sets it aside (`stale`), and an answer for a draft edited meanwhile is dropped. Aborts on unmount and on `cancel` |
 | `useRevisePanel.ts` | The panel's own state over `useRevisePipeline` (typed instruction, applied flag, `edit` / `pick` / `ask` / `apply` / `discard`) and `panelStatus`, the text of its live status line |

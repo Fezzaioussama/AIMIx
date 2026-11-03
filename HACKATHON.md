@@ -44,7 +44,7 @@ from October 26 up to it only edit `AGENTS.md`, the contributor rules.
 |---|---|
 | [`c6fe331`](https://github.com/Fezzaioussama/AIMIx/commit/c6fe331) | **Meta Model API as a provider.** Every agent, the planner and the chat can run on Muse Spark 1.3 or Muse Wonder 1.0, with tool calling, streamed usage and per-call cost from Meta's published prices |
 | [`5d26d21`](https://github.com/Fezzaioussama/AIMIx/commit/5d26d21) | Meta named in the privacy policy, terms and site copy |
-| [`674d4a4`](https://github.com/Fezzaioussama/AIMIx/commit/674d4a4) | **Build agents by voice.** A microphone in Missions; Muse Voice Transcribe turns the request into text, and the planner builds the team from it |
+| [`674d4a4`](https://github.com/Fezzaioussama/AIMIx/commit/674d4a4) | **Build agents by voice.** A microphone in Missions; Muse Voice Transcribe turns the request into text, and the planner builds the team from it. The same microphone is in Chat, the builder's "Ask AIMIx to change this pipeline" and Auto Pipeline, so any work can be asked for by voice |
 | [`03401f1`](https://github.com/Fezzaioussama/AIMIx/commit/03401f1) | **Agents that draw.** A `generate_image` tool on Muse Image; PDF and Word deliverables show the pictures; the results pane previews them |
 | [`fed68fe`](https://github.com/Fezzaioussama/AIMIx/commit/fed68fe) | **Agents that see.** A `find_objects` tool on SAM 3.1 finds and counts every match of a phrase ("loaf of bread", "scratch") in a picture, and saves a copy with the matches numbered for the report |
 

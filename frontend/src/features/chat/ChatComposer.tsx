@@ -2,6 +2,8 @@ import type { Ref } from 'react';
 
 import { AiNotice } from '../../core/ui/AiNotice';
 import { ClickSpark } from '../../core/ui/reactbits/ClickSpark';
+import { MicButton } from '../../core/voice/MicButton';
+import { appendDictation } from '../../core/voice/dictation';
 
 interface ChatComposerProps {
   value: string;
@@ -11,7 +13,11 @@ interface ChatComposerProps {
   ref?: Ref<HTMLInputElement>;
 }
 
-/** The message box: Enter or the send button submits; `ref` lets starter prompts focus it. */
+/**
+ * The message box: Enter or the send button submits; the microphone adds what is said
+ * (Muse Voice Transcribe) to the box, to read before sending; `ref` lets starter prompts
+ * focus it.
+ */
 export function ChatComposer({ value, disabled, onChange, onSend, ref }: ChatComposerProps) {
   return (
     <div className="p-4 sm:p-6">
@@ -25,6 +31,10 @@ export function ChatComposer({ value, disabled, onChange, onSend, ref }: ChatCom
           onChange={(event) => onChange(event.target.value)}
           onKeyUp={(event) => event.key === 'Enter' && onSend()}
           className="min-w-0 flex-1 bg-transparent px-4 py-3 text-base text-white outline-none placeholder:text-slate-500"
+        />
+        <MicButton
+          label="Dictate your message"
+          onTranscript={(text) => onChange(appendDictation(value, text))}
         />
         <ClickSpark className="inline-flex">
           <button
