@@ -21,6 +21,11 @@
   <a href="docs/README.md">Documentation</a>
 </p>
 
+> **Meta Global AI Developer Hackathon 2026 (Startup track):** see
+> [HACKATHON.md](HACKATHON.md) for what was built during the event and how AIMIx uses
+> Meta's models, the [3-minute demo video](https://www.youtube.com/watch?v=jKhtG-1C1ww),
+> and the live app at [aimix.win](https://aimix.win).
+
 AIMIx is a visual AI pipeline builder. Give each agent a role, model, prompt,
 and tool policy; group agents into parallel stages; then pass their ordered
 results into the next stage. A FastAPI backend owns authentication, persistence,
