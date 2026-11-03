@@ -9,6 +9,8 @@ AI agents by chatting (or speaking), and an orchestrator agent does the work.**
 **Live in production at [aimix.win](https://aimix.win)**: a real product, not a
 prototype (see [Live in production](#live-in-production)).
 
+**Demo video (2:50):** [AIMIx: Build AI Agent Teams by Talking](https://www.youtube.com/watch?v=jKhtG-1C1ww)
+
 ## The idea
 
 Workflow tools make you draw the automation: drag nodes onto a canvas, wire them,
@@ -101,8 +103,8 @@ on every push that passes CI.
   model calls, and left a JPEG hero picture and a PDF launch plan with the picture
   in the user's files.
 - **Built to run for real users:** accounts with encrypted per-user API keys, a
-  cost and token limit on any run (and a cap for every run that the operator sets),
-  usage and cost per workflow, GDPR export and deletion, and legal pages.
+  cost and token limit on any run (every run on aimix.win is capped at $1), usage
+  and cost per workflow, GDPR export and deletion, and legal pages.
 - **Hardened:** HTTPS with HSTS preload, a strict Content Security Policy, the
   microphone allowed for the site itself only, login lockout and rate limits, one
   Docker image built and smoke-tested in CI before it ships.
@@ -116,8 +118,8 @@ demo login with the submission.
   module. Speech and images reuse that client, the same retries and the same error
   contract.
 - Spending stays bounded: any run can carry a cost and token limit (the run form
-  asks for one, and `RUN_MAX_COST_USD` caps them all), and Meta calls are priced from
-  the catalogue because the API reports no cost.
+  asks for one, and `RUN_MAX_COST_USD` caps them all: $1 per run on aimix.win), and
+  Meta calls are priced from the catalogue because the API reports no cost.
 - Privacy by design: recordings are never stored, and the cheaper `-contributor`
   models (which let Meta train on requests) are left out on purpose. Meta marks
   each picture as AI-generated in its metadata, and AIMIx keeps that mark.
@@ -139,4 +141,6 @@ and say what you need.
 
 ## Demo
 
-Video: *(link added at submission)*
+Video (2:50): [AIMIx: Build AI Agent Teams by Talking](https://www.youtube.com/watch?v=jKhtG-1C1ww).
+The bakery scenes and the narration are AI-generated (HeyGen, Gemini TTS); all app
+footage is recorded live on aimix.win, with long runs sped up.
