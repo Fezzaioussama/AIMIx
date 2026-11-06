@@ -200,6 +200,8 @@ until the window ends.
   "approvals": [ /* every approval request, any status, with run_id and decided_at */ ],
   "schedules": [ /* the saved schedule: frequency, hour, minute, timezone, inputs, … */ ],
   "integrations": [ /* name, url, enabled, require_approval, headers (name and hint), created_at */ ],
+  "chats": [ /* as GET /chats/<id>, newest first, plus summary: the assistant's notes on its oldest messages */ ],
+  "memory": "What they told AIMIx to keep in mind (Settings → Memory), as written",
   "files": [ /* as GET /files: path, size, modified_at, type */ ],
   "note": "Saved API keys and integration header values are secrets: …"
 }
@@ -300,6 +302,29 @@ one containing spaces. Saving the same body twice leaves the same state.
 
 Forgets your saved key for that provider, which then falls back to the
 server's key only with `ALLOW_SERVER_LLM_KEY=true`. Idempotent. `200` returns the same shape as `GET`.
+
+---
+
+## Memory
+
+What the signed-in person told AIMIx to keep in mind (Settings → Memory): their
+business, who their work is for, the language and tone they want. The chat, the
+planner (generate and revise, from the screens and from the chat's workflow
+tools) and every step agent read it before their task, in a `<memory>` block
+presented as the person's standing instructions, never as the task. After Celia
+Agent's instruction files, with one text per account.
+
+### `GET /memory`
+
+`200` → `{ "instructions": "We sell bread…", "updated_at": "2026-11-06T08:30:00Z",
+"max_chars": 4000 }`. `instructions` is `""` and `updated_at` null until
+something was saved; `max_chars` is the server's `MEMORY_MAX_CHARS`.
+
+### `PUT /memory`
+
+`{ "instructions": "…" }`, trimmed, at most `MEMORY_MAX_CHARS` characters
+(4,000; `400 validation_error` past it, naming both lengths); an empty text
+forgets them. `200` → as `GET`. The text is in the account's copy as `memory`.
 
 ---
 
@@ -522,6 +547,27 @@ call and starts no sandbox.
 ```json
 {
   "prompt": "Make it run every Monday at 9.",
+  "chat_id": 12,
+  "timezone": "Europe/Paris"
+}
+```
+
+Only `prompt` is required. `chat_id` names a chat the server keeps (see
+[Chats](#chats)): the assistant reads what was said in it, and both sides of
+this exchange are added to it. Of the chat's earlier messages it reads the newest
+whose texts fit in `CHAT_HISTORY_MAX_CHARS` together (24,000 by default; `0`
+makes each message stand alone); the older ones are not forgotten but folded,
+the first time they fall out of that window, into notes the assistant writes
+itself (one model call, counted with the reply's; at most `CHAT_SUMMARY_MAX_CHARS`,
+4,000 by default), kept with the chat and read in their place with every later
+message. A chat that holds `CHAT_MAX_MESSAGES` messages (400) takes no more:
+`409 chat_full`, and the person starts a new one. Another user's chat is a `404`.
+
+A client that keeps its own conversation sends it instead, in `history`:
+
+```json
+{
+  "prompt": "Make it run every Monday at 9.",
   "history": [
     { "role": "user", "content": "Build a digest of this week's AI news for my team." },
     { "role": "assistant", "content": "Done: AI news digest, with a researcher and a writer." }
@@ -530,14 +576,13 @@ call and starts no sandbox.
 }
 ```
 
-Only `prompt` is required. The server keeps no conversation: the chat screen sends
-what was said before in `history` (oldest first, `role` `user` or `assistant`, at
-most 200 turns of at most 100,000 characters each), and the assistant reads the
-newest turns whose texts fit in `CHAT_HISTORY_MAX_CHARS` together (24,000 by
-default; `0` makes each message stand alone). `timezone` is the browser's IANA
-zone: the assistant is told today's date and the time there, and schedules use it
-unless the person names another. A zone the server does not know is ignored, and
-the assistant then asks for one before scheduling.
+Oldest first, `role` `user` or `assistant`, at most 200 turns of at most 100,000
+characters each; the assistant reads the newest that fit in
+`CHAT_HISTORY_MAX_CHARS`, and nothing is kept. `history` is ignored when
+`chat_id` is given. `timezone` is the browser's IANA zone: the assistant is told
+today's date and the time there, and schedules use it unless the person names
+another. A zone the server does not know is ignored, and the assistant then asks
+for one before scheduling.
 
 `200` with `Accept: application/x-ndjson`: one JSON event per line
 (`Content-Type: application/x-ndjson; charset=utf-8`), streamed as the agent
@@ -554,6 +599,8 @@ out. The events are:
             "subtitle": "Daily at 09:00 (Europe/Paris)"}}
 {"type": "tool", "tool": "create_pipeline", "label": "Creating a pipeline",
  "status": "failed", "detail": "A pipeline needs at least one step."}
+{"type": "usage", "usage": {"input_tokens": 1840, "output_tokens": 212,
+ "cost_usd": 0.0011, "cost_complete": true}}
 ```
 
 `action` is present when the tool created or changed something the chat can
@@ -563,7 +610,10 @@ as "Finished" or "Waiting for your OK"), `webhook` (the screen shows the link
 from `GET /webhooks/<id>`; see [Webhooks](#webhooks)) or `delivery` (the screen
 shows where results go, with Confirm and Cancel; see
 [Result deliveries](#result-deliveries)). `detail` carries a short human-readable
-result or failure.
+result or failure. `usage` is the last event of a reply: what its model calls
+used and cost in all, shaped like a run's usage (`cost_usd` null when no call's
+cost is known, `cost_complete` false when some tokens ran on a model whose cost
+is unknown); a kept chat records it with the reply.
 
 The assistant is told who it is and how to work with people who are not
 technical (`services/chat_prompts.py`): plain words in their language, one to
@@ -636,6 +686,33 @@ many tokens (in and out): before the first text event that is a `409
 budget_exceeded` (`"This reply stopped at 12,034 tokens because it reached its
 10,000-token limit."`), after it the stream ends. A pipeline that
 `run_pipeline` starts is an ordinary run, under the run limits below.
+
+### Chats
+
+The conversations the Chat screen keeps on the server, so one can be opened
+again from any tab or device. The messages themselves are exchanged through
+`POST /chat` with the chat's `chat_id`.
+
+- `GET /chats` → `200 [{ "id", "title", "created_at", "updated_at" }]`, the one
+  last written to first, without messages.
+- `POST /chats` with `{ "title": "" }` (optional, at most 100 characters) →
+  `201` the chat. Left empty, the title becomes the first line of the chat's
+  first message, cut to 100 characters. An account keeps at most
+  `CHATS_MAX_PER_USER` chats (200): `400 validation_error` past it, until one
+  is deleted.
+- `GET /chats/<id>` → `200` the chat with its `messages`, oldest first, and
+  `usage`, what every reply's model calls used in all. Each message is
+  `{ "id", "role": "user" | "assistant", "text", "tools", "created_at", "usage" }`;
+  `tools` lists what the reply used as the chat showed it (`tool`, `label`,
+  `status`, `detail`, `action`; never a tool's arguments or output), and a
+  person's message has none and a zero usage.
+- `PATCH /chats/<id>` with `{ "title": "Launch plan" }` (non-blank, at most 100
+  characters) → `200` the chat.
+- `DELETE /chats/<id>` → `204`; its messages go with it.
+
+A chat of another user is a `404` on every route. The assistant's notes on a
+chat's oldest messages are not shown here; they are in the account's copy
+(`GET /account/export`, as each chat's `summary`).
 
 ---
 

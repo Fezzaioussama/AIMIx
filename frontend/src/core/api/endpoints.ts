@@ -17,6 +17,8 @@ export const API = {
   requestPasswordReset: '/api/password-reset',
   confirmPasswordReset: '/api/password-reset/confirm',
   chat: '/api/chat',
+  chats: '/api/chats',
+  chatById: (chatId: number) => `/api/chats/${chatId}`,
   models: '/api/models',
   agentTools: '/api/agent-tools',
   pipelines: '/api/pipelines/',
@@ -44,6 +46,7 @@ export const API = {
   /** One file of the user's workspace, by its '/'-separated path. */
   file: (path: string) => `/api/files/${path.split('/').map(encodeURIComponent).join('/')}`,
   llmSettings: '/api/llm-settings',
+  memory: '/api/memory',
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
   templates: '/api/templates',
   createFromTemplate: (slug: string) => `/api/templates/${encodeURIComponent(slug)}/use`,

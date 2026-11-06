@@ -2,7 +2,7 @@
 yet, so a restart can start an occurrence the process died on.
 
 Revision ID: ab6587d1d481
-Revises: 463d9d894942
+Revises: d1eb2d007f66
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "ab6587d1d481"
-down_revision: str | None = "463d9d894942"
+down_revision: str | None = "d1eb2d007f66"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

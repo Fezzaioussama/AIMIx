@@ -10,7 +10,9 @@ from api.services.chat_events import (
     tool_failed,
     tool_finished,
     tool_started,
+    usage_event,
 )
+from llm.usage import TokenUsage
 
 
 def test_text_events_encode_as_one_json_line() -> None:
@@ -79,3 +81,17 @@ def test_a_weekly_schedule_names_its_weekday() -> None:
 
 def test_a_read_only_tool_has_no_action() -> None:
     assert tool_finished("list_pipelines", [{"id": 1}]).action is None
+
+
+def test_a_usage_event_ends_a_reply_with_what_it_used() -> None:
+    event = json.loads(encode(usage_event(TokenUsage.of(120, 30, None))))
+
+    assert event == {
+        "type": "usage",
+        "usage": {
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "cost_usd": None,
+            "cost_complete": False,
+        },
+    }

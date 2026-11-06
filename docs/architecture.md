@@ -152,6 +152,16 @@ no step records, a chat message's and the planner's (through the provider's
 `CallMetering`), are saved as `usage_events`, so `GET /usage` and the allowance
 count them too.
 
+**The context guard.** A step's (and the chat's) tool loop grows inside one
+task: every tool result joins the messages the next model call reads. Before
+each call, LangChain's `SummarizationMiddleware` (`agent_runtime.context_guard`,
+after Celia Agent's proactive compaction) estimates them; once they reach
+`AGENT_CONTEXT_WINDOW_RATIO` of the model's window (its catalogue
+`context_window`, else `AGENT_CONTEXT_WINDOW_TOKENS`), the agent's own metered
+model summarizes the older ones, so that call counts toward the run's budget
+too, and the newest `AGENT_COMPACT_KEEP_MESSAGES` stay verbatim. A long run of
+reads no longer ends in a provider error.
+
 **The server's limits** (`run_policy.RunPolicy`, applied by `RunService` on every
 path that starts or resumes a run). A limit the starter leaves unset takes the
 default (`RUN_DEFAULT_MAX_COST_USD`, `RUN_DEFAULT_MAX_TOKENS`); the ceilings
@@ -827,17 +837,27 @@ crash, startup recovery logs only how many runs it interrupted
 1. `useChatStream.send` adds the user message and an empty AI message, then
    iterates `streamChatReply()` → `client.streamText()`, which reads
    `response.body.getReader()` and splits decoded chunks into NDJSON events.
-   The server keeps no conversation: the hook sends the messages before this
-   one as `history` (not the greeting or a failed reply) and the browser's time
-   zone, and keeps the transcript for the tab (`chatStorage`) once each reply ends.
-2. `endpoints/chat.chat` validates `{"prompt", "history", "timezone"}`, and
-   `chat_conversation.conversation_of` keeps the newest turns that fit in
-   `CHAT_HISTORY_MAX_CHARS` and a zone the server knows; then it calls
-   `services/chat.stream_reply(agent, conversation)`.
+   The chat lives on the server (`useChats`: `GET /chats`, the one last written
+   to first; a chat is made with `POST /chats` when its first message is sent):
+   the hook sends the message with the open chat's `chat_id` and the browser's
+   time zone, and the tab only keeps which chat is open (`chatStorage`).
+2. `endpoints/chat.chat` validates `{"prompt", "chat_id", "timezone"}` (or
+   `"history"` for a client that keeps its own conversation) and asks
+   `services/chat_memory.ChatMemory.open` for the conversation: the chat's
+   messages its notes do not cover, of which `chat_conversation.recent` keeps the
+   newest that fit in `CHAT_HISTORY_MAX_CHARS`; the older ones are folded first
+   into the assistant's notes (`agent.summarize`, one model call, at most
+   `CHAT_SUMMARY_MAX_CHARS`), kept with the chat and read in their place from
+   then on, after Celia Agent's session compaction. Then it calls
+   `services/chat.stream_reply(agent, conversation)` and wraps the stream in
+   `memory.recorded`, which saves the person's message as the reply begins and
+   the reply (text, tools, usage) as it ends.
 3. `services/agent` builds a chat-only LangGraph agent from the configured
    model, with the assistant's instructions (`chat_prompts`: how to work with
-   people who are not technical, today's date and time in their zone) and the
-   earlier turns before the prompt. After a tool's result, the model's next call
+   people who are not technical, what the person told AIMIx to keep in mind
+   (Settings → Memory, read by `ChatMemory.open` into
+   `Conversation.instructions`), the chat's notes when it has some, today's
+   date and time in their zone) and the earlier turns before the prompt. After a tool's result, the model's next call
    is reminded to answer in the language of the person's message, whose start it
    quotes (`chat_language`): a result in another language drew answers in it.
    It binds the signed-in user's native tools
@@ -866,8 +886,10 @@ crash, startup recovery logs only how many runs it interrupted
    the status, so it is logged (`chat.stream_interrupted`) and the stream ends.
 6. The hook appends text to the AI message and folds each `tool` event into the
    reply's tool list; a finished write offers an `action` the bubble links to
-   (the mission, a run, or Schedules). Unmounting aborts the fetch and keeps what came,
-   so following that link and coming back continues the conversation.
+   (the mission, a run, or Schedules); the `usage` event that ends the reply is
+   kept on the message, and the header adds every reply's up. Unmounting aborts
+   the fetch; the server kept what came, so following that link and coming back
+   reopens the chat (`GET /chats/<id>`) where it was.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 
@@ -879,8 +901,11 @@ crash, startup recovery logs only how many runs it interrupted
    `services/pipelines.generate` builds a prompt (`services/plan_prompts`) with
    their names and descriptions plus the allowed model ids (every step on the
    default one), how to shape the team, the final check every
-   new team ends with, and either the invitation to ask (`may_ask`, no answers
-   yet) or the fenced answers, then calls the direct provider adapter. When the
+   new team ends with, either the invitation to ask (`may_ask`, no answers
+   yet) or the fenced answers, and what the person told AIMIx to keep in mind
+   (Settings → Memory, `user_memory.memory_section`; the endpoint's `Planner`
+   context reads it, as do the chat's workflow tools and, for every step,
+   `PipelineAgentGenerator`), then calls the direct provider adapter. When the
    planner may ask and replies `{"questions": [...]}`, `services/plan_questions`
    reads them and the endpoint returns them with `generated_pipeline: null`. A
    reply that is not a usable plan is asked for once more. Each step goes on the

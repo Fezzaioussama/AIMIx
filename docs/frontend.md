@@ -25,14 +25,14 @@ frontend/src/
   features/
     auth/           # LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage, AuthCard, AuthLayout
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
-    chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream, chatStorage
+    chat/           # the Chat screen over the chats the server keeps: frontend-chat.md
     files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat
     legal/          # LegalPage: /legal, /privacy, /terms (French), operator facts
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, useRun, the run history, and report/: RunReport, one run as one document
     schedules/      # the Schedule panel (builder) and the Schedules screen
-    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Webhooks, Usage, Account
+    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Memory, Webhooks, Usage, Account
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -106,12 +106,14 @@ resolves the session before the first render without a redirect flash.
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request`, `requestBlob` and `streamText` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
-| `chat.ts` | `streamChatReply`, which decodes the chat's NDJSON events (`chatTypes.ts`: text, tool started/finished/failed, and an `action` naming what to link to) |
+| `chat.ts` | `streamChatReply(prompt, {chatId, timezone}, signal)`, which sends a message to a chat the server keeps and decodes the reply's NDJSON events (`chatTypes.ts`: text, tool started/finished/failed with an `action` naming what to link to, and last `usage`, what the reply used) |
+| `chats.ts` | `listChats`, `createChat`, `getChat` (with its messages and their usage), `renameChat`, `deleteChat` (`chatTypes.ts`: `ChatSummary`, `ChatDetail`, `ChatSavedMessage`, `ChatSavedTool`) |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal), `planMission` (one options object — `description`, `answers`, `mayAsk` and the optional `documents`, sent only when there are some — and an abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal). The planning limits mirror `backend/api/schemas/planning.py`: `PLAN_DESCRIPTION_MAX_LENGTH` (20,000), `MAX_PLAN_DOCUMENTS` (5), `PLAN_DOCUMENT_EXCERPT_CHARS` (2,000) and `PLAN_DOCUMENT_NAME_MAX_LENGTH` (2,048), with `DOCUMENTS_INPUT_NAME` (`documents`), the run input every plan made with documents has. `normalizePipeline` fills what older pipelines and plans leave out (inputs, role, tools, expected output, `condition` and `review` as `null`) |
 | `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
+| `memory.ts` | `fetchMemory`, `saveMemory` (Settings → Memory; `memoryTypes.ts`: `Memory`, with the server's `max_chars`) |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 | `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan), `importDocumentFromUrl(url, signal)` (`POST /api/documents/import-url`, same timeout: the server opens a public page or file at a link and answers like `extractDocument`, `filename` being the address the link led to; `PAGE_URL_MAX_LENGTH` caps the link) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
 | `runs.ts` | `startRun` (its body may carry `max_cost_usd` / `max_tokens`), `listRuns` (page, optional pipeline and status), `countWaitingRuns` (`listRuns` for `status=waiting`, one run: its `total`), `getRun`, `cancelRun`, `resumeRun` (optionally with new limits), `deleteRun` — all with the default 30 s timeout, since a run executes on the server |

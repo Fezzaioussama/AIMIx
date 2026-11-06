@@ -13,19 +13,11 @@ with the run report the Results pane shares with the Runs page and the builder.
 
 ### `features/chat`
 
-- `useChatStream()` owns the transcript (`messages`), each reply's tool runs
-  (`tools`), `isLoading`, `send()` and `reset()` ("New chat"). `send` passes the
-  messages before it (`historyOf`: not the greeting nor a `failed` reply) and the
-  browser's zone, then folds text and tool events into an empty AI message as they
-  stream. `chatStorage` keeps the transcript for the tab once each reply ends and
-  on unmount (an `AbortController` cancels the stream), and main.tsx forgets it with
-  the session. `ChatPage` renders the header, an `Aurora`, the transcript, the composer;
-  `ChatMessages` animates each bubble in (`renderMarkdown`), typing dots until a reply
-  has text or a tool. What a tool made shows through `ToolActivity`'s `ACTION_VIEWS`: a
-  link, a `WebhookCard` (`useWebhookLink` reads the link, never stored) or a
-  `DeliveryCard` (Confirm or Cancel through `useDelivery`). A fresh chat offers starters.
+The Chat screen at `/chat`, over the chats the server keeps: the list, the open chat,
+its replies' tools and cost, and what the tab remembers. It has its own page,
+[frontend-chat.md](frontend-chat.md).
 
-### `features/pipelines`
+## `features/pipelines`
 
 | File | Role |
 |---|---|
@@ -153,6 +145,11 @@ runs and deletes them.
   `ProvidersSection` (Settings → Providers, at `/settings`) renders the provider
   picker and one `ProviderCard` (key status, password field, "Remove saved
   key", default-model select) each.
+- `MemorySection` (Settings → Memory), through `useMemory()` (`GET /api/memory`, the
+  draft, `dirty`, `save`): what AIMIx keeps in mind in every chat, plan and run, as one
+  text the person writes like a brief to a new colleague, with the characters used of
+  the server's `max_chars` and when it was last saved; "Save memory" is enabled once the
+  text differs from what is saved and fits, and the outcome is a `NoticeLine`.
 - `UsageSection` (Settings → Usage) shows the last `USAGE_DAYS` (30) days from
   `useUsage()` (`GET /api/usage`, cancelled on unmount): runs, cost (with the
   token split in its tooltip) and tokens, then a list of pipelines with their

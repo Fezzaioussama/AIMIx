@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { streamChatReply } from '../../core/api/chat';
-import type { ChatAction, ChatToolEvent, ChatToolStatus, ChatTurn } from '../../core/api/chatTypes';
+import { getChat } from '../../core/api/chats';
+import type {
+  ChatAction,
+  ChatSavedMessage,
+  ChatToolEvent,
+  ChatToolStatus,
+} from '../../core/api/chatTypes';
+import { errorMessage } from '../../core/api/errorMessage';
+import type { Usage } from '../../core/api/types';
 import { browserTimeZone } from '../schedules/scheduleDraft';
-import { forgetChat, readChat, writeChat } from './chatStorage';
 
 /** One tool the assistant used, and what it produced. */
 export interface ChatToolRun {
@@ -23,6 +30,8 @@ export interface ChatMessage {
   tools: ChatToolRun[];
   /** The reply could not be had; it is shown, but the assistant is not told it said so. */
   failed?: boolean;
+  /** What the reply's model calls used, once it ended. */
+  usage?: Usage;
 }
 
 const GREETING_ID = 0;
@@ -33,73 +42,90 @@ function greeting(): ChatMessage {
   return { id: GREETING_ID, text: GREETING, sender: 'ai', timestamp: new Date(), tools: [] };
 }
 
-function restoredOrGreeting(): ChatMessage[] {
-  const stored = readChat();
-  return stored.length > 0 ? stored : [greeting()];
+/** A saved message as the screen shows it; a tool still running when the reply was cut shows as stopped. */
+function restored(message: ChatSavedMessage): ChatMessage {
+  return {
+    id: message.id,
+    text: message.text,
+    sender: message.role === 'user' ? 'user' : 'ai',
+    timestamp: new Date(message.created_at),
+    tools: message.tools.map((tool, index) => {
+      const ended = tool.status !== 'started';
+      return {
+        id: `${message.id}-${index}`,
+        tool: tool.tool,
+        label: tool.label,
+        status: ended ? tool.status : 'failed',
+        detail: ended ? tool.detail || undefined : 'Stopped',
+        action: tool.action ?? undefined,
+      };
+    }),
+    ...(message.role === 'assistant' && { usage: message.usage }),
+  };
 }
 
-/** The conversation as the assistant reads it: every exchange but the greeting and failed replies. */
-export function historyOf(messages: ChatMessage[]): ChatTurn[] {
-  return messages
-    .filter((message) => message.id !== GREETING_ID && !message.failed && message.text.trim())
-    .map((message) => ({
-      role: message.sender === 'user' ? 'user' : 'assistant',
-      content: message.text,
-    }));
+interface ChatStreamOptions {
+  /** The open chat, whose messages are shown; null is a fresh chat. */
+  chatId: number | null;
+  /** The chat to send in: the open one, or a new one made for the first message. */
+  ensureChat: () => Promise<number>;
+  /** Called once a reply ends, so the list shows the chat's new title and time. */
+  onReplyEnd: () => void;
 }
 
 /**
- * Owns the chat transcript, the tools each reply used, and the streaming read
- * loop, keeping transport out of the component (AGENTS.md §2). The transcript is
- * kept for this tab, and each message carries the conversation before it.
+ * Owns the transcript of the open chat, the tools each reply used, and the streaming
+ * read loop, keeping transport out of the component (AGENTS.md §2). The chat lives on
+ * the server: opening one loads its messages, and each message is sent to it.
  */
-export function useChatStream() {
-  const [messages, setMessages] = useState<ChatMessage[]>(restoredOrGreeting);
+export function useChatStream({ chatId, ensureChat, onReplyEnd }: ChatStreamOptions) {
+  const [messages, setMessages] = useState<ChatMessage[]>([greeting()]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [loadingChat, setLoadingChat] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
-  const latest = useRef(messages);
+  // The chat whose messages are on screen; a chat made by `send` is not loaded again.
+  const shown = useRef<number | null>(null);
 
-  // Keep the conversation once each reply is complete, not on every streamed word.
   useEffect(() => {
-    latest.current = messages;
-    if (!isStreaming) writeChat(messages);
-  }, [messages, isStreaming]);
+    if (chatId === shown.current) return;
+    // A reply in progress belongs to the chat being left.
+    abortRef.current?.abort();
+    shown.current = chatId;
+    setLoadError('');
+    if (chatId === null) {
+      setMessages([greeting()]);
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingChat(true);
+    getChat(chatId, controller.signal)
+      .then((chat) => setMessages([greeting(), ...chat.messages.map(restored)]))
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted)
+          setLoadError(errorMessage(cause, 'Could not open this chat.'));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingChat(false);
+      });
+    return () => controller.abort();
+  }, [chatId]);
 
-  // Leaving mid-reply (to open what the assistant built) stops it and keeps what came.
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-      writeChat(latest.current);
-    },
-    [],
-  );
+  // Leaving mid-reply (to open what the assistant built) stops it; the server keeps what came.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
-  const appendChunk = useCallback((id: number, chunk: string) => {
+  const patch = useCallback((id: number, change: (message: ChatMessage) => ChatMessage) => {
     setMessages((current) =>
-      current.map((message) =>
-        message.id === id ? { ...message, text: message.text + chunk } : message,
-      ),
+      current.map((message) => (message.id === id ? change(message) : message)),
     );
   }, []);
 
-  const applyTool = useCallback((id: number, event: ChatToolEvent) => {
-    setMessages((current) =>
-      current.map((message) => {
-        if (message.id !== id) return message;
+  const applyTool = useCallback(
+    (id: number, event: ChatToolEvent) => {
+      patch(id, (message) => {
         if (event.status === 'started') {
-          return {
-            ...message,
-            tools: [
-              ...message.tools,
-              {
-                id: `${id}-${message.tools.length}`,
-                tool: event.tool,
-                label: event.label,
-                status: event.status,
-              },
-            ],
-          };
+          const run = { id: `${id}-${message.tools.length}`, tool: event.tool, label: event.label };
+          return { ...message, tools: [...message.tools, { ...run, status: event.status }] };
         }
         // The event closes the newest run of that tool still waiting for its result.
         let running = -1;
@@ -110,39 +136,21 @@ export function useChatStream() {
             break;
           }
         }
-        const updated = {
-          status: event.status,
-          detail: event.detail,
-          action: event.action,
-        };
+        const updated = { status: event.status, detail: event.detail, action: event.action };
+        if (running === -1) {
+          const run = { id: `${id}-${message.tools.length}`, tool: event.tool, label: event.label };
+          return { ...message, tools: [...message.tools, { ...run, ...updated }] };
+        }
         return {
           ...message,
-          tools:
-            running === -1
-              ? [
-                  ...message.tools,
-                  {
-                    id: `${id}-${message.tools.length}`,
-                    tool: event.tool,
-                    label: event.label,
-                    ...updated,
-                  },
-                ]
-              : message.tools.map((tool, index) =>
-                  index === running ? { ...tool, ...updated } : tool,
-                ),
+          tools: message.tools.map((tool, index) =>
+            index === running ? { ...tool, ...updated } : tool,
+          ),
         };
-      }),
-    );
-  }, []);
-
-  const fail = useCallback((id: number, text: string) => {
-    setMessages((current) =>
-      current.map((message) =>
-        message.id === id ? { ...message, text: message.text + text, failed: true } : message,
-      ),
-    );
-  }, []);
+      });
+    },
+    [patch],
+  );
 
   const send = useCallback(
     async (prompt: string) => {
@@ -152,7 +160,6 @@ export function useChatStream() {
       const controller = new AbortController();
       abortRef.current = controller;
       const replyId = Date.now();
-      const context = { history: historyOf(messages), timezone: browserTimeZone() };
 
       setMessages((current) => [
         ...current,
@@ -160,38 +167,35 @@ export function useChatStream() {
         { id: replyId, text: '', sender: 'ai', timestamp: new Date(), tools: [] },
       ]);
       setIsLoading(true);
-      setIsStreaming(true);
 
       try {
+        const id = chatId ?? (await ensureChat());
+        shown.current = id;
+        const context = { chatId: id, timezone: browserTimeZone() };
         for await (const event of streamChatReply(trimmed, context, controller.signal)) {
           if (event.type === 'text') {
             setIsLoading(false);
-            appendChunk(replyId, event.text);
-          } else {
+            patch(replyId, (message) => ({ ...message, text: message.text + event.text }));
+          } else if (event.type === 'tool') {
             applyTool(replyId, event);
+          } else {
+            patch(replyId, (message) => ({ ...message, usage: event.usage }));
           }
         }
+        onReplyEnd();
       } catch (cause) {
         if (controller.signal.aborted) return;
-        const message =
+        const text =
           cause instanceof Error
             ? cause.message
             : 'Sorry, I encountered an error. Please check your connection or API key.';
-        fail(replyId, message);
+        patch(replyId, (message) => ({ ...message, text: message.text + text, failed: true }));
       } finally {
         setIsLoading(false);
-        setIsStreaming(false);
       }
     },
-    [appendChunk, applyTool, fail, messages],
+    [applyTool, chatId, ensureChat, onReplyEnd, patch],
   );
 
-  /** Starts over: stops a reply in progress and forgets the conversation. */
-  const reset = useCallback(() => {
-    abortRef.current?.abort();
-    forgetChat();
-    setMessages([greeting()]);
-  }, []);
-
-  return { messages, isLoading, send, reset };
+  return { messages, isLoading, loadingChat, loadError, send };
 }

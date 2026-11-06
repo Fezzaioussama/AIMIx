@@ -10,6 +10,7 @@ from datetime import date
 
 from api.services.flow_prompts import REVIEWER_RULE
 from api.services.tool_prompts import tool_guidance
+from api.services.user_memory import memory_section
 
 STEP_AGENT_TEMPLATE = (
     "You are {identity} in an AIMIx pipeline. Your final reply is handed on as the "
@@ -40,12 +41,14 @@ BRIEF_VALUE_MAX_CHARS = 600
 @dataclass(frozen=True)
 class AgentRole:
     """Who a step's agent is (§7 Value Object): its role, the result it owes, whether
-    it reviews the work, and what it is told about its team (``team_brief``)."""
+    it reviews the work, what it is told about its team (``team_brief``), and what the
+    person told AIMIx to keep in mind (``user_memory``)."""
 
     role: str
     expected_output: str = ""
     reviewer: bool = False
     context: str = ""
+    instructions: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,12 +100,15 @@ def team_brief(team: TeamView, own_order: int) -> str:
 
 
 def step_agent_system_prompt(agent: AgentRole, tools: Collection[str]) -> str:
-    """The system prompt for one step's agent: its identity, the working rules, its team
-    and this run when known, the result it must deliver when the step names one, what it
-    is told about its tools (by name) and links (``tool_prompts``), and, for a reviewer,
-    the rule to end with a verdict line."""
+    """The system prompt for one step's agent: its identity, the working rules, the
+    person's standing instructions when they wrote some, its team and this run when
+    known, the result it must deliver when the step names one, what it is told about
+    its tools (by name) and links (``tool_prompts``), and, for a reviewer, the rule to
+    end with a verdict line."""
     identity = f"the {agent.role} agent" if agent.role else "an agent"
     parts = [STEP_AGENT_TEMPLATE.format(identity=identity), STEP_AGENT_WORK_RULES]
+    if memory := memory_section(agent.instructions):
+        parts.append(memory)
     if agent.context.strip():
         parts.append(agent.context.strip())
     if agent.expected_output.strip():

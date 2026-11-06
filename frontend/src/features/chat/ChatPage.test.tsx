@@ -1,19 +1,37 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../core/api/client';
 import { streamChatReply } from '../../core/api/chat';
+import { createChat, deleteChat, getChat, listChats, renameChat } from '../../core/api/chats';
+import type { ChatDetail, ChatEvent, ChatSummary } from '../../core/api/chatTypes';
 import { getWebhook } from '../../core/api/webhooks';
-import type { ChatEvent } from '../../core/api/chatTypes';
 import { ChatPage } from './ChatPage';
 
 vi.mock('../../core/api/chat', () => ({ streamChatReply: vi.fn() }));
+vi.mock('../../core/api/chats', () => ({
+  listChats: vi.fn(),
+  createChat: vi.fn(),
+  getChat: vi.fn(),
+  renameChat: vi.fn(),
+  deleteChat: vi.fn(),
+}));
 vi.mock('../../core/api/webhooks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../core/api/webhooks')>()),
   getWebhook: vi.fn(),
 }));
+
+const NOTHING = { input_tokens: 0, output_tokens: 0, cost_usd: null, cost_complete: true };
+
+function chat(id: number, title = ''): ChatSummary {
+  return { id, title, created_at: '2026-11-06T09:00:00Z', updated_at: '2026-11-06T09:05:00Z' };
+}
+
+function detail(summary: ChatSummary, messages: ChatDetail['messages'] = []): ChatDetail {
+  return { ...summary, messages, usage: NOTHING };
+}
 
 async function* events(...items: ChatEvent[]) {
   yield* items;
@@ -37,9 +55,25 @@ async function say(text: string) {
   await userEvent.click(screen.getByRole('button', { name: 'Send message' }));
 }
 
+/** The header's "New chat", apart from the list's. */
+function headerNewChat() {
+  return within(screen.getByRole('banner')).queryByRole('button', { name: 'New chat' });
+}
+
+function chatList() {
+  return within(screen.getByRole('navigation', { name: 'Your chats' }));
+}
+
 beforeEach(() => {
   window.sessionStorage.clear();
   vi.mocked(streamChatReply).mockReset();
+  vi.mocked(listChats).mockReset().mockResolvedValue([]);
+  vi.mocked(createChat).mockReset().mockResolvedValue(chat(1));
+  vi.mocked(getChat)
+    .mockReset()
+    .mockResolvedValue(detail(chat(1)));
+  vi.mocked(renameChat).mockReset();
+  vi.mocked(deleteChat).mockReset();
 });
 
 describe('ChatPage', () => {
@@ -137,7 +171,7 @@ describe('ChatPage', () => {
     expect(vi.mocked(getWebhook).mock.calls[0]?.[0]).toBe(4);
   });
 
-  it('sends the conversation so far, and the time zone, with a follow-up', async () => {
+  it('makes the chat on the server at the first message and sends the rest to it', async () => {
     vi.mocked(streamChatReply)
       .mockReturnValueOnce(events({ type: 'text', text: 'Built: News digest.' }))
       .mockReturnValueOnce(events({ type: 'text', text: 'Scheduled.' }));
@@ -148,16 +182,31 @@ describe('ChatPage', () => {
     await say('Make it weekly');
     await screen.findByText('Scheduled.');
 
-    const [prompt, context] = vi.mocked(streamChatReply).mock.calls[1] ?? [];
-    expect(prompt).toBe('Make it weekly');
-    expect(context?.history).toEqual([
-      { role: 'user', content: 'Build a news digest' },
-      { role: 'assistant', content: 'Built: News digest.' },
+    expect(createChat).toHaveBeenCalledTimes(1);
+    const calls = vi.mocked(streamChatReply).mock.calls;
+    expect(calls.map(([prompt, context]) => [prompt, context.chatId])).toEqual([
+      ['Build a news digest', 1],
+      ['Make it weekly', 1],
     ]);
-    expect(context?.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(calls[1]?.[1].timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    // The list is read again once a reply ends: the chat has a title and a newer time now.
+    expect(listChats).toHaveBeenCalledTimes(3);
   });
 
-  it('keeps a failed reply on screen but out of what the assistant is told', async () => {
+  it('adds up what the replies used in the header', async () => {
+    const usage = { input_tokens: 120, output_tokens: 30, cost_usd: 0.0123, cost_complete: true };
+    vi.mocked(streamChatReply).mockReturnValue(
+      events({ type: 'text', text: 'Done.' }, { type: 'usage', usage }),
+    );
+    renderChat();
+
+    await say('Build a news digest');
+    await screen.findByText('Done.');
+
+    expect(await within(screen.getByRole('banner')).findByText('$0.0123')).toBeInTheDocument();
+  });
+
+  it('keeps a failed reply on screen and goes on in the same chat', async () => {
     vi.mocked(streamChatReply)
       .mockReturnValueOnce(failure())
       .mockReturnValueOnce(events({ type: 'text', text: 'Done.' }));
@@ -168,24 +217,115 @@ describe('ChatPage', () => {
     await say('Try again');
     await screen.findByText('Done.');
 
-    const context = vi.mocked(streamChatReply).mock.calls[1]?.[1];
-    expect(context?.history).toEqual([{ role: 'user', content: 'Build a news digest' }]);
+    expect(createChat).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(streamChatReply).mock.calls[1]?.[1].chatId).toBe(1);
   });
 
-  it('continues the conversation after leaving the screen, until a new chat', async () => {
+  it('fails the reply when the chat cannot be made', async () => {
+    vi.mocked(createChat).mockRejectedValue(
+      new ApiError('You can keep up to 200 chats. Delete one first.', 400, 'validation_error'),
+    );
+    renderChat();
+
+    await say('Build a news digest');
+
+    expect(
+      await screen.findByText('You can keep up to 200 chats. Delete one first.'),
+    ).toBeInTheDocument();
+    expect(streamChatReply).not.toHaveBeenCalled();
+  });
+
+  it('reopens the open chat after leaving the screen, until a new chat', async () => {
     vi.mocked(streamChatReply).mockReturnValue(events({ type: 'text', text: 'Built it.' }));
+    vi.mocked(getChat).mockResolvedValue(
+      detail(chat(1, 'Build a news digest'), [
+        {
+          id: 10,
+          role: 'user',
+          text: 'Build a news digest',
+          tools: [],
+          created_at: '2026-11-06T09:04:00Z',
+          usage: NOTHING,
+        },
+        {
+          id: 11,
+          role: 'assistant',
+          text: 'Built it.',
+          tools: [],
+          created_at: '2026-11-06T09:05:00Z',
+          usage: NOTHING,
+        },
+      ]),
+    );
     const first = renderChat();
     await say('Build a news digest');
     await screen.findByText('Built it.');
     first.unmount();
 
     renderChat();
+    expect(await screen.findByText('Built it.')).toBeInTheDocument();
     expect(screen.getByText('Build a news digest')).toBeInTheDocument();
-    expect(screen.getByText('Built it.')).toBeInTheDocument();
+    expect(getChat).toHaveBeenCalledWith(1, expect.any(AbortSignal));
 
-    await userEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await userEvent.click(headerNewChat() as HTMLElement);
     expect(screen.queryByText('Build a news digest')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Build a workflow/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'New chat' })).not.toBeInTheDocument();
+    expect(headerNewChat()).toBeNull();
+    expect(window.sessionStorage.getItem('aimix.chat.open.v1')).toBeNull();
+  });
+
+  it('lists the chats and opens one from the list', async () => {
+    vi.mocked(listChats).mockResolvedValue([chat(3, 'Weekly digest'), chat(2, 'Pictures')]);
+    vi.mocked(getChat).mockResolvedValue(
+      detail(chat(3, 'Weekly digest'), [
+        {
+          id: 30,
+          role: 'assistant',
+          text: 'Here is your digest.',
+          tools: [],
+          created_at: '2026-11-06T09:05:00Z',
+          usage: NOTHING,
+        },
+      ]),
+    );
+    renderChat();
+
+    await userEvent.click(await chatList().findByRole('button', { name: /^Weekly digest/ }));
+
+    expect(await screen.findByText('Here is your digest.')).toBeInTheDocument();
+    expect(getChat).toHaveBeenCalledWith(3, expect.any(AbortSignal));
+    expect(chatList().getByRole('button', { name: /^Weekly digest/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(within(screen.getByRole('banner')).getByText(/Weekly digest/)).toBeInTheDocument();
+  });
+
+  it('renames and deletes a chat from the list', async () => {
+    vi.mocked(listChats).mockResolvedValue([chat(3, 'Weekly digest')]);
+    vi.mocked(renameChat).mockResolvedValue(chat(3, 'Digest'));
+    vi.mocked(deleteChat).mockResolvedValue();
+    renderChat();
+
+    await userEvent.click(await chatList().findByRole('button', { name: 'Rename Weekly digest' }));
+    const field = screen.getByRole('textbox', { name: 'Chat title' });
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Digest{Enter}');
+
+    expect(renameChat).toHaveBeenCalledWith(3, 'Digest');
+    expect(await chatList().findByRole('button', { name: /^Digest/ })).toBeInTheDocument();
+
+    await userEvent.click(chatList().getByRole('button', { name: 'Delete Digest' }));
+    await userEvent.click(chatList().getByRole('button', { name: 'Delete' }));
+
+    expect(deleteChat).toHaveBeenCalledWith(3);
+    expect(chatList().queryByRole('button', { name: /^Digest/ })).not.toBeInTheDocument();
+  });
+
+  it('says why the chats could not be listed', async () => {
+    vi.mocked(listChats).mockRejectedValue(new ApiError('Request failed (500)', 500, 'error'));
+    renderChat();
+
+    expect(await chatList().findByRole('alert')).toHaveTextContent('Request failed (500)');
   });
 });

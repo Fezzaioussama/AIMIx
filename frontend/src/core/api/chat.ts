@@ -1,5 +1,5 @@
 import { ApiError, streamText } from './client';
-import type { ChatEvent, ChatTurn } from './chatTypes';
+import type { ChatEvent } from './chatTypes';
 import { API } from './endpoints';
 
 /** Decodes one NDJSON line; anything else means the server broke its contract. */
@@ -11,9 +11,9 @@ function parseEvent(line: string): ChatEvent {
   }
 }
 
-/** What the assistant is given with a message: the conversation before it, and where the person is. */
+/** What goes with a message: the chat it belongs to (the server reads what was said there), and where the person is. */
 export interface ChatContext {
-  history: ChatTurn[];
+  chatId: number;
   /** The browser's IANA time zone, so "every Monday at 9" means 9 where the person is. */
   timezone: string;
 }
@@ -29,7 +29,7 @@ export async function* streamChatReply(
   signal?: AbortSignal,
 ): AsyncGenerator<ChatEvent> {
   let buffer = '';
-  const body = { prompt, ...context };
+  const body = { prompt, chat_id: context.chatId, timezone: context.timezone };
   for await (const chunk of streamText(API.chat, body, signal, 'application/x-ndjson')) {
     buffer += chunk;
     let newline = buffer.indexOf('\n');

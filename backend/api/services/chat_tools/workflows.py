@@ -16,6 +16,7 @@ from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch
 from api.schemas.planning import PipelineDraftIn
 from api.services import pipelines as pipeline_service
+from api.services import user_memory
 from api.services.agent_types import ToolDescriptor
 from api.services.chat_tools.common import refused, save_new, save_patch, session_user
 from api.services.chat_tools.scope import ChatScope
@@ -56,6 +57,11 @@ def workflow_tools(scope: ChatScope) -> list[BaseTool]:
     def catalog() -> list[ToolDescriptor]:
         return scope.catalog(scope.database, scope.user).available_sync()
 
+    def instructions() -> str:
+        """What the person told AIMIx to keep in mind (Settings → Memory)."""
+        with scope.database.session() as session:
+            return user_memory.instructions_for(session, scope.user)
+
     @tool
     def list_tools() -> list[dict[str, str]]:
         """List the tools the agents of a workflow can use (web search, files,
@@ -69,7 +75,7 @@ def workflow_tools(scope: ChatScope) -> list[BaseTool]:
         with a final check. Put every detail the person gave in description: topic,
         audience, format, length, language, sources. Returns the saved team."""
         try:
-            request = pipeline_service.PlanRequest(description)
+            request = pipeline_service.PlanRequest(description, instructions=instructions())
             planner = scope.planner(scope.profile)
             plan = pipeline_service.generate(planner, scope.profile, request, catalog())
             body = PipelineIn.model_validate(plan.pipeline)
@@ -88,7 +94,8 @@ def workflow_tools(scope: ChatScope) -> list[BaseTool]:
                 owner = session_user(session, scope.user)
                 draft = draft_of(repository.get_owned(session, owner, pipeline_id))
             planner = scope.planner(scope.profile)
-            revision = revise(planner, scope.profile, RevisionRequest(draft, change), catalog())
+            request = RevisionRequest(draft, change, instructions=instructions())
+            revision = revise(planner, scope.profile, request, catalog())
             body = PipelinePatch.model_validate(revision.pipeline)
             with scope.database.session() as session:
                 team = team_of(save_patch(session, scope.user, pipeline_id, body))

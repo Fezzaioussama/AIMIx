@@ -10,7 +10,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from time import monotonic
 from typing import Any
 from uuid import UUID
@@ -31,21 +32,24 @@ from api.services.agent_runtime import (
     AgentLimits,
     AgentToolset,
     as_agent_error,
+    context_budget,
+    context_guard,
     resolve_tools,
 )
 from api.services.agent_tools import built_in_tools
 from api.services.approvals.guard import guard_tools
 from api.services.approvals.policy import approval_policy_for
-from api.services.chat_conversation import Conversation, model_messages
+from api.services.chat_conversation import ChatTurn, Conversation, model_messages
 from api.services.chat_events import (
     ChatEvent,
     text_event,
     tool_failed,
     tool_finished,
     tool_started,
+    usage_event,
 )
 from api.services.chat_language import answer_in_their_language
-from api.services.chat_prompts import chat_system_prompt
+from api.services.chat_prompts import chat_system_prompt, summary_request
 from api.services.chat_tools.deliveries import delivery_tools
 from api.services.chat_tools.runs import run_tools
 from api.services.chat_tools.scope import ChatScope
@@ -59,6 +63,7 @@ from api.services.run_budget import RunBudget, limit_reached
 from api.services.run_recorder import utcnow
 from api.services.runs import launcher
 from config.settings import get_settings
+from llm.catalog import ModelInfo
 from llm.usage import NO_USAGE, UNMETERED, TokenUsage, UsageCallback, UsageMeter, chained, metered
 
 logger = logging.getLogger(__name__)
@@ -87,15 +92,30 @@ class ChatMeter:
             self._spent += usage
 
 
+@dataclass(frozen=True)
+class MeteredChatModel:
+    """A chat model, a reading of what its calls used so far, and its catalogue entry
+    (None when the catalogue lists no such model)."""
+
+    model: BaseChatModel
+    spent: Callable[[], TokenUsage]
+    info: ModelInfo | None = None
+
+
 def metered_chat_model(
     profile: LLMProfile, max_tokens: int | None, account: UsageMeter = UNMETERED
-) -> BaseChatModel:
+) -> MeteredChatModel:
     """The profile's chat model, every call of which counts toward one message's
     ``max_tokens`` (None: counted, never refused) and, through ``account``, the
     account's day (``account_usage``)."""
+    info = model_info(profile, profile.default_model)
     message = ChatMeter(RunBudget(max_tokens=max_tokens))
-    usage = UsageCallback(model_info(profile, profile.default_model), chained(message, account))
-    return metered(get_agent_model(profile), usage)
+    usage = UsageCallback(info, chained(message, account))
+    return MeteredChatModel(metered(get_agent_model(profile), usage), lambda: usage.total, info)
+
+
+def _nothing_spent() -> TokenUsage:
+    return NO_USAGE
 
 
 @wrap_tool_call
@@ -175,10 +195,19 @@ class _Paragraphs:
 
 
 class LangGraphChatAgent:
-    def __init__(self, model: BaseChatModel, toolset: AgentToolset, limits: AgentLimits) -> None:
+    def __init__(
+        self,
+        model: BaseChatModel,
+        toolset: AgentToolset,
+        limits: AgentLimits,
+        spent: Callable[[], TokenUsage] = _nothing_spent,
+    ) -> None:
+        """``spent`` reads what the model's calls used so far (``MeteredChatModel``),
+        for the usage event that ends each reply."""
         self._model = model
         self._toolset = toolset
         self._limits = limits
+        self._spent = spent
 
     async def _execute(
         self, conversation: Conversation, queue: asyncio.Queue[ChatEvent | None]
@@ -191,8 +220,17 @@ class LangGraphChatAgent:
             graph = create_agent(
                 self._model,
                 tools,
-                system_prompt=chat_system_prompt(utcnow(), conversation.timezone),
-                middleware=[refusals_as_results, answer_in_their_language(conversation.prompt)],
+                system_prompt=chat_system_prompt(
+                    utcnow(),
+                    conversation.timezone,
+                    conversation.summary,
+                    conversation.instructions,
+                ),
+                middleware=[
+                    refusals_as_results,
+                    answer_in_their_language(conversation.prompt),
+                    *context_guard(self._model, self._limits.context),
+                ],
             )
             events = graph.astream(
                 # A list display, so it takes the graph's message type.
@@ -215,6 +253,8 @@ class LangGraphChatAgent:
                     and message.text
                 ):
                     queue.put_nowait(text_event(paragraphs.text(message)))
+            # What the reply's calls used, for the screen and the chat's record.
+            queue.put_nowait(usage_event(self._spent()))
         logger.info(
             "chat.agent_completed tools=%d duration_ms=%.1f",
             len(tools),
@@ -231,6 +271,17 @@ class LangGraphChatAgent:
             raise as_agent_error(cause) from cause
         finally:
             queue.put_nowait(None)
+
+    async def summarize(self, summary: str, turns: Sequence[ChatTurn], max_chars: int) -> str:
+        """The chat's notes with ``turns`` folded in, written by the model, whose
+        call counts like the reply's (``chat_memory``)."""
+        try:
+            with anyio.fail_after(self._limits.timeout_seconds):
+                answer = await self._model.ainvoke(summary_request(summary, turns, max_chars))
+        except AGENT_FAILURES as cause:
+            logger.warning("chat.summary_failed error=%s", type(cause).__name__)
+            raise as_agent_error(cause) from cause
+        return answer.text
 
     async def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]:
         queue: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
@@ -264,8 +315,9 @@ def get_chat_agent(scope: ChatScope) -> LangGraphChatAgent:
     settings = get_settings()
     calls = calls_of(UsageKind.CHAT, scope.profile.default_model)
     account = account_meter(scope.database, scope.user.id, scope.profile, calls)
+    model = metered_chat_model(scope.profile, settings.chat_max_tokens, account)
     return LangGraphChatAgent(
-        metered_chat_model(scope.profile, settings.chat_max_tokens, account),
+        model.model,
         AgentToolset(
             mcp_connections_for(scope.database, scope.user, settings),
             chat_tools(scope),
@@ -275,5 +327,7 @@ def get_chat_agent(scope: ChatScope) -> LangGraphChatAgent:
             settings.agent_timeout_seconds,
             settings.agent_recursion_limit,
             settings.mcp_timeout_seconds,
+            context_budget(settings, model.info),
         ),
+        model.spent,
     )

@@ -22,12 +22,17 @@ class ChatTurn:
 
 @dataclass(frozen=True)
 class Conversation:
-    """The newest message, the turns before it (oldest first) and the person's
-    IANA time zone; None when the browser gave none this server knows."""
+    """The newest message, the turns before it (oldest first), the person's
+    IANA time zone (None when the browser gave none this server knows), and the
+    assistant's notes on the turns before those, when a kept chat has grown past
+    what it reads verbatim (``chat_memory``)."""
 
     prompt: str
     history: tuple[ChatTurn, ...] = ()
     timezone: str | None = None
+    summary: str = ""
+    #: What the person told AIMIx to keep in mind (Settings → Memory); "" when nothing.
+    instructions: str = ""
 
 
 def known_zone(name: str | None) -> str | None:

@@ -32,6 +32,20 @@ class AgentSettings(BaseModel):
     agent_tool_description_max_chars: int = Field(
         300, ge=1, validation_alias="AGENT_TOOL_DESCRIPTION_MAX_CHARS"
     )
+    # --- Context guard (api/services/agent_runtime.context_guard) -------------
+    # An agent's tool loop grows inside one task. Once its messages are estimated at
+    # this share of its model's context window, the model summarizes the older ones
+    # and the newest AGENT_COMPACT_KEEP_MESSAGES stay verbatim.
+    agent_context_window_ratio: float = Field(
+        0.75, gt=0, le=1, validation_alias="AGENT_CONTEXT_WINDOW_RATIO"
+    )
+    # The window assumed for a model the catalogue lists no context_window for (tokens).
+    agent_context_window_tokens: int = Field(
+        128_000, ge=1_000, validation_alias="AGENT_CONTEXT_WINDOW_TOKENS"
+    )
+    agent_compact_keep_messages: int = Field(
+        6, ge=1, validation_alias="AGENT_COMPACT_KEEP_MESSAGES"
+    )
     mcp_timeout_seconds: float = Field(30.0, gt=0, validation_alias="MCP_TIMEOUT_SECONDS")
     mcp_servers: dict[str, MCPServer] = Field(default_factory=dict, validation_alias="MCP_SERVERS")
     # One HTTP response from a user's MCP server (a JSON answer or an event
@@ -59,6 +73,9 @@ class AgentSettings(BaseModel):
     )
     # --- Users' own MCP servers (Settings page → Integrations) ---------------
     integrations_max_per_user: int = Field(10, ge=0, validation_alias="INTEGRATIONS_MAX_PER_USER")
+    # Settings → Memory: how long the person's standing instructions may be, which every
+    # chat, plan and step agent is told to keep in mind (services/user_memory).
+    memory_max_chars: int = Field(4_000, ge=1, validation_alias="MEMORY_MAX_CHARS")
     # Local development only: let integrations reach loopback and private
     # addresses (e.g. a server on 127.0.0.1). Production refuses to start with it.
     integrations_allow_private_network: bool = Field(

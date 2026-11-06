@@ -16,12 +16,14 @@ from sqlalchemy.orm import Session
 from api.exceptions import NotAuthenticated
 from api.models import UsageKind, User
 from api.security import SecretBox, TokenSigner, secret_box_for
-from api.services import accounts, llm_settings
+from api.services import accounts, llm_settings, user_memory
 from api.services.account_data import workspace_of
 from api.services.account_usage import account_meter, calls_of
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
+from api.services.chat_memory import ChatMemory, MemoryLimits
 from api.services.chat_tools.scope import ChatScope
+from api.services.chats import ChatAccess
 from api.services.files.disk import disk_reserve
 from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage
@@ -217,6 +219,34 @@ def pipeline_tool_catalog(request: Request, user: CurrentUser) -> PipelineToolCa
 ToolCatalog = Annotated[PipelineToolCatalog, Depends(pipeline_tool_catalog)]
 
 
+def user_instructions(user: CurrentUser, session: DbSession) -> str:
+    """What the person told AIMIx to keep in mind (Settings → Memory)."""
+    return user_memory.instructions_for(session, user)
+
+
+Instructions = Annotated[str, Depends(user_instructions)]
+
+
+@dataclass(frozen=True)
+class PlannerContext:
+    """What a planner request needs besides its body: the provider, the profile,
+    the person's tools, and their standing instructions."""
+
+    providers: ProviderFactory
+    profile: LLMProfile
+    catalog: PipelineToolCatalog
+    instructions: str
+
+
+def planner_context(
+    providers: Providers, profile: Profile, catalog: ToolCatalog, instructions: Instructions
+) -> PlannerContext:
+    return PlannerContext(providers, profile, catalog, instructions)
+
+
+Planner = Annotated[PlannerContext, Depends(planner_context)]
+
+
 def run_executor(request: Request) -> RunExecutor:
     """Where runs execute: the app's background executor (tests swap it)."""
     executor: RunExecutor = request.app.state.run_executor
@@ -295,6 +325,25 @@ def agent_factory(
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]
+
+
+def chat_access(user: CurrentUser, session: DbSession, settings: AppSettings) -> ChatAccess:
+    return ChatAccess(session, user, settings.chats_max_per_user)
+
+
+Chats = Annotated[ChatAccess, Depends(chat_access)]
+
+
+def chat_memory(request: Request, user: CurrentUser, settings: AppSettings) -> ChatMemory:
+    """What the chat remembers for the signed-in user. It opens its own short
+    transactions: the request's session may be closed while a reply still streams."""
+    limits = MemoryLimits(
+        settings.chat_history_max_chars, settings.chat_summary_max_chars, settings.chat_max_messages
+    )
+    return ChatMemory(request.app.state.database, user, limits)
+
+
+Memory = Annotated[ChatMemory, Depends(chat_memory)]
 
 
 #: The request's "now", in UTC; a test fixes it by overriding ``utcnow``.

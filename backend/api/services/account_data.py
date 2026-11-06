@@ -16,16 +16,27 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from api.exceptions import Conflict, ExportTooLarge
-from api.models import Integration, Pipeline, ProviderSetting, Run, RunApproval, Schedule, User
+from api.models import (
+    Chat,
+    Integration,
+    Pipeline,
+    ProviderSetting,
+    Run,
+    RunApproval,
+    Schedule,
+    User,
+)
 from api.repositories import (
     active_runs,
     approvals,
+    chats,
     integrations,
     pipelines,
     provider_settings,
     runs,
     schedules,
     stored_size,
+    user_memory,
     users,
 )
 from api.services import accounts
@@ -59,6 +70,10 @@ class AccountExport:
     approvals: list[RunApproval]
     schedules: list[Schedule]
     integrations: list[Integration]
+    #: Every chat with its messages, and the assistant's notes on each.
+    chats: list[Chat]
+    #: What they told AIMIx to keep in mind (Settings → Memory).
+    memory: str
     files: list[FileEntry]
 
 
@@ -102,6 +117,8 @@ def export_account(
         approvals=approvals.for_user(session, user),
         schedules=schedules.for_user(session, user),
         integrations=integrations.for_user(session, user),
+        chats=chats.all_for_user(session, user),
+        memory=user_memory.instructions_of(session, user),
         files=file_service.entries(files),
     )
 

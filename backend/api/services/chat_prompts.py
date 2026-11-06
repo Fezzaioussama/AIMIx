@@ -5,8 +5,12 @@ teams it asks for."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+
+from api.services.chat_conversation import ChatTurn
+from api.services.user_memory import memory_section
 
 #: Who the assistant is, and what AIMIx calls things, in the words people see on screen.
 CHAT_IDENTITY = (
@@ -68,6 +72,38 @@ CHAT_LANGUAGE_RULE = (
 )
 #: How much of the person's latest message the reminder quotes: enough to tell its language.
 LANGUAGE_REMINDER_QUOTE_CHARS = 120
+#: The assistant's notes on a kept chat's earlier part, once that is out of its view
+#: (``chat_memory``), and the way to go on: as if nothing were missing.
+SUMMARY_SECTION = (
+    "Your notes on the earlier part of this conversation, which is no longer shown; the "
+    "messages below follow it:\n{summary}\n\nGo on from where it left off. Do not recap "
+    "these notes, and do not say that you keep them."
+)
+#: Who writes the notes: the assistant itself, between two messages, keeping what it
+#: must not lose and nothing else.
+SUMMARY_ROLE = (
+    "You keep the notes of a conversation between a person and the AIMIx assistant, so "
+    "the assistant can go on once the older messages are out of its view. Rewrite the "
+    "notes so far to take in the new messages. Keep what the person wants and asked for, "
+    "what was decided, the names of the workflows, schedules, runs, webhooks and result "
+    "deliveries made or changed, what is still open, and what comes next; leave out "
+    "greetings and repetition. Write in the person's language, as plain lines, in at most "
+    "{max_chars} characters. Answer with the notes only."
+)
+SPEAKERS = {"user": "Person", "assistant": "Assistant"}
+
+
+def summary_request(
+    summary: str, turns: Sequence[ChatTurn], max_chars: int
+) -> list[dict[str, str]]:
+    """What the model is asked for a chat's new notes: its role, then the notes so far
+    and the messages to fold in, as the model reads them."""
+    said = "\n\n".join(f"{SPEAKERS[turn.role]}: {turn.text}" for turn in turns)
+    body = f"Notes so far:\n{summary or '(none yet)'}\n\nNew messages:\n{said}"
+    return [
+        {"role": "system", "content": SUMMARY_ROLE.format(max_chars=max_chars)},
+        {"role": "user", "content": body},
+    ]
 
 
 def language_reminder(prompt: str) -> str:
@@ -78,9 +114,14 @@ def language_reminder(prompt: str) -> str:
     return f'{CHAT_LANGUAGE_RULE} The person\'s latest message began: "{opening}"'
 
 
-def chat_system_prompt(now: datetime, zone: str | None) -> str:
-    """The assistant's instructions, ending with the date and time in the person's
-    ``zone`` (a known IANA name), or in UTC with a request to ask for their zone."""
+def chat_system_prompt(
+    now: datetime, zone: str | None, summary: str = "", instructions: str = ""
+) -> str:
+    """The assistant's instructions: who it is, how it works, what the person told AIMIx
+    to keep in mind when they wrote something (``instructions``), its notes on the
+    earlier part of a kept chat when it has some (``summary``), then the date and time
+    in the person's ``zone`` (a known IANA name), or in UTC with a request to ask for
+    their zone, and last the language rule."""
     if zone is None:
         local = now.astimezone(timezone.utc)
         clock = (
@@ -93,4 +134,7 @@ def chat_system_prompt(now: datetime, zone: str | None) -> str:
             f"It is {local:%A %d %B %Y}, {local:%H:%M} in the person's time zone, {zone}; "
             "schedules use it unless they name another."
         )
-    return "\n\n".join([CHAT_IDENTITY, CHAT_WORK_RULES, clock, CHAT_LANGUAGE_RULE])
+    memory = [section] if (section := memory_section(instructions)) else []
+    notes = [SUMMARY_SECTION.format(summary=summary)] if summary else []
+    parts = [CHAT_IDENTITY, CHAT_WORK_RULES, *memory, *notes, clock, CHAT_LANGUAGE_RULE]
+    return "\n\n".join(parts)

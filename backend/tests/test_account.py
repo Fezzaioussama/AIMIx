@@ -19,6 +19,9 @@ from api import throttling
 from api.deps import app_settings
 from api.models import (
     ApprovalStatus,
+    Chat,
+    ChatMessage,
+    ChatRole,
     Integration,
     Pipeline,
     PipelineStep,
@@ -29,6 +32,7 @@ from api.models import (
     Schedule,
     ScheduleFrequency,
     User,
+    UserMemory,
 )
 from api.repositories import stored_size, users
 from api.security import hash_password
@@ -97,6 +101,13 @@ def fill(session: Session, user: User, client: TestClient, settings: Settings) -
                 expires_at=now + timedelta(minutes=5),
                 decided_at=now,
             ),
+            Chat(
+                user_id=user.id,
+                title="Hello",
+                summary="Said hello.",
+                messages=[ChatMessage(role=ChatRole.USER, text="hello there")],
+            ),
+            UserMemory(user_id=user.id, instructions="We sell bread."),
         ]
     )
     session.commit()
@@ -127,6 +138,11 @@ def owned_rows(session: Session, user_id: int) -> dict[str, int]:
         "keys": select(func.count())
         .select_from(ProviderSetting)
         .where(ProviderSetting.user_id == user_id),
+        "chats": select(func.count()).select_from(Chat).where(Chat.user_id == user_id),
+        "memory": select(func.count()).select_from(UserMemory).where(UserMemory.user_id == user_id),
+        "chat_messages": select(func.count())
+        .select_from(ChatMessage)
+        .where(ChatMessage.chat_id.in_(select(Chat.id).where(Chat.user_id == user_id))),
     }
     return {kind: session.scalar(query) or 0 for kind, query in counted.items()}
 
@@ -229,6 +245,9 @@ def test_the_export_holds_everything_the_account_owns_and_no_secret(
         {"provider": "openrouter", "default_model": "", "api_key_hint": "9xyz"}
     ]
     assert [f["path"] for f in export["files"]] == ["notes.txt"]
+    assert [(c["title"], c["summary"]) for c in export["chats"]] == [("Hello", "Said hello.")]
+    assert export["chats"][0]["messages"][0]["text"] == "hello there"
+    assert export["memory"] == "We sell bread."
     assert SEALED_KEY not in response.text
     assert SEALED_HEADERS not in response.text
     assert "Not mine" not in response.text
@@ -268,6 +287,16 @@ def test_the_size_counts_runs_their_steps_and_prompts_of_this_account_only(
     grown = stored_size.text_characters(session, user) - before
     step = run.steps[0]
     assert grown >= 1_000 + len(step.input_used) + len(step.output) + len(run.final_output)
+
+
+def test_the_size_counts_the_chats_too(session: Session, user: User) -> None:
+    before = stored_size.text_characters(session, user)
+    chat = Chat(user_id=user.id, summary="n" * 10)
+    chat.messages.append(ChatMessage(role=ChatRole.USER, text="m" * 25))
+    session.add(chat)
+    session.commit()
+
+    assert stored_size.text_characters(session, user) - before == 35
 
 
 def test_one_copy_is_built_at_a_time(account: TestClient) -> None:

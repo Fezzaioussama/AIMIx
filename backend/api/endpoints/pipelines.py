@@ -7,15 +7,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Response
 
-from api.deps import (
-    CurrentUser,
-    DbSession,
-    PipelineRun,
-    Profile,
-    Providers,
-    ToolCatalog,
-    disk_room,
-)
+from api.deps import CurrentUser, DbSession, PipelineRun, Planner, disk_room
 from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch, RunRequest, RunResponse
 from api.schemas.planning import (
@@ -52,9 +44,7 @@ def create_pipeline(body: PipelineIn, user: CurrentUser, session: DbSession) -> 
 
 
 @router.post("/generate", dependencies=[Depends(user_rate_limit)])
-def generate_pipeline(
-    body: GenerateRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
-) -> GenerateResponse:
+def generate_pipeline(body: GenerateRequest, planner: Planner) -> GenerateResponse:
     answers = tuple(Answer(item.question, item.answer) for item in body.answers)
     clarification = Clarification(body.may_ask, answers)
     documents = tuple(
@@ -62,30 +52,32 @@ def generate_pipeline(
         for item in body.documents
     )
     request = pipeline_service.PlanRequest(
-        body.description, body.planner_model, clarification, documents
+        body.description, body.planner_model, clarification, documents, planner.instructions
     )
-    plan = pipeline_service.generate(providers(), profile, request, catalog.available_sync())
+    plan = pipeline_service.generate(
+        planner.providers(), planner.profile, request, planner.catalog.available_sync()
+    )
     return GenerateResponse(
         generated_pipeline=plan.pipeline,
         questions=[ClarifyingQuestionOut.model_validate(asdict(q)) for q in plan.questions],
-        available_models=profile.models,
+        available_models=planner.profile.models,
     )
 
 
 # Declared before the "/{pipeline_id}/" routes, like /generate, so no id route
 # can ever claim the path.
 @router.post("/revise", dependencies=[Depends(user_rate_limit)])
-def revise_pipeline(
-    body: ReviseRequest, providers: Providers, profile: Profile, catalog: ToolCatalog
-) -> ReviseResponse:
+def revise_pipeline(body: ReviseRequest, planner: Planner) -> ReviseResponse:
     request = revision_service.RevisionRequest(
-        body.pipeline.model_dump(), body.instruction, body.planner_model
+        body.pipeline.model_dump(), body.instruction, body.planner_model, planner.instructions
     )
-    revision = revision_service.revise(providers(), profile, request, catalog.available_sync())
+    revision = revision_service.revise(
+        planner.providers(), planner.profile, request, planner.catalog.available_sync()
+    )
     return ReviseResponse(
         revised_pipeline=revision.pipeline,
         changes=[PipelineChangeOut.model_validate(asdict(change)) for change in revision.changes],
-        available_models=profile.models,
+        available_models=planner.profile.models,
     )
 
 

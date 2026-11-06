@@ -19,6 +19,7 @@ from api.services.llm import LLMProfile
 from api.services.pipeline_changes import PipelineChange, diff_pipelines
 from api.services.pipelines import PlannerCall, ask_planner
 from api.services.prompts import pipeline_revision_prompt
+from api.services.user_memory import memory_section
 from llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,8 @@ class RevisionRequest:
     pipeline: Mapping[str, Any]
     instruction: str
     planner_model: str | None = None
+    #: What the person told AIMIx to keep in mind (Settings → Memory); "" when nothing.
+    instructions: str = ""
 
 
 @dataclass(frozen=True)
@@ -53,7 +56,10 @@ def revise(
     whole revised pipeline and its change list. Planner failures raise the same
     domain errors as generation (``ask_planner``)."""
     started = time.monotonic()
-    prompt = pipeline_revision_prompt(request.pipeline, request.instruction, profile.models, tools)
+    memory = memory_section(request.instructions)
+    prompt = pipeline_revision_prompt(
+        request.pipeline, request.instruction, profile.models, tools, memory=memory
+    )
     plan = ask_planner(provider, profile, PlannerCall(prompt, request.planner_model), tools)
     plan["name"] = _revised_name(plan.get("name"), request.pipeline.get("name"))
     changes = diff_pipelines(request.pipeline, plan)

@@ -17,6 +17,9 @@ class ModelInfo:
 
     provider: str
     model_id: str
+    #: Tokens the model reads at once, as its provider lists it; None is unknown, and
+    #: the agents' context guard (api/services/agent_runtime) then assumes
+    #: AGENT_CONTEXT_WINDOW_TOKENS. Never guess one.
     context_window: int | None = None
     supports_tools: bool = False
     supports_reasoning: bool = False
@@ -80,18 +83,21 @@ class TogetherAIModels(ModelCatalog):
     Kimi_K2_Thinking = ModelInfo(
         provider="togetherai",
         model_id="moonshotai/Kimi-K2-Thinking",
+        context_window=262_144,
         supports_reasoning=True,
         description="Advanced reasoning and chain-of-thought model.",
     )
     Qwen3_Coder_480B_A35B = ModelInfo(
         provider="togetherai",
         model_id="Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+        context_window=262_144,
         supports_tools=True,
         description="Massive coding-focused Qwen model.",
     )
     GPT_OSS_120B = ModelInfo(
         provider="togetherai",
         model_id="openai/gpt-oss-120b",
+        context_window=131_072,
         supports_tools=True,
         supports_reasoning=True,
         description="Open-weight GPT-style 120B model.",
@@ -117,12 +123,14 @@ class OpenRouterModels(ModelCatalog):
     Qwen3_Coder_480B_A35B = ModelInfo(
         provider="openrouter",
         model_id="qwen/qwen3-coder",
+        context_window=262_144,
         supports_tools=True,
         description="High-end coding and agentic model.",
     )
     GPT_OSS_120B = ModelInfo(
         provider="openrouter",
         model_id="openai/gpt-oss-120b",
+        context_window=131_072,
         supports_reasoning=True,
         supports_tools=True,
         description="Large open GPT-style model.",
@@ -130,6 +138,7 @@ class OpenRouterModels(ModelCatalog):
     Llama4_Maverick_17B_128E = ModelInfo(
         provider="openrouter",
         model_id="meta-llama/llama-4-maverick",
+        context_window=1_048_576,
         supports_tools=True,
         description="Efficient Llama 4 instruction model.",
     )

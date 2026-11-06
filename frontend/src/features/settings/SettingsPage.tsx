@@ -4,6 +4,7 @@ import { LegalLinks } from '../../core/ui/LegalLinks';
 import { Page, PageHeader } from '../../core/ui/Page';
 import { AccountSection } from './AccountSection';
 import { IntegrationsSection } from './IntegrationsSection';
+import { MemorySection } from './MemorySection';
 import { ProvidersSection } from './ProvidersSection';
 import { UsageSection } from './UsageSection';
 import { WebhooksSection } from './WebhooksSection';
@@ -12,6 +13,7 @@ import { WebhooksSection } from './WebhooksSection';
 const TABS = [
   { slug: '', label: 'Providers', Section: ProvidersSection },
   { slug: 'integrations', label: 'Integrations', Section: IntegrationsSection },
+  { slug: 'memory', label: 'Memory', Section: MemorySection },
   { slug: 'webhooks', label: 'Webhooks', Section: WebhooksSection },
   { slug: 'usage', label: 'Usage', Section: UsageSection },
   { slug: 'account', label: 'Account', Section: AccountSection },
@@ -59,7 +61,7 @@ export function SettingsPage() {
     <Page>
       <PageHeader
         title="Settings"
-        description="Your model providers, the services your agents can reach, the webhooks that link your workflows to other apps, what your runs cost, and your account."
+        description="Your model providers, the services your agents can reach, what AIMIx keeps in mind for you, the webhooks that link your workflows to other apps, what your runs cost, and your account."
       />
       <SettingsTabs current={tab.slug} />
       <div className="max-w-3xl">

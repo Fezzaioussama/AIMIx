@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from api.models import ScheduleFrequency
 from api.schemas.approvals import RunApprovalOut
 from api.schemas.auth import PASSWORD_MAX_LENGTH, EmailAddress
+from api.schemas.chat import ChatMessageOut, ChatOut
 from api.schemas.common import UtcDateTime
 from api.schemas.files import FileOut
 from api.schemas.integrations import HeaderOut
@@ -107,6 +108,13 @@ class ApprovalExportOut(RunApprovalOut):
     decided_at: UtcDateTime | None
 
 
+class ChatExportOut(ChatOut):
+    """A chat with its messages, and the assistant's notes on the oldest of them."""
+
+    summary: str
+    messages: list[ChatMessageOut]
+
+
 class AccountExportOut(BaseModel):
     """Response of GET /api/account/export, sent as a JSON file to save."""
 
@@ -121,5 +129,8 @@ class AccountExportOut(BaseModel):
     approvals: list[ApprovalExportOut]
     schedules: list[ScheduleExportOut]
     integrations: list[IntegrationExportOut]
+    chats: list[ChatExportOut]
+    #: Settings → Memory: what they told AIMIx to keep in mind, as written.
+    memory: str
     files: list[FileOut]
     note: str = EXPORT_NOTE
