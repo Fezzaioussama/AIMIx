@@ -24,6 +24,13 @@ class LlmSettings(BaseModel):
     # Of the earlier chat messages a request carries, the assistant reads the newest
     # whose texts fit in this many characters together; 0 makes each message stand alone.
     chat_history_max_chars: int = Field(24_000, ge=0, validation_alias="CHAT_HISTORY_MAX_CHARS")
+    # Once a chat's earlier messages pass that, the oldest are folded into notes the
+    # assistant keeps instead (services/chat_memory), of at most this many characters.
+    chat_summary_max_chars: int = Field(4_000, ge=1, validation_alias="CHAT_SUMMARY_MAX_CHARS")
+    # Chats one account may keep; past it a new chat is refused until one is deleted.
+    chats_max_per_user: int = Field(200, ge=1, validation_alias="CHATS_MAX_PER_USER")
+    # Messages one chat may hold, both sides counted; past it the person starts a new chat.
+    chat_max_messages: int = Field(400, ge=2, validation_alias="CHAT_MAX_MESSAGES")
     # How much of a run's result the chat assistant reads (get_run); the Runs
     # screen shows all of it.
     chat_run_result_max_chars: int = Field(

@@ -789,13 +789,21 @@ crash, startup recovery logs only how many runs it interrupted
 1. `useChatStream.send` adds the user message and an empty AI message, then
    iterates `streamChatReply()` → `client.streamText()`, which reads
    `response.body.getReader()` and splits decoded chunks into NDJSON events.
-   The server keeps no conversation: the hook sends the messages before this
-   one as `history` (not the greeting or a failed reply) and the browser's time
-   zone, and keeps the transcript for the tab (`chatStorage`) once each reply ends.
-2. `endpoints/chat.chat` validates `{"prompt", "history", "timezone"}`, and
-   `chat_conversation.conversation_of` keeps the newest turns that fit in
-   `CHAT_HISTORY_MAX_CHARS` and a zone the server knows; then it calls
-   `services/chat.stream_reply(agent, conversation)`.
+   The chat lives on the server (`useChats`: `GET /chats`, the one last written
+   to first; a chat is made with `POST /chats` when its first message is sent):
+   the hook sends the message with the open chat's `chat_id` and the browser's
+   time zone, and the tab only keeps which chat is open (`chatStorage`).
+2. `endpoints/chat.chat` validates `{"prompt", "chat_id", "timezone"}` (or
+   `"history"` for a client that keeps its own conversation) and asks
+   `services/chat_memory.ChatMemory.open` for the conversation: the chat's
+   messages its notes do not cover, of which `chat_conversation.recent` keeps the
+   newest that fit in `CHAT_HISTORY_MAX_CHARS`; the older ones are folded first
+   into the assistant's notes (`agent.summarize`, one model call, at most
+   `CHAT_SUMMARY_MAX_CHARS`), kept with the chat and read in their place from
+   then on, after Celia Agent's session compaction. Then it calls
+   `services/chat.stream_reply(agent, conversation)` and wraps the stream in
+   `memory.recorded`, which saves the person's message as the reply begins and
+   the reply (text, tools, usage) as it ends.
 3. `services/agent` builds a chat-only LangGraph agent from the configured
    model, with the assistant's instructions (`chat_prompts`: how to work with
    people who are not technical, today's date and time in their zone) and the
@@ -828,8 +836,10 @@ crash, startup recovery logs only how many runs it interrupted
    the status, so it is logged (`chat.stream_interrupted`) and the stream ends.
 6. The hook appends text to the AI message and folds each `tool` event into the
    reply's tool list; a finished write offers an `action` the bubble links to
-   (the mission, a run, or Schedules). Unmounting aborts the fetch and keeps what came,
-   so following that link and coming back continues the conversation.
+   (the mission, a run, or Schedules); the `usage` event that ends the reply is
+   kept on the message, and the header adds every reply's up. Unmounting aborts
+   the fetch; the server kept what came, so following that link and coming back
+   reopens the chat (`GET /chats/<id>`) where it was.
 
 ### 3. Generate a pipeline — `POST /api/pipelines/generate`
 

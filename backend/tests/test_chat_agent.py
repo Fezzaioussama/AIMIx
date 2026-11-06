@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from pydantic import ValidationError
 
-from api.exceptions import ToolUnavailable
+from api.exceptions import ProviderTimedOut, ToolUnavailable
 from api.services import agent as agent_service
 from api.services import agent_runtime
 from api.services.agent import LangGraphChatAgent
@@ -88,10 +88,36 @@ async def test_agent_streams_model_text_and_hides_tool_output(
     agent = LangGraphChatAgent(object(), AgentToolset({}, [local_tool]), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
     events = [part async for part in agent.stream(Conversation("hello"))]
     assert [event.text for event in events if event.kind == "text"] == ["Hello ", "world"]
+    # A reply ends with what its model calls used (nothing here: no metered model).
+    assert events[-1].kind == "usage"
     assert all("secret tool output" not in f"{event.text}{event.detail}" for event in events)
     assert captured["tools"] == [local_tool, example_tool]
     assert captured["state"] == {"messages": [{"role": "user", "content": "hello"}]}
     assert captured["kwargs"]["config"]["recursion_limit"] == 9
+
+
+@pytest.mark.asyncio
+async def test_the_agent_writes_a_chats_notes_with_its_model() -> None:
+    class NoteModel:
+        asked: Any = None
+
+        async def ainvoke(self, messages: Any) -> AIMessage:
+            self.asked = messages
+            return AIMessage(content="The notes.")
+
+    class BrokenModel:
+        async def ainvoke(self, messages: Any) -> AIMessage:
+            raise TimeoutError
+
+    model = NoteModel()
+    agent = LangGraphChatAgent(model, AgentToolset({}, []), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
+    notes = await agent.summarize("So far.", (ChatTurn("user", "More."),), 300)
+
+    assert notes == "The notes."
+    assert model.asked[1]["content"].startswith("Notes so far:\nSo far.")
+    broken = LangGraphChatAgent(BrokenModel(), AgentToolset({}, []), AgentLimits(10, 9, 1))  # type: ignore[arg-type]
+    with pytest.raises(ProviderTimedOut):
+        await broken.summarize("", (), 10)
 
 
 @pytest.mark.asyncio

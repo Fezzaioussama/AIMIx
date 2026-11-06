@@ -20,7 +20,9 @@ from api.services import accounts, llm_settings
 from api.services.account_data import workspace_of
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
+from api.services.chat_memory import ChatMemory, MemoryLimits
 from api.services.chat_tools.scope import ChatScope
+from api.services.chats import ChatAccess
 from api.services.files.disk import disk_reserve
 from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage
@@ -279,6 +281,25 @@ def agent_factory(
 
 
 Agents = Annotated[AgentFactory, Depends(agent_factory)]
+
+
+def chat_access(user: CurrentUser, session: DbSession, settings: AppSettings) -> ChatAccess:
+    return ChatAccess(session, user, settings.chats_max_per_user)
+
+
+Chats = Annotated[ChatAccess, Depends(chat_access)]
+
+
+def chat_memory(request: Request, user: CurrentUser, settings: AppSettings) -> ChatMemory:
+    """What the chat remembers for the signed-in user. It opens its own short
+    transactions: the request's session may be closed while a reply still streams."""
+    limits = MemoryLimits(
+        settings.chat_history_max_chars, settings.chat_summary_max_chars, settings.chat_max_messages
+    )
+    return ChatMemory(request.app.state.database, user, limits)
+
+
+Memory = Annotated[ChatMemory, Depends(chat_memory)]
 
 
 #: The request's "now", in UTC; a test fixes it by overriding ``utcnow``.

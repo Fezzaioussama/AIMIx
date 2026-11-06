@@ -4,7 +4,7 @@ suite is deterministic and offline (AGENTS.md §6)."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any, TypeVar
@@ -27,7 +27,7 @@ from api.repositories import users
 from api.security import hash_password
 from api.services.agent_types import AgentOutcome, AgentTask
 from api.services.chat import ChatAgent
-from api.services.chat_conversation import Conversation
+from api.services.chat_conversation import ChatTurn, Conversation
 from api.services.chat_events import ChatEvent, text_event
 from api.services.pipelines import StepGenerator
 from config.settings import Settings, pin_settings
@@ -152,12 +152,18 @@ class FakeAgent:
         self.chunks = chunks if chunks is not None else ["fake ", "reply"]
         self.prompts: list[str] = []
         self.conversations: list[Conversation] = []
+        #: What it was asked to fold into a chat's notes: the notes so far, the turns.
+        self.summaries: list[tuple[str, tuple[ChatTurn, ...]]] = []
 
     async def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]:
         self.prompts.append(conversation.prompt)
         self.conversations.append(conversation)
         for chunk in self.chunks:
             yield text_event(chunk)
+
+    async def summarize(self, summary: str, turns: Sequence[ChatTurn], max_chars: int) -> str:
+        self.summaries.append((summary, tuple(turns)))
+        return f"notes {len(self.summaries)}: {len(turns)} messages folded in"
 
 
 T = TypeVar("T")

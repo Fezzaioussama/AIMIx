@@ -13,7 +13,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-ChatEventKind = Literal["text", "tool"]
+from llm.usage import TokenUsage
+
+ChatEventKind = Literal["text", "tool", "usage"]
 ToolStatus = Literal["started", "finished", "failed"]
 ActionKind = Literal["pipeline", "schedule", "run", "webhook", "delivery"]
 
@@ -27,10 +29,17 @@ class ChatEvent:
     status: ToolStatus = "started"
     detail: str = ""
     action: dict[str, Any] | None = None
+    #: What the reply's model calls used, on the one event that ends a reply.
+    usage: TokenUsage | None = None
 
 
 def text_event(text: str) -> ChatEvent:
     return ChatEvent("text", text=text)
+
+
+def usage_event(usage: TokenUsage) -> ChatEvent:
+    """The last event of a reply: what its model calls used and cost in all."""
+    return ChatEvent("usage", usage=usage)
 
 
 def tool_started(name: str) -> ChatEvent:
@@ -59,6 +68,14 @@ def encode(event: ChatEvent) -> str:
     payload: dict[str, Any] = {"type": event.kind}
     if event.kind == "text":
         payload["text"] = event.text
+    elif event.kind == "usage":
+        spent = event.usage or TokenUsage()
+        payload["usage"] = {
+            "input_tokens": spent.input_tokens,
+            "output_tokens": spent.output_tokens,
+            "cost_usd": spent.cost_usd,
+            "cost_complete": spent.cost_complete,
+        }
     else:
         payload.update(tool=event.tool, label=event.label, status=event.status)
         if event.detail:

@@ -25,7 +25,7 @@ frontend/src/
   features/
     auth/           # LoginPage, RegisterPage, AuthCard, AuthLayout
     landing/        # the public front page at /: sections, content/, scene/ (3D hero)
-    chat/           # ChatPage, ChatMessages, ChatComposer, useChatStream, chatStorage
+    chat/           # the Chat screen over the chats the server keeps: frontend-chat.md
     files/          # FilesPage, UploadPanel, FileRow, useFiles, fileFormat
     legal/          # LegalPage: /legal, /privacy, /terms (French), operator facts
     mission/        # MissionPage: the front door, one screen from describing a mission to its results
@@ -104,7 +104,8 @@ resolves the session before the first render without a redirect flash.
 | `client.ts` | `request<T>()` for JSON, `requestBlob()` for downloads and `streamText()` for streaming; `ApiError`. `request`, `requestBlob` and `streamText` share one send-with-refresh path. |
 | `files.ts` | `listFiles`, `uploadFile` (one file, `replace` to overwrite), `downloadFile` (a `Blob`, fetched with the bearer header — never a token in a URL) and `deleteFile` |
 | `auth.ts` | `login`, `register` |
-| `chat.ts` | `streamChatReply`, which decodes the chat's NDJSON events (`chatTypes.ts`: text, tool started/finished/failed, and an `action` naming what to link to) |
+| `chat.ts` | `streamChatReply(prompt, {chatId, timezone}, signal)`, which sends a message to a chat the server keeps and decodes the reply's NDJSON events (`chatTypes.ts`: text, tool started/finished/failed with an `action` naming what to link to, and last `usage`, what the reply used) |
+| `chats.ts` | `listChats`, `createChat`, `getChat` (with its messages and their usage), `renameChat`, `deleteChat` (`chatTypes.ts`: `ChatSummary`, `ChatDetail`, `ChatSavedMessage`, `ChatSavedTool`) |
 | `models.ts` | `fetchModels` |
 | `agentTools.ts` | `fetchAgentTools` for the current pipeline tool catalogue |
 | `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal), `planMission` (one options object — `description`, `answers`, `mayAsk` and the optional `documents`, sent only when there are some — and an abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal). The planning limits mirror `backend/api/schemas/planning.py`: `PLAN_DESCRIPTION_MAX_LENGTH` (20,000), `MAX_PLAN_DOCUMENTS` (5), `PLAN_DOCUMENT_EXCERPT_CHARS` (2,000) and `PLAN_DOCUMENT_NAME_MAX_LENGTH` (2,048), with `DOCUMENTS_INPUT_NAME` (`documents`), the run input every plan made with documents has. `normalizePipeline` fills what older pipelines and plans leave out (inputs, role, tools, expected output, `condition` and `review` as `null`) |
@@ -350,17 +351,9 @@ with the run report the Results pane shares with the Runs page and the builder.
 
 ### `features/chat`
 
-- `useChatStream()` owns the transcript (`messages`), each reply's tool runs
-  (`tools`), `isLoading`, `send()` and `reset()` ("New chat"). `send` passes the
-  messages before it (`historyOf`: not the greeting nor a `failed` reply) and the
-  browser's zone, then folds text and tool events into an empty AI message as they
-  stream. `chatStorage` keeps the transcript for the tab once each reply ends and
-  on unmount (an `AbortController` cancels the stream), and main.tsx forgets it with
-  the session. `ChatPage` renders the header, an `Aurora`, the transcript, the composer;
-  `ChatMessages` animates each bubble in (`renderMarkdown`), typing dots until a reply
-  has text or a tool. What a tool made shows through `ToolActivity`'s `ACTION_VIEWS`: a
-  link, a `WebhookCard` (`useWebhookLink` reads the link, never stored) or a
-  `DeliveryCard` (Confirm or Cancel through `useDelivery`). A fresh chat offers starters.
+The Chat screen at `/chat`, over the chats the server keeps: the list, the open chat,
+its replies' tools and cost, and what the tab remembers. It has its own page,
+[frontend-chat.md](frontend-chat.md).
 
 ### `features/pipelines`
 

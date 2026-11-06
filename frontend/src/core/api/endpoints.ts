@@ -12,6 +12,8 @@ export const API = {
   exportAccount: '/api/account/export',
   deleteAccount: '/api/account/delete',
   chat: '/api/chat',
+  chats: '/api/chats',
+  chatById: (chatId: number) => `/api/chats/${chatId}`,
   models: '/api/models',
   agentTools: '/api/agent-tools',
   pipelines: '/api/pipelines/',

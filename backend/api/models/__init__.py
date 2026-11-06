@@ -1,6 +1,6 @@
 """Persistence and the invariants that belong to each entity (AGENTS.md §2), one module
-per area: ``users``, ``pipelines``, ``runs`` and ``automation`` (schedules, webhooks and
-result deliveries), on what ``base`` shares. Callers import from ``api.models``, which
+per area: ``users``, ``pipelines``, ``runs``, ``chat`` and ``automation`` (schedules,
+webhooks and result deliveries), on what ``base`` shares. Callers import from ``api.models``, which
 also puts every table on ``Base.metadata`` for the app, the tests and Alembic."""
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from api.models.base import (
     USERNAME_MAX_LENGTH,
     Base,
 )
+from api.models.chat import CHAT_TITLE_MAX_LENGTH, Chat, ChatMessage, ChatRole
 from api.models.pipelines import Pipeline, PipelineStep
 from api.models.runs import (
     ACTIVE_RUN_STATUSES,
@@ -55,6 +56,7 @@ from api.models.users import Integration, ProviderSetting, RateLimitBucket, User
 __all__ = [
     "ACTIVE_RUN_STATUSES",
     "API_KEY_HINT_LENGTH",
+    "CHAT_TITLE_MAX_LENGTH",
     "COMPLETED_STEP_STATUSES",
     "ERROR_CODE_MAX_LENGTH",
     "FEEDBACK_PLACEHOLDER",
@@ -86,6 +88,9 @@ __all__ = [
     "USERNAME_MAX_LENGTH",
     "ApprovalStatus",
     "Base",
+    "Chat",
+    "ChatMessage",
+    "ChatRole",
     "Delivery",
     "Integration",
     "Pipeline",

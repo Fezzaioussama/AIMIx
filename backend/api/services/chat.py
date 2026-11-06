@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import Protocol
 
 from api.exceptions import DomainError, UpstreamResponseInvalid
-from api.services.chat_conversation import Conversation
+from api.services.chat_conversation import ChatTurn, Conversation
 from api.services.chat_events import ChatEvent
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 class ChatAgent(Protocol):
     def stream(self, conversation: Conversation) -> AsyncIterator[ChatEvent]: ...
+
+    async def summarize(self, summary: str, turns: Sequence[ChatTurn], max_chars: int) -> str:
+        """The chat's notes with ``turns`` folded in, at most ``max_chars`` long
+        (``chat_memory``)."""
+        ...
 
 
 async def stream_reply(agent: ChatAgent, conversation: Conversation) -> AsyncIterator[ChatEvent]:

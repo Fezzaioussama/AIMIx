@@ -214,3 +214,10 @@ class ServerStorageFull(DomainError):
 class UnsupportedFileType(DomainError):
     code = "unsupported_file_type"
     status_code = 415
+
+
+class ChatFull(DomainError):
+    """A chat that holds CHAT_MAX_MESSAGES messages takes no more: time for a new one."""
+
+    code = "chat_full"
+    status_code = 409
