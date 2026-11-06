@@ -30,6 +30,8 @@ from api.services.agent_runtime import (
     AgentLimits,
     AgentToolset,
     as_agent_error,
+    context_budget,
+    context_guard,
     resolve_tools,
 )
 from api.services.agent_tools import built_in_tools
@@ -59,6 +61,7 @@ from api.services.run_budget import RunBudget, limit_reached
 from api.services.run_recorder import utcnow
 from api.services.runs import launcher
 from config.settings import get_settings
+from llm.catalog import ModelInfo
 from llm.usage import NO_USAGE, TokenUsage, UsageCallback, metered
 
 logger = logging.getLogger(__name__)
@@ -89,19 +92,20 @@ class ChatMeter:
 
 @dataclass(frozen=True)
 class MeteredChatModel:
-    """A chat model, and a reading of what its calls used so far."""
+    """A chat model, a reading of what its calls used so far, and its catalogue entry
+    (None when the catalogue lists no such model)."""
 
     model: BaseChatModel
     spent: Callable[[], TokenUsage]
+    info: ModelInfo | None = None
 
 
 def metered_chat_model(profile: LLMProfile, max_tokens: int | None) -> MeteredChatModel:
     """The profile's chat model, every call of which counts toward one message's
     ``max_tokens`` (None: counted, never refused)."""
-    usage = UsageCallback(
-        model_info(profile, profile.default_model), ChatMeter(RunBudget(max_tokens=max_tokens))
-    )
-    return MeteredChatModel(metered(get_agent_model(profile), usage), lambda: usage.total)
+    info = model_info(profile, profile.default_model)
+    usage = UsageCallback(info, ChatMeter(RunBudget(max_tokens=max_tokens)))
+    return MeteredChatModel(metered(get_agent_model(profile), usage), lambda: usage.total, info)
 
 
 def _nothing_spent() -> TokenUsage:
@@ -216,7 +220,11 @@ class LangGraphChatAgent:
                     conversation.summary,
                     conversation.instructions,
                 ),
-                middleware=[refusals_as_results, answer_in_their_language(conversation.prompt)],
+                middleware=[
+                    refusals_as_results,
+                    answer_in_their_language(conversation.prompt),
+                    *context_guard(self._model, self._limits.context),
+                ],
             )
             events = graph.astream(
                 # A list display, so it takes the graph's message type.
@@ -311,6 +319,7 @@ def get_chat_agent(scope: ChatScope) -> LangGraphChatAgent:
             settings.agent_timeout_seconds,
             settings.agent_recursion_limit,
             settings.mcp_timeout_seconds,
+            context_budget(settings, model.info),
         ),
         model.spent,
     )

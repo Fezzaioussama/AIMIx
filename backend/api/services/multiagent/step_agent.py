@@ -26,6 +26,8 @@ from api.services.agent_runtime import (
     AgentLimits,
     AgentToolset,
     as_agent_error,
+    context_budget,
+    context_guard,
     resolve_tools,
 )
 from api.services.agent_tools import native_tools
@@ -128,8 +130,10 @@ class LangGraphStepAgent:
                 )
                 system_prompt = step_agent_system_prompt(role, [tool.name for tool in tools])
                 model = metered(self._model, usage)
+                # The guard summarizes with the metered model: that call is counted too.
+                middleware = [*guarded.middleware, *context_guard(model, self._limits.context)]
                 graph = create_agent(
-                    model, tools, system_prompt=system_prompt, middleware=guarded.middleware
+                    model, tools, system_prompt=system_prompt, middleware=middleware
                 )
                 state = await graph.ainvoke(
                     {"messages": [{"role": "user", "content": task.prompt}]},
@@ -192,6 +196,7 @@ class PipelineAgentGenerator:
 
     async def _reply(self, task: AgentTask) -> AgentOutcome:
         settings = self._dependencies.settings
+        info = self._dependencies.model_info(task.model)
         agent = LangGraphStepAgent(
             self._dependencies.model_factory(task.model),
             AgentToolset(
@@ -208,11 +213,10 @@ class PipelineAgentGenerator:
                 settings.agent_timeout_seconds,
                 settings.agent_recursion_limit,
                 settings.mcp_timeout_seconds,
+                context_budget(settings, info),
             ),
             StepServices(
-                self._dependencies.model_info(task.model),
-                run_gate(self._database, task.run_step, settings),
-                self._remembered(),
+                info, run_gate(self._database, task.run_step, settings), self._remembered()
             ),
         )
         return await agent.reply(task)

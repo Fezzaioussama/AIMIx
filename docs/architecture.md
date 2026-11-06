@@ -146,6 +146,16 @@ spending as its starting total and may raise the limits
 (`POST /runs/<id>/resume` with a body); under a limit it has already reached it
 is refused (`409 budget_exceeded`).
 
+**The context guard.** A step's (and the chat's) tool loop grows inside one
+task: every tool result joins the messages the next model call reads. Before
+each call, LangChain's `SummarizationMiddleware` (`agent_runtime.context_guard`,
+after Celia Agent's proactive compaction) estimates them; once they reach
+`AGENT_CONTEXT_WINDOW_RATIO` of the model's window (its catalogue
+`context_window`, else `AGENT_CONTEXT_WINDOW_TOKENS`), the agent's own metered
+model summarizes the older ones, so that call counts toward the run's budget
+too, and the newest `AGENT_COMPACT_KEEP_MESSAGES` stay verbatim. A long run of
+reads no longer ends in a provider error.
+
 **The server's limits** (`run_policy.RunPolicy`, applied by `RunService` on every
 path that starts or resumes a run). A limit the starter leaves unset takes the
 default (`RUN_DEFAULT_MAX_COST_USD`, `RUN_DEFAULT_MAX_TOKENS`); the ceilings

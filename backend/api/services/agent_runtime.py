@@ -1,12 +1,16 @@
-"""Shared tool policy and failure contract for chat and pipeline agents."""
+"""Shared tool policy, limits and failure contract for chat and pipeline agents,
+and the context guard that keeps an agent's tool loop inside its model's window."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import openai
 from exceptiongroup import ExceptionGroup
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool, ToolException
 from langgraph.errors import GraphRecursionError
 from mcp import McpError
@@ -16,6 +20,8 @@ from api.exceptions import DomainError, ProviderTimedOut, ProviderUnavailable, T
 from api.services.approvals.policy import NO_APPROVALS, ApprovalPolicy
 from api.services.mcp import MCPConnections
 from api.services.mcp_discovery import discover_tools
+from config.settings import Settings
+from llm.catalog import ModelInfo
 
 AGENT_FAILURES = (
     TimeoutError,
@@ -33,10 +39,50 @@ AGENT_FAILURES = (
 
 
 @dataclass(frozen=True)
+class ContextBudget:
+    """How full a model's context window an agent's messages may get before the
+    oldest are summarized, and how many of the newest stay verbatim (§7 Value Object)."""
+
+    #: The window the guard works against: the model's own, else the configured default.
+    window_tokens: int
+    ratio: float
+    keep_messages: int
+
+
+@dataclass(frozen=True)
 class AgentLimits:
     timeout_seconds: float
     recursion_limit: int
     mcp_timeout_seconds: float
+    #: The context guard's budget; None leaves an agent's messages unbounded.
+    context: ContextBudget | None = None
+
+
+def context_budget(settings: Settings, info: ModelInfo | None) -> ContextBudget:
+    """The budget for one model: its catalogue window when known, else the default."""
+    known = info.context_window if info is not None else None
+    return ContextBudget(
+        known or settings.agent_context_window_tokens,
+        settings.agent_context_window_ratio,
+        settings.agent_compact_keep_messages,
+    )
+
+
+def context_guard(
+    model: BaseChatModel, budget: ContextBudget | None
+) -> list[AgentMiddleware[Any, Any, Any]]:
+    """The middleware that keeps an agent's tool loop inside its model's context
+    window (after Celia Agent's proactive compaction): before a model call, once the
+    messages are estimated at ``ratio`` of the window, ``model`` summarizes the older
+    ones and the newest ``keep_messages`` stay verbatim. Nothing without a budget."""
+    if budget is None:
+        return []
+    guard = SummarizationMiddleware(
+        model,
+        trigger=("tokens", int(budget.window_tokens * budget.ratio)),
+        keep=("messages", budget.keep_messages),
+    )
+    return [guard]
 
 
 @dataclass(frozen=True)
