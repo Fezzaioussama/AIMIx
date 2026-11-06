@@ -35,6 +35,8 @@ export const API = {
     `/api/runs/${runId}/approvals/${approvalId}/approve`,
   declineToolCall: (runId: number, approvalId: number) =>
     `/api/runs/${runId}/approvals/${approvalId}/decline`,
+  answerQuestion: (runId: number, approvalId: number) =>
+    `/api/runs/${runId}/approvals/${approvalId}/answer`,
   schedules: '/api/schedules',
   schedule: (scheduleId: number) => `/api/schedules/${scheduleId}`,
   runSchedule: (scheduleId: number) => `/api/schedules/${scheduleId}/run`,

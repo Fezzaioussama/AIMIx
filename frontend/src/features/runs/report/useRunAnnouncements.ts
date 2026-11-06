@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 
-import type { Run, RunStatus } from '../../../core/api/types';
+import type { Run, RunApproval, RunStatus } from '../../../core/api/types';
 import { countOf } from '../../../core/usageFormat';
 import { joinWords } from '../../pipelines/revision';
 import { roundLabel } from '../../pipelines/roundNotes';
@@ -35,13 +35,21 @@ function finished({ run, model }: OutcomeFacts): string {
   return `Your team finished: ${countOf(ready, 'deliverable')} ready${approved}.`;
 }
 
+/** "Draft wants to use “Send email” from crm", or "Draft has a question for you". */
+function askWords(run: Run, ask: RunApproval): string {
+  const who = askedBy(run, ask.step_order);
+  return ask.kind === 'question'
+    ? `${who} has a question for you`
+    : `${who} wants to ${approvalAsk(ask)}`;
+}
+
 /** "Your team needs your OK: Draft wants to use “Send email” from crm." */
 function needsOk({ run }: OutcomeFacts): string {
   const asks = run.pending_approvals;
   if (asks.length === 0) return 'Your team needs your OK.';
   const what =
     asks.length === 1
-      ? `${askedBy(run, asks[0].step_order)} wants to ${approvalAsk(asks[0])}`
+      ? askWords(run, asks[0])
       : `${asks.length} requests are waiting for your answer`;
   return `Your team needs your OK: ${what}.`;
 }

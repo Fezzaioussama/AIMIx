@@ -148,6 +148,9 @@ export interface RunStep extends StepResult {
 export type ApprovalStatus = 'pending' | 'approved' | 'declined' | 'expired';
 
 /** A tool call held until the run's owner approves or declines it (`Run.pending_approvals`). */
+/** What a request asks: the OK for a tool call, or (ask_user) an answer to a question. */
+export type ApprovalKind = 'approval' | 'question';
+
 export interface RunApproval {
   id: number;
   /** The run step whose agent wants to use the tool. */
@@ -160,6 +163,10 @@ export interface RunApproval {
   /** The call's arguments; long text values may be shortened (`arguments_truncated`). */
   arguments: Record<string, unknown>;
   arguments_truncated: boolean;
+  /** The OK for a tool call, or (ask_user) an answer to a question. */
+  kind: ApprovalKind;
+  /** What you answered a question; empty otherwise. */
+  answer: string;
   status: ApprovalStatus;
   created_at: string;
   /** Unanswered by then, the request expires and the tool does not act. */

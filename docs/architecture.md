@@ -823,6 +823,18 @@ chat's `run_pipeline` tool wait for a run's end, so a run of theirs that asks
 keeps them waiting until it is answered (or expires); the owner answers it from
 the Runs page.
 
+**Questions.** A step agent may ask the person who started the run one question
+with the built-in `ask_user` tool (`toolbox/questions.py`; in
+`AGENT_BUILTIN_TOOLS` by default): the same gate records it as a request of
+`kind` `question` (`arguments`: the question and the suggested options), the run
+shows `waiting`, the owner answers (`POST …/answer`, the text) or skips it
+(`/decline`) from the run report, and the tool hands the agent the answer, or
+tells it to decide for itself (skipped, nobody answered in time, the run
+stopped). Only a run someone watches gets the real gate (`ATTENDED_TRIGGERS`:
+started by hand or from the chat, `step_agent.run_tools`); a schedule's or a
+webhook's run, the chat and the catalogue get `NOBODY`, which answers at once
+that nobody is watching, so a pipeline that names the tool runs everywhere.
+
 **What is stored and logged.** One `run_approvals` row per request: the run,
 step, tool name, source, description, the arguments (JSON, long text values
 shortened), status, and `created_at`, `expires_at` and `decided_at`. Arguments

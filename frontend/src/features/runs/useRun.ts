@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { approveToolCall, declineToolCall } from '../../core/api/approvals';
+import { answerQuestion, approveToolCall, declineToolCall } from '../../core/api/approvals';
 import { ApiError } from '../../core/api/client';
 import { errorMessage } from '../../core/api/errorMessage';
 import { cancelRun, getRun, resumeRun } from '../../core/api/runs';
@@ -22,8 +22,10 @@ export interface LiveRunState {
   resume: (budget?: RunBudget) => Promise<void>;
   /** Let a tool call this run waits on act (`run.pending_approvals`); the run updates at once. */
   approve: (approvalId: number) => Promise<void>;
-  /** Refuse it: the step's agent is told, and the run goes on. */
+  /** Refuse it: the step's agent is told, and the run goes on. Skips a question. */
   decline: (approvalId: number) => Promise<void>;
+  /** Answer a question the run's agent asked (`kind: "question"`); the agent reads it. */
+  answer: (approvalId: number, text: string) => Promise<void>;
   /** Show a run already in hand (one just started) without waiting for a fetch. */
   adopt: (run: Run) => void;
 }
@@ -31,7 +33,7 @@ export interface LiveRunState {
 /** What a run's report needs to act on it; both `useRun` and `FollowedRun` give it. */
 export type RunControls = Pick<
   LiveRunState,
-  'stop' | 'resume' | 'approve' | 'decline' | 'busy' | 'error'
+  'stop' | 'resume' | 'approve' | 'decline' | 'answer' | 'busy' | 'error'
 >;
 
 interface Failure {
@@ -121,8 +123,13 @@ export function useRun(runId: number | null): LiveRunState {
       act((id) => declineToolCall(id, approvalId), 'Could not decline this action.'),
     [act],
   );
+  const answer = useCallback(
+    (approvalId: number, text: string) =>
+      act((id) => answerQuestion(id, approvalId, text), 'Could not send your answer.'),
+    [act],
+  );
   const adopt = useCallback((next: Run) => setRun(next), []);
   const error = failure !== null && failure.runId === runId ? failure.message : '';
 
-  return { run: current, error, busy, stop, resume, approve, decline, adopt };
+  return { run: current, error, busy, stop, resume, approve, decline, answer, adopt };
 }

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
+from api.services.toolbox.questions import ASK_USER
 from api.services.toolbox.registry import OUTBOUND_TOOLS
 from api.services.toolbox.tools import SAVE_ARTIFACT
 
@@ -28,6 +29,12 @@ STEP_AGENT_SAVE_GUIDANCE = (
     "When the request sets a length for a file (one page, two pages), check the page "
     "count save_artifact reports. If the file is longer, shorten the content and save it "
     "again under the same name: that replaces your draft."
+)
+#: Only for a step with ask_user, which may ask the person who started the run.
+STEP_AGENT_ASK_GUIDANCE = (
+    "You may ask the person who started this run one question with ask_user, when a "
+    "decision would change the deliverable and the task does not settle it; otherwise "
+    "state your assumption and go on. Never ask what the task already says."
 )
 #: For every agent, with or without tools.
 LINKS_RULE = (
@@ -56,4 +63,6 @@ def tool_guidance(tools: Collection[str]) -> list[str]:
         guidance.append(STEP_AGENT_WEB_GUIDANCE)
     if SAVE_ARTIFACT in tools:
         guidance.append(STEP_AGENT_SAVE_GUIDANCE)
+    if ASK_USER in tools:
+        guidance.append(STEP_AGENT_ASK_GUIDANCE)
     return [*guidance, LINKS_RULE]

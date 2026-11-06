@@ -48,6 +48,8 @@ def test_a_waiting_run_shows_its_owner_what_it_asks(
         "tool_description",
         "arguments",
         "arguments_truncated",
+        "kind",
+        "answer",
         "status",
         "created_at",
         "expires_at",

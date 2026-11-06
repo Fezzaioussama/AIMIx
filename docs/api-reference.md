@@ -1503,6 +1503,15 @@ approve or decline it:
 - any tool named in the operator's `AGENT_APPROVAL_TOOLS` (built-in tools; none
   by default).
 
+A step's agent can also ask you a **question** mid-run with the built-in
+`ask_user` tool (in `AGENT_BUILTIN_TOOLS` by default): the request has
+`kind: "question"`, its `arguments` hold the `question` and the suggested
+`options`, and you answer it with
+[`/answer`](#post-runsidapprovalsapproval_idanswer) or skip it with `/decline`;
+the agent reads your answer as the tool's result. In a run nobody watches (a
+schedule's, a webhook's) the tool tells the agent so at once and nothing is
+recorded.
+
 While a request waits the run is `waiting` and `pending_approvals` lists it. The
 chat has no run to pause, so these tools are not offered to the chat agent; it
 can still start a pipeline run, whose steps ask. An approved call runs. A
@@ -1518,7 +1527,7 @@ A request, as listed in `pending_approvals`:
 { "id": 31, "step_order": 2, "tool_name": "crm_send_email", "tool_source": "crm",
   "tool_description": "Send an email to a contact.",
   "arguments": { "to": "ada@example.com", "subject": "Launch" },
-  "arguments_truncated": false, "status": "pending",
+  "arguments_truncated": false, "kind": "approval", "answer": "", "status": "pending",
   "created_at": "2026-10-24T10:00:12Z", "expires_at": "2026-10-24T10:30:12Z" }
 ```
 
@@ -1538,6 +1547,18 @@ nothing. Failures:
 |---|---|---|
 | 404 | `not_found` | Not your run, or no such request in it |
 | 409 | `conflict` | The request already got the other answer, or it expired (time is up, or the run stopped); `detail` says which |
+
+### `POST /runs/<id>/approvals/<approval_id>/answer`
+
+```json
+{ "answer": "Blue" }
+```
+
+For a request of `kind: "question"`: `200` → the run, as above, and the agent
+reads your answer (trimmed, at most 4000 characters) as the tool's result. A
+blank answer is a `400 validation_error`; `/approve` on a question is a `400`
+too (`answer: …`: it needs the text, or `/decline` to skip it). The 404 and 409
+cases are those of `/approve`.
 
 ### `POST /pipelines/generate`
 

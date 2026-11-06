@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import asdict, replace
-from datetime import datetime
 from typing import Any
 
 from langchain.tools import tool
@@ -32,6 +31,7 @@ from api.services.schedules import requests as schedule_requests
 from api.services.schedules import service as schedule_service
 from api.services.schedules.service import ScheduleAccess, ScheduleView
 from api.services.toolbox.config import MetaTools, SandboxQuota, toolbox_config
+from api.services.toolbox.questions import NO_RUN_TOOLS, RunTools, question_tools
 from api.services.toolbox.registry import toolbox_tools
 from config.settings import Settings, get_settings
 from llm.providers import meta
@@ -130,16 +130,18 @@ def meta_tools(database: Database, user: User, settings: Settings) -> MetaTools 
 
 
 def native_tools(
-    database: Database, user: User, settings: Settings, drafts_since: datetime | None = None
+    database: Database, user: User, settings: Settings, run: RunTools = NO_RUN_TOOLS
 ) -> list[BaseTool]:
-    """Every in-process tool an agent may use: pipeline inspection plus the built-in
-    toolbox; a run's agents may replace the files saved since ``drafts_since``."""
+    """Every in-process tool an agent may use: pipeline inspection, the built-in
+    toolbox and the question to the person who started the run (``run``: its start,
+    since which the agents may replace their own drafts, and the gate it asks through)."""
     workspace = user_workspace_dir(settings.workspace_dir, user.id)
     quota = sandbox_quota(database, user, settings)
     config = toolbox_config(settings, workspace, quota, meta_tools(database, user, settings))
     return [
         *read_only_tools(database, user),
-        *toolbox_tools(replace(config, drafts_since=drafts_since)),
+        *toolbox_tools(replace(config, drafts_since=run.drafts_since)),
+        *question_tools(settings.agent_builtin_tools, run),
     ]
 
 

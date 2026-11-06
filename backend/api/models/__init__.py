@@ -43,8 +43,10 @@ from api.models.chat import CHAT_TITLE_MAX_LENGTH, Chat, ChatMessage, ChatRole
 from api.models.pipelines import Pipeline, PipelineStep
 from api.models.runs import (
     ACTIVE_RUN_STATUSES,
+    ATTENDED_TRIGGERS,
     COMPLETED_STEP_STATUSES,
     RESUMABLE_RUN_STATUSES,
+    ApprovalKind,
     ApprovalStatus,
     Run,
     RunApproval,
@@ -60,6 +62,7 @@ from api.models.users import Integration, ProviderSetting, RateLimitBucket, User
 __all__ = [
     "ACTIVE_RUN_STATUSES",
     "API_KEY_HINT_LENGTH",
+    "ATTENDED_TRIGGERS",
     "CHAT_TITLE_MAX_LENGTH",
     "COMPLETED_STEP_STATUSES",
     "EMAIL_MAX_LENGTH",
@@ -91,6 +94,7 @@ __all__ = [
     "TOOL_NAME_MAX_LENGTH",
     "TOOL_SOURCE_MAX_LENGTH",
     "USERNAME_MAX_LENGTH",
+    "ApprovalKind",
     "ApprovalStatus",
     "Base",
     "Chat",

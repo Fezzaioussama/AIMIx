@@ -17,7 +17,7 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
 from api.db import Database
 from api.exceptions import UpstreamResponseInvalid
-from api.models import User
+from api.models import ATTENDED_TRIGGERS, User
 from api.repositories import runs as run_repository
 from api.services import user_memory
 from api.services.account_usage import account_meter, calls_of
@@ -33,11 +33,12 @@ from api.services.agent_runtime import (
 )
 from api.services.agent_tools import native_tools
 from api.services.agent_types import AgentOutcome, AgentTask, RunStepRef, ToolCallTrace
-from api.services.approvals.gate import ApprovalGate
+from api.services.approvals.gate import ApprovalGate, RunApprovalGate
 from api.services.approvals.guard import guard_tools, run_gate
 from api.services.approvals.policy import approval_policy_for
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model, model_info
+from api.services.toolbox.questions import NO_RUN_TOOLS, NOBODY, RunTools
 from config.settings import Settings, get_settings
 from llm.catalog import ModelInfo
 from llm.usage import UNMETERED, UsageCallback, UsageMeter, chained, metered
@@ -203,6 +204,7 @@ class PipelineAgentGenerator:
     async def _reply(self, task: AgentTask) -> AgentOutcome:
         settings = self._dependencies.settings
         info = self._dependencies.model_info(task.model)
+        gate = run_gate(self._database, task.run_step, settings)
         agent = LangGraphStepAgent(
             self._dependencies.model_factory(task.model),
             AgentToolset(
@@ -211,7 +213,7 @@ class PipelineAgentGenerator:
                     self._database,
                     self._user,
                     settings,
-                    _drafts_since(self._database, task.run_step),
+                    run_tools(self._database, task.run_step, gate),
                 ),
                 approval_policy_for(self._database, self._user, settings),
             ),
@@ -223,7 +225,7 @@ class PipelineAgentGenerator:
             ),
             StepServices(
                 info,
-                run_gate(self._database, task.run_step, settings),
+                gate,
                 self._remembered(),
                 account_meter(
                     self._database, self._user.id, self._profile, calls_of(None, task.model)
@@ -239,13 +241,25 @@ class PipelineAgentGenerator:
         return self._instructions
 
 
-def _drafts_since(database: Database, step: RunStepRef | None) -> datetime | None:
-    """When the step's run started: its agents may replace the files saved since then,
-    their own drafts. None outside a recorded run, where nothing is replaced."""
+def run_tools(
+    database: Database, step: RunStepRef | None, gate: RunApprovalGate | None
+) -> RunTools:
+    """What a recorded run gives its tools: its start (its agents may replace the
+    files saved since then, their own drafts) and, for a run someone watches
+    (``ATTENDED_TRIGGERS``: started by hand or from the chat), the gate its agents
+    ask questions through. Nothing outside a recorded run."""
     if step is None:
-        return None
+        return NO_RUN_TOOLS
     with database.session() as session:
         run = run_repository.load(session, step.run_id)
-    started = run.started_at if run else None
+    if run is None:
+        return NO_RUN_TOOLS
+    started = _as_utc(run.started_at)
+    if gate is None or run.trigger not in ATTENDED_TRIGGERS:
+        return RunTools(started, NOBODY)
+    return RunTools(started, gate)
+
+
+def _as_utc(moment: datetime | None) -> datetime | None:
     # SQLite hands back the UTC time it stored without its zone.
-    return started.replace(tzinfo=timezone.utc) if started and started.tzinfo is None else started
+    return moment.replace(tzinfo=timezone.utc) if moment and moment.tzinfo is None else moment

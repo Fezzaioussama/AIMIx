@@ -124,3 +124,30 @@ describe('useRun answering approvals', () => {
     expect(result.current.busy).toBe(false);
   });
 });
+
+describe('useRun answering questions', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('sends the answer and shows the run as it comes back', async () => {
+    const asked = makeRun({
+      ...waiting,
+      pending_approvals: [makeApproval({ kind: 'question', tool_name: 'ask_user' })],
+    });
+    const going = makeRun({ status: 'running', pending_approvals: [] });
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (path) => json(path === API.answerQuestion(7, 31) ? going : asked));
+    const { result } = renderHook(() => useRun(7));
+    await advance();
+
+    await act(() => result.current.answer(31, 'Blue'));
+
+    const [, init] = fetchMock.mock.calls.find(([path]) => path === API.answerQuestion(7, 31))!;
+    expect(JSON.parse(String(init?.body))).toEqual({ answer: 'Blue' });
+    expect(result.current.run?.status).toBe('running');
+  });
+});

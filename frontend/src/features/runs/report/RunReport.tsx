@@ -103,6 +103,7 @@ export function RunReport({ run, control, level, extras = {} }: RunReportProps) 
         run={run}
         onApprove={(approvalId) => void control.approve(approvalId)}
         onDecline={(approvalId) => void control.decline(approvalId)}
+        onAnswer={(approvalId, text) => void control.answer(approvalId, text)}
         busy={control.busy}
       />
       <ReportBody

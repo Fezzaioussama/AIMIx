@@ -19,7 +19,7 @@ from sqlalchemy import Select, exists, func, select, update
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotFound
-from api.models import ApprovalStatus, Run, RunApproval, RunStatus, User
+from api.models import ApprovalKind, ApprovalStatus, Run, RunApproval, RunStatus, User
 from api.repositories.bulk import changed
 
 _PENDING = ApprovalStatus.PENDING
@@ -40,16 +40,20 @@ class NewApproval:
     arguments_truncated: bool
     created_at: datetime
     expires_at: datetime
+    #: The OK for a tool call, or (ask_user) a question.
+    kind: ApprovalKind = ApprovalKind.APPROVAL
 
 
 @dataclass(frozen=True)
 class Settlement:
-    """How one pending approval ends: approved, declined or expired."""
+    """How one pending approval ends: approved (with the answer, for a question),
+    declined or expired."""
 
     run_id: int
     approval_id: int
     status: ApprovalStatus
     decided_at: datetime
+    answer: str = ""
 
 
 def ask(session: Session, new: NewApproval) -> RunApproval | None:
@@ -101,6 +105,11 @@ def pending_count(session: Session, run_id: int) -> int:
     )
 
 
+def answer_of(session: Session, approval_id: int) -> str:
+    """What the person answered a question; "" otherwise, or once it was deleted."""
+    return session.scalar(select(RunApproval.answer).where(RunApproval.id == approval_id)) or ""
+
+
 def status_of(session: Session, approval_id: int) -> ApprovalStatus | None:
     """Where an approval is now; None once it was deleted with its run."""
     return session.scalar(select(RunApproval.status).where(RunApproval.id == approval_id))
@@ -117,7 +126,9 @@ def settle(session: Session, settlement: Settlement) -> bool:
             RunApproval.run_id == settlement.run_id,
             RunApproval.status == _PENDING,
         )
-        .values(status=settlement.status, decided_at=settlement.decided_at),
+        .values(
+            status=settlement.status, decided_at=settlement.decided_at, answer=settlement.answer
+        ),
     )
     if settled:
         _resume_if_answered(session, settlement.run_id)

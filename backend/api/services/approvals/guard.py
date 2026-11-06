@@ -57,7 +57,7 @@ def guard_tools(
 
 def run_gate(
     database: Database, place: RunStepRef | None, settings: Settings
-) -> ApprovalGate | None:
+) -> RunApprovalGate | None:
     """The gate of a recorded run's step; None outside one, where nobody can be asked."""
     if place is None:
         return None

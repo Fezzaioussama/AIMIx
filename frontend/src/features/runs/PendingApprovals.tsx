@@ -9,6 +9,7 @@ interface PendingApprovalsProps {
   /** Answer a request by its id; without both, the requests show but cannot be answered here. */
   onApprove?: (approvalId: number) => void;
   onDecline?: (approvalId: number) => void;
+  onAnswer?: (approvalId: number, text: string) => void;
   /** An answer is on its way. */
   busy?: boolean;
 }
@@ -19,7 +20,13 @@ interface PendingApprovalsProps {
  * answers from `useRun` (`live.approve`, `live.decline`). It says nothing aloud: the
  * run report's announcer tells that the team needs your OK.
  */
-export function PendingApprovals({ run, onApprove, onDecline, busy }: PendingApprovalsProps) {
+export function PendingApprovals({
+  run,
+  onApprove,
+  onDecline,
+  onAnswer,
+  busy,
+}: PendingApprovalsProps) {
   const waiting = run.pending_approvals;
   const anchor = useRef<HTMLDivElement>(null);
   const shown = useRef(waiting.length);
@@ -46,6 +53,7 @@ export function PendingApprovals({ run, onApprove, onDecline, busy }: PendingApp
               busy={busy}
               onApprove={answerable ? () => onApprove(approval.id) : undefined}
               onDecline={answerable ? () => onDecline(approval.id) : undefined}
+              onAnswer={onAnswer ? (text) => onAnswer(approval.id, text) : undefined}
             />
           ))}
         </section>

@@ -15,3 +15,8 @@ export function approveToolCall(runId: number, approvalId: number): Promise<Run>
 export function declineToolCall(runId: number, approvalId: number): Promise<Run> {
   return request<Run>(API.declineToolCall(runId, approvalId), { method: 'POST' });
 }
+
+/** Answer a question an agent asked (ask_user); the agent reads it and the run goes on. */
+export function answerQuestion(runId: number, approvalId: number, answer: string): Promise<Run> {
+  return request<Run>(API.answerQuestion(runId, approvalId), { method: 'POST', body: { answer } });
+}

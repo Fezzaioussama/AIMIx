@@ -19,8 +19,9 @@ from api.models import Base, Run, User
 from api.services import agent_tools
 from api.services.agent_types import RunStepRef
 from api.services.files.storage import WorkspaceStorage
-from api.services.multiagent.step_agent import _drafts_since
+from api.services.multiagent.step_agent import run_tools
 from api.services.toolbox.config import WorkspaceOptions
+from api.services.toolbox.questions import RunTools
 from api.services.toolbox.workspace import LocalWorkspace
 from tests.approval_fakes import make_owner, make_pipeline, running_run
 from tests.test_toolbox import RENDER, WORKSPACE_LIMITS
@@ -92,7 +93,7 @@ def test_a_runs_agents_get_the_drafts_rule_through_their_tools(
     )
 
     def save_twice(drafts_since: datetime | None, path: str) -> str:
-        tools = agent_tools.native_tools(app.state.database, user, settings, drafts_since)
+        tools = agent_tools.native_tools(app.state.database, user, settings, RunTools(drafts_since))
         save = next(tool for tool in tools if tool.name == "save_artifact")
         save.invoke({"path": path, "content": "first"})
         return str(save.invoke({"path": path, "content": "second"}))
@@ -111,5 +112,6 @@ def test_the_drafts_rule_starts_when_the_run_did(database: Database) -> None:
         run.started_at = started
         session.commit()
 
-    assert _drafts_since(database, RunStepRef(run_id, 1)) == started.replace(tzinfo=timezone.utc)
-    assert _drafts_since(database, None) is None
+    watched = run_tools(database, RunStepRef(run_id, 1), None)
+    assert watched.drafts_since == started.replace(tzinfo=timezone.utc)
+    assert run_tools(database, None, None).drafts_since is None

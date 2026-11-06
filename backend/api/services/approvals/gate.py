@@ -13,7 +13,9 @@ write is a short transaction on the run's loop, as in ``run_recorder``.
 The wait counts toward the step's AGENT_TIMEOUT_SECONDS, which is why a
 request never waits longer than that. The first request a step's gate records
 while nothing else of the run is pending also tells the owner that the run
-waits (``GateHooks.on_waiting``, the notifier's email), off the loop.
+waits (``GateHooks.on_waiting``, the notifier's email), off the loop. A step's
+``ask_user`` question goes through the same gate (``ask_question``): recorded as
+a question, answered or skipped from the run report, the answer handed back.
 """
 
 from __future__ import annotations
@@ -28,18 +30,32 @@ from typing import Any, Protocol
 from langchain_core.tools import BaseTool
 
 from api.db import Database
-from api.models import TOOL_NAME_MAX_LENGTH, TOOL_SOURCE_MAX_LENGTH, ApprovalStatus, RunApproval
+from api.models import (
+    TOOL_NAME_MAX_LENGTH,
+    TOOL_SOURCE_MAX_LENGTH,
+    ApprovalKind,
+    ApprovalStatus,
+    RunApproval,
+)
 from api.repositories import approvals as repository
 from api.services.agent_types import RunStepRef
-from api.services.approvals.decisions import settle
+from api.services.approvals.decisions import Decision, settle
 from api.services.approvals.preview import preview_arguments
 from api.services.run_recorder import utcnow
-from api.services.tool_catalog import describe
+from api.services.tool_catalog import NATIVE_SOURCE, describe
+from api.services.toolbox.questions import ASK_USER, Answer, Question, QuestionOutcome
 from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 Clock = Callable[[], datetime]
+
+#: How a question ended, by what its request became (§5 O); an approved one carries
+#: the person's answer.
+QUESTION_OUTCOMES: dict[ApprovalStatus, QuestionOutcome] = {
+    ApprovalStatus.DECLINED: QuestionOutcome.SKIPPED,
+    ApprovalStatus.EXPIRED: QuestionOutcome.UNANSWERED,
+}
 
 
 @dataclass(frozen=True)
@@ -121,6 +137,30 @@ class RunApprovalGate:
             self._expire(approval)
             raise
 
+    async def ask_question(self, question: Question) -> Answer:
+        """Ask the run's owner ``question`` and wait for the answer, as ``ask`` waits
+        for a tool call's OK: they answer or skip it from the run report."""
+        approval = self._save(
+            tool_name=ASK_USER,
+            tool_source=NATIVE_SOURCE,
+            tool_description="",
+            arguments={"question": question.text, "options": list(question.options)},
+            arguments_truncated=False,
+            kind=ApprovalKind.QUESTION,
+        )
+        if approval is None:
+            return Answer(QuestionOutcome.UNANSWERED)
+        try:
+            await self._tell_owner(approval)
+            status = await self._answer(approval)
+        except asyncio.CancelledError:
+            self._expire(approval)
+            raise
+        if status != ApprovalStatus.APPROVED:
+            return Answer(QUESTION_OUTCOMES[status])
+        with self._database.session() as session:
+            return Answer(QuestionOutcome.ANSWERED, repository.answer_of(session, approval.id))
+
     async def _tell_owner(self, approval: RunApproval) -> None:
         """Once per step, when this request is the one that made the run wait."""
         if self._on_waiting is None or self._told:
@@ -132,20 +172,27 @@ class RunApprovalGate:
             await asyncio.to_thread(self._on_waiting, self._database, approval.run_id)
 
     def _record(self, request: ToolRequest) -> RunApproval | None:
-        now = self._clock()
         arguments, truncated = preview_arguments(
             request.arguments, self._limits.arguments_max_chars
         )
-        new = repository.NewApproval(
-            run_id=self._place.run_id,
-            step_order=self._place.step_order,
+        return self._save(
             tool_name=request.tool.name[:TOOL_NAME_MAX_LENGTH],
             tool_source=request.source[:TOOL_SOURCE_MAX_LENGTH],
             tool_description=describe(request.tool, self._limits.description_max_chars),
             arguments=arguments,
             arguments_truncated=truncated,
+        )
+
+    def _save(self, **request: Any) -> RunApproval | None:
+        """Save one request (a tool call's, a question's) and show the run waiting;
+        None when the run is no longer executing."""
+        now = self._clock()
+        new = repository.NewApproval(
+            run_id=self._place.run_id,
+            step_order=self._place.step_order,
             created_at=now,
             expires_at=now + timedelta(seconds=self._limits.timeout_seconds),
+            **request,
         )
         with self._database.session() as session:
             approval = repository.ask(session, new)
@@ -172,4 +219,4 @@ class RunApprovalGate:
 
     def _expire(self, approval: RunApproval) -> ApprovalStatus:
         with self._database.session() as session:
-            return settle(session, approval, ApprovalStatus.EXPIRED, self._clock())
+            return settle(session, approval, Decision(ApprovalStatus.EXPIRED), self._clock())

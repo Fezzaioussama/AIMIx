@@ -85,7 +85,8 @@ flowchart LR
 
 > **Approval gates:** in a run, a call of an MCP tool (the operator's `MCP_SERVERS`
 > and each user's integrations) waits for the run's owner to approve it. Built-in
-> tools act unasked unless `AGENT_APPROVAL_TOOLS` names them.
+> tools act unasked unless `AGENT_APPROVAL_TOOLS` names them. An agent can also ask
+> you a question mid-run (`ask_user`); you answer it on the run's page.
 
 ## Stack
 

@@ -96,6 +96,7 @@ class AgentSettings(BaseModel):
             "run_python",
             "generate_image",
             "find_objects",
+            "ask_user",
         ],
         validation_alias="AGENT_BUILTIN_TOOLS",
     )

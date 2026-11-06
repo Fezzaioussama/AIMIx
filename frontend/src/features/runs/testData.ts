@@ -117,6 +117,8 @@ export function makeApproval(overrides: Partial<RunApproval> = {}): RunApproval 
     tool_description: 'Send an email to a contact.',
     arguments: { to: 'ada@example.com', subject: 'Launch' },
     arguments_truncated: false,
+    kind: 'approval',
+    answer: '',
     status: 'pending',
     created_at: '2026-10-24T10:00:00Z',
     expires_at: '2026-10-24T10:01:00Z',

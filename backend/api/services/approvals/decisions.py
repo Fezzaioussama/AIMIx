@@ -3,7 +3,9 @@
 Answering is idempotent: the same answer twice changes nothing. A request that
 already got the other answer, or expired (it was not answered in time, or the
 run stopped), cannot change any more, which is a ``Conflict``. An answer that
-comes after the request's time is over expires it instead.
+comes after the request's time is over expires it instead. A question
+(``ask_user``) approved is one answered: it needs the text, else it is refused;
+declining it skips it.
 """
 
 from __future__ import annotations
@@ -14,8 +16,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from api.exceptions import Conflict
-from api.models import ApprovalStatus, RunApproval, User
+from api.exceptions import Conflict, ValidationFailed
+from api.models import ApprovalKind, ApprovalStatus, RunApproval, User
 from api.repositories import approvals as repository
 from api.repositories import runs as run_repository
 from api.services.run_recorder import utcnow
@@ -33,6 +35,15 @@ REFUSALS: dict[ApprovalStatus, str] = {
 
 
 @dataclass(frozen=True)
+class Decision:
+    """How a request ends: approved (with the answer, for a question), declined
+    or expired."""
+
+    status: ApprovalStatus
+    answer: str = ""
+
+
+@dataclass(frozen=True)
 class ApprovalAnswer:
     """The owner's answer to one request of one of their runs."""
 
@@ -40,6 +51,8 @@ class ApprovalAnswer:
     approval_id: int
     #: APPROVED or DECLINED.
     status: ApprovalStatus
+    #: The answer to a question (``ask_user``); a tool call's OK needs none.
+    text: str = ""
 
 
 def answer(session: Session, user: User, given: ApprovalAnswer) -> None:
@@ -48,22 +61,39 @@ def answer(session: Session, user: User, given: ApprovalAnswer) -> None:
     approval = repository.get_in_run(session, run.id, given.approval_id)
     status = approval.status
     if status == ApprovalStatus.PENDING:
+        _ensure_answered(approval, given)
         now = utcnow()
-        late = approval.has_expired(now)
-        status = settle(session, approval, ApprovalStatus.EXPIRED if late else given.status, now)
+        decision = (
+            Decision(ApprovalStatus.EXPIRED)
+            if approval.has_expired(now)
+            else Decision(given.status, given.text.strip())
+        )
+        status = settle(session, approval, decision, now)
     if status != given.status:
         raise Conflict(REFUSALS[status])
 
 
+def _ensure_answered(approval: RunApproval, given: ApprovalAnswer) -> None:
+    """A question approved is a question answered: it needs the text."""
+    if (
+        approval.kind == ApprovalKind.QUESTION
+        and given.status == ApprovalStatus.APPROVED
+        and not given.text.strip()
+    ):
+        raise ValidationFailed("answer: This question needs an answer, or skip it.")
+
+
 def settle(
-    session: Session, approval: RunApproval, outcome: ApprovalStatus, now: datetime
+    session: Session, approval: RunApproval, decision: Decision, now: datetime
 ) -> ApprovalStatus:
-    """End a pending request as ``outcome`` unless it ended meanwhile (the
+    """End a pending request as ``decision`` says unless it ended meanwhile (the
     other side of the gate got there first); what it is afterwards."""
-    ending = repository.Settlement(approval.run_id, approval.id, outcome, now)
+    ending = repository.Settlement(
+        approval.run_id, approval.id, decision.status, now, decision.answer
+    )
     if repository.settle(session, ending):
-        log_decided(approval, outcome)
-        return outcome
+        log_decided(approval, decision.status)
+        return decision.status
     return repository.status_of(session, approval.id) or ApprovalStatus.EXPIRED
 
 

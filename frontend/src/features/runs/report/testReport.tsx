@@ -44,6 +44,7 @@ export function controls(overrides: Partial<RunControls> = {}): RunControls {
     resume: vi.fn(async () => {}),
     approve: vi.fn(async () => {}),
     decline: vi.fn(async () => {}),
+    answer: vi.fn(async () => {}),
     busy: false,
     error: '',
     ...overrides,

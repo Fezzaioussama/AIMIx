@@ -72,6 +72,14 @@ class ApprovalStatus(str, Enum):
     EXPIRED = "expired"
 
 
+class ApprovalKind(str, Enum):
+    """What a request at the gate asks: the OK for a tool call, or (``ask_user``)
+    an answer to a question."""
+
+    APPROVAL = "approval"
+    QUESTION = "question"
+
+
 class RunTrigger(str, Enum):
     """What started a run: its owner (the builder, the Runs screen or the API),
     one of their schedules, the chat agent's run_pipeline tool, or another app
@@ -81,6 +89,11 @@ class RunTrigger(str, Enum):
     SCHEDULE = "schedule"
     CHAT = "chat"
     WEBHOOK = "webhook"
+
+
+#: Runs someone watches: started by hand or from the chat. A schedule's or a webhook's
+#: run has nobody to ask a question (``toolbox/questions``).
+ATTENDED_TRIGGERS = frozenset({RunTrigger.MANUAL, RunTrigger.CHAT})
 
 
 class Run(Base):
@@ -186,7 +199,9 @@ class RunApproval(Base):
     read, shortened to fit APPROVAL_ARGUMENTS_MAX_CHARS (``arguments_truncated``);
     they are never logged. ``tool_source`` is where the tool comes from (an
     integration's name, ``MCP`` or ``AIMIx``). ``expires_at`` is when an
-    unanswered request counts as declined.
+    unanswered request counts as declined. ``kind`` says whether the request is
+    the OK for a tool call or (``ask_user``) a question, whose answer ``answer``
+    holds.
     """
 
     __tablename__ = "run_approvals"
@@ -199,6 +214,12 @@ class RunApproval(Base):
     tool_description: Mapped[str] = mapped_column(Text, default="")
     arguments: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     arguments_truncated: Mapped[bool] = mapped_column(default=False)
+    #: The OK for a tool call, or (ask_user) an answer to a question.
+    kind: Mapped[ApprovalKind] = mapped_column(
+        _status_type(ApprovalKind), default=ApprovalKind.APPROVAL
+    )
+    #: What the person answered a question; "" otherwise.
+    answer: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[ApprovalStatus] = mapped_column(
         _status_type(ApprovalStatus), default=ApprovalStatus.PENDING
     )

@@ -269,6 +269,21 @@ Runs = Annotated[RunService, Depends(run_service)]
 
 
 @dataclass(frozen=True)
+class RunAnswering:
+    """Who answers a run's request (an approval, a question), and what records it."""
+
+    user: User
+    runs: RunService
+
+
+def run_answering(user: CurrentUser, runs: Runs) -> RunAnswering:
+    return RunAnswering(user, runs)
+
+
+RunAnswers = Annotated[RunAnswering, Depends(run_answering)]
+
+
+@dataclass(frozen=True)
 class PipelineRunContext:
     user: User
     session: Session

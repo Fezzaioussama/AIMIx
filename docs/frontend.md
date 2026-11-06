@@ -410,7 +410,8 @@ form's limit field and its draft rules) and
 cancelling on unmount).
 For approval gates: `core/api/approvals.test.ts`, `approvalFormat.test.ts`,
 `ApprovalCard.test.tsx` (the words, folded values, the countdown, busy and
-read-only states, the plain ask, the jump target), `PendingApprovals.test.tsx`,
+read-only states, the plain ask, the jump target), `QuestionCard.test.tsx` (the question,
+its suggested answers, an answer of their own, Skip, read-only), `PendingApprovals.test.tsx`,
 `useRunApprovals.test.tsx` (answering through `useRun`), `RunsPageWaiting.test.tsx`
 (a waiting run in the history and its detail, approve, decline and a
 refused answer), `useWaitingRuns.test.tsx`, `core/ui/SidebarNav.test.tsx` and

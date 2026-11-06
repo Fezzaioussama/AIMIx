@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { approveToolCall, declineToolCall } from './approvals';
+import { answerQuestion, approveToolCall, declineToolCall } from './approvals';
 import { API } from './endpoints';
 import { countWaitingRuns, listRuns } from './runs';
 
@@ -22,6 +22,16 @@ describe('approvals API', () => {
       ['/api/runs/7/approvals/32/decline', 'POST'],
     ]);
     expect(API.approveToolCall(7, 31)).toBe('/api/runs/7/approvals/31/approve');
+  });
+
+  it('answers a question an agent asked', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => ok({ id: 7 }));
+
+    await answerQuestion(7, 33, 'Blue');
+
+    const [path, init] = fetchMock.mock.calls[0];
+    expect([path, init?.method]).toEqual(['/api/runs/7/approvals/33/answer', 'POST']);
+    expect(JSON.parse(String(init?.body))).toEqual({ answer: 'Blue' });
   });
 
   it('gives back the run, updated', async () => {

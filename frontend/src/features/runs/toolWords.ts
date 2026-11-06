@@ -92,6 +92,11 @@ export const TOOL_WORDS: Record<string, ToolWords> = {
   },
   find_objects: { one: 'object count', many: 'object counts', ask: findObjectsAsk },
   run_python: { one: 'code run', many: 'code runs', ask: () => 'run code in a sandbox' },
+  ask_user: {
+    one: 'question asked',
+    many: 'questions asked',
+    ask: askWith('question', (question) => `ask you “${question}”`, 'ask you a question'),
+  },
   calculator: { one: 'calculation', many: 'calculations', ask: () => 'do a calculation' },
   current_datetime: { one: 'date check', many: 'date checks', ask: () => 'check today’s date' },
   list_pipelines: {
