@@ -21,8 +21,10 @@ import { AppFrame } from './core/ui/AppFrame';
 import { PageTransition } from './core/ui/PageTransition';
 import { ScrollToTop } from './core/ui/ScrollToTop';
 import type { NavGroup } from './core/ui/SidebarNav';
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
+import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { useWaitingRuns } from './features/runs/useWaitingRuns';
 import { OLD_SCHEDULES_PATH, SCHEDULES_PATH } from './features/schedules/paths';
 
@@ -135,6 +137,8 @@ export function App() {
       <Route path="/" element={lazyRoute(LandingPage)} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       {LEGAL_LINKS.map((link) => (
         <Route
           key={link.path}

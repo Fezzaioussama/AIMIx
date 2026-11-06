@@ -1,7 +1,13 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { downloadAccountExport } from '../../core/api/account';
+import {
+  downloadAccountExport,
+  getAccount,
+  setEmail,
+  setEmailNotifications,
+} from '../../core/api/account';
+import type { Account } from '../../core/api/types';
 import { useAuth } from '../../core/auth/AuthContext';
 import { saveBlob } from '../../core/saveBlob';
 import { useSubmission } from './useSubmission';
@@ -12,15 +18,51 @@ function exportFileName(): string {
 }
 
 /**
- * Settings → Account: change the password, save a copy of everything the account
- * holds, delete it. Each action has its own busy flag and outcome line.
+ * Settings → Account: the account's details (its address and notification switch),
+ * change the address or the switch, change the password, save a copy of everything
+ * the account holds, delete it. Each action has its own busy flag and outcome line.
  */
 export function useAccount() {
   const { changePassword, deleteAccount } = useAuth();
   const navigate = useNavigate();
+  const [details, setDetails] = useState<Account | null>(null);
+  const email = useSubmission('idle');
+  const notifications = useSubmission('idle');
   const password = useSubmission('idle');
   const copy = useSubmission('idle');
   const removal = useSubmission('idle');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getAccount(controller.signal)
+      .then((account) => {
+        if (!controller.signal.aborted) setDetails(account);
+      })
+      .catch(() => {
+        // The forms still work without the details; a refusal shows on submit.
+      });
+    return () => controller.abort();
+  }, []);
+
+  const updateEmail = useCallback(
+    (address: string | null, currentPassword: string) =>
+      email.submit(
+        async () => setDetails(await setEmail(address, currentPassword)),
+        address ? 'Address saved.' : 'Address removed.',
+        'Could not save the address.',
+      ),
+    [email.submit],
+  );
+
+  const setNotifications = useCallback(
+    (enabled: boolean) =>
+      notifications.submit(
+        async () => setDetails(await setEmailNotifications(enabled)),
+        enabled ? 'You will be emailed about your runs.' : 'You will not be emailed.',
+        'Could not change the setting.',
+      ),
+    [notifications.submit],
+  );
 
   const updatePassword = useCallback(
     (current: string, next: string) =>
@@ -54,5 +96,17 @@ export function useAccount() {
     [removal.submit, deleteAccount, navigate],
   );
 
-  return { password, copy, removal, updatePassword, downloadCopy, removeAccount };
+  return {
+    details,
+    email,
+    notifications,
+    password,
+    copy,
+    removal,
+    updateEmail,
+    setNotifications,
+    updatePassword,
+    downloadCopy,
+    removeAccount,
+  };
 }

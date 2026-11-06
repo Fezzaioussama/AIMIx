@@ -18,7 +18,7 @@ from api.repositories import pipelines, users
 from api.repositories import schedules as repository
 from api.security import hash_password
 from api.services.runs import RunService, RunStart
-from api.services.schedules.scheduler import Scheduler
+from api.services.schedules.scheduler import Scheduler, SchedulerHooks
 from api.services.schedules.service import ScheduleDraft, ScheduleEdit, TimingEdit, create, update
 from tests.conftest import FakeProvider, InlineRunExecutor
 from tests.schedules.support import (
@@ -174,7 +174,7 @@ def test_processes_racing_for_one_occurrence_start_exactly_one_run(
 
     def race() -> None:
         runs = RunService(file_database, InlineRunExecutor(), max_parallel_steps=2)
-        tick = Scheduler(file_database, runs, StaticAgents(FakeProvider()), clock)
+        tick = Scheduler(file_database, runs, StaticAgents(FakeProvider()), SchedulerHooks(clock))
         barrier.wait(WAIT_SECONDS)  # all of them claim at the same moment
         results.append(tick.fire(snapshot, clock.now))
 

@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, exists, select, update
+from sqlalchemy import Select, exists, func, select, update
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotFound
@@ -90,6 +90,15 @@ def get_in_run(session: Session, run_id: int, approval_id: int) -> RunApproval:
     if approval is None:
         raise NotFound(f"Approval {approval_id} was not found.")
     return approval
+
+
+def pending_count(session: Session, run_id: int) -> int:
+    """How many requests the run is waiting on right now."""
+    query = select(func.count()).select_from(RunApproval)
+    return (
+        session.scalar(query.where(RunApproval.run_id == run_id, RunApproval.status == _PENDING))
+        or 0
+    )
 
 
 def status_of(session: Session, approval_id: int) -> ApprovalStatus | None:

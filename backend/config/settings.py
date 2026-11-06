@@ -6,8 +6,8 @@ an existing ``.env`` keeps working.
 
 ``Settings`` holds the app and auth settings and composes one model per area,
 each in its own module: ``llm_settings``, ``agent_settings``,
-``document_settings`` and ``run_settings``. Code reads them all through
-``Settings``.
+``document_settings``, ``run_settings`` and ``email_settings``. Code reads them
+all through ``Settings``.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.agent_settings import AgentSettings, HttpMCPServer, MCPServer, StdioMCPServer
 from config.document_settings import MULTIPART_OVERHEAD_BYTES, DocumentSettings
+from config.email_settings import EmailSettings
 from config.fields import BASE_DIR, SECRET_PLACEHOLDERS, CommaList, Secret, env_aliases
 from config.llm_settings import LlmSettings
 from config.run_settings import RunSettings
@@ -46,7 +47,9 @@ MIN_PRODUCTION_SECRET_KEY_LENGTH = 32
 MIN_PRODUCTION_HASH_ITERATIONS = 600_000
 
 
-class Settings(LlmSettings, AgentSettings, DocumentSettings, RunSettings, BaseSettings):
+class Settings(
+    LlmSettings, AgentSettings, DocumentSettings, RunSettings, EmailSettings, BaseSettings
+):
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         extra="ignore",

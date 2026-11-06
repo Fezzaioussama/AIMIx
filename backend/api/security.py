@@ -32,7 +32,7 @@ JWT_ALGORITHM = "HS256"
 #: same SECRET_KEY (domain separation).
 SECRET_BOX_CONTEXT = b"aimix provider credentials v1"
 
-TokenType = Literal["access", "refresh"]
+TokenType = Literal["access", "refresh", "reset"]
 
 
 def hash_password(password: str, iterations: int) -> str:
@@ -103,19 +103,28 @@ class TokenSigner:
     access_lifetime: timedelta
     refresh_lifetime: timedelta
     fallback_keys: tuple[str, ...] = ()
+    #: A password-reset link's token (PASSWORD_RESET_MINUTES).
+    reset_lifetime: timedelta = timedelta(minutes=30)
 
     def issue(self, user_id: int, token_type: TokenType, version: int = 0) -> str:
         now = datetime.now(timezone.utc)
-        lifetime = self.access_lifetime if token_type == "access" else self.refresh_lifetime
         claims = {
             "token_type": token_type,
             "user_id": user_id,
             "ver": version,
             "iat": now,
-            "exp": now + lifetime,
+            "exp": now + self._lifetime(token_type),
             "jti": secrets.token_hex(16),
         }
         return jwt.encode(claims, self.secret_key, algorithm=JWT_ALGORITHM)
+
+    def _lifetime(self, token_type: TokenType) -> timedelta:
+        lifetimes = {
+            "access": self.access_lifetime,
+            "refresh": self.refresh_lifetime,
+            "reset": self.reset_lifetime,
+        }
+        return lifetimes[token_type]
 
     def subject(self, token: str, token_type: TokenType) -> TokenSubject | None:
         """Who a valid, unexpired token of the given type names, else None. A token

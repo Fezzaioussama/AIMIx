@@ -144,3 +144,10 @@ def test_the_work_factor_of_a_hash_is_readable() -> None:
     assert hash_iterations(DJANGO_HASH) == 1000
     assert hash_iterations(hash_password("secret-pass", 12)) == 12
     assert hash_iterations("md5$1$salt$x") is None
+
+
+def test_reset_tokens_are_their_own_type_with_their_own_lifetime() -> None:
+    signer = TokenSigner(KEY, MINUTE, timedelta(days=1), reset_lifetime=timedelta(seconds=-1))
+    assert SIGNER.subject(SIGNER.issue(7, "reset", 3), "reset") == TokenSubject(7, 3)
+    assert SIGNER.user_id(SIGNER.issue(7, "reset"), "access") is None
+    assert signer.user_id(signer.issue(7, "reset"), "reset") is None  # expired at once

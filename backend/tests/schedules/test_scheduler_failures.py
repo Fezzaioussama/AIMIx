@@ -17,7 +17,7 @@ from api.services.llm_settings import ProviderChoice, SettingsUpdate
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.owner_agents import ProfileAgents
 from api.services.run_recorder import SERVER_ERROR_DETAIL
-from api.services.schedules.scheduler import Scheduler
+from api.services.schedules.scheduler import Scheduler, SchedulerHooks
 from tests.conftest import TEST_SETTINGS, FakeProvider
 from tests.schedules.support import (
     NOW,
@@ -63,7 +63,8 @@ def test_an_account_without_an_api_key_cannot_start_a_scheduled_run(
     clock = Clock(TOMORROW)
     agents = ProfileAgents(app.state.database, SecretBox(TEST_SETTINGS.secret_key))
 
-    assert Scheduler(app.state.database, run_service(app), agents, clock).tick() == 0
+    hooks = SchedulerHooks(clock)
+    assert Scheduler(app.state.database, run_service(app), agents, hooks).tick() == 0
 
     assert "No API key is set for openrouter" in stored(app, schedule.id).last_error
     assert runs_of(session) == []

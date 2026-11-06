@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -33,6 +34,7 @@ from api.repositories import active_runs, users
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import schedules as repository
 from api.security import secret_box_for
+from api.services.notifications import notifier
 from api.services.owner_agents import OwnerAgents, ProfileAgents
 from api.services.run_executor import RunExecutor
 from api.services.run_policy import run_policy
@@ -47,16 +49,36 @@ logger = logging.getLogger(__name__)
 Clock = Callable[[], datetime]
 
 
+class ScheduleNotifier(Protocol):
+    """Tells a schedule's owner why its run could not start (``notifications.Notifier``)."""
+
+    def schedule_failed(self, database: Database, schedule_id: int, error: str) -> bool: ...
+
+
+@dataclass(frozen=True)
+class SchedulerHooks:
+    """What the scheduler calls besides the database: the clock, and who is told
+    that a schedule's run could not start (None tells nobody)."""
+
+    clock: Clock = utcnow
+    notifier: ScheduleNotifier | None = None
+
+
 class Scheduler:
     """Starts the run of every schedule that is due, once per occurrence."""
 
     def __init__(
-        self, database: Database, runs: RunService, agents: OwnerAgents, clock: Clock = utcnow
+        self,
+        database: Database,
+        runs: RunService,
+        agents: OwnerAgents,
+        hooks: SchedulerHooks = SchedulerHooks(),
     ) -> None:
         self._database = database
         self._runs = runs
         self._agents = agents
-        self._clock = clock
+        self._clock = hooks.clock
+        self._notifier = hooks.notifier
         self._replayed = False
 
     def tick(self) -> int:
@@ -166,10 +188,15 @@ class Scheduler:
         return self._runs.start(owner, pipeline, start, agent).run
 
     def _record(self, schedule_id: int, error: str) -> None:
-        """Settle the occurrence: its claim is released, and ``error`` says why it
-        could not start ("" when it did)."""
+        """Settle the occurrence: its claim is released, ``error`` says why it could
+        not start ("" when it did), and a reason the schedule did not already
+        show is told to its owner."""
         with self._database.session() as session:
+            schedule = repository.get(session, schedule_id)
+            news = error != "" and schedule is not None and schedule.last_error != error
             repository.set_last_error(session, schedule_id, error)
+        if news and self._notifier is not None:
+            self._notifier.schedule_failed(self._database, schedule_id, error)
 
 
 class Background(Protocol):
@@ -241,7 +268,8 @@ def build_scheduler(database: Database, executor: RunExecutor, settings: Setting
     runs = RunService(
         database, executor, settings.pipeline_max_parallel_steps, run_policy(settings)
     )
-    scheduler = Scheduler(database, runs, ProfileAgents(database, secret_box_for(settings)))
+    hooks = SchedulerHooks(notifier=notifier(settings))
+    scheduler = Scheduler(database, runs, ProfileAgents(database, secret_box_for(settings)), hooks)
     return SchedulerLoop(
         scheduler.tick, settings.scheduler_tick_seconds, settings.run_shutdown_grace_seconds
     )

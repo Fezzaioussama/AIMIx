@@ -273,9 +273,14 @@ class RunService:
         self, recorder: RunRecorder, run_id: int, ending: repository.RunEnding
     ) -> None:
         """Record how the run ended and, when this attempt ended it, send its result
-        where its pipeline's delivery says (``RunPolicy.deliveries``)."""
-        if recorder.end(ending) and self._policy.deliveries is not None:
+        where its pipeline's delivery says (``RunPolicy.deliveries``) and tell its
+        owner (``RunPolicy.notifications``, off the loop: it sends an email)."""
+        if not recorder.end(ending):
+            return
+        if self._policy.deliveries is not None:
             await self._policy.deliveries.send(self._database, run_id)
+        if self._policy.notifications is not None:
+            await asyncio.to_thread(self._policy.notifications.run_ended, self._database, run_id)
 
 
 def launcher(

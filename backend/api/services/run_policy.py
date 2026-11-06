@@ -4,8 +4,9 @@
 screen, the compatibility endpoint, schedules, chat's ``run_pipeline`` tool):
 the spending limits (``RunLimits``), how many runs one account may have active,
 how long a caller that waits for a run's end waits at most, the free disk
-space a run must leave (a run's inputs and outputs grow the database), and where
-a run's result goes once it has ended (result deliveries).
+space a run must leave (a run's inputs and outputs grow the database), where
+a run's result goes once it has ended (result deliveries), and who tells its
+owner (notifications).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from api.db import Database
 from api.security import secret_box_for
 from api.services.deliveries.sender import ResultDeliveries, send_policy
 from api.services.files.disk import DiskReserve, disk_reserve
+from api.services.notifications import notifier
 from api.services.run_budget import NO_LIMITS, RunLimits, run_limits
 from config.settings import Settings
 
@@ -30,6 +32,12 @@ class ResultSender(Protocol):
     never raises, so a delivery cannot change how the run ended."""
 
     async def send(self, database: Database, run_id: int) -> None: ...
+
+
+class RunNotifier(Protocol):
+    """Tells a run's owner that it ended (``notifications.Notifier``); never raises."""
+
+    def run_ended(self, database: Database, run_id: int) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,8 @@ class RunPolicy:
     disk: DiskReserve | None = None
     #: Where a finished or failed run's result is posted (DELIVERY_*); None sends nothing.
     deliveries: ResultSender | None = None
+    #: Who emails the owner that a run ended (SMTP_*); None tells nobody.
+    notifications: RunNotifier | None = None
 
 
 def run_policy(settings: Settings) -> RunPolicy:
@@ -54,6 +64,7 @@ def run_policy(settings: Settings) -> RunPolicy:
         settings.run_wait_max_seconds,
         disk_reserve(settings),
         ResultDeliveries(secret_box_for(settings), send_policy(settings)),
+        notifier(settings),
     )
 
 

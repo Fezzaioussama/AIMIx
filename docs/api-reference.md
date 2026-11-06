@@ -40,10 +40,12 @@ per account (ids in the path share one counter); past it, `429 throttled` with
 ### `POST /register` — public
 
 ```json
-{ "username": "alice", "password": "a-long-pass-123" }
+{ "username": "alice", "password": "a-long-pass-123", "email": "alice@example.com" }
 ```
 
-`201` → `{ "username": "alice" }`. The username is up to 150 letters, digits and
+`201` → `{ "username": "alice" }`. `email` is optional: where a password-reset
+link and notifications go, trimmed and stored lower-cased; an address another
+account uses is a `400 validation_error` (`email: …`). The username is up to 150 letters, digits and
 `@ . + - _`. The password must be at least 12 characters, not a common password,
 not all numeric and not similar to the username, or a `400 validation_error`
 lists what is wrong. A taken username is also a `400`. Production deployments
@@ -62,8 +64,8 @@ open it.
 { "username": "alice", "password": "a-long-pass-123" }
 ```
 
-`200` → `{ "access": "<jwt>" }` and sets the refresh token in an `HttpOnly`,
-`SameSite=Strict` cookie. JavaScript and browser storage never receive the
+`username` may also be the account's email address. `200` → `{ "access": "<jwt>" }`
+and sets the refresh token in an `HttpOnly`, `SameSite=Strict` cookie. JavaScript and browser storage never receive the
 refresh token. Wrong credentials → `401`, the same for an unknown username, in
 about the same time. After `AUTH_ACCOUNT_FAILURE_LIMIT` (10) failures for one
 username within `AUTH_ACCOUNT_FAILURE_WINDOW_SECONDS` (900), from any client,
@@ -88,6 +90,33 @@ return `429 throttled` with `Retry-After`. The client is the connection's peer,
 or behind proxies the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` names (see
 [backend.md](backend.md)).
 
+### `POST /password-reset` — public
+
+```json
+{ "email": "alice@example.com" }
+```
+
+`204`, whether or not an account uses the address: nothing says which. The
+account, if any, is emailed a link to `APP_PUBLIC_URL/reset-password?token=…`
+that works for `PASSWORD_RESET_MINUTES` (30). One address may ask
+`PASSWORD_RESET_RATE_LIMIT_REQUESTS` (5) times per
+`PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS` (3600); past it, `429 throttled`. A
+server without `SMTP_HOST` answers `503 email_not_configured`, one whose mail
+server refuses the message `502 email_not_sent`. An address that cannot be one
+(no `@`, a space, no dot after the `@`) is a `400`.
+
+### `POST /password-reset/confirm` — public
+
+```json
+{ "token": "<from the link>", "password": "a-new-long-pass-456" }
+```
+
+`204`: the password is replaced and every session of the account ends, as
+after `POST /account/password`. The token works once: it names the account and
+its token version, which the change moves on. A token that is expired, used,
+not a reset token or not one at all is a `400 validation_error` (`token: …`); a
+password that breaks the rules of `POST /register` is a `400` (`password: …`).
+
 ### `GET /protected`
 
 `200` → `{ "message": "Hello alice, your token is valid.", "user_id": 1, "username": "alice" }`. The app reads `username` once to name the account at the foot of the sidebar.
@@ -96,10 +125,50 @@ or behind proxies the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` names (see
 
 ## Account
 
-The signed-in user's own account: its password, a copy of everything it holds,
-and its deletion (the rights of access, portability and erasure, GDPR art. 15,
-17 and 20). Each route checks a password or reads all of the account's data, so
-all three share the per-account rate limit (`USER_RATE_LIMIT_*`).
+The signed-in user's own account: its email address and notifications, its
+password, a copy of everything it holds, and its deletion (the rights of
+access, portability and erasure, GDPR art. 15, 17 and 20). Each route checks a
+password or reads the account's data, so they all share the per-account rate
+limit (`USER_RATE_LIMIT_*`).
+
+### `GET /account`
+
+`200` →
+
+```json
+{
+  "username": "alice",
+  "email": "alice@example.com",
+  "email_notifications": true,
+  "created_at": "2026-10-31T10:00:00Z",
+  "llm_provider": "openrouter"
+}
+```
+
+`email` is null until given. `email_notifications` says whether the account is
+emailed when a run ends, waits for its approval, or a schedule cannot start (see
+[Notifications](architecture.md#notifications)); on by default, and nothing
+without an address.
+
+### `PUT /account/email`
+
+```json
+{ "email": "alice@example.com", "password": "the-account-password" }
+```
+
+`200` → the account as `GET /account`. The address is trimmed and lower-cased;
+null removes it. The password is asked again because the address is where a
+reset link would go: a wrong one is a `400 validation_error` (`password: …`)
+that counts as a failed sign-in, like `POST /account/password`; an address
+another account uses is a `400` (`email: …`).
+
+### `PUT /account/notifications`
+
+```json
+{ "email_notifications": false }
+```
+
+`200` → the account as `GET /account`.
 
 ### `POST /account/password`
 
@@ -124,7 +193,7 @@ until the window ends.
 ```json
 {
   "exported_at": "2026-10-31T10:00:00Z",
-  "account": { "username": "alice", "created_at": "…", "llm_provider": "openrouter" },
+  "account": { "username": "alice", "email": "alice@example.com", "email_notifications": true, "created_at": "…", "llm_provider": "openrouter" },
   "provider_settings": [{ "provider": "openrouter", "default_model": "", "api_key_hint": "9xyz" }],
   "pipelines": [ /* as GET /pipelines/ */ ],
   "runs": [ /* as GET /runs/<id>, newest first */ ],

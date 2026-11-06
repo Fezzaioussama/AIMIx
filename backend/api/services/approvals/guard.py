@@ -17,8 +17,14 @@ from langchain_core.tools import BaseTool
 from api.db import Database
 from api.services.agent_runtime import AgentToolset
 from api.services.agent_types import RunStepRef
-from api.services.approvals.gate import ApprovalGate, RunApprovalGate, approval_limits
+from api.services.approvals.gate import (
+    ApprovalGate,
+    GateHooks,
+    RunApprovalGate,
+    approval_limits,
+)
 from api.services.approvals.middleware import ApprovalMiddleware
+from api.services.notifications import notifier
 from api.services.tool_catalog import source_of
 from config.settings import Settings
 
@@ -55,4 +61,5 @@ def run_gate(
     """The gate of a recorded run's step; None outside one, where nobody can be asked."""
     if place is None:
         return None
-    return RunApprovalGate(database, place, approval_limits(settings))
+    hooks = GateHooks(on_waiting=notifier(settings).run_waiting)
+    return RunApprovalGate(database, place, approval_limits(settings), hooks)

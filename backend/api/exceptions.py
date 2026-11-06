@@ -116,6 +116,20 @@ class DeliveryFailed(DomainError):
     status_code = 502
 
 
+class EmailNotSent(DomainError):
+    """The email server refused the message or could not be reached."""
+
+    code = "email_not_sent"
+    status_code = 502
+
+
+class EmailNotConfigured(EmailNotSent):
+    """No SMTP server is configured (SMTP_HOST): nothing can be emailed."""
+
+    code = "email_not_configured"
+    status_code = 503
+
+
 class ProviderTimedOut(DomainError):
     code = "provider_timeout"
     status_code = 504

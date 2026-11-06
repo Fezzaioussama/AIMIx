@@ -45,6 +45,8 @@ class TokenPair:
 class Credentials:
     username: str
     password: str
+    #: Given at sign-up, optional: where reset links and notifications go.
+    email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,26 @@ class PasswordChange:
     policy: SignInPolicy
 
 
+@dataclass(frozen=True)
+class EmailChange:
+    """A new address (None removes it), and the password asked again."""
+
+    email: str | None
+    password: str
+
+
+def normalised_email(address: str) -> str:
+    """How addresses are stored and compared: trimmed and lower-cased."""
+    return address.strip().lower()
+
+
+def _ensure_email_free(session: Session, email: str, user_id: int | None = None) -> None:
+    """Refuse an address another account (not ``user_id``'s own) already uses."""
+    taken = repository.get_by_email(session, email)
+    if taken is not None and taken.id != user_id:
+        raise ValidationFailed("email: Another account uses this address.")
+
+
 def sign_in_policy(settings: Settings) -> SignInPolicy:
     return SignInPolicy(
         settings.password_hash_iterations,
@@ -98,14 +120,18 @@ def ensure_registration_allowed(enabled: bool) -> None:
         raise PermissionDenied("Public account registration is disabled.")
 
 
-def register(session: Session, username: str, password: str, iterations: int) -> User:
+def register(session: Session, credentials: Credentials, iterations: int) -> User:
     """Create an account, or raise ValidationFailed listing what is wrong."""
-    if repository.get_by_username(session, username) is not None:
+    if repository.get_by_username(session, credentials.username) is not None:
         raise ValidationFailed("username: A user with that username already exists.")
-    problems = password_policy.problems(password, username)
+    problems = password_policy.problems(credentials.password, credentials.username)
     if problems:
         raise ValidationFailed(f"password: {' '.join(problems)}")
-    user = repository.create(session, username, hash_password(password, iterations))
+    email = normalised_email(credentials.email) if credentials.email else None
+    if email is not None:
+        _ensure_email_free(session, email)
+    password_hash = hash_password(credentials.password, iterations)
+    user = repository.create(session, credentials.username, password_hash, email)
     logger.info("accounts.registered user_id=%s", user.id)
     return user
 
@@ -146,6 +172,22 @@ def confirm_password(
         raise ValidationFailed(f"{given.field}: The password is not correct.")
 
 
+def set_email(session: Session, user: User, change: EmailChange, policy: SignInPolicy) -> None:
+    """Replace the account's address after checking the password; an address
+    another account uses is refused."""
+    confirm_password(session, user, GivenPassword(change.password), policy)
+    email = normalised_email(change.email) if change.email else None
+    if email is not None:
+        _ensure_email_free(session, email, user.id)
+    repository.set_email(session, user, email)
+    logger.info("accounts.email_changed user_id=%s set=%s", user.id, email is not None)
+
+
+def set_email_notifications(session: Session, user: User, enabled: bool) -> None:
+    repository.set_email_notifications(session, user, enabled)
+    logger.info("accounts.notifications_changed user_id=%s enabled=%s", user.id, enabled)
+
+
 def change_password(
     session: Session, signer: TokenSigner, user: User, change: PasswordChange
 ) -> TokenPair:
@@ -166,7 +208,8 @@ def change_password(
 
 
 def _verified(session: Session, credentials: Credentials, iterations: int) -> User | None:
-    user = repository.get_by_username(session, credentials.username)
+    """The account the username, or the email address, and password name."""
+    user = repository.get_by_login(session, credentials.username)
     if user is None:
         verify_nothing(credentials.password, iterations)
         return None

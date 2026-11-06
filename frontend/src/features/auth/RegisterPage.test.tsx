@@ -61,6 +61,25 @@ describe('RegisterPage', () => {
     expect(paths.indexOf('/api/register')).toBeLessThan(paths.indexOf('/api/login'));
   });
 
+  it('sends the email address when one is typed, and not otherwise', async () => {
+    const fetchMock = serve({
+      '/api/register': Response.json({ username: 'alice' }, { status: 201 }),
+      '/api/login': Response.json({ access: 'token' }),
+    });
+    renderRegister();
+    await userEvent.type(screen.getByLabelText(/^Email/), ' alice@example.com ');
+
+    await fillAndSubmit();
+
+    await screen.findByText(`Landed on ${HOME_PATH}`);
+    const registered = fetchMock.mock.calls.find(([input]) => String(input) === '/api/register');
+    expect(JSON.parse(String(registered?.[1]?.body))).toEqual({
+      username: 'alice',
+      password: 'a-strong-pass-1',
+      email: 'alice@example.com',
+    });
+  });
+
   it('stays on the form, with the reason, when the account is refused', async () => {
     serve({
       '/api/register': Response.json(

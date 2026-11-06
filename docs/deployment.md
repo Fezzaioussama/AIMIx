@@ -168,6 +168,8 @@ application files change.
    | `CORS_ALLOWED_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Same origin, so only for completeness. |
    | `ALLOW_PUBLIC_REGISTRATION` | `true` or unset | Off by default: without it `POST /api/register` answers `403` and nobody new can sign up. Set `true` for open sign-up; leave it unset to create accounts yourself (`docker-entrypoint.sh python -m api.cli create-user NAME` in the service shell, which runs it as the app user). Existing accounts are unaffected. |
    | `TRUSTED_PROXY_HOPS` | unset (the image sets `2`) | Where the rate limits find the client's address; see [Client address behind a proxy](#client-address-behind-a-proxy). |
+   | `APP_PUBLIC_URL` | `https://aimix.win` | The app's address as people open it: the links in emails (password resets, notifications) point there. |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TLS` | your mail provider's | Lets the app email password-reset links and notifications; without `SMTP_HOST` neither is sent (see [Email](#optional-email-password-resets-and-notifications)). |
    | `RUN_DEFAULT_MAX_COST_USD` | optional (default empty: no limit) | A spending limit, in US dollars, for every run whose starter sets none: the run stops, failed, once its model calls have cost this much. A user can set a different limit on any run, higher or lower, and raise it to resume a run that stopped; see [Spending limits](#spending-limits-and-usage). |
    | `WORKSPACE_MAX_TOTAL_BYTES` | optional (default `100000000`) | The storage limit of one user's files. Uploads (each capped at `DOCUMENT_MAX_BYTES`, 10 MB) and agent artifacts both count. |
    | `WORKSPACE_MIN_FREE_BYTES` | optional (default `500000000`) | Free space no write may go below on the volume. The database shares it with every user's files: past this (or a tenth of the volume, when that is less), uploads, saved artifacts, new or resumed runs and saved pipelines are refused (`507 storage_full`) instead of SQLite running out of room; reading and deleting still work. Watch the volume's usage. |
@@ -265,6 +267,21 @@ integration (on by default, including integrations saved before it existed).
   what would happen), and never written to the logs: the app logs
   `approval.requested` and `approval.decided` with ids, the tool's name and the
   outcome.
+
+### Optional: email (password resets and notifications)
+
+With a mail server the app emails a reset link to an account that forgot its
+password (the Login screen's "Forgot your password?"), and tells an account when
+a run ends, waits for its approval, or a schedule cannot start (Settings →
+Account, where the person gives their address and can switch notifications off).
+Set `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME` and `SMTP_PASSWORD`,
+`SMTP_FROM` (the sender, e.g. `AIMIx <no-reply@aimix.win>`) and `SMTP_TLS`
+(`starttls`, `ssl` for port 465, or `none`) from your mail provider, and
+`APP_PUBLIC_URL` to the address people open the app at, so the links point
+there. Without `SMTP_HOST`, a reset request answers `503 email_not_configured`
+and notifications are skipped (logged as `notification.skipped`); a server that
+refuses a message is logged (`notification.not_sent`) and a reset request then
+answers `502 email_not_sent`. Addresses are never logged.
 
 ### Optional: let agents search the web (`TAVILY_API_KEY`)
 

@@ -22,7 +22,11 @@ Délégué à la protection des données : {{dataProtectionOfficer}}.
 
 **Votre compte.** Votre nom d'utilisateur, la date de création du compte et le fournisseur de
 modèles choisi. Votre mot de passe n'est jamais conservé en clair : seule une empreinte
-(PBKDF2-SHA256) l'est. Aucune adresse électronique ni aucun nom n'est demandé.
+(PBKDF2-SHA256) l'est. Une adresse électronique, facultative, si vous la donnez (à l'inscription
+ou dans **Settings → Account**) : elle sert aux liens de réinitialisation du mot de passe et aux
+notifications par courriel (fin d'une exécution, exécution en attente de votre accord, planification
+qui n'a pas pu démarrer), que vous pouvez désactiver ; vous pouvez la retirer à tout moment. Aucun
+nom n'est demandé.
 
 **Votre session.** Un jeton d'accès gardé en mémoire dans l'onglet, et un jeton de
 renouvellement dans un cookie (voir « Cookies et stockage local »). Le serveur ne garde qu'une

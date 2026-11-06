@@ -31,6 +31,8 @@ PUBLIC_PATHS = {
     "/api/login",
     "/api/token/refresh",
     "/api/token/logout",
+    "/api/password-reset",
+    "/api/password-reset/confirm",
     "/api/health",
     # Another app calls a webhook: its secret token in the path is the credential.
     "/api/hooks/{token}",

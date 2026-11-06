@@ -19,11 +19,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Nullable, so every existing schedule holds no claim.
-    with op.batch_alter_table("schedules", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("claimed_occurrence", sa.DateTime(), nullable=True))
+    # Plain ALTER TABLE, never a batch: on SQLite a batch rebuilds the table, and
+    # dropping the old `schedules` with foreign keys on would unlink every run it
+    # started. Nullable, so every existing schedule holds no claim.
+    op.add_column("schedules", sa.Column("claimed_occurrence", sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("schedules", schema=None) as batch_op:
-        batch_op.drop_column("claimed_occurrence")
+    # Also in place (SQLite 3.35 or newer), so the rows stay.
+    op.drop_column("schedules", "claimed_occurrence")

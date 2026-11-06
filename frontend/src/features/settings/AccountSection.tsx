@@ -1,62 +1,11 @@
 import { useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent } from 'react';
 
+import { PASSWORD_RULE } from '../../core/auth/passwordRule';
+import { Block, Outcome, PasswordField } from './AccountFields';
 import { actionButtonClass } from './actionButton';
-import { NoticeLine } from './NoticeLine';
+import { EmailBlock } from './EmailBlock';
 import { useAccount } from './useAccount';
-import type { Submission } from './useSubmission';
-
-/** Shown under the new password; the server's rule is the one that holds. */
-const PASSWORD_RULE = 'At least 12 characters, not a common password, not your username.';
-
-const FIELD =
-  'w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-slate-100 outline-none transition-[border-color,box-shadow] focus:border-sky-400/60 focus:shadow-[0_0_0_3px_rgba(56,189,248,0.12)]';
-
-interface PasswordFieldProps {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  autoComplete: 'current-password' | 'new-password';
-  hint?: string;
-}
-
-function PasswordField({ id, label, value, onChange, autoComplete, hint }: PasswordFieldProps) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-300">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="password"
-        value={value}
-        autoComplete={autoComplete}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        className={FIELD}
-      />
-      {hint && (
-        <p id={`${id}-hint`} className="mt-1 text-xs text-slate-400">
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Block({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-slate-900/40 p-5">
-      <h3 className="mb-3 text-base font-semibold text-white">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-function Outcome({ submission }: { submission: Submission }) {
-  return submission.notice ? <NoticeLine notice={submission.notice} /> : null;
-}
 
 function PasswordForm({ account }: { account: ReturnType<typeof useAccount> }) {
   const [current, setCurrent] = useState('');
@@ -157,7 +106,7 @@ function DeleteForm({ account }: { account: ReturnType<typeof useAccount> }) {
   );
 }
 
-/** Settings → Account: the password, a copy of everything the account holds, deletion. */
+/** Settings → Account: the email address, the password, a copy of everything the account holds, deletion. */
 export function AccountSection() {
   const account = useAccount();
 
@@ -167,9 +116,10 @@ export function AccountSection() {
         Account
       </h2>
       <p className="mt-2 mb-6 text-sm text-slate-400">
-        Your password, a copy of your data, and closing your account.
+        Your email address, your password, a copy of your data, and closing your account.
       </p>
       <div className="space-y-4">
+        <EmailBlock account={account} />
         <Block title="Password">
           <PasswordForm account={account} />
         </Block>

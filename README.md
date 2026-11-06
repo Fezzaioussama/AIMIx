@@ -307,6 +307,8 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `provider_not_configured` | 503 | No API key for the selected provider |
 | `provider_unavailable` | 502 | The provider rejected the request |
 | `provider_timeout` | 504 | A provider or agent request timed out |
+| `email_not_sent` | 502 | The mail server refused a message (a password-reset request) |
+| `email_not_configured` | 503 | No `SMTP_HOST`: this server cannot email a reset link |
 | `tool_unavailable` | 502 | A configured MCP server or tool is unavailable |
 | `upstream_response_invalid` | 502 | The planner returned unusable output |
 | `server_error` | 500 | An unexpected failure (logged by the server) |
@@ -328,6 +330,8 @@ The full list, with every route that can return each code, is in [docs/api-refer
 | `TOGAI_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `META_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `LLM_TIMEOUT_SECONDS` | No | Bounds every provider call (default 3600 = one hour) |
+| `APP_PUBLIC_URL` | For emails | The app's address as people open it: the links in emails point there (default `http://localhost:4200`) |
+| `SMTP_HOST`, `SMTP_FROM`, … | For emails | The mail server for password-reset links and notifications; without `SMTP_HOST` neither is sent |
 | `PIPELINE_MAX_PARALLEL_STEPS` | No | Parallel steps of one stage run at once (default 4) |
 | `RUN_MAX_CONCURRENT` | No | Pipeline runs executing at once; the rest wait queued (default 4) |
 | `MCP_SERVERS` | No | JSON object of MCP servers available to pipeline agents, and to chat when approval is off (default `{}`) |

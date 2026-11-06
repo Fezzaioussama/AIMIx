@@ -8,6 +8,7 @@ from __future__ import annotations
 from api.models.automation import Delivery, Schedule, ScheduleFrequency, Webhook
 from api.models.base import (
     API_KEY_HINT_LENGTH,
+    EMAIL_MAX_LENGTH,
     ERROR_CODE_MAX_LENGTH,
     FEEDBACK_PLACEHOLDER,
     HOST_MAX_LENGTH,
@@ -56,6 +57,7 @@ __all__ = [
     "ACTIVE_RUN_STATUSES",
     "API_KEY_HINT_LENGTH",
     "COMPLETED_STEP_STATUSES",
+    "EMAIL_MAX_LENGTH",
     "ERROR_CODE_MAX_LENGTH",
     "FEEDBACK_PLACEHOLDER",
     "HOST_MAX_LENGTH",

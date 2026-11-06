@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { AuthCard, AuthField } from './AuthCard';
 import { useAuth } from '../../core/auth/AuthContext';
@@ -56,6 +56,14 @@ export function LoginPage() {
         value={password}
         onChange={setPassword}
       />
+      <p className="-mt-2 mb-4 text-right text-sm">
+        <Link
+          to="/forgot-password"
+          className="font-medium text-sky-400 transition-colors hover:text-sky-300"
+        >
+          Forgot your password?
+        </Link>
+      </p>
     </AuthCard>
   );
 }

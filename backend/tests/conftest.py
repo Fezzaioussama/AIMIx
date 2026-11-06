@@ -48,6 +48,8 @@ TEST_SETTINGS = Settings(
     # High enough that no test trips it by accident; the rate-limit tests lower it.
     user_rate_limit_requests=10_000,
     log_level="WARNING",
+    # Where the links in emails point; no SMTP_HOST, so the app's sender refuses.
+    app_public_url="https://app.test",
     llm_provider="openrouter",
     llm_timeout_seconds=1.0,
     # Retries stay on, but never wait for real.

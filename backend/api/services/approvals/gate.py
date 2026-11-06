@@ -11,7 +11,9 @@ parallel step failed, the step ran out of time, the server shut down). Each
 write is a short transaction on the run's loop, as in ``run_recorder``.
 
 The wait counts toward the step's AGENT_TIMEOUT_SECONDS, which is why a
-request never waits longer than that.
+request never waits longer than that. The first request a step's gate records
+while nothing else of the run is pending also tells the owner that the run
+waits (``GateHooks.on_waiting``, the notifier's email), off the loop.
 """
 
 from __future__ import annotations
@@ -76,16 +78,36 @@ def approval_limits(settings: Settings) -> ApprovalLimits:
     )
 
 
+#: Tells the run's owner that it waits: the database and the run's id.
+WaitingNotice = Callable[[Database, int], object]
+
+
+@dataclass(frozen=True)
+class GateHooks:
+    """What a gate calls besides the database: the clock, and who is told that the
+    run waits (None tells nobody)."""
+
+    clock: Clock = utcnow
+    on_waiting: WaitingNotice | None = None
+
+
 class RunApprovalGate:
     """The gate of one step of a recorded run, kept in the database (§7 Adapter)."""
 
     def __init__(
-        self, database: Database, place: RunStepRef, limits: ApprovalLimits, clock: Clock = utcnow
+        self,
+        database: Database,
+        place: RunStepRef,
+        limits: ApprovalLimits,
+        hooks: GateHooks = GateHooks(),
     ) -> None:
         self._database = database
         self._place = place
         self._limits = limits
-        self._clock = clock
+        self._clock = hooks.clock
+        self._on_waiting = hooks.on_waiting
+        #: The owner is told once per step at most: later requests find them told.
+        self._told = False
 
     async def ask(self, request: ToolRequest) -> ApprovalStatus:
         approval = self._record(request)
@@ -93,10 +115,21 @@ class RunApprovalGate:
             # The run was stopped while its step was working: nobody is left to ask.
             return ApprovalStatus.EXPIRED
         try:
+            await self._tell_owner(approval)
             return await self._answer(approval)
         except asyncio.CancelledError:
             self._expire(approval)
             raise
+
+    async def _tell_owner(self, approval: RunApproval) -> None:
+        """Once per step, when this request is the one that made the run wait."""
+        if self._on_waiting is None or self._told:
+            return
+        self._told = True
+        with self._database.session() as session:
+            first = repository.pending_count(session, approval.run_id) == 1
+        if first:
+            await asyncio.to_thread(self._on_waiting, self._database, approval.run_id)
 
     def _record(self, request: ToolRequest) -> RunApproval | None:
         now = self._clock()

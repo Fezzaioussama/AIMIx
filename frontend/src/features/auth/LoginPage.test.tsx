@@ -47,6 +47,16 @@ describe('LoginPage', () => {
     expect(HOME_PATH).toBe('/mission');
   });
 
+  it('offers a way to reset a forgotten password', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 401 }));
+    renderLogin();
+
+    expect(screen.getByRole('link', { name: 'Forgot your password?' })).toHaveAttribute(
+      'href',
+      '/forgot-password',
+    );
+  });
+
   it('stays on the sign-in screen, with the reason, when the sign-in fails', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
       String(input) === '/api/login'

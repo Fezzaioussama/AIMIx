@@ -14,6 +14,8 @@ STEP_TITLE_MAX_LENGTH = 100
 STEP_ROLE_MAX_LENGTH = 100
 STEP_EXPECTED_OUTPUT_MAX_LENGTH = 500
 USERNAME_MAX_LENGTH = 150
+#: The longest address a mail server takes (RFC 5321).
+EMAIL_MAX_LENGTH = 254
 PIPELINE_NAME_MAX_LENGTH = 255
 #: A named run input is referenced as ``{name}`` in step prompts. ``input`` is
 #: reserved because ``{input}`` already means a stage's input.

@@ -14,12 +14,13 @@ export function RegisterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   /** Creates the account and signs the person straight in, so nobody types their password twice. */
   async function createAccount() {
-    await register(username, password);
+    await register(username, password, email.trim() || undefined);
     try {
       await login(username, password);
       navigate(HOME_PATH, { replace: true });
@@ -93,6 +94,15 @@ export function RegisterPage() {
         type="password"
         value={confirmPassword}
         onChange={setConfirmPassword}
+      />
+      <AuthField
+        id="email"
+        label="Email (optional: for password resets and notifications)"
+        type="email"
+        value={email}
+        onChange={setEmail}
+        required={false}
+        autoComplete="email"
       />
     </AuthCard>
   );

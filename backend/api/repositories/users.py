@@ -26,15 +26,35 @@ def get_by_username(session: Session, username: str) -> User | None:
     return session.scalar(select(User).where(User.username == username))
 
 
-def create(session: Session, username: str, password_hash: str) -> User:
+def get_by_email(session: Session, email: str) -> User | None:
+    return session.scalar(select(User).where(User.email == email))
+
+
+def get_by_login(session: Session, login: str) -> User | None:
+    """The account whose username is ``login``, else the one whose email address
+    is (lower-cased, as addresses are stored)."""
+    return get_by_username(session, login) or get_by_email(session, login.strip().lower())
+
+
+def create(session: Session, username: str, password_hash: str, email: str | None = None) -> User:
     """A new account, at a random token version. SQLite gives a deleted account's id
     to the next one, and an access token names an id and a version: starting from 0,
     the deleted account's tokens would sign in as the new one."""
     version = secrets.randbelow(FIRST_TOKEN_VERSIONS)
-    user = User(username=username, password_hash=password_hash, token_version=version)
+    user = User(username=username, password_hash=password_hash, token_version=version, email=email)
     session.add(user)
     session.commit()
     return user
+
+
+def set_email(session: Session, user: User, email: str | None) -> None:
+    user.email = email
+    session.commit()
+
+
+def set_email_notifications(session: Session, user: User, enabled: bool) -> None:
+    user.email_notifications = enabled
+    session.commit()
 
 
 def set_refresh_token(session: Session, user: User, token_hash: str) -> None:

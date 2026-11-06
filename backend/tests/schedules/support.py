@@ -15,7 +15,7 @@ from api.exceptions import ProviderNotConfigured
 from api.models import Pipeline, Run, Schedule, ScheduleFrequency, User
 from api.services.multiagent.contracts import StepAgent
 from api.services.runs import RunService, RunStart
-from api.services.schedules.scheduler import Scheduler
+from api.services.schedules.scheduler import Scheduler, SchedulerHooks
 from api.services.schedules.service import ScheduleAccess, ScheduleDraft, ScheduleView, create
 from api.services.schedules.timing import Timing, next_run_after
 from tests.conftest import InlineRunExecutor
@@ -130,7 +130,7 @@ def run_service(app: FastAPI) -> RunService:
 
 
 def scheduler(app: FastAPI, agents: StaticAgents, clock: Clock) -> Scheduler:
-    return Scheduler(app.state.database, run_service(app), agents, clock)
+    return Scheduler(app.state.database, run_service(app), agents, SchedulerHooks(clock))
 
 
 def access(session: Session, user: User, now: datetime = NOW) -> ScheduleAccess:

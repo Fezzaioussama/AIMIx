@@ -23,7 +23,7 @@ from api.repositories import schedules as repository
 from api.services.run_budget import RunBudget
 from api.services.run_policy import RunPolicy
 from api.services.runs import RunService, RunStart
-from api.services.schedules.scheduler import Scheduler
+from api.services.schedules.scheduler import Scheduler, SchedulerHooks
 from api.services.schedules.service import ScheduleAccess, ScheduleDraft, create
 from tests.conftest import TEST_SETTINGS, FakeProvider
 from tests.schedules.support import (
@@ -108,7 +108,9 @@ def test_an_occurrence_is_skipped_while_the_previous_run_is_still_active(
     schedule = new_schedule(session, user, pipeline.id)  # daily at 09:00 UTC
     parked = RunService(app.state.database, ParkedExecutor(), 2)
     clock = Clock(TOMORROW)
-    ticking = Scheduler(app.state.database, parked, StaticAgents(FakeProvider()), clock)
+    ticking = Scheduler(
+        app.state.database, parked, StaticAgents(FakeProvider()), SchedulerHooks(clock)
+    )
     assert ticking.tick() == 1  # its run stays queued, as one that takes long would
 
     clock.advance(days=1)
@@ -146,7 +148,8 @@ def test_a_scheduled_run_over_the_accounts_cap_says_so_on_the_schedule(
     capped = RunService(app.state.database, ParkedExecutor(), 2, RunPolicy(max_active_per_user=1))
     clock = Clock(TOMORROW)
 
-    started = Scheduler(app.state.database, capped, StaticAgents(FakeProvider()), clock).tick()
+    hooks = SchedulerHooks(clock)
+    started = Scheduler(app.state.database, capped, StaticAgents(FakeProvider()), hooks).tick()
 
     assert started == 1
     assert len(runs_of(session)) == 1

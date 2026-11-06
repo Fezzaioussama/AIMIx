@@ -58,6 +58,7 @@ def token_signer(settings: AppSettings) -> TokenSigner:
         access_lifetime=timedelta(minutes=settings.jwt_access_minutes),
         refresh_lifetime=timedelta(days=settings.jwt_refresh_days),
         fallback_keys=tuple(settings.secret_key_fallbacks),
+        reset_lifetime=timedelta(minutes=settings.password_reset_minutes),
     )
 
 

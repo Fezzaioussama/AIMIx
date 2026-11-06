@@ -1,6 +1,24 @@
 import { API } from './endpoints';
 import { request, requestBlob, UPLOAD_TIMEOUT_MS } from './client';
-import type { AuthTokens } from './types';
+import type { Account, AuthTokens } from './types';
+
+/** The account as the Settings page shows it: name, email address, notifications. */
+export function getAccount(signal?: AbortSignal): Promise<Account> {
+  return request<Account>(API.account, { signal });
+}
+
+/** The address reset links and notifications go to (null removes it); the password is asked again. */
+export function setEmail(email: string | null, password: string): Promise<Account> {
+  return request<Account>(API.accountEmail, { method: 'PUT', body: { email, password } });
+}
+
+/** Whether the account is emailed when a run ends, waits for it, or a schedule cannot start. */
+export function setEmailNotifications(enabled: boolean): Promise<Account> {
+  return request<Account>(API.accountNotifications, {
+    method: 'PUT',
+    body: { email_notifications: enabled },
+  });
+}
 
 /**
  * Replaces the password. Every other session of the account ends; this one goes on

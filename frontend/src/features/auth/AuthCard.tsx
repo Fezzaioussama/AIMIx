@@ -16,7 +16,8 @@ import { AuthLayout } from './AuthLayout';
 interface AuthCardProps {
   title: string;
   subtitle: string;
-  submitLabel: string;
+  /** The submit button's words; none leaves the card without a button (a message to read). */
+  submitLabel?: string;
   isSubmitting: boolean;
   errorMessage: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -50,9 +51,11 @@ export function AuthCard({
           <form onSubmit={onSubmit} noValidate>
             {children}
             {notice && <p className="mt-2 text-xs text-slate-400">{notice}</p>}
-            <GlowButton type="submit" block busy={isSubmitting} className="mt-6">
-              {isSubmitting ? 'Please wait…' : submitLabel}
-            </GlowButton>
+            {submitLabel && (
+              <GlowButton type="submit" block busy={isSubmitting} className="mt-6">
+                {isSubmitting ? 'Please wait…' : submitLabel}
+              </GlowButton>
+            )}
             <AuthError message={errorMessage} />
             <AuthFooter {...footer} />
           </form>
@@ -95,12 +98,23 @@ function AuthFooter({ prompt, to, label }: AuthCardProps['footer']) {
 interface AuthFieldProps {
   id: string;
   label: string;
-  type: 'text' | 'password';
+  type: 'text' | 'password' | 'email';
   value: string;
   onChange: (value: string) => void;
+  /** Off for a field the form works without (an optional address). */
+  required?: boolean;
+  autoComplete?: string;
 }
 
-export function AuthField({ id, label, type, value, onChange }: AuthFieldProps) {
+export function AuthField({
+  id,
+  label,
+  type,
+  value,
+  onChange,
+  required = true,
+  autoComplete,
+}: AuthFieldProps) {
   return (
     <div className="mb-4">
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-300">
@@ -111,7 +125,8 @@ export function AuthField({ id, label, type, value, onChange }: AuthFieldProps) 
         name={id}
         type={type}
         value={value}
-        required
+        required={required}
+        autoComplete={autoComplete}
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-slate-100 transition-[border-color,box-shadow] outline-none placeholder:text-slate-500 focus:border-sky-400/60 focus:shadow-[0_0_0_4px_rgba(56,189,248,0.12)]"
       />

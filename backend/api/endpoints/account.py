@@ -1,10 +1,11 @@
-"""The signed-in user's account: change its password, take a copy of its data,
-delete it (GDPR art. 15, 17 and 20). Each endpoint validates, calls the account
-services and shapes the result (AGENTS.md §2).
+"""The signed-in user's account: read it, set its email address and notifications,
+change its password, take a copy of its data, delete it (GDPR art. 15, 17 and 20).
+Each endpoint validates, calls the account services and shapes the result
+(AGENTS.md §2).
 
-Each one checks a password or reads everything the account holds, so each is
-rate-limited per account (``user_rate_limit``); a wrong password also counts
-toward the account's sign-in lockout (AUTH_ACCOUNT_FAILURE_LIMIT).
+Each one checks a password or reads the account's data, so each is rate-limited
+per account (``user_rate_limit``); a wrong password also counts toward the
+account's sign-in lockout (AUTH_ACCOUNT_FAILURE_LIMIT).
 """
 
 from __future__ import annotations
@@ -13,12 +14,41 @@ from fastapi import APIRouter, Depends, Response
 
 from api.deps import Account, Now, Signer
 from api.endpoints.auth import clear_refresh_cookie, set_refresh_cookie
-from api.schemas.account import AccountDeleteIn, AccountExportOut, PasswordChangeIn
+from api.schemas.account import (
+    AccountDeleteIn,
+    AccountExportOut,
+    AccountOut,
+    EmailChangeIn,
+    NotificationsIn,
+    PasswordChangeIn,
+)
 from api.schemas.auth import AccessTokenResponse
 from api.services import account_data, accounts
 from api.throttling import one_export_at_a_time, user_rate_limit
 
 router = APIRouter(prefix="/account", tags=["account"], dependencies=[Depends(user_rate_limit)])
+
+
+@router.get("")
+def read_account(account: Account) -> AccountOut:
+    """The account's name, email address and notification switch (Settings → Account)."""
+    return AccountOut.model_validate(account.user)
+
+
+@router.put("/email")
+def set_email(body: EmailChangeIn, account: Account) -> AccountOut:
+    """The address reset links and notifications go to; the password is asked again."""
+    policy = accounts.sign_in_policy(account.settings)
+    change = accounts.EmailChange(body.email, body.password)
+    accounts.set_email(account.session, account.user, change, policy)
+    return AccountOut.model_validate(account.user)
+
+
+@router.put("/notifications")
+def set_notifications(body: NotificationsIn, account: Account) -> AccountOut:
+    """Whether the account is emailed when a run ends, waits, or a schedule cannot start."""
+    accounts.set_email_notifications(account.session, account.user, body.email_notifications)
+    return AccountOut.model_validate(account.user)
 
 
 @router.post("/password")

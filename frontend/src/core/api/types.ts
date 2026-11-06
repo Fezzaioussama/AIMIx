@@ -6,7 +6,7 @@
 import type { PipelineInput, PipelineStep } from './pipelineTypes';
 
 // Auth payloads (sign-in tokens, GET /api/protected) live in authTypes.ts.
-export type { AuthTokens, WhoAmI } from './authTypes';
+export type { Account, AuthTokens, WhoAmI } from './authTypes';
 
 // The pipeline definition (steps, their flow, inputs) lives in pipelineTypes.ts.
 export type {

@@ -19,7 +19,7 @@ If you are new to the repository, read these in order:
 | 2 | [architecture.md](architecture.md) | The layers, the dependency rules, and the end-to-end request traces |
 | 3 | [backend.md](backend.md) | Every backend module: what it owns and what it must not do |
 | 4 | [llm-providers.md](llm-providers.md) | The provider layer, the model catalogue, adding a provider or model |
-| 5 | [frontend.md](frontend.md), then [frontend-missions.md](frontend-missions.md) | The React app: routing, `core/`, features, auth, streaming; then the Missions workspace and the run report every run screen shares |
+| 5 | [frontend.md](frontend.md), [frontend-features.md](frontend-features.md), then [frontend-missions.md](frontend-missions.md) | The React app: routing, `core/`, auth, streaming; each feature folder; then the Missions workspace and the run report every run screen shares |
 | 6 | [api-reference.md](api-reference.md) | Every HTTP endpoint with request and response examples |
 | 7 | [development-guide.md](development-guide.md) | Daily workflow, recipes for common changes, testing, quality gates |
 | 8 | [deployment.md](deployment.md) | CI, the production image, and deploying to Railway |

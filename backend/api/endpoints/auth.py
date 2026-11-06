@@ -1,19 +1,22 @@
-"""Authentication endpoints."""
+"""Authentication endpoints: accounts, sign-in, tokens, and the password reset by link."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, Response
 
+from api.account_deps import PasswordResets
 from api.deps import AppSettings, Auth, CurrentUser, DbSession
 from api.exceptions import NotAuthenticated
 from api.schemas.auth import (
     AccessTokenResponse,
     LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     RegisterRequest,
     RegisterResponse,
     WhoAmIResponse,
 )
-from api.services import account_data, accounts
+from api.services import account_data, accounts, password_reset
 from api.throttling import auth_rate_limit, registration_rate_limit
 from config.settings import Settings
 
@@ -55,7 +58,7 @@ def _refresh_cookie(request: Request, settings: Settings) -> str:
 @public_router.post("/register", status_code=201, dependencies=[Depends(registration_rate_limit)])
 def register(body: RegisterRequest, session: DbSession, settings: AppSettings) -> RegisterResponse:
     accounts.ensure_registration_allowed(settings.allow_public_registration)
-    credentials = accounts.Credentials(body.username, body.password)
+    credentials = accounts.Credentials(body.username, body.password, body.email)
     user = account_data.open_account(session, settings, credentials)
     return RegisterResponse(username=user.username)
 
@@ -83,6 +86,19 @@ def logout(request: Request, response: Response, auth: Auth) -> None:
     if token:
         accounts.revoke_refresh(auth.session, auth.signer, token)
     clear_refresh_cookie(response, auth.settings)
+
+
+@public_router.post("/password-reset", status_code=204)
+def request_password_reset(body: PasswordResetRequest, flow: PasswordResets) -> None:
+    """Emails a reset link to the account using this address, if any: 204 either way."""
+    password_reset.request_reset(flow, body.email)
+
+
+@public_router.post("/password-reset/confirm", status_code=204)
+def confirm_password_reset(body: PasswordResetConfirm, flow: PasswordResets) -> None:
+    """Replaces the password of the account the link's token names, once."""
+    confirmation = password_reset.ResetConfirmation(body.token, body.password)
+    password_reset.confirm_reset(flow, confirmation)
 
 
 @router.get("/protected")

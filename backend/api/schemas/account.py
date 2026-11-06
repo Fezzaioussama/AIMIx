@@ -1,5 +1,5 @@
-"""Contracts of the account routes: change the password, take a copy of the
-account's data, delete the account."""
+"""Contracts of the account routes: the account itself, its email address and
+notifications, change the password, take a copy of the account's data, delete it."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from api.models import ScheduleFrequency
 from api.schemas.approvals import RunApprovalOut
-from api.schemas.auth import PASSWORD_MAX_LENGTH
+from api.schemas.auth import PASSWORD_MAX_LENGTH, EmailAddress
 from api.schemas.common import UtcDateTime
 from api.schemas.files import FileOut
 from api.schemas.integrations import HeaderOut
@@ -32,10 +32,28 @@ class AccountDeleteIn(BaseModel):
     password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
+class EmailChangeIn(BaseModel):
+    """A new address, or null to remove it, and the password asked again: the
+    address is where a reset link would go."""
+
+    email: EmailAddress | None
+    password: str = Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+
+class NotificationsIn(BaseModel):
+    email_notifications: bool
+
+
 class AccountOut(BaseModel):
+    """The account as GET /account and the export show it."""
+
     model_config = ConfigDict(from_attributes=True)
 
     username: str
+    #: Where reset links and notifications go; null until given.
+    email: str | None
+    #: Whether the account is emailed about its runs and schedules.
+    email_notifications: bool
     created_at: UtcDateTime
     #: The provider chosen on the Settings page; null is the server's default.
     llm_provider: str | None

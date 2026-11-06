@@ -129,8 +129,9 @@ Tools of MCP servers and integrations (and the built-in tools in
   and a restart expires the requests (a resumed run asks again).
 - **Waiting is polled.** A run reads the database about once a second
   (`APPROVAL_POLL_SECONDS`) and the page polls the run every 1.5 s, so an answer
-  takes up to a second or two to show. There is no notification outside the Runs
-  tab's count, and no email or push.
+  takes up to a second or two to show. Beyond the Runs
+  tab's count, the owner is emailed once per step that asks (`SMTP_*`); there is
+  no push notification.
 - **The compatibility endpoint waits.** `POST /pipelines/<id>/run` and chat's
   `run_pipeline` wait for a run's end, so one that asks keeps its caller waiting
   until the owner answers on the Runs page, at most `RUN_WAIT_MAX_SECONDS` (300):
@@ -140,7 +141,7 @@ Tools of MCP servers and integrations (and the built-in tools in
 
 **Fix options:** per-tool "always allow" rules saved with the integration; a
 `requires_approval` flag in `GET /agent-tools` so the builder can show which
-tools will ask; pausing the step's timeout clock while it waits; push or email
+tools will ask; pausing the step's timeout clock while it waits; push
 notifications for waiting runs; letting chat ask inline.
 
 ### 7. Runs execute inside the API process
@@ -227,7 +228,8 @@ while it is down. Beyond that:
 - **Failures are only shown, not acted on.** A time that could not start a run
   (no API key, inputs the pipeline no longer takes) is saved as the schedule's
   `last_error`, and the next time overwrites it. There is no history of such
-  times, no notification, and no switching off after repeated failures; a
+  times and no switching off after repeated failures (the owner is emailed when
+  the reason changes); a
   scheduled run that starts and then fails is an ordinary failed run in History.
 - **A schedule follows the pipeline, not the other way round.** It always runs the
   pipeline as last saved, so editing the pipeline's named inputs can make a
@@ -244,7 +246,7 @@ while it is down. Beyond that:
 
 **Fix:** add an
 "only when the last run is finished" option and a `schedule_id` filter on
-`GET /api/runs`; keep the last few start failures, notify the owner and pause a
+`GET /api/runs`; keep the last few start failures and pause a
 schedule after repeated ones; check a pipeline's schedules when it is saved. Moving
 execution to a worker (entry 7) also moves the scheduler there.
 

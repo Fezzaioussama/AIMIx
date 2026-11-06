@@ -76,9 +76,7 @@ def open_account(session: Session, settings: Settings, credentials: accounts.Cre
     """Create an account that starts with no files. SQLite gives a deleted
     account's id to the next one, so a directory left under that id (its
     removal failed, or a write raced it) is cleared before anyone can read it."""
-    user = accounts.register(
-        session, credentials.username, credentials.password, settings.password_hash_iterations
-    )
+    user = accounts.register(session, credentials, settings.password_hash_iterations)
     workspace_of(settings, user.id).remove()
     return user
 

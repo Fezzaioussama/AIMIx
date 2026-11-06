@@ -19,7 +19,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isReady: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, email?: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Keeps this session signed in with the new tokens; every other one ends. */
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -97,8 +97,8 @@ export function AuthProvider({ children, forgetAccountData }: AuthProviderProps)
     [forgetAccountData],
   );
 
-  const register = useCallback(async (username: string, password: string) => {
-    await authApi.register(username, password);
+  const register = useCallback(async (username: string, password: string, email?: string) => {
+    await authApi.register(username, password, email);
   }, []);
 
   const logout = useCallback(async () => {

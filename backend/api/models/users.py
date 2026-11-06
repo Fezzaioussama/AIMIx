@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.models.base import (
     API_KEY_HINT_LENGTH,
+    EMAIL_MAX_LENGTH,
     INTEGRATION_NAME_MAX_LENGTH,
     INTEGRATION_URL_MAX_LENGTH,
     MODEL_ID_MAX_LENGTH,
@@ -40,6 +41,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     #: The LLM provider this user's requests go to; None means LLM_PROVIDER.
     llm_provider: Mapped[str | None] = mapped_column(String(PROVIDER_NAME_MAX_LENGTH))
+    #: Where password-reset links and notifications go; None until the person gives
+    #: one. Stored lower-cased, so one address opens one account.
+    email: Mapped[str | None] = mapped_column(String(EMAIL_MAX_LENGTH), unique=True, index=True)
+    #: Whether the account is emailed when a run ends, waits for it, or a schedule
+    #: cannot start (api/services/notifications.py).
+    email_notifications: Mapped[bool] = mapped_column(default=True)
 
     pipelines: Mapped[list[Pipeline]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

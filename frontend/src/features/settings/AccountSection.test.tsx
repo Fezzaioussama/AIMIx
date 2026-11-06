@@ -64,7 +64,7 @@ describe('AccountSection', () => {
     await user.click(submit);
 
     expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
-    expect(calls[0]).toEqual({
+    expect(calls.find((call) => call.path === API.changePassword)).toEqual({
       path: API.changePassword,
       method: 'POST',
       body: { current_password: 'old-password-123', new_password: 'new-password-456' },

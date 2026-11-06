@@ -483,6 +483,26 @@ chat or a webhook all deliver. `send` never raises: a failure is the delivery's
   `DELIVERY_TIMEOUT_SECONDS`, no retry. The sending holds the run's executor slot
   that long at most.
 
+### Notifications
+
+An account with an email address (Settings → Account, or given at sign-up) is
+emailed when something happens while nobody is looking, by
+`services/notifications.Notifier` through the operator's SMTP server
+(`services/email`, `SMTP_*`; without `SMTP_HOST` nothing is sent and the
+notifier logs `notification.skipped`): a run that finished or failed
+(`RunPolicy.notifications`, called by `RunService._finish` after the delivery,
+off the loop), a run whose step asked for an approval while nothing else of the
+run was pending (`GateHooks.on_waiting` in `approvals/gate`, once per step), and
+a schedule whose run could not start (`SchedulerHooks.notifier`, once per
+distinct `last_error`). The texts are pure functions; each links to the run or
+the Schedules screen at `APP_PUBLIC_URL`, and a finished run's email carries the
+start of its result (`NOTIFICATION_RESULT_MAX_CHARS`). The account's "Email me…"
+switch (`email_notifications`) turns them off; a send that fails is logged
+(`notification.not_sent`, never the address) and changes nothing else. The same
+sender emails password-reset links (`services/password_reset`): a `reset` token
+signed like the session tokens, naming the account and its token version, so
+confirming it replaces the password once and ends every session.
+
 ### Built-in tools
 
 `api/services/toolbox/` gives agents real work to do without any MCP server.
