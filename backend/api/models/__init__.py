@@ -1,7 +1,8 @@
 """Persistence and the invariants that belong to each entity (AGENTS.md §2), one module
-per area: ``users``, ``pipelines``, ``runs``, ``chat`` and ``automation`` (schedules,
-webhooks and result deliveries), on what ``base`` shares. Callers import from ``api.models``, which
-also puts every table on ``Base.metadata`` for the app, the tests and Alembic."""
+per area: ``users``, ``pipelines``, ``runs``, ``chat``, ``user_memory`` and ``automation``
+(schedules, webhooks and result deliveries), on what ``base`` shares. Callers import from
+``api.models``, which also puts every table on ``Base.metadata`` for the app, the tests
+and Alembic."""
 
 from __future__ import annotations
 
@@ -51,6 +52,7 @@ from api.models.runs import (
     RunTrigger,
     StepStatus,
 )
+from api.models.user_memory import UserMemory
 from api.models.users import Integration, ProviderSetting, RateLimitBucket, User
 
 __all__ = [
@@ -106,5 +108,6 @@ __all__ = [
     "ScheduleFrequency",
     "StepStatus",
     "User",
+    "UserMemory",
     "Webhook",
 ]

@@ -59,6 +59,9 @@ class AgentSettings(BaseModel):
     )
     # --- Users' own MCP servers (Settings page → Integrations) ---------------
     integrations_max_per_user: int = Field(10, ge=0, validation_alias="INTEGRATIONS_MAX_PER_USER")
+    # Settings → Memory: how long the person's standing instructions may be, which every
+    # chat, plan and step agent is told to keep in mind (services/user_memory).
+    memory_max_chars: int = Field(4_000, ge=1, validation_alias="MEMORY_MAX_CHARS")
     # Local development only: let integrations reach loopback and private
     # addresses (e.g. a server on 127.0.0.1). Production refuses to start with it.
     integrations_allow_private_network: bool = Field(

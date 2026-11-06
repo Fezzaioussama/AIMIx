@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from api.exceptions import NotAuthenticated
 from api.models import User
 from api.security import SecretBox, TokenSigner, secret_box_for
-from api.services import accounts, llm_settings
+from api.services import accounts, llm_settings, user_memory
 from api.services.account_data import workspace_of
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
@@ -204,6 +204,34 @@ def pipeline_tool_catalog(request: Request, user: CurrentUser) -> PipelineToolCa
 
 
 ToolCatalog = Annotated[PipelineToolCatalog, Depends(pipeline_tool_catalog)]
+
+
+def user_instructions(user: CurrentUser, session: DbSession) -> str:
+    """What the person told AIMIx to keep in mind (Settings → Memory)."""
+    return user_memory.instructions_for(session, user)
+
+
+Instructions = Annotated[str, Depends(user_instructions)]
+
+
+@dataclass(frozen=True)
+class PlannerContext:
+    """What a planner request needs besides its body: the provider, the profile,
+    the person's tools, and their standing instructions."""
+
+    providers: ProviderFactory
+    profile: LLMProfile
+    catalog: PipelineToolCatalog
+    instructions: str
+
+
+def planner_context(
+    providers: Providers, profile: Profile, catalog: ToolCatalog, instructions: Instructions
+) -> PlannerContext:
+    return PlannerContext(providers, profile, catalog, instructions)
+
+
+Planner = Annotated[PlannerContext, Depends(planner_context)]
 
 
 def run_executor(request: Request) -> RunExecutor:

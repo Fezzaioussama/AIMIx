@@ -32,7 +32,7 @@ frontend/src/
     pipelines/      # PipelineBuilderPage, AutoPipelinePage, hooks, subcomponents
     runs/           # RunsPage, useRun, the run history, and report/: RunReport, one run as one document
     schedules/      # the Schedule panel (builder) and the Schedules screen
-    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Webhooks, Usage, Account
+    settings/       # SettingsPage, one tab each: Providers, Integrations (users' MCP servers), Memory, Webhooks, Usage, Account
     templates/      # TemplatesPage (the mission template gallery), useTemplates, cards
 ```
 
@@ -111,6 +111,7 @@ resolves the session before the first render without a redirect flash.
 | `pipelines.ts` | `listPipelines`, `getPipeline` (one by id, cancellable), `savePipeline`, `runPipeline` (the synchronous compatibility call; the screens start runs with `runs.ts`), `generatePipeline` (optional planner model and abort signal), `planMission` (one options object — `description`, `answers`, `mayAsk` and the optional `documents`, sent only when there are some — and an abort signal) and `revisePipeline` (1 h, `GENERATION_TIMEOUT_MS`; the latter takes an abort signal). The planning limits mirror `backend/api/schemas/planning.py`: `PLAN_DESCRIPTION_MAX_LENGTH` (20,000), `MAX_PLAN_DOCUMENTS` (5), `PLAN_DOCUMENT_EXCERPT_CHARS` (2,000) and `PLAN_DOCUMENT_NAME_MAX_LENGTH` (2,048), with `DOCUMENTS_INPUT_NAME` (`documents`), the run input every plan made with documents has. `normalizePipeline` fills what older pipelines and plans leave out (inputs, role, tools, expected output, `condition` and `review` as `null`) |
 | `templates.ts` | `listTemplates` and `createFromTemplate` (the caller's own pipeline from a template), both cancellable with a signal |
 | `llmSettings.ts` | `fetchLLMSettings`, `saveLLMSettings`, `removeProviderKey` |
+| `memory.ts` | `fetchMemory`, `saveMemory` (Settings → Memory; `memoryTypes.ts`: `Memory`, with the server's `max_chars`) |
 | `integrations.ts` | `listIntegrations`, `createIntegration`, `updateIntegration` (`PATCH`), `deleteIntegration`, and `testIntegration` (cancellable, `CONNECTION_TEST_TIMEOUT_MS` = 60 s, above the backend's 30 s `MCP_TIMEOUT_SECONDS`) |
 | `documents.ts` | `extractDocument` (10 min, `UPLOAD_TIMEOUT_MS`, above the worst case for OCR of a long scan), `importDocumentFromUrl(url, signal)` (`POST /api/documents/import-url`, same timeout: the server opens a public page or file at a link and answers like `extractDocument`, `filename` being the address the link led to; `PAGE_URL_MAX_LENGTH` caps the link) and `DOCUMENT_FORMATS`, the one list of document kinds and extensions (mirroring the backend's `READERS`), with `DOCUMENT_ACCEPT` for a file input and `DOCUMENT_KINDS` for copy, landing page included |
 | `runs.ts` | `startRun` (its body may carry `max_cost_usd` / `max_tokens`), `listRuns` (page, optional pipeline and status), `countWaitingRuns` (`listRuns` for `status=waiting`, one run: its `total`), `getRun`, `cancelRun`, `resumeRun` (optionally with new limits), `deleteRun` — all with the default 30 s timeout, since a run executes on the server |
@@ -483,6 +484,11 @@ runs and deletes them.
   `ProvidersSection` (Settings → Providers, at `/settings`) renders the provider
   picker and one `ProviderCard` (key status, password field, "Remove saved
   key", default-model select) each.
+- `MemorySection` (Settings → Memory), through `useMemory()` (`GET /api/memory`, the
+  draft, `dirty`, `save`): what AIMIx keeps in mind in every chat, plan and run, as one
+  text the person writes like a brief to a new colleague, with the characters used of
+  the server's `max_chars` and when it was last saved; "Save memory" is enabled once the
+  text differs from what is saved and fits, and the outcome is a `NoticeLine`.
 - `UsageSection` (Settings → Usage) shows the last `USAGE_DAYS` (30) days from
   `useUsage()` (`GET /api/usage`, cancelled on unmount): runs, cost (with the
   token split in its tooltip) and tokens, then a list of pipelines with their

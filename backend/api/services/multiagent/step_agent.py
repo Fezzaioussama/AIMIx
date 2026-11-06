@@ -19,6 +19,7 @@ from api.db import Database
 from api.exceptions import UpstreamResponseInvalid
 from api.models import User
 from api.repositories import runs as run_repository
+from api.services import user_memory
 from api.services.agent_prompts import AgentRole, step_agent_system_prompt
 from api.services.agent_runtime import (
     AGENT_FAILURES,
@@ -63,12 +64,15 @@ class StepAgentDependencies:
 @dataclass(frozen=True)
 class StepServices:
     """What a step agent calls besides its model and tools: the catalogue entry
-    that prices its calls (``info``), and the gate that asks the run's owner
-    before a tool acts (``gate``). Either may be missing: an unpriced call has
-    no cost, and tools that must ask are left out when nobody can be asked."""
+    that prices its calls (``info``), the gate that asks the run's owner before a
+    tool acts (``gate``), and what the owner told AIMIx to keep in mind
+    (``instructions``, Settings → Memory). Each may be missing: an unpriced call
+    has no cost, tools that must ask are left out when nobody can be asked, and
+    an owner who wrote nothing adds nothing to the prompt."""
 
     info: ModelInfo | None = None
     gate: ApprovalGate | None = None
+    instructions: str = ""
 
 
 NO_SERVICES = StepServices()
@@ -106,6 +110,7 @@ class LangGraphStepAgent:
         self._limits = limits
         self._info = services.info
         self._gate = services.gate
+        self._instructions = services.instructions
 
     async def reply(self, task: AgentTask) -> AgentOutcome:
         started = monotonic()
@@ -118,10 +123,10 @@ class LangGraphStepAgent:
                 )
                 guarded = guard_tools(self._toolset, resolved, self._gate)
                 tools = guarded.tools
-                system_prompt = step_agent_system_prompt(
-                    AgentRole(task.role, task.expected_output, task.reviewer, task.context),
-                    [tool.name for tool in tools],
+                role = AgentRole(
+                    task.role, task.expected_output, task.reviewer, task.context, self._instructions
                 )
+                system_prompt = step_agent_system_prompt(role, [tool.name for tool in tools])
                 model = metered(self._model, usage)
                 graph = create_agent(
                     model, tools, system_prompt=system_prompt, middleware=guarded.middleware
@@ -163,6 +168,8 @@ class PipelineAgentGenerator:
         self._dependencies = dependencies or StepAgentDependencies(
             partial(get_agent_model, profile), get_settings(), partial(model_info, profile)
         )
+        #: What the owner told AIMIx to keep in mind, read once, at the first step.
+        self._instructions: str | None = None
 
     async def execute(self, task: AgentTask) -> AgentOutcome:
         """Run the step; a reply with no text or garbled text gets one more try before the
@@ -205,9 +212,16 @@ class PipelineAgentGenerator:
             StepServices(
                 self._dependencies.model_info(task.model),
                 run_gate(self._database, task.run_step, settings),
+                self._remembered(),
             ),
         )
         return await agent.reply(task)
+
+    def _remembered(self) -> str:
+        if self._instructions is None:
+            with self._database.session() as session:
+                self._instructions = user_memory.instructions_for(session, self._user)
+        return self._instructions
 
 
 def _drafts_since(database: Database, step: RunStepRef | None) -> datetime | None:

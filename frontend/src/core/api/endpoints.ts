@@ -41,6 +41,7 @@ export const API = {
   /** One file of the user's workspace, by its '/'-separated path. */
   file: (path: string) => `/api/files/${path.split('/').map(encodeURIComponent).join('/')}`,
   llmSettings: '/api/llm-settings',
+  memory: '/api/memory',
   llmSettingsKey: (provider: string) => `/api/llm-settings/keys/${encodeURIComponent(provider)}`,
   templates: '/api/templates',
   createFromTemplate: (slug: string) => `/api/templates/${encodeURIComponent(slug)}/use`,

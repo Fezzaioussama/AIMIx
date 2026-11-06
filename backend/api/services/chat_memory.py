@@ -16,7 +16,7 @@ may be closed while a reply still streams.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from anyio import to_thread
@@ -25,6 +25,7 @@ from api.db import Database
 from api.exceptions import ChatFull
 from api.models import ChatRole, User
 from api.repositories import chats as repository
+from api.repositories import user_memory
 from api.repositories.chats import MessageDraft
 from api.services.chat import ChatAgent
 from api.services.chat_conversation import (
@@ -122,12 +123,15 @@ class ChatMemory:
     limits: MemoryLimits
 
     async def open(self, opening: ChatOpening, agent: ChatAgent) -> Conversation:
-        """What the assistant is given for this message. For a kept chat: the newest
-        messages that fit, and its notes on the rest, brought up to date first."""
+        """What the assistant is given for this message: the person's standing
+        instructions, and, for a kept chat, the newest messages that fit and its notes
+        on the rest, brought up to date first."""
+        instructions = await to_thread.run_sync(self._instructions)
         if opening.chat_id is None:
-            return conversation_of(
+            conversation = conversation_of(
                 opening.prompt, opening.history, opening.timezone, self.limits.history_max_chars
             )
+            return replace(conversation, instructions=instructions)
         summary, messages = await to_thread.run_sync(self._unread, opening.chat_id)
         turns = tuple(_turn(message.role, message.text) for message in messages)
         kept = recent(turns, self.limits.history_max_chars)
@@ -138,7 +142,8 @@ class ChatMemory:
         elif not self.limits.history_max_chars:
             # Each message stands alone: the notes are not read either.
             summary = ""
-        return Conversation(opening.prompt, kept, known_zone(opening.timezone), summary)
+        zone = known_zone(opening.timezone)
+        return Conversation(opening.prompt, kept, zone, summary, instructions)
 
     def recorded(
         self, chat_id: int | None, prompt: str, events: AsyncIterator[ChatEvent]
@@ -161,6 +166,10 @@ class ChatMemory:
             self._save(chat_id, reply.draft())
             raise
         await to_thread.run_sync(self._save, chat_id, reply.draft())
+
+    def _instructions(self) -> str:
+        with self.database.session() as session:
+            return user_memory.instructions_of(session, self.user)
 
     def _unread(self, chat_id: int) -> tuple[str, list[Any]]:
         """The chat's notes, and the messages they do not cover yet."""

@@ -31,6 +31,8 @@ class Conversation:
     history: tuple[ChatTurn, ...] = ()
     timezone: str | None = None
     summary: str = ""
+    #: What the person told AIMIx to keep in mind (Settings → Memory); "" when nothing.
+    instructions: str = ""
 
 
 def known_zone(name: str | None) -> str | None:

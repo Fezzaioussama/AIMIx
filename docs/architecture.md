@@ -806,8 +806,10 @@ crash, startup recovery logs only how many runs it interrupted
    the reply (text, tools, usage) as it ends.
 3. `services/agent` builds a chat-only LangGraph agent from the configured
    model, with the assistant's instructions (`chat_prompts`: how to work with
-   people who are not technical, today's date and time in their zone) and the
-   earlier turns before the prompt. After a tool's result, the model's next call
+   people who are not technical, what the person told AIMIx to keep in mind
+   (Settings → Memory, read by `ChatMemory.open` into
+   `Conversation.instructions`), the chat's notes when it has some, today's
+   date and time in their zone) and the earlier turns before the prompt. After a tool's result, the model's next call
    is reminded to answer in the language of the person's message, whose start it
    quotes (`chat_language`): a result in another language drew answers in it.
    It binds the signed-in user's native tools
@@ -851,8 +853,11 @@ crash, startup recovery logs only how many runs it interrupted
    `services/pipelines.generate` builds a prompt (`services/plan_prompts`) with
    their names and descriptions plus the allowed model ids (every step on the
    default one), how to shape the team, the final check every
-   new team ends with, and either the invitation to ask (`may_ask`, no answers
-   yet) or the fenced answers, then calls the direct provider adapter. When the
+   new team ends with, either the invitation to ask (`may_ask`, no answers
+   yet) or the fenced answers, and what the person told AIMIx to keep in mind
+   (Settings → Memory, `user_memory.memory_section`; the endpoint's `Planner`
+   context reads it, as do the chat's workflow tools and, for every step,
+   `PipelineAgentGenerator`), then calls the direct provider adapter. When the
    planner may ask and replies `{"questions": [...]}`, `services/plan_questions`
    reads them and the endpoint returns them with `generated_pipeline: null`. A
    reply that is not a usable plan is asked for once more. Each step goes on the

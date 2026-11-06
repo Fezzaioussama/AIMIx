@@ -211,7 +211,10 @@ class LangGraphChatAgent:
                 self._model,
                 tools,
                 system_prompt=chat_system_prompt(
-                    utcnow(), conversation.timezone, conversation.summary
+                    utcnow(),
+                    conversation.timezone,
+                    conversation.summary,
+                    conversation.instructions,
                 ),
                 middleware=[refusals_as_results, answer_in_their_language(conversation.prompt)],
             )

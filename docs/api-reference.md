@@ -132,6 +132,7 @@ until the window ends.
   "schedules": [ /* the saved schedule: frequency, hour, minute, timezone, inputs, … */ ],
   "integrations": [ /* name, url, enabled, require_approval, headers (name and hint), created_at */ ],
   "chats": [ /* as GET /chats/<id>, newest first, plus summary: the assistant's notes on its oldest messages */ ],
+  "memory": "What they told AIMIx to keep in mind (Settings → Memory), as written",
   "files": [ /* as GET /files: path, size, modified_at, type */ ],
   "note": "Saved API keys and integration header values are secrets: …"
 }
@@ -232,6 +233,29 @@ one containing spaces. Saving the same body twice leaves the same state.
 
 Forgets your saved key for that provider, which then falls back to the
 server's key only with `ALLOW_SERVER_LLM_KEY=true`. Idempotent. `200` returns the same shape as `GET`.
+
+---
+
+## Memory
+
+What the signed-in person told AIMIx to keep in mind (Settings → Memory): their
+business, who their work is for, the language and tone they want. The chat, the
+planner (generate and revise, from the screens and from the chat's workflow
+tools) and every step agent read it before their task, in a `<memory>` block
+presented as the person's standing instructions, never as the task. After Celia
+Agent's instruction files, with one text per account.
+
+### `GET /memory`
+
+`200` → `{ "instructions": "We sell bread…", "updated_at": "2026-11-06T08:30:00Z",
+"max_chars": 4000 }`. `instructions` is `""` and `updated_at` null until
+something was saved; `max_chars` is the server's `MEMORY_MAX_CHARS`.
+
+### `PUT /memory`
+
+`{ "instructions": "…" }`, trimmed, at most `MEMORY_MAX_CHARS` characters
+(4,000; `400 validation_error` past it, naming both lengths); an empty text
+forgets them. `200` → as `GET`. The text is in the account's copy as `memory`.
 
 ---
 

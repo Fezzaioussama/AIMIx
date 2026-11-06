@@ -112,5 +112,7 @@ class AccountExportOut(BaseModel):
     schedules: list[ScheduleExportOut]
     integrations: list[IntegrationExportOut]
     chats: list[ChatExportOut]
+    #: Settings → Memory: what they told AIMIx to keep in mind, as written.
+    memory: str
     files: list[FileOut]
     note: str = EXPORT_NOTE

@@ -177,18 +177,23 @@ def pipeline_revision_prompt(
     instruction: str,
     available_models: list[str],
     tools: list[ToolDescriptor] | None = None,
+    *,
+    memory: str = "",
 ) -> str:
     """Render the planner prompt that revises the pipeline ``current`` (plain data,
-    the pipeline contract's fields) as ``instruction`` asks.
+    the pipeline contract's fields) as ``instruction`` asks, after ``memory``, the
+    rendered section of what the person told AIMIx to keep in mind
+    (``user_memory.memory_section``; "" when nothing).
 
-    Both come from the user, so each sits in its own tagged block that its
-    content cannot close: they stay data, never instructions (§6).
+    The pipeline and the instruction come from the user, so each sits in its own
+    tagged block that its content cannot close: they stay data, never instructions (§6).
     """
     header = PIPELINE_REVISION_TEMPLATE.format(**planner_fields(available_models, tools))
     pipeline = json.dumps(dict(current), indent=2, ensure_ascii=False)
+    remembered = f"{memory}\n\n" if memory else ""
     return (
-        f"{header}Current pipeline (JSON):\n{fenced(CURRENT_PIPELINE_TAG, pipeline)}\n\n"
-        f"Change request:\n{fenced(CHANGE_REQUEST_TAG, instruction.strip())}\n"
+        f"{header}{remembered}Current pipeline (JSON):\n{fenced(CURRENT_PIPELINE_TAG, pipeline)}"
+        f"\n\nChange request:\n{fenced(CHANGE_REQUEST_TAG, instruction.strip())}\n"
     )
 
 

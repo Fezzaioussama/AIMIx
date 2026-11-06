@@ -221,9 +221,9 @@ and `services → llm`. `llm/` never imports `api/` or `config/` — it receives
 **Files already over budget (technical debt).** None — no file in `backend/` or
 `frontend/src/` exceeds the 700-line cap. Eight source files are past the 300-line target
 and should be split before they grow: `frontend/src/core/api/types.ts` (406),
-`backend/api/services/prompts.py` (313), `backend/api/services/agent_tools.py` (354),
+`backend/api/services/prompts.py` (318), `backend/api/services/agent_tools.py` (354),
 `frontend/src/styles.css` (318), `backend/api/services/toolbox/workspace.py` (317),
-`backend/api/deps.py` (317), `backend/api/services/agent.py` (313) and
+`backend/api/deps.py` (345), `backend/api/services/agent.py` (313) and
 `backend/api/repositories/runs.py` (303). The largest
 files overall are tests, the biggest being `frontend/src/features/mission/useMission.test.tsx`
 (563); tests past 300 lines also include

@@ -32,6 +32,7 @@ from api.models import (
     Schedule,
     ScheduleFrequency,
     User,
+    UserMemory,
 )
 from api.repositories import stored_size, users
 from api.security import hash_password
@@ -106,6 +107,7 @@ def fill(session: Session, user: User, client: TestClient, settings: Settings) -
                 summary="Said hello.",
                 messages=[ChatMessage(role=ChatRole.USER, text="hello there")],
             ),
+            UserMemory(user_id=user.id, instructions="We sell bread."),
         ]
     )
     session.commit()
@@ -137,6 +139,7 @@ def owned_rows(session: Session, user_id: int) -> dict[str, int]:
         .select_from(ProviderSetting)
         .where(ProviderSetting.user_id == user_id),
         "chats": select(func.count()).select_from(Chat).where(Chat.user_id == user_id),
+        "memory": select(func.count()).select_from(UserMemory).where(UserMemory.user_id == user_id),
         "chat_messages": select(func.count())
         .select_from(ChatMessage)
         .where(ChatMessage.chat_id.in_(select(Chat.id).where(Chat.user_id == user_id))),
@@ -244,6 +247,7 @@ def test_the_export_holds_everything_the_account_owns_and_no_secret(
     assert [f["path"] for f in export["files"]] == ["notes.txt"]
     assert [(c["title"], c["summary"]) for c in export["chats"]] == [("Hello", "Said hello.")]
     assert export["chats"][0]["messages"][0]["text"] == "hello there"
+    assert export["memory"] == "We sell bread."
     assert SEALED_KEY not in response.text
     assert SEALED_HEADERS not in response.text
     assert "Not mine" not in response.text
