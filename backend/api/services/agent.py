@@ -24,6 +24,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import BaseTool, ToolException
 
 from api.exceptions import BudgetExceeded
+from api.models import UsageKind
+from api.services.account_usage import account_meter, calls_of
 from api.services.agent_runtime import (
     AGENT_FAILURES,
     AgentLimits,
@@ -57,7 +59,7 @@ from api.services.run_budget import RunBudget, limit_reached
 from api.services.run_recorder import utcnow
 from api.services.runs import launcher
 from config.settings import get_settings
-from llm.usage import NO_USAGE, TokenUsage, UsageCallback, metered
+from llm.usage import NO_USAGE, UNMETERED, TokenUsage, UsageCallback, UsageMeter, chained, metered
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +87,14 @@ class ChatMeter:
             self._spent += usage
 
 
-def metered_chat_model(profile: LLMProfile, max_tokens: int | None) -> BaseChatModel:
+def metered_chat_model(
+    profile: LLMProfile, max_tokens: int | None, account: UsageMeter = UNMETERED
+) -> BaseChatModel:
     """The profile's chat model, every call of which counts toward one message's
-    ``max_tokens`` (None: counted, never refused)."""
-    usage = UsageCallback(
-        model_info(profile, profile.default_model), ChatMeter(RunBudget(max_tokens=max_tokens))
-    )
+    ``max_tokens`` (None: counted, never refused) and, through ``account``, the
+    account's day (``account_usage``)."""
+    message = ChatMeter(RunBudget(max_tokens=max_tokens))
+    usage = UsageCallback(model_info(profile, profile.default_model), chained(message, account))
     return metered(get_agent_model(profile), usage)
 
 
@@ -258,8 +262,10 @@ def chat_tools(scope: ChatScope) -> list[BaseTool]:
 
 def get_chat_agent(scope: ChatScope) -> LangGraphChatAgent:
     settings = get_settings()
+    calls = calls_of(UsageKind.CHAT, scope.profile.default_model)
+    account = account_meter(scope.database, scope.user.id, scope.profile, calls)
     return LangGraphChatAgent(
-        metered_chat_model(scope.profile, settings.chat_max_tokens),
+        metered_chat_model(scope.profile, settings.chat_max_tokens, account),
         AgentToolset(
             mcp_connections_for(scope.database, scope.user, settings),
             chat_tools(scope),

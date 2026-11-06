@@ -79,12 +79,16 @@ def total(usages: Iterable[TokenUsage]) -> TokenUsage:
 CostSource = Callable[[AIMessage, TokenUsage, ModelInfo | None], float | None]
 
 
-def _reported_cost(message: AIMessage, tokens: TokenUsage, model: ModelInfo | None) -> float | None:
-    """What the provider says the call cost (OpenRouter's ``usage.cost``)."""
-    cost = message.response_metadata.get("cost")
+def _valid_cost(cost: object) -> float | None:
+    """A reported cost that can be one: a finite number, not negative, not a bool."""
     if isinstance(cost, bool) or not isinstance(cost, (int, float)):
         return None
     return float(cost) if math.isfinite(cost) and cost >= 0 else None
+
+
+def _reported_cost(message: AIMessage, tokens: TokenUsage, model: ModelInfo | None) -> float | None:
+    """What the provider says the call cost (OpenRouter's ``usage.cost``)."""
+    return _valid_cost(message.response_metadata.get("cost"))
 
 
 def _catalogue_cost(
@@ -128,6 +132,21 @@ def response_usage(response: LLMResult, model: ModelInfo | None) -> TokenUsage:
     )
 
 
+def completion_usage(response: Any, model: ModelInfo | None) -> TokenUsage:
+    """One completion's usage as an OpenAI-shaped client returns it (``usage.prompt_tokens``,
+    ``usage.completion_tokens``, OpenRouter's ``usage.cost``), priced like a LangChain
+    answer's: the provider's report, else the catalogue, else unknown."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return NO_USAGE
+    input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+    cost = _valid_cost(getattr(usage, "cost", None))
+    if cost is None and model is not None:
+        cost = model.price(input_tokens, output_tokens)
+    return TokenUsage.of(input_tokens, output_tokens, cost)
+
+
 class UsageMeter(Protocol):
     """Hears about each model call of one agent (Observer port)."""
 
@@ -149,6 +168,45 @@ class _Unmetered:
 
 
 UNMETERED: UsageMeter = _Unmetered()
+
+
+class _Chained:
+    """Several meters as one: each hears every call, in order (a refusal stops it)."""
+
+    def __init__(self, meters: tuple[UsageMeter, ...]) -> None:
+        self._meters = meters
+
+    def before_call(self) -> None:
+        for meter in self._meters:
+            meter.before_call()
+
+    def after_call(self, usage: TokenUsage) -> None:
+        for meter in self._meters:
+            meter.after_call(usage)
+
+
+def chained(*meters: UsageMeter) -> UsageMeter:
+    """One meter that tells all of ``meters``; the unmetered ones are left out."""
+    heard = tuple(meter for meter in meters if meter is not UNMETERED)
+    if len(heard) == 1:
+        return heard[0]
+    return _Chained(heard)
+
+
+def _unpriced(model_id: str) -> ModelInfo | None:
+    return None
+
+
+@dataclass(frozen=True)
+class CallMetering:
+    """Who hears a provider's completions (``OpenAICompatibleProvider.generate``),
+    and what prices a model's calls (its catalogue entry, by model id)."""
+
+    meter: UsageMeter = UNMETERED
+    pricing: Callable[[str], ModelInfo | None] = _unpriced
+
+
+UNMETERED_CALLS = CallMetering()
 
 
 class UsageCallback(BaseCallbackHandler):

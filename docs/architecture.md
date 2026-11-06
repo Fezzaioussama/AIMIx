@@ -144,7 +144,13 @@ the calls then running. The totals shown to users (`RunOut.usage`, `GET /usage`)
 are computed from the step rows, never stored. A resume gets the run's earlier
 spending as its starting total and may raise the limits
 (`POST /runs/<id>/resume` with a body); under a limit it has already reached it
-is refused (`409 budget_exceeded`).
+is refused (`409 budget_exceeded`). Every call is also heard by the account's
+`AccountMeter` (`services/account_usage`, chained after the run's meter): an
+account spending the server's key is refused once today's allowance
+(`SERVER_KEY_DAILY_MAX_*`) is used up (`429 daily_limit_reached`), and the calls
+no step records, a chat message's and the planner's (through the provider's
+`CallMetering`), are saved as `usage_events`, so `GET /usage` and the allowance
+count them too.
 
 **The server's limits** (`run_policy.RunPolicy`, applied by `RunService` on every
 path that starts or resumes a run). A limit the starter leaves unset takes the

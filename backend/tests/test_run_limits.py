@@ -112,7 +112,13 @@ def test_startup_warns_when_accounts_spend_the_servers_key_without_ceilings(
 ) -> None:
     open_key = TEST_SETTINGS.model_copy(update={"allow_server_llm_key": True})
     bounded = open_key.model_copy(
-        update={"run_max_cost_usd": 5.0, "run_max_tokens": 10**6, "chat_max_tokens": 10**5}
+        update={
+            "run_max_cost_usd": 5.0,
+            "run_max_tokens": 10**6,
+            "chat_max_tokens": 10**5,
+            "server_key_daily_max_cost_usd": 1.0,
+            "server_key_daily_max_tokens": 10**5,
+        }
     )
 
     with caplog.at_level(logging.WARNING, logger="api.services.run_policy"):
@@ -121,10 +127,18 @@ def test_startup_warns_when_accounts_spend_the_servers_key_without_ceilings(
         warn_about_unbounded_spending(TEST_SETTINGS)
 
     assert len(caplog.records) == 1
-    assert "unset=RUN_MAX_COST_USD,RUN_MAX_TOKENS,CHAT_MAX_TOKENS" in caplog.text
+    assert (
+        "unset=RUN_MAX_COST_USD,RUN_MAX_TOKENS,CHAT_MAX_TOKENS,"
+        "SERVER_KEY_DAILY_MAX_COST_USD,SERVER_KEY_DAILY_MAX_TOKENS"
+    ) in caplog.text
     # A cost ceiling alone leaves models with no known price unbounded.
     cost_only = open_key.model_copy(update={"run_max_cost_usd": 5.0})
-    assert unset_ceilings(cost_only) == ["RUN_MAX_TOKENS", "CHAT_MAX_TOKENS"]
+    assert unset_ceilings(cost_only) == [
+        "RUN_MAX_TOKENS",
+        "CHAT_MAX_TOKENS",
+        "SERVER_KEY_DAILY_MAX_COST_USD",
+        "SERVER_KEY_DAILY_MAX_TOKENS",
+    ]
 
 
 def test_the_app_checks_its_ceilings_when_it_is_built(monkeypatch: pytest.MonkeyPatch) -> None:

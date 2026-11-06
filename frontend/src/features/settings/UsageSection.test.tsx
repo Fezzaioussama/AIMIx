@@ -2,13 +2,15 @@ import { render, renderHook, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from '../../core/api/endpoints';
-import type { UsageReport } from '../../core/api/types';
+import type { Usage, UsageReport } from '../../core/api/types';
 import { UsageSection } from './UsageSection';
 import { SETTINGS, byPath, json } from './testData';
 import { renderSettingsPage } from './testRender';
 import { USAGE_DAYS, useUsage } from './useUsage';
 
 const USAGE_PATH = `${API.usage}?days=${USAGE_DAYS}`;
+
+const NONE: Usage = { input_tokens: 0, output_tokens: 0, cost_usd: null, cost_complete: true };
 
 const REPORT: UsageReport = {
   days: 30,
@@ -29,6 +31,8 @@ const REPORT: UsageReport = {
       usage: { input_tokens: 10_000, output_tokens: 3_456, cost_usd: 0.034, cost_complete: true },
     },
   ],
+  other: NONE,
+  today: { spent: NONE, max_cost_usd: null, max_tokens: null },
 };
 
 function serve(report: unknown) {
@@ -165,5 +169,36 @@ describe('useUsage', () => {
     await waitFor(() => expect(result.current.report).toEqual(REPORT));
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBe('');
+  });
+});
+
+describe('UsageSection: today and the rest', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("says how much of today's allowance of the server's key is used", async () => {
+    serve({
+      ...REPORT,
+      today: {
+        spent: { input_tokens: 2_000, output_tokens: 500, cost_usd: 0.12, cost_complete: true },
+        max_cost_usd: 1,
+        max_tokens: null,
+      },
+    });
+    render(<UsageSection />);
+
+    expect(
+      await screen.findByText(/Today: \$0\.12 of the \$1\.00 daily allowance of the server's key/),
+    ).toBeInTheDocument();
+  });
+
+  it('counts chats and planning, and shows them apart', async () => {
+    serve({
+      ...REPORT,
+      other: { input_tokens: 5_000, output_tokens: 1_000, cost_usd: 0.5, cost_complete: true },
+    });
+    render(<UsageSection />);
+
+    expect(await screen.findByText(/Chats and planning: \$0\.50/)).toBeInTheDocument();
+    expect(screen.getByText(/Today: nothing yet\./)).toBeInTheDocument();
   });
 });

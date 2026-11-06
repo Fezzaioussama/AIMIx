@@ -166,3 +166,33 @@ def test_meta_passes_transport_settings_to_its_client(monkeypatch: pytest.Monkey
 
     assert (captured["timeout"], captured["max_retries"]) == (7.5, 0)
     assert captured["base_url"] == "https://api.meta.ai/v1"
+
+
+def test_generate_tells_the_configured_meter_what_the_call_used() -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from llm.catalog import ModelInfo
+    from llm.usage import CallMetering, TokenUsage
+
+    class Meter:
+        def __init__(self) -> None:
+            self.log: list[object] = []
+
+        def before_call(self) -> None:
+            self.log.append("before")
+
+        def after_call(self, usage: TokenUsage) -> None:
+            self.log.append(usage)
+
+    priced = ModelInfo(
+        "test", "vendor/model", input_price_per_million=1.0, output_price_per_million=2.0
+    )
+    response = _Response("hello")
+    response.usage = SimpleNamespace(prompt_tokens=1000, completion_tokens=500)  # type: ignore[attr-defined]
+    meter = Meter()
+    config = replace(CONFIG, metering=CallMetering(meter, lambda model: priced))
+
+    assert OpenAICompatibleProvider("test", _Client(response), config).generate("prompt") == "hello"
+
+    assert meter.log == ["before", TokenUsage.of(1000, 500, 0.002)]

@@ -5,13 +5,15 @@ Ownership filtering lives here: a report only ever reads the user's own runs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, and_, case, func, select
 from sqlalchemy.orm import Session
 
-from api.models import Run, RunStep, User
+from api.models import Run, RunStep, UsageEvent, UsageKind, User
+from llm.usage import TokenUsage
 
 
 @dataclass(frozen=True)
@@ -49,3 +51,63 @@ def steps_since(session: Session, user: User, since: datetime) -> list[StepUsage
         .order_by(Run.created_at, Run.id, RunStep.step_order)
     )
     return [StepUsageRow(*row) for row in session.execute(statement)]
+
+
+@dataclass(frozen=True)
+class NewUsageEvent:
+    """One model call made outside a run (a chat message's, the planner's), to keep."""
+
+    user_id: int
+    kind: UsageKind
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float | None
+
+
+def record_event(session: Session, new: NewUsageEvent) -> None:
+    session.add(UsageEvent(**asdict(new)))
+    session.commit()
+
+
+def events_since(session: Session, user: User, since: datetime) -> list[UsageEvent]:
+    """``user``'s chat and planner calls made at or after ``since``, oldest first."""
+    statement = (
+        select(UsageEvent)
+        .where(UsageEvent.user_id == user.id, UsageEvent.created_at >= _as_stored(since))
+        .order_by(UsageEvent.created_at, UsageEvent.id)
+    )
+    return list(session.scalars(statement))
+
+
+def _sums(table: type[RunStep] | type[UsageEvent]) -> tuple[Any, ...]:
+    """Input tokens, output tokens, the known cost, and how many of the table's rows
+    used tokens at an unknown cost."""
+    unpriced = and_(table.cost_usd.is_(None), (table.input_tokens + table.output_tokens) > 0)
+    return (
+        func.coalesce(func.sum(table.input_tokens), 0),
+        func.coalesce(func.sum(table.output_tokens), 0),
+        func.sum(table.cost_usd),
+        func.coalesce(func.sum(case((unpriced, 1), else_=0)), 0),
+    )
+
+
+def _totals(session: Session, statement: Select[Any]) -> TokenUsage:
+    input_tokens, output_tokens, cost, unpriced = session.execute(statement).one()
+    return TokenUsage(int(input_tokens), int(output_tokens), cost, unpriced == 0)
+
+
+def spent_since(session: Session, user_id: int, since: datetime) -> TokenUsage:
+    """What ``user_id``'s runs created at or after ``since``, and the chat and planner
+    calls made since then, used, as one usage: the day's spending, summed in the
+    database."""
+    stored = _as_stored(since)
+    steps = (
+        select(*_sums(RunStep))
+        .join(Run, Run.id == RunStep.run_id)
+        .where(Run.user_id == user_id, Run.created_at >= stored)
+    )
+    events = select(*_sums(UsageEvent)).where(
+        UsageEvent.user_id == user_id, UsageEvent.created_at >= stored
+    )
+    return _totals(session, steps) + _totals(session, events)

@@ -356,6 +356,17 @@ kept). `RUN_DEFAULT_MAX_COST_USD` is the limit of a run that sets none; it is th
 operator's guard against a runaway agent loop, and the one thing capping what
 users spend when you provide the model key. Users who bring their own key (the
 setup recommended above) spend their own money, so the default is optional.
+
+**Lending the server's key.** With `ALLOW_SERVER_LLM_KEY=true`, an account with
+no key of its own spends the server's: set `SERVER_KEY_DAILY_MAX_COST_USD` (and
+`SERVER_KEY_DAILY_MAX_TOKENS`, which also bounds models with no known price) to
+what each such account may spend per UTC day, runs, chats and planning together.
+A call past it is refused with `429 daily_limit_reached` (a run then ends
+`failed` with that code and can be resumed the next day); Settings → Usage shows
+the day's spending against the allowance. Accounts with their own key are never
+bounded by it. Left empty, the server logs `runs.spending_unbounded` at startup,
+as for the other ceilings. Chat messages and planner calls are saved as usage
+events (`usage_events`), so `GET /usage` and the allowance count them too.
 Things to know:
 
 - The limit only counts costs the app knows. A model with an unknown cost counts

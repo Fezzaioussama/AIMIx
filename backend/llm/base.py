@@ -23,6 +23,7 @@ from llm.retry import (
     is_timeout,
     status_code,
 )
+from llm.usage import UNMETERED_CALLS, CallMetering, completion_usage
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,8 @@ class ProviderConfig:
     retry: RetryPolicy = NO_RETRIES
     #: The most tokens one answer may have (the API's ``max_tokens``); None leaves it to the model.
     max_output_tokens: int | None = None
+    #: Who hears ``generate``'s calls and what prices them; a stream is not metered.
+    metering: CallMetering = UNMETERED_CALLS
 
 
 @runtime_checkable
@@ -129,10 +132,13 @@ class OpenAICompatibleProvider:
 
     def generate(self, prompt: str, model: str | None = None) -> str:
         resolved = self._resolve_model(model)
+        metering = self._config.metering
+        metering.meter.before_call()
         with normalised_failures(self.name, resolved, self._config.timeout_seconds):
             response = self._retrier(resolved).call(
                 lambda: self._create(prompt, resolved, stream=False)
             )
+        metering.meter.after_call(completion_usage(response, metering.pricing(resolved)))
         choices = getattr(response, "choices", None)
         if not choices:
             raise ProviderRequestError(f"{self.name} returned no choices.")

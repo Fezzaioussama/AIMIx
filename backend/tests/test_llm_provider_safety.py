@@ -17,6 +17,7 @@ from api.services import llm as llm_service
 from api.services.llm import LLMProfile, get_planner_provider, provider_config
 from llm.base import OpenAICompatibleProvider, ProviderConfig
 from llm.exceptions import ProviderRequestError
+from llm.usage import UNMETERED
 from tests.conftest import TEST_SETTINGS, use_provider
 from tests.retry_fakes import URL
 from tests.test_llm_providers import CONFIG, _Client, _Response
@@ -103,7 +104,8 @@ def test_the_planner_gets_its_own_timeout_and_output_bound(
     get_planner_provider(profile)
 
     # The planner endpoints get this provider (tests swap the factory out).
-    assert provider_factory(profile).func is get_planner_provider  # type: ignore[attr-defined]
+    factory = provider_factory(profile, UNMETERED)
+    assert factory.func is get_planner_provider  # type: ignore[attr-defined]
     assert built[0].timeout_seconds == TEST_SETTINGS.llm_planner_timeout_seconds
     assert built[0].max_output_tokens == TEST_SETTINGS.llm_planner_max_output_tokens
     # Every other call keeps the long timeout and no bound of its own.

@@ -279,6 +279,14 @@ limit can stop it.
 Prices change: when a provider's page does, update the `ModelInfo` and its
 comment together.
 
+The planner's non-streamed completions are metered too: `ProviderConfig.metering`
+(`llm.usage.CallMetering`: a `UsageMeter` and what prices a model id) hears
+`generate` before and after each call, with `completion_usage` reading the
+answer's `usage` (`prompt_tokens`, `completion_tokens`, OpenRouter's `cost`) and
+pricing it like a LangChain answer. `chained(*meters)` makes several meters one,
+which is how a run's budget and the account's daily allowance both hear a step's
+calls. A stream is not metered.
+
 ## Recipe: add a model
 
 1. Add a `ModelInfo(...)` attribute to the right class in `llm/catalog.py`,

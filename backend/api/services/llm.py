@@ -8,6 +8,7 @@ settings; the llm package itself receives plain values (§5 D).
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from functools import partial
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -22,6 +23,7 @@ from llm.images import ImageGenerator, MetaImageGenerator
 from llm.registry import create_provider
 from llm.retry import RetryPolicy
 from llm.speech import MetaTranscriber, Transcriber
+from llm.usage import UNMETERED_CALLS, CallMetering, UsageMeter
 from llm.vision import MetaObjectFinder, ObjectFinder
 
 
@@ -89,17 +91,25 @@ def get_provider(profile: LLMProfile, config: ProviderConfig | None = None) -> L
         raise ProviderNotConfigured(str(cause)) from cause
 
 
-def get_planner_provider(profile: LLMProfile) -> LLMProvider:
+def get_planner_provider(
+    profile: LLMProfile, metering: CallMetering = UNMETERED_CALLS
+) -> LLMProvider:
     """The provider of the pipeline planner, which answers inside the request: its
-    calls time out after LLM_PLANNER_TIMEOUT_SECONDS and write at most
-    LLM_PLANNER_MAX_OUTPUT_TOKENS tokens."""
+    calls time out after LLM_PLANNER_TIMEOUT_SECONDS, write at most
+    LLM_PLANNER_MAX_OUTPUT_TOKENS tokens, and are heard by ``metering``."""
     settings = get_settings()
     config = replace(
         provider_config(profile),
         timeout_seconds=settings.llm_planner_timeout_seconds,
         max_output_tokens=settings.llm_planner_max_output_tokens,
+        metering=metering,
     )
     return get_provider(profile, config)
+
+
+def planner_metering(meter: UsageMeter, profile: LLMProfile) -> CallMetering:
+    """``meter`` hears the planner's calls, priced from the profile's catalogue."""
+    return CallMetering(meter, partial(model_info, profile))
 
 
 def get_agent_model(profile: LLMProfile, model_id: str | None = None) -> BaseChatModel:

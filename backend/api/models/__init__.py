@@ -51,6 +51,7 @@ from api.models.runs import (
     RunTrigger,
     StepStatus,
 )
+from api.models.usage import UsageEvent, UsageKind
 from api.models.users import Integration, ProviderSetting, RateLimitBucket, User
 
 __all__ = [
@@ -102,6 +103,8 @@ __all__ = [
     "Schedule",
     "ScheduleFrequency",
     "StepStatus",
+    "UsageEvent",
+    "UsageKind",
     "User",
     "Webhook",
 ]

@@ -302,6 +302,7 @@ The client surfaces it as `ApiError.code` / `ApiError.message`.
 | `request_too_large` | 413 | The request body is over its cap (an upload, or `REQUEST_MAX_JSON_BYTES`) |
 | `throttled` | 429 | Too many requests for this client, account or username; `Retry-After` says when to retry |
 | `too_many_runs` | 429 | The account already has `RUN_MAX_ACTIVE_PER_USER` runs queued or running |
+| `daily_limit_reached` | 429 | The account used up today's allowance of the server's key (`SERVER_KEY_DAILY_MAX_*`) |
 | `run_still_running` | 202 | Not a failure: the run outlived `RUN_WAIT_MAX_SECONDS` and goes on; `detail` names it |
 | `documents_busy` | 503 | Other documents are being read; retry after `Retry-After` seconds |
 | `provider_not_configured` | 503 | No API key for the selected provider |
@@ -326,6 +327,7 @@ The full list, with every route that can return each code, is in [docs/api-refer
 | `DATABASE_URL` | No | SQLAlchemy URL (default `backend/aimix.sqlite3`) |
 | `LLM_PROVIDER` | No | `openrouter` (default), `togetherai` or `meta` |
 | `ALLOW_SERVER_LLM_KEY` | No | `false` (default): accounts need their own key from Settings; `true`: accounts without one spend the keys below |
+| `SERVER_KEY_DAILY_MAX_COST_USD`, `SERVER_KEY_DAILY_MAX_TOKENS` | With the above | What an account with no key of its own may spend of the server's key per UTC day, runs, chats and planning together (default none) |
 | `OPEN_ROUTER_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `TOGAI_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |
 | `META_API_KEY` | Only with `ALLOW_SERVER_LLM_KEY=true` (and for `llm-probe`) | Provider API key |

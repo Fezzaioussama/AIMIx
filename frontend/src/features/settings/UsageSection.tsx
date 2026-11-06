@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import type { PipelineUsage, UsageReport } from '../../core/api/types';
+import type { DayUsage, PipelineUsage, Usage, UsageReport } from '../../core/api/types';
 import { CostText } from '../../core/ui/CostText';
 import {
   describeCost,
@@ -21,7 +21,8 @@ export function UsageSection() {
         Usage
       </h2>
       <p className="mt-2 mb-6 text-sm text-slate-400">
-        What your runs used in the last {USAGE_DAYS} days, and what their model calls cost.
+        What your runs, chats and planning used in the last {USAGE_DAYS} days, and what their model
+        calls cost.
       </p>
       {loading && <p className="text-sm text-slate-400">Loading your usage…</p>}
       {error && (
@@ -35,9 +36,44 @@ export function UsageSection() {
 }
 
 function UsageSummary({ report }: { report: UsageReport }) {
-  if (report.runs === 0) {
-    return <p className="text-sm text-slate-400">No runs in the last {report.days} days.</p>;
-  }
+  return (
+    <>
+      <TodayLine today={report.today} />
+      {report.runs === 0 && totalTokens(report.other) === 0 ? (
+        <p className="text-sm text-slate-400">No runs in the last {report.days} days.</p>
+      ) : (
+        <Totals report={report} />
+      )}
+    </>
+  );
+}
+
+/** "$0.12", "1,234 tokens" (no known cost) or "nothing yet". */
+function spentWords(spent: Usage): string {
+  if (totalTokens(spent) === 0) return 'nothing yet';
+  return spent.cost_usd !== null
+    ? formatCost(spent.cost_usd)
+    : `${formatCount(totalTokens(spent))} tokens`;
+}
+
+/** Today's spending, against the daily allowance of the server's key when one applies. */
+function TodayLine({ today }: { today: DayUsage }) {
+  const limit =
+    today.max_cost_usd !== null
+      ? formatCost(today.max_cost_usd)
+      : today.max_tokens !== null
+        ? `${formatCount(today.max_tokens)}-token`
+        : null;
+  return (
+    <p className="mb-4 text-sm text-slate-300">
+      {limit
+        ? `Today: ${spentWords(today.spent)} of the ${limit} daily allowance of the server's key. It resets at midnight UTC; a key of your own (Providers) has no allowance.`
+        : `Today: ${spentWords(today.spent)}.`}
+    </p>
+  );
+}
+
+function Totals({ report }: { report: UsageReport }) {
   const cost = describeCost(report.usage);
   return (
     <>
@@ -57,6 +93,12 @@ function UsageSummary({ report }: { report: UsageReport }) {
       {!report.usage.cost_complete && (
         <p className="mt-3 text-xs text-slate-400">
           Some runs used models whose cost is unknown, so the real cost is higher.
+        </p>
+      )}
+      {totalTokens(report.other) > 0 && (
+        <p className="mt-3 text-xs text-slate-400">
+          Chats and planning: {formatCost(report.other.cost_usd ?? 0)} (
+          {formatCount(totalTokens(report.other))} tokens), counted above.
         </p>
       )}
       <h3 className="mt-8 mb-3 text-sm font-semibold text-slate-300">By pipeline</h3>

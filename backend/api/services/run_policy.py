@@ -73,6 +73,8 @@ _CEILINGS: dict[str, Callable[[Settings], float | None]] = {
     "RUN_MAX_COST_USD": lambda settings: settings.run_max_cost_usd,
     "RUN_MAX_TOKENS": lambda settings: settings.run_max_tokens,
     "CHAT_MAX_TOKENS": lambda settings: settings.chat_max_tokens,
+    "SERVER_KEY_DAILY_MAX_COST_USD": lambda settings: settings.server_key_daily_max_cost_usd,
+    "SERVER_KEY_DAILY_MAX_TOKENS": lambda settings: settings.server_key_daily_max_tokens,
 }
 
 

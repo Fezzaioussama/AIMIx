@@ -66,6 +66,13 @@ class BudgetExceeded(DomainError):
     status_code = 409
 
 
+class DailyLimitReached(DomainError):
+    """The account used up today's allowance of the server's key (SERVER_KEY_DAILY_MAX_*)."""
+
+    code = "daily_limit_reached"
+    status_code = 429
+
+
 class TooManyRuns(DomainError):
     """The account already has as many runs active as it may (RUN_MAX_ACTIVE_PER_USER)."""
 

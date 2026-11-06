@@ -1655,10 +1655,11 @@ pipeline; `502/503/504` for provider failures, as for generate.
 
 ### `GET /usage`
 
-What your own runs used and cost lately, in all and per pipeline. `?days=30`
-(1–366, default 30) counts the runs created in that many days back from now;
-anything else is a `400 validation_error`. Only your runs are ever counted.
-`200`:
+What your own runs, chats and planning used and cost lately, in all and per
+pipeline, and today's spending against the daily allowance of the server's key.
+`?days=30` (1–366, default 30) counts the runs created, and the chat and planner
+calls made, in that many days back from now; anything else is a
+`400 validation_error`. Only your own usage is ever counted. `200`:
 
 ```json
 {
@@ -1666,6 +1667,12 @@ anything else is a `400 validation_error`. Only your runs are ever counted.
   "since": "2026-09-24T10:00:00Z",
   "runs": 12,
   "usage": { "input_tokens": 100000, "output_tokens": 23456, "cost_usd": 1.234, "cost_complete": true },
+  "other": { "input_tokens": 4000, "output_tokens": 1200, "cost_usd": 0.03, "cost_complete": true },
+  "today": {
+    "spent": { "input_tokens": 2000, "output_tokens": 500, "cost_usd": 0.12, "cost_complete": true },
+    "max_cost_usd": 1.0,
+    "max_tokens": null
+  },
   "pipelines": [
     { "pipeline_id": 7, "pipeline_name": "Summarise then translate", "runs": 8, "usage": { "input_tokens": 90000, "output_tokens": 20000, "cost_usd": 1.2, "cost_complete": true } },
     { "pipeline_id": null, "pipeline_name": "Old idea", "runs": 1, "usage": { "input_tokens": 10000, "output_tokens": 3456, "cost_usd": 0.034, "cost_complete": true } }
@@ -1676,8 +1683,14 @@ anything else is a `400 validation_error`. Only your runs are ever counted.
 `usage` has the shape of a run's [`usage`](#post-pipelinesidruns). `pipelines`
 lists the costliest first. The runs of a pipeline that was deleted stay in the
 report under the name they had, with `pipeline_id: null` (deleted pipelines of
-the same name are listed together). Chat messages are not counted: only pipeline
-runs.
+the same name are listed together). `usage` adds runs, chats and planning
+together; `other` is the chats and planning alone (saved as usage events, one per
+model call). `today` is what the account spent since midnight UTC, with the
+allowance that bounds it while the account spends the server's key
+(`SERVER_KEY_DAILY_MAX_COST_USD`, `SERVER_KEY_DAILY_MAX_TOKENS`); both null for an
+account with a key of its own, or when no allowance is set. Past the allowance, a
+model call is refused with `429 daily_limit_reached` (a run then ends `failed`
+with that code; the chat and the planner answer it).
 
 ---
 

@@ -50,6 +50,16 @@ class RunSettings(BaseModel):
     # default (or a limit saved before the ceiling was lowered) is cut to it.
     run_max_cost_usd: CostLimit = Field(None, validation_alias="RUN_MAX_COST_USD")
     run_max_tokens: TokenLimit = Field(None, validation_alias="RUN_MAX_TOKENS")
+    # --- The server's key, lent to accounts without one (ALLOW_SERVER_LLM_KEY) -----
+    # What such an account may spend of it per UTC day, runs, chats and the planner
+    # together (api/services/account_usage.py); empty is no bound. Accounts with a
+    # key of their own are never bounded here.
+    server_key_daily_max_cost_usd: CostLimit = Field(
+        None, validation_alias="SERVER_KEY_DAILY_MAX_COST_USD"
+    )
+    server_key_daily_max_tokens: TokenLimit = Field(
+        None, validation_alias="SERVER_KEY_DAILY_MAX_TOKENS"
+    )
     # --- Scheduled runs (api/services/schedules) -------------------------------
     # The scheduler runs inside the API process; false keeps every schedule
     # saved but starts none (e.g. in a second process: only one may schedule).

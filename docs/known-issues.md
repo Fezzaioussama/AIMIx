@@ -183,19 +183,18 @@ made. So:
   reports it on only some calls, the step shows a floor and nothing marks it
   incomplete: a run's `cost_complete` turns `false` only when a step used
   tokens and has no cost at all.
-- Chat messages are metered (`CHAT_MAX_TOKENS` bounds one message) but their
-  usage is not saved, so `GET /usage` covers pipeline runs only, and the chat
-  agent's `run_pipeline` tool starts runs under the server's default limits
-  only. A provider that sends no usage in a stream (TogetherAI unless it does
-  so by default) leaves a chat message's calls uncounted. The planner
-  (generate, revise) is bounded per call (`LLM_PLANNER_MAX_OUTPUT_TOKENS`) but
-  not metered either.
+- Chat messages and planner calls are saved as usage events and count toward
+  `GET /usage` and the server key's daily allowance, but the chat agent's
+  `run_pipeline` tool still starts runs under the server's default limits only,
+  a provider that sends no usage in a stream (TogetherAI unless it does so by
+  default) leaves a chat message's calls uncounted, and a usage event records
+  the profile's default model even when the planner was asked on another
+  (`planner_model`).
 
 **Fix:** refuse a call that cannot fit the remaining budget, from an estimate of
 its prompt size and the model's maximum output (a pre-flight check in
 `RunMeter.check`); keep a `cost_complete` column on `run_steps` so a partial
-cost is visible; save chat and planner usage so `GET /usage` and per-account
-daily caps can count it; give the chat tool an optional limit.
+cost is visible; give the chat tool an optional limit.
 
 ### 9. Scheduled runs: what the first version leaves out
 

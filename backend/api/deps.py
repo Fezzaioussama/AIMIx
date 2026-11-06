@@ -14,17 +14,18 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from api.exceptions import NotAuthenticated
-from api.models import User
+from api.models import UsageKind, User
 from api.security import SecretBox, TokenSigner, secret_box_for
 from api.services import accounts, llm_settings
 from api.services.account_data import workspace_of
+from api.services.account_usage import account_meter, calls_of
 from api.services.agent import get_chat_agent
 from api.services.chat import ChatAgent
 from api.services.chat_tools.scope import ChatScope
 from api.services.files.disk import disk_reserve
 from api.services.files.service import UploadPolicy
 from api.services.files.storage import WorkspaceStorage
-from api.services.llm import LLMProfile, get_planner_provider, get_transcriber
+from api.services.llm import LLMProfile, get_planner_provider, get_transcriber, planner_metering
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.run_executor import RunExecutor
@@ -38,6 +39,7 @@ from config.settings import Settings, get_settings
 from llm.base import LLMProvider
 from llm.speech import PROVIDER as SPEECH_PROVIDER
 from llm.speech import Transcriber
+from llm.usage import UsageMeter
 
 
 def db_session(request: Request) -> Iterator[Session]:
@@ -158,9 +160,19 @@ Profile = Annotated[LLMProfile, Depends(llm_profile)]
 ProviderFactory = Callable[[], LLMProvider]
 
 
-def provider_factory(profile: Profile) -> ProviderFactory:
+def planner_meter(request: Request, user: CurrentUser, profile: Profile) -> UsageMeter:
+    """Hears the planner's calls for the account: the day's allowance of the server's
+    key, and the usage events (``account_usage``)."""
+    calls = calls_of(UsageKind.PLANNER, profile.default_model)
+    return account_meter(request.app.state.database, user.id, profile, calls)
+
+
+PlannerMeter = Annotated[UsageMeter, Depends(planner_meter)]
+
+
+def provider_factory(profile: Profile, meter: PlannerMeter) -> ProviderFactory:
     """The planner's provider, built only once the request body is valid."""
-    return partial(get_planner_provider, profile)
+    return partial(get_planner_provider, profile, planner_metering(meter, profile))
 
 
 Providers = Annotated[ProviderFactory, Depends(provider_factory)]
@@ -275,7 +287,10 @@ def agent_factory(
     run_pipeline tool records runs like the Runs screen does, and its schedule
     tools use the signed-in user's own schedules."""
     database = request.app.state.database
-    scope = ChatScope(database, user, profile, context.runs, context.agents, schedules)
+    calls = calls_of(UsageKind.PLANNER, profile.default_model)
+    metering = planner_metering(account_meter(database, user.id, profile, calls), profile)
+    planner = partial(get_planner_provider, metering=metering)
+    scope = ChatScope(database, user, profile, context.runs, context.agents, schedules, planner)
     return partial(get_chat_agent, scope)
 
 

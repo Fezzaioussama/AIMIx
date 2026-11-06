@@ -1,15 +1,21 @@
-"""The accounts' part of ``deps.py``: the mail sender and the password-reset flow.
-Tests swap the sender through ``app.dependency_overrides`` like any other dependency."""
+"""The accounts' part of ``deps.py``: the mail sender, the password-reset flow and
+the account's usage view. Tests swap these through ``app.dependency_overrides`` like
+any other dependency."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends
+from sqlalchemy.orm import Session
 
-from api.deps import AppSettings, DbSession, Signer
+from api.deps import AppSettings, CurrentUser, DbSession, Profile, Signer
+from api.models import User
+from api.services.account_usage import daily_allowance
 from api.services.email import EmailSender, email_sender
 from api.services.password_reset import ResetFlow, reset_policy
+from api.services.run_budget import NO_BUDGET, RunBudget
 
 
 def mail_sender(settings: AppSettings) -> EmailSender:
@@ -28,3 +34,23 @@ def password_reset_flow(
 
 
 PasswordResets = Annotated[ResetFlow, Depends(password_reset_flow)]
+
+
+@dataclass(frozen=True)
+class UsageAccess:
+    """The signed-in account's usage: its storage, and the day's allowance of the
+    server's key that applies to it (none with a key of its own)."""
+
+    session: Session
+    user: User
+    allowance: RunBudget
+
+
+def usage_access(
+    session: DbSession, user: CurrentUser, profile: Profile, settings: AppSettings
+) -> UsageAccess:
+    allowance = NO_BUDGET if profile.api_key else daily_allowance(settings)
+    return UsageAccess(session, user, allowance)
+
+
+UsageView = Annotated[UsageAccess, Depends(usage_access)]

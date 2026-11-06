@@ -54,14 +54,29 @@ class PipelineUsageOut(BaseModel):
     usage: UsageOut
 
 
+class DayUsageOut(BaseModel):
+    """What the account spent today (UTC), and its allowance of the server's key."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    spent: UsageOut
+    #: The bound while the account spends the server's key; null with its own key, or none.
+    max_cost_usd: float | None
+    max_tokens: int | None
+
+
 class UsageReportOut(BaseModel):
-    """What the user's runs started in the last ``days`` days used."""
+    """What the user's runs, chats and planning of the last ``days`` days used."""
 
     model_config = ConfigDict(from_attributes=True)
 
     days: int
     since: UtcDateTime
     runs: int
+    #: Runs, chats and planning together.
     usage: UsageOut
+    #: The chats and planning alone.
+    other: UsageOut
     #: Costliest first.
     pipelines: list[PipelineUsageOut]
+    today: DayUsageOut

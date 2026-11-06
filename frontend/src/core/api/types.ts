@@ -216,14 +216,26 @@ export interface PipelineUsage {
   usage: Usage;
 }
 
-/** GET /api/usage: what the account's runs of the last `days` days used. */
+/** What the account spent today (UTC), and its allowance of the server's key. */
+export interface DayUsage {
+  spent: Usage;
+  /** The bound while the account spends the server's key; null with a key of its own, or none. */
+  max_cost_usd: number | null;
+  max_tokens: number | null;
+}
+
+/** GET /api/usage: what the account's runs, chats and planning of the last `days` days used. */
 export interface UsageReport {
   days: number;
   since: string;
   runs: number;
+  /** Runs, chats and planning together. */
   usage: Usage;
+  /** The chats and planning alone. */
+  other: Usage;
   /** Costliest first. */
   pipelines: PipelineUsage[];
+  today: DayUsage;
 }
 
 // Planning payloads (POST /api/pipelines/generate and /revise) live in planningTypes.ts.

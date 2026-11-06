@@ -287,3 +287,50 @@ def test_metering_a_model_keeps_its_own_callbacks_and_leaves_the_original_alone(
     assert original.callbacks is not None and len(original.callbacks) == 1
     assert Mine.calls == 2
     assert callback.total.total_tokens == 3000
+
+
+def test_a_completion_is_priced_like_an_answer() -> None:
+    from types import SimpleNamespace
+
+    from llm.usage import completion_usage
+
+    usage = SimpleNamespace(prompt_tokens=1000, completion_tokens=500, cost=0.01)
+    assert completion_usage(SimpleNamespace(usage=usage), PRICED) == TokenUsage.of(1000, 500, 0.01)
+    counted = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=1000, completion_tokens=500))
+    assert completion_usage(counted, PRICED) == TokenUsage.of(1000, 500, 0.002)
+    assert completion_usage(counted, UNPRICED) == TokenUsage.of(1000, 500, None)
+    assert completion_usage(SimpleNamespace(), PRICED) == NO_USAGE
+
+
+class Counting:
+    def __init__(self) -> None:
+        self.before = 0
+        self.after: list[TokenUsage] = []
+
+    def before_call(self) -> None:
+        self.before += 1
+
+    def after_call(self, usage: TokenUsage) -> None:
+        self.after.append(usage)
+
+
+class Refusing(Counting):
+    def before_call(self) -> None:
+        raise RuntimeError("no")
+
+
+def test_chained_meters_each_hear_every_call_and_the_first_refusal_stops_it() -> None:
+    from llm.usage import UNMETERED, chained
+
+    first, second = Counting(), Counting()
+    both = chained(first, UNMETERED, second)
+    both.before_call()
+    both.after_call(TokenUsage.of(1, 2, None))
+
+    assert (first.before, second.before) == (1, 1)
+    assert first.after == second.after == [TokenUsage.of(1, 2, None)]
+    assert chained(UNMETERED, first) is first
+    stopped = chained(Refusing(), second)
+    with pytest.raises(RuntimeError):
+        stopped.before_call()
+    assert second.before == 1

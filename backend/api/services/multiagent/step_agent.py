@@ -19,6 +19,7 @@ from api.db import Database
 from api.exceptions import UpstreamResponseInvalid
 from api.models import User
 from api.repositories import runs as run_repository
+from api.services.account_usage import account_meter, calls_of
 from api.services.agent_prompts import AgentRole, step_agent_system_prompt
 from api.services.agent_runtime import (
     AGENT_FAILURES,
@@ -36,7 +37,7 @@ from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model, model_info
 from config.settings import Settings, get_settings
 from llm.catalog import ModelInfo
-from llm.usage import UsageCallback, metered
+from llm.usage import UNMETERED, UsageCallback, UsageMeter, chained, metered
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,8 @@ class StepServices:
 
     info: ModelInfo | None = None
     gate: ApprovalGate | None = None
+    #: Hears the step's calls for the account: the day's allowance of the server's key.
+    account: UsageMeter = UNMETERED
 
 
 NO_SERVICES = StepServices()
@@ -106,11 +109,13 @@ class LangGraphStepAgent:
         self._limits = limits
         self._info = services.info
         self._gate = services.gate
+        self._account = services.account
 
     async def reply(self, task: AgentTask) -> AgentOutcome:
         started = monotonic()
-        # Counts every model call of this step, and lets the task's meter refuse one.
-        usage = UsageCallback(self._info, task.meter)
+        # Counts every model call of this step; the task's meter (the run's budget)
+        # and the account's (its day) may each refuse one.
+        usage = UsageCallback(self._info, chained(task.meter, self._account))
         try:
             with anyio.fail_after(self._limits.timeout_seconds):
                 resolved = await resolve_tools(
@@ -159,6 +164,7 @@ class PipelineAgentGenerator:
     ) -> None:
         self._database = database
         self._user = user
+        self._profile = profile
         self._default_model = profile.default_model
         self._dependencies = dependencies or StepAgentDependencies(
             partial(get_agent_model, profile), get_settings(), partial(model_info, profile)
@@ -205,6 +211,9 @@ class PipelineAgentGenerator:
             StepServices(
                 self._dependencies.model_info(task.model),
                 run_gate(self._database, task.run_step, settings),
+                account_meter(
+                    self._database, self._user.id, self._profile, calls_of(None, task.model)
+                ),
             ),
         )
         return await agent.reply(task)
