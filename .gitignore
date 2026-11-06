@@ -22,6 +22,7 @@ settings.local.py
 # .claude/settings.json stays tracked on purpose.
 *.local
 *.local.*
+aimix-agent/
 
 # Key material and credential dumps. Deliberately broad: a mis-ignored source
 # file is a nuisance, a committed private key is an incident.
