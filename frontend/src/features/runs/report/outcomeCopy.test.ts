@@ -226,6 +226,21 @@ describe('OUTCOME_COPY', () => {
         'The server restarted while your team was working. Resume keeps Research and starts again from Draft and Summary.',
     });
   });
+
+  it('interrupted, and not resumed by the server', () => {
+    const run = makeRun({
+      status: 'interrupted',
+      ...ENDED,
+      error: {
+        code: 'provider_not_configured',
+        detail: 'Not resumed after the restart: No API key is set for openrouter.',
+      },
+      steps: [runStep(1, 'cancelled')],
+    });
+    expect(words(run).sentence).toBe(
+      'The server restarted while your team was working. Not resumed after the restart: No API key is set for openrouter. Nothing was finished yet, so Resume starts again from the beginning.',
+    );
+  });
 });
 
 describe('failureReason', () => {

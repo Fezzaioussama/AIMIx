@@ -43,6 +43,9 @@ class Schedule(Base):
     ``max_cost_usd`` / ``max_tokens`` its limits (None: the server's default).
     ``next_run_at`` (UTC) is None while the schedule is off. ``last_error``
     says why its latest occurrence could not start; "" means it started.
+    ``claimed_occurrence`` is the occurrence a tick claimed and has not settled
+    yet (its run not saved, not passed over, not failed), so a restart can
+    start the one a process died on; None otherwise.
     Deleting the pipeline deletes its schedules; their runs stay.
     """
 
@@ -65,6 +68,7 @@ class Schedule(Base):
     max_tokens: Mapped[int | None]
     enabled: Mapped[bool] = mapped_column(default=True)
     next_run_at: Mapped[datetime | None] = mapped_column(index=True)
+    claimed_occurrence: Mapped[datetime | None]
     last_error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 

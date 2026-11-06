@@ -34,6 +34,17 @@ def of_schedule(session: Session, schedule_id: int) -> int | None:
     return session.scalar(query.order_by(Run.id.desc()).limit(1))
 
 
+def interrupted_since(session: Session, since: datetime) -> list[tuple[int, int]]:
+    """The id and owner id of every interrupted run that ended at or after
+    ``since``, oldest first: what a startup may resume."""
+    query = (
+        select(Run.id, Run.user_id)
+        .where(Run.status == RunStatus.INTERRUPTED, Run.finished_at >= since)
+        .order_by(Run.id)
+    )
+    return [(run_id, user_id) for run_id, user_id in session.execute(query)]
+
+
 def interrupt_active(session: Session, now: datetime) -> int:
     """Mark the runs a previous process left queued, running or waiting as
     interrupted, their running steps as cancelled and their pending approvals

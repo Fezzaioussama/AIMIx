@@ -129,8 +129,9 @@ def _changed(session: Session, statement: Any) -> int:
 
 def claim(session: Session, schedule_id: int, seen: datetime, following: datetime) -> bool:
     """Compare-and-set: move the schedule from the occurrence ``seen`` to
-    ``following``, only while it is on and still due at ``seen``. True for the
-    one caller that moved it, which then starts that occurrence."""
+    ``following``, only while it is on and still due at ``seen``, and keep
+    ``seen`` as its claimed occurrence until ``set_last_error`` settles it. True
+    for the one caller that moved it, which then starts that occurrence."""
     claimed = _changed(
         session,
         update(Schedule)
@@ -139,15 +140,38 @@ def claim(session: Session, schedule_id: int, seen: datetime, following: datetim
             Schedule.enabled.is_(True),
             Schedule.next_run_at == seen,
         )
-        .values(next_run_at=following),
+        .values(next_run_at=following, claimed_occurrence=seen),
     )
     session.commit()
     return claimed == 1
 
 
+def claimed(session: Session) -> list[Schedule]:
+    """Every schedule holding a claimed occurrence that was never settled: a
+    process stopped between claiming it and saving its run. Oldest claim first."""
+    query = (
+        select(Schedule)
+        .where(Schedule.claimed_occurrence.is_not(None))
+        .order_by(Schedule.claimed_occurrence, Schedule.id)
+    )
+    return list(session.scalars(query))
+
+
+def run_since(session: Session, schedule_id: int, since: datetime) -> bool:
+    """Whether a run of the schedule was saved at or after ``since``."""
+    query = select(Run.id).where(Run.schedule_id == schedule_id, Run.created_at >= since)
+    return session.scalar(query.limit(1)) is not None
+
+
 def set_last_error(session: Session, schedule_id: int, error: str) -> None:
-    """Why the latest occurrence could not start; "" once one has."""
-    _changed(session, update(Schedule).where(Schedule.id == schedule_id).values(last_error=error))
+    """Why the latest occurrence could not start; "" once one has. Either way
+    the occurrence is settled: its claim is released."""
+    _changed(
+        session,
+        update(Schedule)
+        .where(Schedule.id == schedule_id)
+        .values(last_error=error, claimed_occurrence=None),
+    )
     session.commit()
 
 

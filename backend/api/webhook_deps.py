@@ -12,7 +12,7 @@ from fastapi import Depends, Request
 from api.deps import AppSettings, CurrentUser, DbSession, Runs, Secrets
 from api.services.deliveries.sender import SendPolicy, send_policy
 from api.services.deliveries.service import DeliveryAccess
-from api.services.schedules.scheduler import ProfileAgents
+from api.services.owner_agents import ProfileAgents
 from api.services.webhooks.calls import CallPolicy, WebhookCalls
 from api.services.webhooks.service import WebhookAccess
 

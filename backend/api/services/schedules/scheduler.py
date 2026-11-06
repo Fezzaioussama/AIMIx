@@ -7,12 +7,15 @@ moves the schedule to its first time after now: of two processes, only the one
 whose claim applied starts the run, and a schedule overdue after downtime runs
 once, not once per missed time. A claimed occurrence starts like a manual run
 (``RunService.start``), with the owner's LLM profile and a
-``PipelineAgentGenerator``. When it cannot start (no API key, inputs the
-pipeline no longer takes), the reason is saved on the schedule and logged, and
-the schedule waits for its next time. So does an occurrence that comes while
-the schedule's previous run is still active: it is skipped, not queued behind
-it, and the schedule says why. An occurrence is started at most once: a
-process that dies between a claim and its run loses that occurrence.
+``PipelineAgentGenerator`` (``owner_agents.ProfileAgents``). When it cannot
+start (no API key, inputs the pipeline no longer takes), the reason is saved on
+the schedule and logged, and the schedule waits for its next time. So does an
+occurrence that comes while the schedule's previous run is still active: it is
+skipped, not queued behind it, and the schedule says why. The claim stays on
+the schedule (``claimed_occurrence``) until its run is saved, or it is passed
+over or fails to start, so an occurrence a process died on is not lost: the
+first tick after the restart starts it (``replay``), unless a run of the
+schedule was saved since.
 """
 
 from __future__ import annotations
@@ -20,23 +23,17 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy.orm import Session
-
 from api.db import Database
 from api.exceptions import DomainError, NotFound
-from api.models import Run, Schedule, User
+from api.models import Run, Schedule
 from api.repositories import active_runs, users
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import schedules as repository
-from api.security import SecretBox, secret_box_for
-from api.services import llm_settings
-from api.services.llm import provider_config
-from api.services.multiagent.contracts import StepAgent
-from api.services.multiagent.step_agent import PipelineAgentGenerator
+from api.security import secret_box_for
+from api.services.owner_agents import OwnerAgents, ProfileAgents
 from api.services.run_executor import RunExecutor
 from api.services.run_policy import run_policy
 from api.services.run_recorder import SERVER_ERROR_DETAIL, utcnow
@@ -50,29 +47,6 @@ logger = logging.getLogger(__name__)
 Clock = Callable[[], datetime]
 
 
-class OwnerAgents(Protocol):
-    """Builds the step agent a schedule's run uses, for the schedule's owner."""
-
-    def __call__(self, session: Session, owner: User) -> StepAgent: ...
-
-
-@dataclass(frozen=True)
-class ProfileAgents:
-    """A schedule owner's step agent, built as a request of theirs builds one
-    (``api/deps.pipeline_agent_factory``): their LLM profile, from the Settings
-    page or else the environment, and a ``PipelineAgentGenerator``."""
-
-    database: Database
-    box: SecretBox
-
-    def __call__(self, session: Session, owner: User) -> StepAgent:
-        profile = llm_settings.resolve_profile(session, owner, self.box)
-        # Fail fast (§6): with no key at all the run could only fail, so the
-        # occurrence is reported on the schedule instead of as a failed run.
-        provider_config(profile)
-        return PipelineAgentGenerator(self.database, owner, profile)
-
-
 class Scheduler:
     """Starts the run of every schedule that is due, once per occurrence."""
 
@@ -83,19 +57,44 @@ class Scheduler:
         self._runs = runs
         self._agents = agents
         self._clock = clock
+        self._replayed = False
 
     def tick(self) -> int:
-        """Start what is due now; how many runs started."""
+        """Start what is due now; how many runs started. The first tick also
+        starts the occurrences a stopped process claimed and never started."""
         now = self._clock()
         with self._database.session() as session:
+            claimed: list[Schedule] = [] if self._replayed else repository.claimed(session)
             due = repository.due(session, now)
-        return sum(self.fire(schedule, now) for schedule in due)
+        replayed = sum(self.replay(schedule) for schedule in claimed)
+        self._replayed = True
+        return replayed + sum(self.fire(schedule, now) for schedule in due)
 
     def fire(self, schedule: Schedule, now: datetime) -> bool:
         """Start the run of one due occurrence, as seen at ``now``: True when
         this call did. When it cannot start, why is saved on the schedule."""
+        return self._guarded(schedule, lambda: self._claim_and_start(schedule, now))
+
+    def replay(self, schedule: Schedule) -> bool:
+        """Start the occurrence a stopped process claimed but never started: True
+        when this call did. A run of the schedule saved since (the process died
+        just after saving it), or a schedule switched off since, only settles
+        the claim."""
+        slot = schedule.claimed_occurrence
+        if slot is None:
+            return False
+        with self._database.session() as session:
+            saved = repository.run_since(session, schedule.id, slot)
+        if saved or not schedule.enabled:
+            self._record(schedule.id, "")
+            return False
+        logger.warning("schedule.replayed schedule_id=%s slot=%s", schedule.id, slot.isoformat())
+        return self._guarded(schedule, lambda: self._start_claimed(schedule, slot))
+
+    def _guarded(self, schedule: Schedule, start: Callable[[], bool]) -> bool:
+        """Run ``start``; when it cannot start the run, why is saved on the schedule."""
         try:
-            return self._claim_and_start(schedule, now)
+            return start()
         except DomainError as error:
             logger.warning(
                 "schedule.start_failed schedule_id=%s pipeline_id=%s code=%s",
@@ -121,13 +120,19 @@ class Scheduler:
         with self._database.session() as session:
             if not repository.claim(session, schedule.id, seen, following):
                 return False
+        return self._start_claimed(schedule, seen)
+
+    def _start_claimed(self, schedule: Schedule, slot: datetime) -> bool:
+        """Start the run of the occurrence ``slot``, whose claim this process holds,
+        unless the schedule's previous run is still active: then it is passed over."""
+        with self._database.session() as session:
             previous = active_runs.of_schedule(session, schedule.id)
         if previous is not None:
-            return self._skip(schedule, seen, previous)
+            return self._skip(schedule, slot, previous)
         run = self._start(schedule.id)
         self._record(schedule.id, "")
         logger.info(
-            "schedule.fired schedule_id=%s run_id=%s slot=%s", schedule.id, run.id, seen.isoformat()
+            "schedule.fired schedule_id=%s run_id=%s slot=%s", schedule.id, run.id, slot.isoformat()
         )
         return True
 
@@ -161,6 +166,8 @@ class Scheduler:
         return self._runs.start(owner, pipeline, start, agent).run
 
     def _record(self, schedule_id: int, error: str) -> None:
+        """Settle the occurrence: its claim is released, and ``error`` says why it
+        could not start ("" when it did)."""
         with self._database.session() as session:
             repository.set_last_error(session, schedule_id, error)
 

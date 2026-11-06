@@ -1141,7 +1141,8 @@ A run is `queued` (waiting for a free slot: at most `RUN_MAX_CONCURRENT` runs
 execute at once), `running`, `waiting` (running, but a tool call waits for your
 approval; see [Approvals](#approvals)), then `succeeded`, `failed`, `cancelled`
 (you stopped it) or `interrupted` (the server stopped or restarted during the
-run). `queued`, `running` and `waiting` are active. Each step is `pending`,
+run; when it is back it resumes the run by itself, or `error_detail` says why
+it could not). `queued`, `running` and `waiting` are active. Each step is `pending`,
 `running`, `succeeded`, `failed`, `cancelled` or `skipped` (its
 [condition](#conditions-and-review-loops) did not hold, so it did not run); the
 step that asked stays `running` while its run is `waiting`.

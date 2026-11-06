@@ -174,7 +174,15 @@ a cancelled job records `interrupted`, unless its owner stopped it first (then
 it stays `cancelled`). On startup, `interrupt_abandoned_runs` marks anything a
 previous process left `queued`, `running` or `waiting` (a crash, a hard kill)
 as `interrupted`, and its pending approvals as `expired`. Both can be resumed;
-a resumed run asks again.
+a resumed run asks again. With `RUN_AUTO_RESUME` (the default), the startup
+then resumes them itself (`run_recovery.StartupRecovery`, the lifespan's first
+step): every run interrupted within `RUN_AUTO_RESUME_MAX_AGE_SECONDS` is queued
+again through `RunService.resume`, on its owner's own key
+(`owner_agents.ProfileAgents`, as a schedule's run starts), so a deploy costs
+nobody their work. One that cannot be resumed (no key, over its spending limit,
+too many active runs) stays `interrupted` with the reason in its `error_detail`
+("Not resumed after the restart: …"), and is tried again at the next startup;
+an older one is left to its owner.
 
 **Resume** (`POST /runs/<id>/resume`, from `failed`, `cancelled` or
 `interrupted`): the run is queued again with the requester's current model and
@@ -357,8 +365,12 @@ sequenceDiagram
   by the owner that changed the schedule's next time makes the claim fail. A
   schedule that is overdue after downtime runs **once**, not once per missed
   time, because the claim jumps to the first time after *now*. The claim comes
-  before the start, so a process that dies in between loses that one occurrence
-  rather than starting it twice.
+  before the start and stays on the schedule (`claimed_occurrence`) until the
+  occurrence is settled (its run saved, or it passed over or failed to start),
+  so a process that dies in between does not lose it: the first tick after the
+  restart starts it (`Scheduler.replay`), unless a run of the schedule was saved
+  since the slot (the process died just after saving it) or the schedule was
+  switched off meanwhile; then the claim is only released.
 - **The same path as a manual run.** `Scheduler._start` loads what the schedule
   holds at that moment (its inputs may have been edited since the tick began),
   resolves the owner's LLM profile with `llm_settings.resolve_profile` and builds

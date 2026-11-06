@@ -33,6 +33,14 @@ class RunSettings(BaseModel):
     run_shutdown_grace_seconds: float = Field(
         5.0, gt=0, validation_alias="RUN_SHUTDOWN_GRACE_SECONDS"
     )
+    # At startup, the runs a stopped process left interrupted are queued again by
+    # themselves (api/services/run_recovery.py), as their owners would resume
+    # them; false leaves them to their owners. Only runs interrupted within this
+    # many seconds are: older ones wait for their owners.
+    run_auto_resume: bool = Field(True, validation_alias="RUN_AUTO_RESUME")
+    run_auto_resume_max_age_seconds: float = Field(
+        86_400.0, gt=0, validation_alias="RUN_AUTO_RESUME_MAX_AGE_SECONDS"
+    )
     # --- Spending limits (api/services/run_budget.py); empty is none ------------
     # The limits of a run whose starter sets none. A model with no known price
     # never reaches a cost limit: only a token limit bounds it.

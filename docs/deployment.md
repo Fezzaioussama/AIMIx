@@ -377,8 +377,10 @@ the rest wait queued.
   `SCHEDULER_ENABLED=false`.
 - **Nothing runs while the container is down.** A deploy stops the old container
   before it starts the new one. A schedule that came due meanwhile runs **once**
-  when the app is back (within one tick), not once per missed time. A run that a
-  redeploy interrupts is *Interrupted* and can be resumed, like any other.
+  when the app is back (within one tick), not once per missed time, and an
+  occurrence the old container had claimed but not started is started by the
+  first tick. A run that a redeploy interrupts is *Interrupted* and resumed by
+  the new container (`RUN_AUTO_RESUME`), like any other.
 - **Runs use the owner's own key.** Each scheduled run starts with its owner's LLM
   provider and key (the Settings page, else the server's); an account with none
   gets the reason on the schedule ("it could not start: No API key is set…") and
@@ -394,8 +396,9 @@ the rest wait queued.
   would be accepted ("Unknown time zone").
 - **Logs** carry ids and outcomes only, never inputs or outputs:
   `scheduler.started`, `schedule.fired` (schedule, run and slot),
-  `schedule.start_failed` (with the error code), `schedule.fire_crashed` and
-  `scheduler.tick_failed` (with a traceback).
+  `schedule.replayed` (an occurrence the previous container claimed but never
+  started), `schedule.start_failed` (with the error code), `schedule.fire_crashed`
+  and `scheduler.tick_failed` (with a traceback).
 
 ### Limits of this setup
 
@@ -404,14 +407,18 @@ the rest wait queued.
   `postgresql+psycopg://` `DATABASE_URL`, and is not covered by the test suite.
 - **Brief downtime on deploy.** Railway stops the old container before starting
   the new one when a volume is attached.
-- **A redeploy interrupts the runs in progress.** Pipeline runs execute in the
-  API process. On shutdown each active run is marked *interrupted* (within
-  `RUN_SHUTDOWN_GRACE_SECONDS`, default 5, well inside the platform's stop
-  timeout); after a crash or a hard kill, the next start marks them instead.
-  The steps they finished are kept, and **Resume** on the Runs screen (or
-  `POST /api/runs/<id>/resume`) continues each one where it stopped. Runs still
-  waiting for a slot, or waiting for an approval, are interrupted the same way
-  (their pending requests expire, and a resumed run asks again).
+- **A redeploy interrupts the runs in progress, and the next start resumes
+  them.** Pipeline runs execute in the API process. On shutdown each active run
+  is marked *interrupted* (within `RUN_SHUTDOWN_GRACE_SECONDS`, default 5, well
+  inside the platform's stop timeout); after a crash or a hard kill, the next
+  start marks them instead. The steps they finished are kept, and the next start
+  queues each one again where it stopped (`RUN_AUTO_RESUME`, on; only runs
+  interrupted within `RUN_AUTO_RESUME_MAX_AGE_SECONDS`, a day), as **Resume** on
+  the Runs screen (or `POST /api/runs/<id>/resume`) would; a step that was in
+  progress is done again. A run that cannot be resumed (its owner has no key)
+  says so in its detail and waits for its owner. Runs still waiting for a slot,
+  or waiting for an approval, are interrupted the same way (their pending
+  requests expire, and a resumed run asks again).
 - **One Uvicorn worker.** Runs are queued per process (at most
   `RUN_MAX_CONCURRENT` at once), and each worker would run its own scheduler. The
   image starts a single worker; do not add `--workers`, or a starting worker would
@@ -449,7 +456,7 @@ the rest wait queued.
 | PDFs show boxes instead of letters; log has `artifacts.pdf_font_unavailable` | No TrueType font at `PDF_FONT_PATH` (image built without `fonts-dejavu-core`, or a custom path) | Build with the repository `Dockerfile`, or point `PDF_FONT_PATH` / `PDF_BOLD_FONT_PATH` at a font that covers your users' scripts |
 | Runs stop with "Spending limit reached" | The run's limit, or `RUN_DEFAULT_MAX_COST_USD` for a run with none, was reached | Raise the limit when resuming the run (Runs screen, or `POST /api/runs/<id>/resume` with `max_cost_usd`), or raise or unset the variable |
 | Starting a run answers `too_many_runs` | The account already has `RUN_MAX_ACTIVE_PER_USER` runs queued, running or waiting (a schedule says so in its last error) | Wait for one to end or stop one, or raise the variable |
-| Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) | Resume them from the Runs screen; finished steps are kept |
+| Runs show *Interrupted* after a deploy | The process stopped while they ran (logged as `run.finished … status=interrupted` or `run.interrupted_on_startup`) and the new one did not resume them: `RUN_AUTO_RESUME=false`, they were older than `RUN_AUTO_RESUME_MAX_AGE_SECONDS`, or `run.not_resumed_on_startup` says why (no key) | Resume them from the Runs screen; finished steps are kept |
 | A schedule never runs; no `scheduler.started` line in the log | `SCHEDULER_ENABLED=false`, or the schedule is off (its "Next run" says so) | Remove the variable; switch the schedule on |
 | A schedule says "it could not start: No API key is set for …" | Its owner saved no key and the server has none | The owner adds a key on the Settings page; the schedule's next time starts normally |
 | Creating a schedule fails with "Unknown time zone" for every zone | The image has no time zone database | Build with the repository `Dockerfile`, or install `tzdata` |

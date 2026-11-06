@@ -15,8 +15,9 @@ from api.services import llm_settings
 from api.services.catalog import default_model_id
 from api.services.llm_settings import ProviderChoice, SettingsUpdate
 from api.services.multiagent.step_agent import PipelineAgentGenerator
+from api.services.owner_agents import ProfileAgents
 from api.services.run_recorder import SERVER_ERROR_DETAIL
-from api.services.schedules.scheduler import ProfileAgents, Scheduler
+from api.services.schedules.scheduler import Scheduler
 from tests.conftest import TEST_SETTINGS, FakeProvider
 from tests.schedules.support import (
     NOW,

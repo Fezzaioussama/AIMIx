@@ -169,7 +169,8 @@ run executes on a background event loop, at most `RUN_MAX_CONCURRENT` at once,
 and writes each step as it starts and finishes, so `GET /api/runs/<id>` shows
 progress live. A run can be stopped, resumed from its first unfinished stage
 with its own snapshot (finished steps are kept), and deleted once it has ended;
-a restart marks runs in progress *interrupted*, ready to resume. The older
+a restart marks runs in progress *interrupted* and resumes them itself when the
+app is back. The older
 `POST /api/pipelines/<id>/run` still answers with the whole result: it starts
 the same recorded run and waits for it.
 

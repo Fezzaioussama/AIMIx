@@ -176,6 +176,13 @@ export const OUTCOME_COPY: Record<OutcomeKind, (facts: OutcomeFacts) => OutcomeW
   stopped: ({ run }) => ({ heading: 'You stopped the run', sentence: keptSentence(run) }),
   interrupted: ({ run }) => ({
     heading: 'The run was interrupted',
-    sentence: `The server restarted while your team was working. ${keptSentence(run)}`,
+    // The server resumes it by itself when it is back; when it could not, the detail says why.
+    sentence: [
+      'The server restarted while your team was working.',
+      run.error?.detail.trim() ?? '',
+      keptSentence(run),
+    ]
+      .filter((part) => !!part)
+      .join(' '),
   }),
 };

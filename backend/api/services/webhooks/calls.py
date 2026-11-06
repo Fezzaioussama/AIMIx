@@ -1,6 +1,6 @@
 """Calls of a webhook by another app (``POST /hooks/<token>``, public): find it by its
 token, check its allowance, and start a run of its pipeline as its owner, the way a
-schedule does (``schedules/scheduler.ProfileAgents``)."""
+schedule does (``owner_agents.ProfileAgents``)."""
 
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ from api.db import Database
 from api.exceptions import DomainError, NotFound
 from api.models import Webhook
 from api.repositories import webhooks as repository
+from api.services.owner_agents import OwnerAgents
 from api.services.rate_limits import RateLimitRequest, enforce
 from api.services.run_recorder import utcnow
 from api.services.runs import RunService
-from api.services.schedules.scheduler import OwnerAgents
 from api.services.webhooks.inputs import call_start
 from api.services.webhooks.service import token_hash
 

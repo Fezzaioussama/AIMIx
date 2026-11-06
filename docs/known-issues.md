@@ -154,13 +154,14 @@ the database for one the previous process left) would mark the first process's
 active runs as interrupted, while they go on executing there. The guard that
 keeps a resume from overlapping a stopped attempt still winding down
 (`RunExecutor.settled`) is in memory too. A restart interrupts the runs in
-progress; they have to be resumed by hand. Run progress is polled (every 1.5 s
-per open run), not pushed.
+progress; the next startup resumes them by itself (`RUN_AUTO_RESUME`), but the
+work of a step in progress is done again, and a run interrupted longer ago
+than `RUN_AUTO_RESUME_MAX_AGE_SECONDS`, or whose owner has no key, waits for
+its owner. Run progress is polled (every 1.5 s per open run), not pushed.
 
 **Fix:** when more than one process is needed, move execution to a worker
 behind a shared queue (the `RunExecutor` port is the seam), scope recovery to
-the worker that owned a run, optionally resume interrupted runs
-automatically, and push progress with server-sent events.
+the worker that owned a run, and push progress with server-sent events.
 
 ### 8. A run's spending limit is checked between model calls
 
@@ -201,10 +202,12 @@ Schedules (`api/services/schedules/`) start runs from a thread inside the API
 process, so they share every limit of entry 7 above: one process, nothing runs
 while it is down. Beyond that:
 
-- **At most once, not at least once.** The scheduler claims an occurrence (moves
-  `next_run_at`) *before* it starts the run, so two processes never start the same
-  one. A process that dies between the claim and the run being saved loses that
-  one occurrence, with no trace on the schedule.
+- **A lost occurrence is replayed at the next start only.** The scheduler claims
+  an occurrence (moves `next_run_at`) *before* it starts the run, so two processes
+  never start the same one, and keeps the claim until the run is saved, so a
+  process that dies in between starts it at its first tick after the restart. A
+  run saved just before the death is not started twice; a "run now" of the same
+  schedule meanwhile counts as that run too.
 - **Missed times are not replayed.** After downtime an overdue schedule runs once,
   not once per missed time, and there is no "catch up" option. A run starts up to
   `SCHEDULER_TICK_SECONDS` (30 s) after its time.
@@ -239,8 +242,7 @@ while it is down. Beyond that:
   hourly follows real hours) are documented in
   [architecture.md](architecture.md#scheduled-runs).
 
-**Fix:** to lose no occurrence, record the claimed occurrence and create the run
-in one transaction (or keep an `occurrences` table and start from it); add an
+**Fix:** add an
 "only when the last run is finished" option and a `schedule_id` filter on
 `GET /api/runs`; keep the last few start failures, notify the owner and pause a
 schedule after repeated ones; check a pipeline's schedules when it is saved. Moving
