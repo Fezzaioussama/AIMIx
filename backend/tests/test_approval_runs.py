@@ -114,7 +114,9 @@ def test_a_run_waits_for_its_owner_and_goes_on_once_approved(
     assert outcome.result is not None and outcome.result.final_output == "answer-approved"
     done = load(database, started.run.id)
     assert (done.status, done.pending_approvals) == (RunStatus.SUCCEEDED, [])
-    assert done.steps[0].tool_calls == [{"name": "crm_send_email", "status": "success"}]
+    assert done.steps[0].tool_calls == [
+        {"name": "crm_send_email", "status": "success", "target": ""}
+    ]
     assert approval_status(database, asked.id) == ApprovalStatus.APPROVED
 
 
@@ -131,7 +133,7 @@ def test_a_declined_call_reaches_the_agent_and_the_run_finishes_anyway(
     assert started.finished.result(timeout=WAIT_SECONDS).result is not None
     done = load(database, started.run.id)
     assert (done.status, done.final_output) == (RunStatus.SUCCEEDED, "answer-declined")
-    assert done.steps[0].tool_calls == [{"name": "crm_send_email", "status": "error"}]
+    assert done.steps[0].tool_calls == [{"name": "crm_send_email", "status": "error", "target": ""}]
     assert approval_status(database, asked.id) == ApprovalStatus.DECLINED
 
 

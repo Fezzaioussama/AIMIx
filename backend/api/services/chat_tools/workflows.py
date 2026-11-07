@@ -16,7 +16,7 @@ from api.repositories import pipelines as repository
 from api.schemas.pipelines import PipelineIn, PipelineOut, PipelinePatch
 from api.schemas.planning import PipelineDraftIn
 from api.services import pipelines as pipeline_service
-from api.services import user_memory
+from api.services import run_feedback, user_memory
 from api.services.agent_types import ToolDescriptor
 from api.services.chat_tools.common import refused, save_new, save_patch, session_user
 from api.services.chat_tools.scope import ChatScope
@@ -62,6 +62,11 @@ def workflow_tools(scope: ChatScope) -> list[BaseTool]:
         with scope.database.session() as session:
             return user_memory.instructions_for(session, scope.user)
 
+    def lessons() -> tuple[run_feedback.Lesson, ...]:
+        """What the person said of their latest runs, for a new team."""
+        with scope.database.session() as session:
+            return run_feedback.lessons_for(session, scope.user)
+
     @tool
     def list_tools() -> list[dict[str, str]]:
         """List the tools the agents of a workflow can use (web search, files,
@@ -75,7 +80,9 @@ def workflow_tools(scope: ChatScope) -> list[BaseTool]:
         with a final check. Put every detail the person gave in description: topic,
         audience, format, length, language, sources. Returns the saved team."""
         try:
-            request = pipeline_service.PlanRequest(description, instructions=instructions())
+            request = pipeline_service.PlanRequest(
+                description, instructions=instructions(), lessons=lessons()
+            )
             planner = scope.planner(scope.profile)
             plan = pipeline_service.generate(planner, scope.profile, request, catalog())
             body = PipelineIn.model_validate(plan.pipeline)

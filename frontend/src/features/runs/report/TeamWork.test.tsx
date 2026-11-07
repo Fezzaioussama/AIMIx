@@ -105,9 +105,9 @@ describe('TeamWork', () => {
   it('says what each agent did, its model, cost and tools', async () => {
     const run = finished();
     stepOf(run, 1).tool_calls = [
-      { name: 'current_datetime', status: 'success' },
-      { name: 'web_search', status: 'success' },
-      { name: 'fetch_url', status: 'error' },
+      { name: 'current_datetime', status: 'success', target: '' },
+      { name: 'web_search', status: 'success', target: 'best CRM 2026' },
+      { name: 'fetch_url', status: 'error', target: 'https://example.com/pricing' },
     ];
 
     await renderOpen(run);
@@ -122,6 +122,10 @@ describe('TeamWork', () => {
     expect(within(research).getByText('Model: writer')).toBeInTheDocument();
     expect(
       within(research).getByText('1 date check · 1 web search · 1 page read, 1 failed'),
+    ).toBeInTheDocument();
+    expect(within(research).getByText('web search “best CRM 2026”')).toBeInTheDocument();
+    expect(
+      within(research).getByText('page read “https://example.com/pricing” (failed)'),
     ).toBeInTheDocument();
     expect(research.querySelector('svg')).toHaveClass('text-emerald-300');
   });

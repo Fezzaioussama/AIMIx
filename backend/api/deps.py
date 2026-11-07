@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from api.exceptions import NotAuthenticated
 from api.models import UsageKind, User
 from api.security import SecretBox, TokenSigner, secret_box_for
-from api.services import accounts, llm_settings, user_memory
+from api.services import accounts, llm_settings, run_feedback, user_memory
 from api.services.account_data import workspace_of
 from api.services.account_usage import account_meter, calls_of
 from api.services.agent import get_chat_agent
@@ -31,6 +31,7 @@ from api.services.llm import LLMProfile, get_planner_provider, get_transcriber, 
 from api.services.multiagent.contracts import StepAgent
 from api.services.multiagent.step_agent import PipelineAgentGenerator
 from api.services.run_executor import RunExecutor
+from api.services.run_feedback import Lesson
 from api.services.run_policy import run_policy
 from api.services.run_recorder import utcnow
 from api.services.runs import RunService
@@ -219,29 +220,40 @@ def pipeline_tool_catalog(request: Request, user: CurrentUser) -> PipelineToolCa
 ToolCatalog = Annotated[PipelineToolCatalog, Depends(pipeline_tool_catalog)]
 
 
-def user_instructions(user: CurrentUser, session: DbSession) -> str:
-    """What the person told AIMIx to keep in mind (Settings → Memory)."""
-    return user_memory.instructions_for(session, user)
+@dataclass(frozen=True)
+class PersonContext:
+    """What the planner knows of the person: their standing instructions (Settings →
+    Memory) and what they said of their latest runs (``run_feedback``)."""
+
+    instructions: str
+    lessons: tuple[Lesson, ...]
 
 
-Instructions = Annotated[str, Depends(user_instructions)]
+def person_context(user: CurrentUser, session: DbSession) -> PersonContext:
+    return PersonContext(
+        user_memory.instructions_for(session, user), run_feedback.lessons_for(session, user)
+    )
+
+
+Person = Annotated[PersonContext, Depends(person_context)]
 
 
 @dataclass(frozen=True)
 class PlannerContext:
     """What a planner request needs besides its body: the provider, the profile,
-    the person's tools, and their standing instructions."""
+    the person's tools, their standing instructions and what they said of their runs."""
 
     providers: ProviderFactory
     profile: LLMProfile
     catalog: PipelineToolCatalog
     instructions: str
+    lessons: tuple[Lesson, ...] = ()
 
 
 def planner_context(
-    providers: Providers, profile: Profile, catalog: ToolCatalog, instructions: Instructions
+    providers: Providers, profile: Profile, catalog: ToolCatalog, person: Person
 ) -> PlannerContext:
-    return PlannerContext(providers, profile, catalog, instructions)
+    return PlannerContext(providers, profile, catalog, person.instructions, person.lessons)
 
 
 Planner = Annotated[PlannerContext, Depends(planner_context)]

@@ -5,6 +5,7 @@ import { Announcer } from '../../../core/ui/Announcer';
 import { PendingApprovals } from '../PendingApprovals';
 import type { RunControls } from '../useRun';
 import { DeliverableList } from './DeliverableList';
+import { FeedbackRow } from './FeedbackRow';
 import { useJump } from './jump';
 import { OutcomeHeader } from './OutcomeHeader';
 import { reportIds, reportModel, type ReportModel } from './reportModel';
@@ -28,19 +29,26 @@ export interface ReportExtras {
 interface ReportBodyProps {
   run: Run;
   model: ReportModel;
+  control: RunControls;
   level: 2 | 3;
   diagram: boolean;
   onReadCheck: () => void;
 }
 
-/** Under the header: the deliverables, the files saved meanwhile, how the team got there. */
-function ReportBody({ run, model, level, diagram, onReadCheck }: ReportBodyProps) {
+/**
+ * Under the header: the deliverables, your feedback once the run ended, the files saved
+ * meanwhile, how the team got there.
+ */
+function ReportBody({ run, model, control, level, diagram, onReadCheck }: ReportBodyProps) {
   const [teamOpen, setTeamOpen] = useState(false);
   return (
     <>
       {/* A section with nothing to say renders nothing, and its spacing goes with it. */}
       <div className="mt-10 empty:hidden">
         <DeliverableList run={run} model={model} level={level} />
+      </div>
+      <div className="mt-10 empty:hidden">
+        <FeedbackRow run={run} control={control} level={level} />
       </div>
       <div className="mt-14 empty:hidden">
         <RunFiles run={run} level={level} />
@@ -109,6 +117,7 @@ export function RunReport({ run, control, level, extras = {} }: RunReportProps) 
       <ReportBody
         run={run}
         model={model}
+        control={control}
         level={level}
         diagram={extras.diagram ?? false}
         onReadCheck={readCheck}

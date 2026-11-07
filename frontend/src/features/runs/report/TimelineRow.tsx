@@ -20,7 +20,7 @@ import { DisclosureButton, Foldable } from '../../pipelines/FoldablePanel';
 import { NODE_STATUS_STYLES } from '../../pipelines/GraphNodeCard';
 import { modelLabel } from '../../pipelines/modelLabel';
 import { roundLabel } from '../../pipelines/roundNotes';
-import { toolUsePhrase } from '../toolWords';
+import { toolTargetLines, toolUsePhrase } from '../toolWords';
 import { BottomHide } from './BottomHide';
 import { useJump } from './jump';
 import { definitionOf, reportIds, titleOf } from './reportModel';
@@ -132,6 +132,23 @@ const ROW_ACTION: Record<RowRole, (props: ActionProps) => ReactNode> = {
   work: OwnOutput,
 };
 
+/** How many of an agent's subjects a row lists before "and N more". */
+export const TARGETS_SHOWN = 6;
+
+/** What the agent looked at: one line per call with a subject, the first TARGETS_SHOWN. */
+function TargetList({ lines }: { lines: string[] }) {
+  const shown = lines.slice(0, TARGETS_SHOWN);
+  const more = lines.length - shown.length;
+  return (
+    <ul className="mt-1 space-y-0.5 text-xs break-words text-slate-400">
+      {shown.map((line, index) => (
+        <li key={`${index}-${line}`}>{line}</li>
+      ))}
+      {more > 0 && <li>and {more} more</li>}
+    </ul>
+  );
+}
+
 /** "Model: Sonnet 4.5 · Round 2 of 3". */
 function facts(step: RunStep, run: Run): string {
   const lines = [`Model: ${modelLabel(step.model)}`];
@@ -160,6 +177,7 @@ export function TimelineRow({ run, step, role, level, onReadCheck }: TimelineRow
   const title = titleOf(step);
   const agent = definitionOf(run, step).role.trim();
   const tools = toolUsePhrase(step.tool_calls);
+  const targets = toolTargetLines(step.tool_calls);
   const Action = ROW_ACTION[role];
   return (
     <li
@@ -185,6 +203,7 @@ export function TimelineRow({ run, step, role, level, onReadCheck }: TimelineRow
         </p>
         <p className="mt-0.5 text-xs text-slate-400">{facts(step, run)}</p>
         {tools && <p className="mt-0.5 text-xs text-slate-400">{tools}</p>}
+        {targets.length > 0 && <TargetList lines={targets} />}
         {step.output.trim() !== '' && (
           <div className="mt-1">
             <Action run={run} step={step} level={level} onReadCheck={onReadCheck} />

@@ -102,7 +102,15 @@ export interface StepResult {
   output: string;
   /** Decided by the backend: marked steps, or the last stage if none are marked. */
   is_output: boolean;
-  tool_calls: { name: string; status: 'success' | 'error' }[];
+  tool_calls: ToolCall[];
+}
+
+/** One tool call of a step: the tool, how it went, and what it was about. */
+export interface ToolCall {
+  name: string;
+  status: 'success' | 'error';
+  /** The query, the address, the path, the question; "" when the call has no subject. */
+  target: string;
 }
 
 /**
@@ -206,6 +214,19 @@ export interface Run extends RunSummary {
   steps: RunStep[];
   /** Tool calls waiting for your answer, oldest first; empty unless the run is `waiting`. */
   pending_approvals: RunApproval[];
+  /** What you thought of it once it ended; the planner's next team reads the note. */
+  rating: RunRating;
+  feedback: string;
+}
+
+/** What you thought of a run: useful (1), not useful (-1), or nothing yet (null). */
+export type RunRating = 1 | -1 | null;
+
+/** Body of PUT /api/runs/<id>/feedback. */
+export interface RunFeedback {
+  rating: RunRating;
+  /** A note for the planner's next team; "" for none. */
+  feedback: string;
 }
 
 export interface RunPage {

@@ -38,6 +38,7 @@ from api.services.approvals.guard import guard_tools, run_gate
 from api.services.approvals.policy import approval_policy_for
 from api.services.integrations.connections import mcp_connections_for
 from api.services.llm import LLMProfile, get_agent_model, model_info
+from api.services.tool_targets import call_target
 from api.services.toolbox.questions import NO_RUN_TOOLS, NOBODY, RunTools
 from config.settings import Settings, get_settings
 from llm.catalog import ModelInfo
@@ -84,18 +85,26 @@ class StepServices:
 NO_SERVICES = StepServices()
 
 
+def _asked(message: AIMessage) -> dict[str, tuple[str, str]]:
+    """Each call the model made, by id: the tool's name and what the call was about."""
+    return {
+        str(call["id"]): (call["name"], call_target(call["name"], call.get("args") or {}))
+        for call in message.tool_calls
+        if call.get("id")
+    }
+
+
 def _tool_trace(messages: list[BaseMessage]) -> list[ToolCallTrace]:
-    """Record tool names and statuses without retaining inputs or outputs."""
-    names: dict[str, str] = {}
+    """Record each tool call's name, status and subject (``tool_targets``), never the
+    rest of its arguments or its output."""
+    asked: dict[str, tuple[str, str]] = {}
     calls: list[ToolCallTrace] = []
     for message in messages:
         if isinstance(message, AIMessage):
-            names.update(
-                {str(call["id"]): call["name"] for call in message.tool_calls if call.get("id")}
-            )
+            asked.update(_asked(message))
         elif isinstance(message, ToolMessage):
-            name = names.get(message.tool_call_id, message.name or "unknown")
-            calls.append(ToolCallTrace(name=name, status=message.status))
+            name, target = asked.get(message.tool_call_id, (message.name or "unknown", ""))
+            calls.append(ToolCallTrace(name, message.status, target))
     return calls
 
 

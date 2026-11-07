@@ -225,6 +225,9 @@ class RunRequest(BudgetIn):
 class ToolCallOut(BaseModel):
     name: str
     status: Literal["success", "error"]
+    #: What the call was about: the query, the address, the path, the question; "" when
+    #: it has none (or the step ran before this was recorded).
+    target: str = ""
 
 
 class StepResultOut(BaseModel):

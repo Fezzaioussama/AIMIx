@@ -133,6 +133,10 @@ class Run(Base):
     #: None is no limit. What it spent is the sum of its steps' usage.
     max_cost_usd: Mapped[float | None]
     max_tokens: Mapped[int | None]
+    #: What its owner thought of it once it ended: ``run_feedback.USEFUL`` (1),
+    #: ``NOT_USEFUL`` (-1) or None; and their note, a lesson for the planner's next team.
+    rating: Mapped[int | None]
+    feedback: Mapped[str] = mapped_column(Text, default="")
 
     steps: Mapped[list[RunStep]] = relationship(
         back_populates="run",

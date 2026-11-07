@@ -151,6 +151,19 @@ export function toolUsePhrase(calls: ToolCalls): string | null {
   return tally(calls).map(tallyWords).join(' · ');
 }
 
+/**
+ * What each call was about, with its tool: 'web search “best CRM 2026”', 'page read
+ * https://… (failed)'. A call with no subject (a calculation, code) is left out.
+ */
+export function toolTargetLines(calls: ToolCalls): string[] {
+  return calls
+    .filter((call) => call.target !== '')
+    .map((call) => {
+      const tool = wordsFor(call.name)?.one ?? toolLabel(call.name, '').toLowerCase();
+      return `${tool} “${call.target}”${call.status === 'error' ? ' (failed)' : ''}`;
+    });
+}
+
 /** The plain words of an approval's tool, for AIMIx's own tools that have them. */
 function plainAsk(approval: RunApproval): ToolWords['ask'] {
   if (approval.tool_source !== NATIVE_SOURCE) return undefined;

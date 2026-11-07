@@ -1,6 +1,6 @@
 import { API } from './endpoints';
 import { request } from './client';
-import type { PipelineRunRequest, Run, RunBudget, RunPage, RunStatus } from './types';
+import type { PipelineRunRequest, Run, RunBudget, RunFeedback, RunPage, RunStatus } from './types';
 
 /** One page of the history, newest first, optionally of one pipeline or one status. */
 export interface RunListQuery {
@@ -45,6 +45,11 @@ export function cancelRun(runId: number): Promise<Run> {
  */
 export function resumeRun(runId: number, budget?: RunBudget): Promise<Run> {
   return request<Run>(API.resumeRun(runId), { method: 'POST', body: budget });
+}
+
+/** Say whether an ended run was useful and leave a note (an active one is a 409 `conflict`). */
+export function rateRun(runId: number, feedback: RunFeedback): Promise<Run> {
+  return request<Run>(API.runFeedback(runId), { method: 'PUT', body: feedback });
 }
 
 /** Only a finished run can be deleted (a running one is a 409 `conflict`). */

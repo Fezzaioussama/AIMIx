@@ -175,4 +175,4 @@ async def test_outside_a_recorded_run_the_tools_that_ask_are_not_offered(
     outcome = await agent.execute(TASK)
 
     assert crm_calls == []
-    assert outcome.tool_calls == [ToolCallTrace("crm_send_email", "error")]
+    assert outcome.tool_calls == [ToolCallTrace("crm_send_email", "error", "ada@example.com")]

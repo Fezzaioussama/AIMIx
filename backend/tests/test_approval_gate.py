@@ -87,7 +87,9 @@ async def test_an_approved_call_runs_the_tool(database: Database, owner: User, r
     )
 
     assert calls == [SEND]
-    assert outcome == AgentOutcome("Tool said: sent", [ToolCallTrace("crm_send_email", "success")])
+    assert outcome == AgentOutcome(
+        "Tool said: sent", [ToolCallTrace("crm_send_email", "success", "ada@example.com")]
+    )
     assert (asked.tool_name, asked.tool_source, asked.step_order) == ("crm_send_email", "AIMIx", 1)
     assert (asked.arguments, asked.arguments_truncated) == (SEND, False)
     assert asked.tool_description == "Send an email to a contact."
@@ -108,7 +110,7 @@ async def test_a_declined_call_does_not_run_the_tool_and_the_agent_is_told(
 
     assert calls == []
     assert outcome.output.startswith("Tool said: The user declined this action.")
-    assert outcome.tool_calls == [ToolCallTrace("crm_send_email", "error")]
+    assert outcome.tool_calls == [ToolCallTrace("crm_send_email", "error", "ada@example.com")]
     assert approval_status(database, asked.id) == ApprovalStatus.DECLINED
     assert run_status(database, run_id) == RunStatus.RUNNING
 
@@ -124,7 +126,7 @@ async def test_an_unanswered_call_expires_and_counts_as_declined(
 
     assert calls == []
     assert "did not answer in time" in outcome.output
-    assert outcome.tool_calls == [ToolCallTrace("crm_send_email", "error")]
+    assert outcome.tool_calls == [ToolCallTrace("crm_send_email", "error", "ada@example.com")]
     with database.session() as session:
         run = runs.load(session, run_id)
     assert run is not None and run.pending_approvals == []

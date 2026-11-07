@@ -154,7 +154,7 @@ def test_a_run_executes_in_the_background_and_records_every_step(
     assert statuses(run) == [StepStatus.SUCCEEDED] * 3
     assert [step.output for step in run.steps] == ["out-role-1", "out-role-2", "out-role-3"]
     assert run.steps[0].input_used == "seed"
-    assert run.steps[0].tool_calls == [{"name": "calculator", "status": "success"}]
+    assert run.steps[0].tool_calls == [{"name": "calculator", "status": "success", "target": ""}]
     assert [step.is_output for step in run.steps] == [False, False, True]
     assert all(step.finished_at is not None for step in run.steps)
 

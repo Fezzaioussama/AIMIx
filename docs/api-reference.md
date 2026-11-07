@@ -1238,8 +1238,11 @@ steps, or the last stage when none is marked), never on a step that was
 `skipped` (its condition did not hold: `output` is `""`). `rounds` is above 1
 for a step a [review loop](#conditions-and-review-loops) ran again; the result
 is its newest round.
-`tool_calls` records only each called tool's name and `success`/`error` status;
-it does not include arguments, tool results, or a durable execution trace.
+`tool_calls` records each called tool's name, its `success`/`error` status and
+its `target`: what the call was about (the search query, the page's address, the
+file's path, the question asked), cut to 120 characters, `""` for a call with no
+subject (a calculation, code) and for steps run before this was recorded. Never
+the other arguments, the tool's result, or a durable execution trace.
 Each step's prompt has `{input}` replaced by its stage's input and `{name}` by
 the run's value for that named input, in one pass (a substituted value is
 never expanded again; braces that name nothing are left as written). If the
@@ -1439,7 +1442,9 @@ limits and its `usage` total, so a history can show what each run cost.
 ### `GET /runs/<id>`
 
 The whole run. Poll it while it is `queued`, `running` or `waiting` (the app
-polls every 1.5 seconds). `404` if it is missing or not yours.
+polls every 1.5 seconds). `404` if it is missing or not yours. It also carries
+what you thought of it: `rating` (`1` useful, `-1` not useful, `null` unrated)
+and `feedback`, your note (`""` for none); see `PUT /runs/<id>/feedback`.
 
 ### `POST /runs/<id>/cancel`
 
@@ -1484,6 +1489,22 @@ winding down (a tool call it cannot abandon): the resume waits for that up to
 `RUN_SHUTDOWN_GRACE_SECONDS` (5), then answers `409 conflict` ("This run is still
 stopping. Try again in a moment.") so the stopped attempt can never record its
 end over the new one.
+
+### `PUT /runs/<id>/feedback`
+
+Say what you thought of a run that has ended: `{"rating": 1, "feedback": "Far
+too long; one paragraph per story next time."}`. `rating` is `1` (useful), `-1`
+(not useful) or `null`; `feedback` is a note of up to 2,000 characters, trimmed,
+`""` to leave none. Both replace what the run had, so sending the same body
+twice changes nothing. `200` → the run. An active run is a `409 conflict` ("Rate
+the run once it has ended."), any other rating a `400 validation_error`, a run
+that is not yours a `404`.
+
+The notes are what the planner learns from: when it builds a **new** team (`POST
+/pipelines/generate`, or the chat's design tool), it is told your five latest
+annotated runs, newest first, each as the workflow's name, whether the run was
+useful and your note, fenced as data, with the instruction to shape the team so
+the same faults do not recur. A revision of an existing team is not.
 
 ### `DELETE /runs/<id>`
 

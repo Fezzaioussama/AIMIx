@@ -12,8 +12,17 @@ from api.deps import CurrentUser, DbSession, PipelineRun, Runs
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import runs as repository
 from api.schemas.pipelines import RunRequest
-from api.schemas.runs import ResumeRequest, RunListQuery, RunOut, RunPageOut, RunSummaryOut
+from api.schemas.runs import (
+    ResumeRequest,
+    RunFeedbackIn,
+    RunListQuery,
+    RunOut,
+    RunPageOut,
+    RunSummaryOut,
+)
+from api.services import run_feedback
 from api.services.run_budget import NO_BUDGET
+from api.services.run_feedback import Feedback
 from api.services.runs import RunStart
 from api.throttling import user_rate_limit
 
@@ -63,6 +72,13 @@ def resume_run(run_id: int, context: PipelineRun, body: ResumeRequest | None = N
     return RunOut.model_validate(
         context.runs.resume(context.user, run_id, context.agents(), budget)
     )
+
+
+@router.put("/runs/{run_id}/feedback")
+def rate_run(run_id: int, body: RunFeedbackIn, user: CurrentUser, session: DbSession) -> RunOut:
+    """Say whether an ended run was useful and leave a note; the next team planned reads it."""
+    feedback = Feedback(body.rating, body.feedback)
+    return RunOut.model_validate(run_feedback.set_feedback(session, user, run_id, feedback))
 
 
 @router.delete("/runs/{run_id}", status_code=204)

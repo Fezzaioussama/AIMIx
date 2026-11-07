@@ -66,7 +66,8 @@ export function runStep(
     input_used: status === 'pending' ? '' : 'topic',
     output,
     is_output: source.is_output,
-    tool_calls: status === 'succeeded' ? [{ name: 'calculator', status: 'success' }] : [],
+    tool_calls:
+      status === 'succeeded' ? [{ name: 'calculator', status: 'success', target: '' }] : [],
     status,
     error:
       status === 'failed' ? { code: 'provider_timeout', detail: 'The agent timed out.' } : null,
@@ -103,6 +104,8 @@ export function makeRun(overrides: Partial<Run> = {}): Run {
       runStep(3, 'pending'),
     ],
     pending_approvals: [],
+    rating: null,
+    feedback: '',
     ...overrides,
   };
 }

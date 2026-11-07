@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { answerQuestion, approveToolCall, declineToolCall } from '../../core/api/approvals';
 import { ApiError } from '../../core/api/client';
 import { errorMessage } from '../../core/api/errorMessage';
-import { cancelRun, getRun, resumeRun } from '../../core/api/runs';
-import type { Run, RunBudget } from '../../core/api/types';
+import { cancelRun, getRun, rateRun, resumeRun } from '../../core/api/runs';
+import type { Run, RunBudget, RunFeedback } from '../../core/api/types';
 import { isActive } from './runStatus';
 
 /** How often a queued or running run is fetched again. */
@@ -26,6 +26,8 @@ export interface LiveRunState {
   decline: (approvalId: number) => Promise<void>;
   /** Answer a question the run's agent asked (`kind: "question"`); the agent reads it. */
   answer: (approvalId: number, text: string) => Promise<void>;
+  /** Say whether an ended run was useful and leave a note; the run comes back with them. */
+  rate: (feedback: RunFeedback) => Promise<void>;
   /** Show a run already in hand (one just started) without waiting for a fetch. */
   adopt: (run: Run) => void;
 }
@@ -33,7 +35,7 @@ export interface LiveRunState {
 /** What a run's report needs to act on it; both `useRun` and `FollowedRun` give it. */
 export type RunControls = Pick<
   LiveRunState,
-  'stop' | 'resume' | 'approve' | 'decline' | 'answer' | 'busy' | 'error'
+  'stop' | 'resume' | 'approve' | 'decline' | 'answer' | 'rate' | 'busy' | 'error'
 >;
 
 interface Failure {
@@ -128,8 +130,12 @@ export function useRun(runId: number | null): LiveRunState {
       act((id) => answerQuestion(id, approvalId, text), 'Could not send your answer.'),
     [act],
   );
+  const rate = useCallback(
+    (feedback: RunFeedback) => act((id) => rateRun(id, feedback), 'Could not save your feedback.'),
+    [act],
+  );
   const adopt = useCallback((next: Run) => setRun(next), []);
   const error = failure !== null && failure.runId === runId ? failure.message : '';
 
-  return { run: current, error, busy, stop, resume, approve, decline, answer, adopt };
+  return { run: current, error, busy, stop, resume, approve, decline, answer, rate, adopt };
 }

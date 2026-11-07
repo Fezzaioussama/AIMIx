@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from api.models import RunStatus, RunTrigger, StepStatus
 from api.schemas.approvals import RunApprovalOut
-from api.schemas.common import UtcDateTime
+from api.schemas.common import Trimmed, UtcDateTime
 from api.schemas.pipelines import PipelineInputField, StepDefinitionOut, ToolCallOut
 from api.schemas.usage import BudgetIn, UsageOut
 from api.services.multiagent.reviews import Verdict
+from api.services.run_feedback import FEEDBACK_MAX_CHARS, NOT_USEFUL, RATINGS, USEFUL
 from api.services.usage import total_usage
 
 #: Runs per history page: the default, and the most one request may ask for.
@@ -125,6 +126,24 @@ class RunOut(RunSummaryOut):
     steps: list[RunStepOut]
     #: Tool calls waiting for your answer, oldest first (approval gates).
     pending_approvals: list[RunApprovalOut]
+    #: What you thought of it: 1 useful, -1 not useful, null unrated; and your note.
+    rating: int | None
+    feedback: str
+
+
+class RunFeedbackIn(BaseModel):
+    """Body of PUT /api/runs/<id>/feedback: whether the run was useful (1), not (-1) or
+    unrated (null), and a note the planner's next team is told."""
+
+    rating: int | None = None
+    feedback: Trimmed = Field("", max_length=FEEDBACK_MAX_CHARS)
+
+    @field_validator("rating")
+    @classmethod
+    def _a_thumb(cls, value: int | None) -> int | None:
+        if value is not None and value not in RATINGS:
+            raise ValueError(f"Rate a run {USEFUL} (useful), {NOT_USEFUL} (not useful) or null.")
+        return value
 
 
 class RunPageOut(BaseModel):

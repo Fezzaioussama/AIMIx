@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { cancelRun, deleteRun, getRun, listRuns, resumeRun, startRun } from './runs';
+import { cancelRun, deleteRun, getRun, listRuns, rateRun, resumeRun, startRun } from './runs';
 
 function ok(body: unknown = {}): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -38,6 +38,16 @@ describe('runs API', () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
     expect(fetchMock.mock.calls[1][0]).toBe(API.resumeRun(7));
     expect(fetchMock.mock.calls[1][1]?.body).toBe('{"max_cost_usd":2}');
+  });
+
+  it('rates a run and leaves a note for the next team', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ id: 7, rating: 1 }));
+
+    await rateRun(7, { rating: 1, feedback: 'Shorter next time.' });
+
+    const [path, init] = fetchMock.mock.calls[0];
+    expect([path, init?.method]).toEqual([API.runFeedback(7), 'PUT']);
+    expect(init?.body).toBe('{"rating":1,"feedback":"Shorter next time."}');
   });
 
   it('pages the history and filters it by pipeline', async () => {

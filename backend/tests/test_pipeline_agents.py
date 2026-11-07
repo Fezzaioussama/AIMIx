@@ -136,7 +136,7 @@ def test_step_uses_its_model_and_discovered_tool(
         "increment",
     }
     assert response.json()["intermediate_results"][0]["tool_calls"] == [
-        {"name": "increment", "status": "success"}
+        {"name": "increment", "status": "success", "target": ""}
     ]
 
 

@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import type { StepResult } from '../../core/api/types';
 import { makeApproval } from './testData';
-import { approvalAsk, approvalHeading, isPlainAsk, TOOL_WORDS, toolUsePhrase } from './toolWords';
+import {
+  approvalAsk,
+  approvalHeading,
+  isPlainAsk,
+  TOOL_WORDS,
+  toolTargetLines,
+  toolUsePhrase,
+} from './toolWords';
 
 type Calls = StepResult['tool_calls'];
 
-const ok = (name: string) => ({ name, status: 'success' as const });
-const failed = (name: string) => ({ name, status: 'error' as const });
+const ok = (name: string, target = '') => ({ name, status: 'success' as const, target });
+const failed = (name: string, target = '') => ({ name, status: 'error' as const, target });
 
 describe('toolUsePhrase', () => {
   it('counts each tool in the order it was first used, with its failures', () => {
@@ -117,5 +124,22 @@ describe('approvalHeading', () => {
 
   it('asks to allow any other tool by its name', () => {
     expect(approvalHeading(makeApproval())).toBe('Allow “Send email”?');
+  });
+});
+
+describe('toolTargetLines', () => {
+  it('says what each call was about, in the tool’s words, and marks a failed one', () => {
+    const calls: Calls = [
+      ok('web_search', 'best CRM 2026'),
+      failed('fetch_url', 'https://example.com/pricing'),
+      ok('calculator'),
+      ok('crm_send_email', 'ada@example.com'),
+    ];
+
+    expect(toolTargetLines(calls)).toEqual([
+      'web search “best CRM 2026”',
+      'page read “https://example.com/pricing” (failed)',
+      'crm send email “ada@example.com”',
+    ]);
   });
 });

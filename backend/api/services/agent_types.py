@@ -39,6 +39,9 @@ class AgentTask:
 class ToolCallTrace:
     name: str
     status: Literal["success", "error"]
+    #: What the call was about (``tool_targets.call_target``): the query, the address,
+    #: the path, the question; "" when it has none.
+    target: str = ""
 
 
 @dataclass(frozen=True)

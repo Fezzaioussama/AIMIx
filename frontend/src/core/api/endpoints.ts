@@ -30,6 +30,7 @@ export const API = {
   run: (runId: number) => `/api/runs/${runId}`,
   cancelRun: (runId: number) => `/api/runs/${runId}/cancel`,
   resumeRun: (runId: number) => `/api/runs/${runId}/resume`,
+  runFeedback: (runId: number) => `/api/runs/${runId}/feedback`,
   usage: '/api/usage',
   approveToolCall: (runId: number, approvalId: number) =>
     `/api/runs/${runId}/approvals/${approvalId}/approve`,

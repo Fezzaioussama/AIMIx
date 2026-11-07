@@ -319,6 +319,6 @@ def test_pipeline_agent_uses_built_in_tools_and_survives_a_failing_one(
     assert response.status_code == 200
     assert response.json()["final_output"] == "Total is 42."
     assert response.json()["intermediate_results"][0]["tool_calls"] == [
-        {"name": "calculator", "status": "success"},
-        {"name": "fetch_url", "status": "error"},
+        {"name": "calculator", "status": "success", "target": "40 + 2"},
+        {"name": "fetch_url", "status": "error", "target": "http://127.0.0.1/admin"},
     ]

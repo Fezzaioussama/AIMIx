@@ -52,7 +52,12 @@ def generate_pipeline(body: GenerateRequest, planner: Planner) -> GenerateRespon
         for item in body.documents
     )
     request = pipeline_service.PlanRequest(
-        body.description, body.planner_model, clarification, documents, planner.instructions
+        body.description,
+        body.planner_model,
+        clarification,
+        documents,
+        planner.instructions,
+        planner.lessons,
     )
     plan = pipeline_service.generate(
         planner.providers(), planner.profile, request, planner.catalog.available_sync()

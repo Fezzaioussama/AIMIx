@@ -194,15 +194,22 @@ Every model output is rendered exactly once on the page.
    (`DeliverableSlot`) exactly where its document will land, with its state in words
    ("Being written · 5.0 s", "Starts when Research is done", "Waiting for your OK ·
    Review the request", "Not made: its condition was not met…").
-4. **Saved during this run** (`RunFiles`, `useRunFiles`): the workspace files saved
+4. **Was this useful?** (`FeedbackRow`), once the run has ended: two thumbs (Useful,
+   Not useful; press the chosen one again to take it back) and a note for the next team
+   ("What should the next team do differently?"), saved with the rating through
+   `control.rate`; "Saved. The next team you plan will know." once it is. The planner
+   reads the notes of the person's latest runs when it builds a new team.
+5. **Saved during this run** (`RunFiles`, `useRunFiles`): the workspace files saved
    between the run's start and end (±2 s, open-ended while it works, since the files'
    times are the server's; there is no per-run record of files yet),
    pictures first with a preview (`PicturePreview`), each downloadable (`FileRow` without
    Delete), and "All files". Looked up only when an agent had a file-saving tool, again
    as steps finish; a failed lookup hides the part.
-5. **How your team got there** (`TeamWork`), folded at first: "What each agent did" (one
-   `TimelineRow` per agent, by stage, with its status, cost, model, round and its tool
-   use in words from `toolWords.ts`, then "Read it above" (a deliverable that is ready),
+6. **How your team got there** (`TeamWork`), folded at first: "What each agent did" (one
+   `TimelineRow` per agent, by stage, with its status, cost, model, round, its tool
+   use in words from `toolWords.ts` and what it looked at (each call's `target`: the
+   query, the page, the file, the question; the first six, then "and N more"), then
+   "Read it above" (a deliverable that is ready),
    "Read the check above" or "Show what it wrote"), "What your team was given" (`RunGiven`: each typed text,
    document and page with its size, the server's notes on what was cut or not read, and
    an excerpt), and on the Runs page "The team", the run's own diagram.
@@ -262,6 +269,7 @@ load and nothing counts up.
 |---|---|
 | `RunReport.tsx` | The report: header, approvals, then the body (`ReportBody`: deliverables, files, appendix) and the `Announcer`; `ReportExtras` (`linkToRuns`, `actions`, `note`, `diagram`) |
 | `OutcomeHeader.tsx`, `ActionRow.tsx`, `MetaLine.tsx`, `JumpLinks.tsx`, `ProgressRule.tsx`, `dotted.ts` | The outcome header and its rows (above) |
+| `FeedbackRow.tsx` | "Was this useful?": the thumbs and the note (above) |
 | `SignOff.tsx`, `checkTone.ts`, `BottomHide.tsx` | The sign-off line and the full check; each check tone's icon and colour (`CHECK_TONE`, shared with the bylines); the second "Hide …" of a long text |
 | `DeliverableList.tsx`, `DeliverableDoc.tsx`, `DeliverableActions.tsx`, `DeliverableSlot.tsx`, `deliverableFiles.ts` | The deliverables, the hand-over (M5), Copy and Download (`safeFileName`, `htmlDocument`) and the slots |
 | `RunFiles.tsx`, `useRunFiles.ts`, `runFiles.ts` | "Saved during this run": the listing (cancelled on unmount, kept while a new one loads), and the pure window and file-saving tools (`FILE_SAVING_TOOLS`, mirroring the backend's toolbox) |
