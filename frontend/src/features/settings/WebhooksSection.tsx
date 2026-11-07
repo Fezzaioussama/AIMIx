@@ -20,8 +20,8 @@ function SectionIntro() {
         Webhooks
       </h2>
       <p className="mt-2 mb-6 text-sm text-slate-400">
-        Links another app calls to start one of your workflows, and the Slack, Discord or other
-        addresses a workflow&apos;s results are posted to when a run ends. You set them up by
+        Links another app calls to start one of your workflows, and the Slack, Discord, email or
+        other addresses a workflow&apos;s results are sent to when a run ends. You set them up by
         chatting; here you see them all, switch them off, get a new link or delete them.
       </p>
     </>

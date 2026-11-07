@@ -478,8 +478,9 @@ sequenceDiagram
 
 ### Result deliveries
 
-When a run ends, finished or failed, its result can be posted to an address its
-owner chose: Slack, Discord, or any `https` address (JSON). `RunService._finish`
+When a run ends, finished or failed, its result can be sent to an address its
+owner chose: Slack, Discord, any `https` address (JSON), or an email address (the
+result, with the files the run saved attached, through the server's SMTP). `RunService._finish`
 records the end and, only when this attempt ended the run, calls
 `RunPolicy.deliveries.send(database, run_id)` (`deliveries/sender.ResultDeliveries`);
 `run_policy(settings)` builds it, so runs started from a screen, a schedule, the

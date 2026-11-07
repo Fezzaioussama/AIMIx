@@ -82,3 +82,8 @@ class RunSettings(BaseModel):
     # characters of the result (Slack and Discord messages have their own bound).
     delivery_timeout_seconds: float = Field(10.0, gt=0, validation_alias="DELIVERY_TIMEOUT_SECONDS")
     delivery_max_chars: int = Field(20_000, ge=1, validation_alias="DELIVERY_MAX_CHARS")
+    # The most the files a run saved may add to the email that carries its result, in
+    # bytes, newest first; 0 attaches none.
+    delivery_email_max_attachment_bytes: int = Field(
+        10 * 1024 * 1024, ge=0, validation_alias="DELIVERY_EMAIL_MAX_ATTACHMENT_BYTES"
+    )

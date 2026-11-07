@@ -2145,9 +2145,10 @@ Another account's webhook is `404` on every route.
 
 ## Result deliveries
 
-A delivery posts a pipeline's result to an address each time one of its runs
-ends, finished or failed: a Slack or Discord incoming-webhook link, or any other
-`https` address, which gets JSON. You set it by chat (`send_results_to(pipeline_id,
+A delivery sends a pipeline's result to an address each time one of its runs
+ends, finished or failed: a Slack or Discord incoming-webhook link, any other
+`https` address, which gets JSON, or an email address, which gets the result
+with the files the run saved attached. You set it by chat (`send_results_to(pipeline_id,
 address)`; `set_delivery` stops or restarts it; `list_deliveries`), one per
 pipeline, deleted with it; Settings → Webhooks lists, confirms, switches and
 removes them with the routes below. **An address set by chat sends nothing until you
@@ -2162,11 +2163,13 @@ What each kind of address receives (`services/deliveries/formats.py`):
 | Slack | host `hooks.slack.com` | `{"text": "<workflow> finished\n\n<result>"}`, at most 3,500 characters |
 | Discord | `discord.com` or `discordapp.com`, path `/api/webhooks/…` | `{"content": …}`, at most 1,900 characters |
 | Webhook | any other `https` address | `{"event": "run.ended", "run_id", "workflow", "status", "result"}`, the result cut at `DELIVERY_MAX_CHARS` |
+| Email | an email address, given plain or as `mailto:` (kept as `mailto:`; shown by its domain) | an email through the server's SMTP (`SMTP_*`): the headline as the subject, the result (cut at `DELIVERY_MAX_CHARS`) as the text, and the files the run saved while it worked attached, newest first, as many as fit `DELIVERY_EMAIL_MAX_ATTACHMENT_BYTES` (10 MB) together. Without `SMTP_HOST`, confirming is a `502 delivery_failed` saying so |
 
 A failed run sends its error in place of the result. Posting goes through the
 same guarded client as `fetch_url` (public addresses only, no redirect, a bounded
-answer), waits at most `DELIVERY_TIMEOUT_SECONDS` and is not retried; a failure is
-kept as the delivery's `last_error` and never changes the run.
+answer), waits at most `DELIVERY_TIMEOUT_SECONDS` and is not retried; an email
+waits at most `SMTP_TIMEOUT_SECONDS`, also without retry. A failure is kept as
+the delivery's `last_error` and never changes the run.
 
 ### `GET /deliveries`
 

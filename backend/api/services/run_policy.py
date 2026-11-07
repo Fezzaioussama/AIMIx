@@ -14,10 +14,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import Protocol
 
 from api.db import Database
 from api.security import secret_box_for
+from api.services.account_data import workspace_of
 from api.services.deliveries.sender import ResultDeliveries, send_policy
 from api.services.files.disk import DiskReserve, disk_reserve
 from api.services.notifications import notifier
@@ -63,7 +65,9 @@ def run_policy(settings: Settings) -> RunPolicy:
         settings.run_max_active_per_user,
         settings.run_wait_max_seconds,
         disk_reserve(settings),
-        ResultDeliveries(secret_box_for(settings), send_policy(settings)),
+        ResultDeliveries(
+            secret_box_for(settings), send_policy(settings), partial(workspace_of, settings)
+        ),
         notifier(settings),
     )
 

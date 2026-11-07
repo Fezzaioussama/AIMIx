@@ -1,13 +1,17 @@
 """The message each kind of address expects (§5 O, Strategy + Registry): Slack's and
-Discord's incoming webhooks take a short text, anything else gets the run as JSON. A new
-kind of address is one entry in ``KINDS``. Pure: no I/O."""
+Discord's incoming webhooks take a short text, an email address a subject and a text,
+anything else gets the run as JSON. A new kind of address is one entry in ``KINDS``.
+Pure: no I/O."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
+
+#: How an email address is kept: as a mailto link, so one column holds every kind.
+MAILTO = "mailto:"
 
 
 @dataclass(frozen=True)
@@ -25,7 +29,8 @@ class DeliveryKind:
     """One kind of address: how it is recognised, and the body it is sent."""
 
     label: str
-    matches: Callable[[str, str], bool]
+    #: Whether a split address is of this kind.
+    matches: Callable[[SplitResult], bool]
     body: Callable[[RunMessage, int], dict[str, Any]]
 
 
@@ -39,6 +44,8 @@ HEADLINES = {
 #: What fits in one chat message of each service, with room for the headline.
 SLACK_TEXT_MAX_CHARS = 3500
 DISCORD_TEXT_MAX_CHARS = 1900
+#: The text of the first email, the one sent when the address is confirmed.
+EMAIL_HELLO = "Each run of this workflow will send its result here, with the files it saved."
 
 
 def headline(message: RunMessage) -> str:
@@ -61,8 +68,18 @@ def _json_body(message: RunMessage, max_chars: int) -> dict[str, Any]:
     }
 
 
-def _host_is(*hosts: str) -> Callable[[str, str], bool]:
-    return lambda host, path: host in hosts
+def _email_body(message: RunMessage, max_chars: int) -> dict[str, Any]:
+    """The headline as the subject; the result (cut like a JSON one) as the text."""
+    text = message.text[:max_chars] if message.run_id is not None else EMAIL_HELLO
+    return {"subject": headline(message), "text": text}
+
+
+def _host(parts: SplitResult) -> str:
+    return (parts.hostname or "").lower()
+
+
+def _host_is(*hosts: str) -> Callable[[SplitResult], bool]:
+    return lambda parts: _host(parts) in hosts
 
 
 KINDS: dict[str, DeliveryKind] = {
@@ -73,20 +90,21 @@ KINDS: dict[str, DeliveryKind] = {
     ),
     "discord": DeliveryKind(
         "Discord",
-        lambda host, path: (
-            host in {"discord.com", "discordapp.com"} and path.startswith("/api/webhooks/")
+        lambda parts: (
+            _host(parts) in {"discord.com", "discordapp.com"}
+            and parts.path.startswith("/api/webhooks/")
         ),
         lambda message, _: {"content": _chat_text(message, DISCORD_TEXT_MAX_CHARS)},
     ),
-    "json": DeliveryKind("Webhook", lambda host, path: True, _json_body),
+    "email": DeliveryKind("Email", lambda parts: parts.scheme == "mailto", _email_body),
+    "json": DeliveryKind("Webhook", lambda parts: True, _json_body),
 }
 
 
 def kind_of(url: str) -> str:
     """The kind of address ``url`` is; ``json`` when no other kind claims it."""
     parts = urlsplit(url)
-    host = (parts.hostname or "").lower()
-    return next(name for name, kind in KINDS.items() if kind.matches(host, parts.path))
+    return next(name for name, kind in KINDS.items() if kind.matches(parts))
 
 
 def body_for(kind: str, message: RunMessage, max_chars: int) -> dict[str, Any]:

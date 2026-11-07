@@ -1,5 +1,5 @@
-"""Sending email: one plain-text message at a time through the operator's SMTP server,
-or nowhere when none is configured.
+"""Sending email: one plain-text message at a time, with files attached when there are
+any, through the operator's SMTP server, or nowhere when none is configured.
 
 ``SmtpSender`` is the adapter around the standard library's ``smtplib`` (§7 Adapter),
 the one place its failures become ours; nothing else in the app imports it. Every
@@ -20,12 +20,22 @@ from config.settings import Settings
 
 
 @dataclass(frozen=True)
+class Attachment:
+    """One file sent with a message (§7 Value Object)."""
+
+    filename: str
+    content: bytes
+    media_type: str
+
+
+@dataclass(frozen=True)
 class Email:
-    """One plain-text message (§7 Value Object)."""
+    """One plain-text message, with files attached when there are any (§7 Value Object)."""
 
     to: str
     subject: str
     text: str
+    attachments: tuple[Attachment, ...] = ()
 
 
 class EmailSender(Protocol):
@@ -90,6 +100,14 @@ class SmtpSender:
         message["To"] = email.to
         message["Subject"] = email.subject
         message.set_content(email.text)
+        for attachment in email.attachments:
+            maintype, _, subtype = attachment.media_type.partition("/")
+            message.add_attachment(
+                attachment.content,
+                maintype=maintype or "application",
+                subtype=subtype or "octet-stream",
+                filename=attachment.filename,
+            )
         try:
             with self._connect(
                 self._settings.host, self._settings.port, self._settings.timeout_seconds

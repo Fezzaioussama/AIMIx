@@ -43,10 +43,11 @@ def delivery_tools(scope: ChatScope) -> list[BaseTool]:
 
     @tool
     def send_results_to(pipeline_id: int, address: str) -> dict[str, Any]:
-        """Post the results of one of your workflows to an address each time a run
-        ends: a Slack or Discord webhook link the person gives you, or any https
-        address (it gets JSON). It replaces the workflow's previous address. Nothing
-        is sent until the person clicks Confirm on their screen; tell them so."""
+        """Send the results of one of your workflows to an address each time a run
+        ends: a Slack or Discord webhook link the person gives you, any https address
+        (it gets JSON), or an email address (the result, with the files the run saved
+        attached). It replaces the workflow's previous address. Nothing is sent until
+        the person clicks Confirm on their screen; tell them so."""
         try:
             with scope.database.session() as session:
                 view = service.set_address(access(session), pipeline_id, address)

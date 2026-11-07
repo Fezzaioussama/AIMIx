@@ -30,7 +30,7 @@ from api.services.deliveries.formats import (
     body_for,
     kind_of,
 )
-from api.services.deliveries.sender import ResultDeliveries, SendPolicy, post
+from api.services.deliveries.sender import Outgoing, ResultDeliveries, SendPolicy, post
 from api.services.deliveries.service import DeliveryAccess
 from api.services.run_policy import RunPolicy
 from api.services.runs import RunService, RunStart
@@ -121,7 +121,7 @@ def test_each_service_gets_the_message_it_expects() -> None:
 
 def test_a_private_address_is_refused_by_the_real_transport() -> None:
     with pytest.raises(DeliveryFailed, match="not a public address"):
-        asyncio.run(post(SendPolicy(2, 100), "https://127.0.0.1/hook", {"text": "hi"}))
+        asyncio.run(post(SendPolicy(2, 100), Outgoing("https://127.0.0.1/hook", {"text": "hi"})))
 
 
 # --- set by chat, confirmed by a click -----------------------------------------------
