@@ -38,6 +38,8 @@ PUBLIC_PATHS = {
     "/api/hooks/{token}",
     # Anyone with a run's share link reads its report: the token is the credential.
     "/api/shared/{token}",
+    # An authorization server sends the owner back from an integration's OAuth sign-in.
+    "/api/integrations/oauth/callback",
 }
 
 

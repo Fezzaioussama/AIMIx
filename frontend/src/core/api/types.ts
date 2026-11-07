@@ -352,6 +352,15 @@ export interface Integration {
   require_approval: boolean;
   headers: IntegrationHeader[];
   created_at: string;
+  /** Where its OAuth sign-in stands: none, started, or connected (its tools use the token). */
+  oauth: IntegrationOAuth;
+}
+
+export type IntegrationOAuth = '' | 'pending' | 'connected';
+
+/** POST /api/integrations/<id>/oauth: the page the browser opens to sign in. */
+export interface OAuthStart {
+  authorization_url: string;
 }
 
 export interface IntegrationHeaderInput {

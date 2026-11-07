@@ -389,7 +389,8 @@ apply, discard, nothing to change, errors, Stop, Ctrl+Enter, busy page),
 `revision.test.ts`; fixtures live in `revisionTestData.ts`. The shared request
 hooks have `core/hooks/useCancellableRequest.test.tsx` and `useLatest.test.tsx`. The
 Settings page has `SettingsPage.test.tsx`, `useLLMSettings.test.tsx`, and for
-integrations `IntegrationsSection.test.tsx` (list, add, validation, test
+integrations `IntegrationOAuth.test.tsx` (the card's sign-in states, the notice read back
+from the URL), `IntegrationsSection.test.tsx` (list, add, validation, test
 connection, delete confirmation, switch, edit with hints), `useIntegrations.test.tsx`
 and `integrationDraft.test.ts`, and `WebhooksSection.test.tsx` for webhooks; `testData.ts` holds their fixtures and `byPath`,
 a fetch stand-in that answers each API path. For

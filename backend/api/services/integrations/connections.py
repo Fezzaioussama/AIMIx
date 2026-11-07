@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import partial
 
 import httpcore
 import httpx
@@ -25,7 +26,9 @@ from api.exceptions import ValidationFailed
 from api.models import Integration, User
 from api.repositories import integrations as repository
 from api.security import SecretBox, UnreadableSecret, secret_box_for
+from api.services.integrations.bearer import Keep, OAuthBearer
 from api.services.integrations.headers import reveal
+from api.services.integrations.oauth_tokens import CONNECTED, renew, tokens_of
 from api.services.integrations.rules import IntegrationRules, check_url, rules_from
 from api.services.mcp import MCPConnections, connection, connections
 from api.services.outbound import OutboundPolicy, guarded_client, guarded_transport
@@ -59,12 +62,13 @@ class GuardedClientFactory:
 
 
 def integration_connection(
-    integration: Integration, box: SecretBox, rules: IntegrationRules
+    integration: Integration, box: SecretBox, rules: IntegrationRules, keep: Keep | None = None
 ) -> Connection:
-    """The adapter connection for one saved integration, streamable HTTP only.
+    """The adapter connection for one saved integration, streamable HTTP only. One
+    signed in with OAuth carries its token (``OAuthBearer``), renewed through ``keep``.
 
     Raises ``ValidationFailed`` when its URL is no longer allowed and
-    ``UnreadableSecret`` when its header values cannot be decrypted.
+    ``UnreadableSecret`` when its header values or tokens cannot be decrypted.
     """
     check_url(integration.url, rules.addresses)
     try:
@@ -79,18 +83,22 @@ def integration_connection(
         raise ValidationFailed("That server URL is not valid.") from cause
     addresses = rules.addresses
     policy = OutboundPolicy(addresses.resolver, addresses.allow_private, rules.max_response_bytes)
+    signed = integration.oauth_status == CONNECTED
+    auth = OAuthBearer(tokens_of(box, integration), keep) if signed else None
     return connection(
-        server, rules.timeout_seconds, GuardedClientFactory(rules.timeout_seconds, policy)
+        server, rules.timeout_seconds, GuardedClientFactory(rules.timeout_seconds, policy), auth
     )
 
 
-def _usable(integration: Integration, box: SecretBox, rules: IntegrationRules) -> Connection | None:
+def _usable(
+    integration: Integration, box: SecretBox, rules: IntegrationRules, keep: Keep
+) -> Connection | None:
     """The integration's connection, or None (logged) when it cannot be used now."""
     if integration.name in rules.reserved_names:
         reason = "name_taken"
     else:
         try:
-            return integration_connection(integration, box, rules)
+            return integration_connection(integration, box, rules, keep)
         except (ValidationFailed, UnreadableSecret) as cause:
             reason = type(cause).__name__
     logger.warning(
@@ -108,7 +116,11 @@ def mcp_connections_for(database: Database, user: User, settings: Settings) -> M
         rows = repository.enabled_for(session, user)
     rules = rules_from(settings)
     box = secret_box_for(settings)
-    own = {row.name: usable for row in rows if (usable := _usable(row, box, rules)) is not None}
+    own = {
+        row.name: usable
+        for row in rows
+        if (usable := _usable(row, box, rules, partial(renew, database, box, row.id))) is not None
+    }
     return MCPConnections(
         operator=connections(settings.mcp_servers, settings.mcp_timeout_seconds),
         user=own,

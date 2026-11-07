@@ -73,6 +73,11 @@ class AgentSettings(BaseModel):
     )
     # --- Users' own MCP servers (Settings page → Integrations) ---------------
     integrations_max_per_user: int = Field(10, ge=0, validation_alias="INTEGRATIONS_MAX_PER_USER")
+    # How long the owner has to finish an OAuth sign-in to one of their servers
+    # (services/integrations/oauth), from "Sign in" to the server's call back.
+    integrations_oauth_attempt_minutes: float = Field(
+        10.0, gt=0, validation_alias="INTEGRATIONS_OAUTH_ATTEMPT_MINUTES"
+    )
     # Settings → Memory: how long the person's standing instructions may be, which every
     # chat, plan and step agent is told to keep in mind (services/user_memory).
     memory_max_chars: int = Field(4_000, ge=1, validation_alias="MEMORY_MAX_CHARS")

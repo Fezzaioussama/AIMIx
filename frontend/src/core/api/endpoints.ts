@@ -58,6 +58,7 @@ export const API = {
   integrations: '/api/integrations',
   integration: (integrationId: number) => `/api/integrations/${integrationId}`,
   testIntegration: (integrationId: number) => `/api/integrations/${integrationId}/test`,
+  integrationOAuth: (integrationId: number) => `/api/integrations/${integrationId}/oauth`,
   webhooks: '/api/webhooks',
   webhook: (webhookId: number) => `/api/webhooks/${webhookId}`,
   renewWebhook: (webhookId: number) => `/api/webhooks/${webhookId}/renew`,

@@ -434,6 +434,31 @@ Descriptions are cut to `AGENT_TOOL_DESCRIPTION_MAX_CHARS`. Failures:
 | 429 | `throttled` | More than `USER_RATE_LIMIT_REQUESTS` tests in the window (see the rate limit above) |
 | 502 | `tool_unavailable` | `detail` says why in plain words: `Could not connect to crm: it refused the sign-in (HTTP 401), so check the headers.`, `… nothing was found at that URL (HTTP 404).`, `… it did not answer within the time limit.`, `… the connection to it failed.`, `… it answered with an MCP error.`, `… it sent an answer larger than the size limit.` |
 
+### Signing in with OAuth: `POST|DELETE /integrations/<id>/oauth`
+
+A server that follows the MCP authorization spec can be connected with your
+account there instead of headers. `POST /integrations/<id>/oauth` starts the
+sign-in: the server's authorization server is found (its protected-resource
+metadata, else the server's own origin), AIMIx registers itself there as a client
+(dynamic client registration; a server without it is a `400 validation_error`
+saying to use headers instead), and the answer is the page your browser opens:
+
+```json
+{ "authorization_url": "https://auth.crm.example/authorize?response_type=code&client_id=…&state=…&code_challenge=…" }
+```
+
+The integration's `oauth` is then `"pending"`. The authorization server sends
+you back to `GET /integrations/oauth/callback?code=…&state=…` (**public**: the
+`state` names the sign-in; the code is traded for tokens there, through the
+guarded client, PKCE verifier included) and you land on
+`/settings/integrations?connected=<name>`, or `?oauth_error=<why>` when the
+sign-in was refused, took longer than `INTEGRATIONS_OAUTH_ATTEMPT_MINUTES` (10)
+or could not be matched. Connected (`oauth: "connected"`), every connection to
+the server sends `Authorization: Bearer <access token>`, renewed with the
+refresh token once it has expired; the tokens are sealed like header values and
+never returned. `DELETE /integrations/<id>/oauth` signs out (`200` → the
+integration, `oauth: ""`); headers, if any, stay. Rate-limited like a test.
+
 Every integration route answers `404` for another account's integration.
 
 ---

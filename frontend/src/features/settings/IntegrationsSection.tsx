@@ -50,6 +50,8 @@ function IntegrationList({ integrations, tests, editing, busy, actions }: Integr
           onEdit={() => actions.startEditing(integration.id)}
           onDelete={() => void actions.remove(integration)}
           onTest={() => void actions.test(integration)}
+          onSignIn={() => void actions.signIn(integration)}
+          onSignOut={() => void actions.signOut(integration)}
         />
       </AnimatedContent>
     ),

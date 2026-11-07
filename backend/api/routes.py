@@ -41,6 +41,7 @@ PUBLIC_ROUTERS = (
     health.router,
     webhooks.public_router,
     run_shares.public_router,
+    integrations.public_router,
 )
 PROTECTED_ROUTERS = (
     auth.router,

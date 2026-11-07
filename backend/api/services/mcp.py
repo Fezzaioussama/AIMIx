@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+import httpx
 from langchain_mcp_adapters.sessions import (
     Connection,
     McpHttpClientFactory,
@@ -31,10 +32,14 @@ class MCPConnections:
 
 
 def connection(
-    config: MCPServer, timeout_seconds: float, client_factory: McpHttpClientFactory | None = None
+    config: MCPServer,
+    timeout_seconds: float,
+    client_factory: McpHttpClientFactory | None = None,
+    auth: httpx.Auth | None = None,
 ) -> Connection:
     """``client_factory`` builds the HTTP client of an HTTP server, e.g. one that
-    checks every request's address; None keeps the SDK's default client."""
+    checks every request's address; None keeps the SDK's default client. ``auth``
+    signs each request of an HTTP server (an integration's OAuth token)."""
     session_kwargs = {"read_timeout_seconds": timedelta(seconds=timeout_seconds)}
     if isinstance(config, HttpMCPServer):
         http = StreamableHttpConnection(
@@ -47,6 +52,8 @@ def connection(
         )
         if client_factory is not None:
             http["httpx_client_factory"] = client_factory
+        if auth is not None:
+            http["auth"] = auth
         return http
     return StdioConnection(
         transport="stdio",

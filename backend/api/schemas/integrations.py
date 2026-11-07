@@ -145,6 +145,15 @@ class IntegrationOut(BaseModel):
     require_approval: bool
     headers: list[HeaderOut]
     created_at: UtcDateTime
+    #: The OAuth sign-in: "" (none), "pending" (started) or "connected" (its tools use it).
+    oauth: str = ""
+
+
+class OAuthStartOut(BaseModel):
+    """The page the owner's browser opens to sign in; the server sends them back to
+    Settings → Integrations."""
+
+    authorization_url: str
 
 
 class IntegrationToolOut(BaseModel):

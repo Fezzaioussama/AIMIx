@@ -70,6 +70,8 @@ class IntegrationView:
     created_at: datetime
     #: In a run, its tools wait for the owner's OK before they act.
     require_approval: bool = True
+    #: The OAuth sign-in: "" (none), "pending" or "connected" (``integrations/oauth``).
+    oauth: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,7 +103,7 @@ class ToolView:
     description: str
 
 
-def _view(integration: Integration) -> IntegrationView:
+def view_of(integration: Integration) -> IntegrationView:
     return IntegrationView(
         id=integration.id,
         name=integration.name,
@@ -110,11 +112,12 @@ def _view(integration: Integration) -> IntegrationView:
         headers=[HeaderView(item["name"], item["hint"]) for item in integration.header_hints],
         created_at=integration.created_at,
         require_approval=integration.require_approval,
+        oauth=integration.oauth_status,
     )
 
 
 def list_views(access: IntegrationAccess) -> list[IntegrationView]:
-    return [_view(row) for row in repository.for_user(access.session, access.user)]
+    return [view_of(row) for row in repository.for_user(access.session, access.user)]
 
 
 def _check_reserved(access: IntegrationAccess, name: str) -> None:
@@ -160,7 +163,7 @@ async def create(access: IntegrationAccess, draft: IntegrationDraft) -> Integrat
         row.id,
         len(row.header_hints),
     )
-    return _view(row)
+    return view_of(row)
 
 
 def _saved_headers(access: IntegrationAccess, row: Integration) -> dict[str, str]:
@@ -217,7 +220,7 @@ def _apply_edit(
         row.id,
         headers is not None,
     )
-    return _view(row)
+    return view_of(row)
 
 
 def delete(access: IntegrationAccess, integration_id: int) -> None:

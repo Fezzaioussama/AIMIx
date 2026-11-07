@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-import type { Integration } from '../../core/api/types';
+import type { Integration, IntegrationOAuth } from '../../core/api/types';
 import { SwitchButton } from '../../core/ui/SwitchButton';
 import { ToggleSwitch } from '../../core/ui/ToggleSwitch';
 import { SpotlightCard } from '../../core/ui/reactbits/SpotlightCard';
@@ -19,6 +19,52 @@ interface IntegrationCardProps {
   onEdit: () => void;
   onDelete: () => void;
   onTest: () => void;
+  /** Start (or restart) the OAuth sign-in to the server, and forget it. */
+  onSignIn: () => void;
+  onSignOut: () => void;
+}
+
+/** What the card says of each OAuth state, and what its button does (Strategy + Registry). */
+const OAUTH_WORDS: Record<IntegrationOAuth, { line: string; action: string }> = {
+  '': { line: 'Not signed in: only its headers are sent.', action: 'Sign in with OAuth' },
+  pending: {
+    line: 'Sign-in started: finish it on the server, or start again.',
+    action: 'Sign in again',
+  },
+  connected: {
+    line: 'Signed in with OAuth: its tools use your account there.',
+    action: 'Sign in again',
+  },
+};
+
+type OAuthBlockProps = Pick<
+  IntegrationCardProps,
+  'integration' | 'busy' | 'onSignIn' | 'onSignOut'
+>;
+
+/** The OAuth sign-in: offered, started or done, with a way to sign out. */
+function OAuthBlock({ integration, busy, onSignIn, onSignOut }: OAuthBlockProps) {
+  const words = OAUTH_WORDS[integration.oauth];
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2.5">
+      <p className="text-sm text-slate-100">{words.line}</p>
+      <div className="flex gap-2">
+        {integration.oauth === 'connected' && (
+          <button type="button" onClick={onSignOut} disabled={busy} className={actionButtonClass()}>
+            Sign out
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onSignIn}
+          disabled={busy}
+          className={actionButtonClass(integration.oauth === 'connected' ? undefined : 'accent')}
+        >
+          {words.action}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Whether a run stops for the owner's OK before this integration's tools act. */
@@ -101,6 +147,8 @@ export function IntegrationCard({
   onEdit,
   onDelete,
   onTest,
+  onSignIn,
+  onSignOut,
 }: IntegrationCardProps) {
   const [confirming, setConfirming] = useState(false);
   const deleteButton = useRef<HTMLButtonElement>(null);
@@ -116,6 +164,7 @@ export function IntegrationCard({
         onToggle={onToggle}
       />
       <ApprovalSwitch integration={integration} busy={busy} onToggleApproval={onToggleApproval} />
+      <OAuthBlock integration={integration} busy={busy} onSignIn={onSignIn} onSignOut={onSignOut} />
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"

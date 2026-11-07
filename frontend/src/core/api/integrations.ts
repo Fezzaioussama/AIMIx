@@ -5,6 +5,7 @@ import type {
   IntegrationInput,
   IntegrationPatch,
   IntegrationTestResult,
+  OAuthStart,
 } from './types';
 
 /**
@@ -31,6 +32,19 @@ export function updateIntegration(
 
 export function deleteIntegration(integrationId: number): Promise<void> {
   return request<void>(API.integration(integrationId), { method: 'DELETE' });
+}
+
+/** Start the OAuth sign-in to the server; the browser then opens the page it answers with. */
+export function startIntegrationOAuth(integrationId: number): Promise<OAuthStart> {
+  return request<OAuthStart>(API.integrationOAuth(integrationId), {
+    method: 'POST',
+    timeoutMs: CONNECTION_TEST_TIMEOUT_MS,
+  });
+}
+
+/** Sign out: the tokens are forgotten; the integration comes back with `oauth: ''`. */
+export function forgetIntegrationOAuth(integrationId: number): Promise<Integration> {
+  return request<Integration>(API.integrationOAuth(integrationId), { method: 'DELETE' });
 }
 
 /** Connects to the server and lists the tools agents would get from it. */

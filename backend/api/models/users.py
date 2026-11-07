@@ -16,6 +16,8 @@ from api.models.base import (
     INTEGRATION_URL_MAX_LENGTH,
     MODEL_ID_MAX_LENGTH,
     PROVIDER_NAME_MAX_LENGTH,
+    STATUS_MAX_LENGTH,
+    TOKEN_HASH_LENGTH,
     USERNAME_MAX_LENGTH,
     Base,
     _utcnow,
@@ -111,4 +113,13 @@ class Integration(Base):
     enabled: Mapped[bool] = mapped_column(default=True)
     #: Its tools wait for the run owner's OK before they act (approval gates).
     require_approval: Mapped[bool] = mapped_column(default=True)
+    #: The OAuth sign-in to the server (``services/integrations/oauth``): "" (none),
+    #: "pending" (the owner is signing in) or "connected". The attempt, then the tokens,
+    #: are sealed in ``oauth_encrypted``; ``oauth_state_hash`` finds the integration when
+    #: the authorization server calls back, and is cleared once it has.
+    oauth_status: Mapped[str] = mapped_column(String(STATUS_MAX_LENGTH), default="")
+    oauth_encrypted: Mapped[str] = mapped_column(Text, default="")
+    oauth_state_hash: Mapped[str | None] = mapped_column(
+        String(TOKEN_HASH_LENGTH), unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)

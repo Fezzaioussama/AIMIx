@@ -278,7 +278,7 @@ All routes under `/api`.
 | Runs | `GET /runs`, `GET\|DELETE /runs/<id>`, `POST /runs/<id>/cancel`, `POST /runs/<id>/resume`, `PUT /runs/<id>/feedback` (useful or not, and a note the planner's next team reads), `GET\|POST\|DELETE /runs/<id>/share` (a read-only link to the report; anyone with it reads `GET /shared/<token>`) |
 
 Everything except `POST /register`, `POST /login`, `POST /token/refresh`, a
-webhook call and a shared run's report
+webhook call, a shared run's report and an integration's OAuth call back
 requires `Authorization: Bearer <access>`; routes are protected by default in
 `api/routes.py`.
 

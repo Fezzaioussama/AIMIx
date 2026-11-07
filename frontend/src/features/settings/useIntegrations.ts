@@ -5,6 +5,7 @@ import * as integrationsApi from '../../core/api/integrations';
 import type { Integration, IntegrationTool } from '../../core/api/types';
 import { toCreate, toPatch } from './integrationDraft';
 import type { IntegrationDraft } from './integrationDraft';
+import { oauthReturnNotice } from './oauthReturn';
 import { errorText, useSubmission } from './useSubmission';
 import type { Submission } from './useSubmission';
 
@@ -140,6 +141,21 @@ function mutations({ submit, setIntegrations, setEditing, forget }: MutationCont
           : `${integration.name} will act without asking you first.`,
         'Could not change the integration.',
       ),
+    signIn: (integration: Integration) =>
+      submit(
+        async () => {
+          const { authorization_url } = await integrationsApi.startIntegrationOAuth(integration.id);
+          window.location.assign(authorization_url);
+        },
+        `Taking you to ${integration.name}'s sign-in…`,
+        'Could not start the sign-in.',
+      ),
+    signOut: (integration: Integration) =>
+      submit(
+        async () => replace(await integrationsApi.forgetIntegrationOAuth(integration.id)),
+        `${integration.name} is signed out: its tools no longer use your account there.`,
+        'Could not sign out.',
+      ),
     remove: (integration: Integration) =>
       submit(
         async () => {
@@ -163,6 +179,12 @@ export function useIntegrations() {
   const [integrations, setIntegrations] = useIntegrationList(submission);
   const { tests, test, forget } = useConnectionTests();
   const [editing, setEditing] = useState<Editing>(null);
+
+  // Back from an OAuth sign-in: the server's call back says how it went in the URL.
+  useEffect(() => {
+    const returned = oauthReturnNotice();
+    if (returned) setNotice(returned);
+  }, [setNotice]);
 
   const startEditing = (next: Editing) => {
     setEditing(next);

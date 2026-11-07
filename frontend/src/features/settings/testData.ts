@@ -11,6 +11,7 @@ export const INTEGRATION: Integration = {
   require_approval: true,
   headers: [{ name: 'Authorization', hint: '1234' }],
   created_at: '2026-10-24T10:00:00Z',
+  oauth: '',
 };
 
 /** Shared by the Webhooks tests: a link another app called, which started a run. */

@@ -154,3 +154,19 @@ def update(session: Session, integration: Integration, changes: IntegrationChang
 def delete(session: Session, integration: Integration) -> None:
     session.delete(integration)
     session.commit()
+
+
+def by_oauth_state(session: Session, state_hash: str) -> Integration | None:
+    """The integration whose OAuth sign-in the authorization server calls back about."""
+    return session.scalar(select(Integration).where(Integration.oauth_state_hash == state_hash))
+
+
+def set_oauth(
+    session: Session, integration: Integration, status: str, sealed: str, state_hash: str | None
+) -> None:
+    """Keep where the integration's OAuth sign-in stands: its status, what is sealed (the
+    attempt, then the tokens) and the state its call back is found by (None once it has)."""
+    integration.oauth_status = status
+    integration.oauth_encrypted = sealed
+    integration.oauth_state_hash = state_hash
+    session.commit()
