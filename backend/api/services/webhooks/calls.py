@@ -17,8 +17,8 @@ from api.services.owner_agents import OwnerAgents
 from api.services.rate_limits import RateLimitRequest, enforce
 from api.services.run_recorder import utcnow
 from api.services.runs import RunService
+from api.services.secret_links import token_hash
 from api.services.webhooks.inputs import call_start
-from api.services.webhooks.service import token_hash
 
 logger = logging.getLogger(__name__)
 

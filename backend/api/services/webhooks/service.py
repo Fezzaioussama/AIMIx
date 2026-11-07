@@ -4,9 +4,7 @@ handed only to its owner's screen; the chat's model never reads it (AGENTS.md §
 
 from __future__ import annotations
 
-import hashlib
 import logging
-import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -16,11 +14,9 @@ from api.models import User, Webhook
 from api.repositories import pipelines as pipeline_repository
 from api.repositories import webhooks as repository
 from api.security import SecretBox
+from api.services.secret_links import new_token
 
 logger = logging.getLogger(__name__)
-
-#: Random bytes in a token: 256 bits, so a link cannot be guessed.
-TOKEN_BYTES = 32
 
 
 @dataclass(frozen=True)
@@ -52,11 +48,6 @@ class WebhookLink:
     token: str
 
 
-def token_hash(token: str) -> str:
-    """How a token is looked up: its SHA-256 digest, so the table holds no link."""
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
 def view_of(webhook: Webhook) -> WebhookView:
     return WebhookView(
         id=webhook.id,
@@ -69,8 +60,8 @@ def view_of(webhook: Webhook) -> WebhookView:
 
 
 def _sealed_token(box: SecretBox) -> tuple[str, str]:
-    token = secrets.token_urlsafe(TOKEN_BYTES)
-    return token_hash(token), box.seal(token)
+    made = new_token(box)
+    return made.hash, made.sealed
 
 
 def link_for(access: WebhookAccess, pipeline_id: int) -> WebhookView:

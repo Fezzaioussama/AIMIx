@@ -1,6 +1,15 @@
+import { sharedRunPath } from '../routes';
 import { API } from './endpoints';
 import { request } from './client';
-import type { PipelineRunRequest, Run, RunBudget, RunFeedback, RunPage, RunStatus } from './types';
+import type {
+  PipelineRunRequest,
+  Run,
+  RunBudget,
+  RunFeedback,
+  RunPage,
+  RunShare,
+  RunStatus,
+} from './types';
 
 /** One page of the history, newest first, optionally of one pipeline or one status. */
 export interface RunListQuery {
@@ -50,6 +59,31 @@ export function resumeRun(runId: number, budget?: RunBudget): Promise<Run> {
 /** Say whether an ended run was useful and leave a note (an active one is a 409 `conflict`). */
 export function rateRun(runId: number, feedback: RunFeedback): Promise<Run> {
   return request<Run>(API.runFeedback(runId), { method: 'PUT', body: feedback });
+}
+
+/** The run's share link, or null while it is not shared. */
+export function getRunShare(runId: number, signal?: AbortSignal): Promise<RunShare | null> {
+  return request<RunShare | null>(API.runShare(runId), { signal });
+}
+
+/** Make the link (once the run has ended, else a 409); the same link comes back after that. */
+export function shareRun(runId: number): Promise<RunShare> {
+  return request<RunShare>(API.runShare(runId), { method: 'POST' });
+}
+
+/** Withdraw the link: it stops working at once. Nothing to withdraw is fine. */
+export function unshareRun(runId: number): Promise<void> {
+  return request<void>(API.runShare(runId), { method: 'DELETE' });
+}
+
+/** The report a link shows, read without an account; a withdrawn link is a 404. */
+export function getSharedRun(token: string, signal?: AbortSignal): Promise<Run> {
+  return request<Run>(API.sharedRun(token), { signal });
+}
+
+/** The page anyone with the link opens: this app's origin and the shared route. */
+export function sharedRunUrl(token: string): string {
+  return `${window.location.origin}${sharedRunPath(token)}`;
 }
 
 /** Only a finished run can be deleted (a running one is a 409 `conflict`). */

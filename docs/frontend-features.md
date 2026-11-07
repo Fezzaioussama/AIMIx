@@ -111,6 +111,7 @@ builder and the Missions workspace follow their pipeline's newest run with the h
 | `runButtons.ts` | `RUN_BUTTON`: the looks of the run controls (stop, resume, neutral, danger): 40px tall, 44px under a finger, a slight press (`active:scale-[0.96]`, none under reduced motion) and the focus ring |
 | `runStatus.ts` | `isActive` (queued, running, waiting), `isResumable` (mirroring the backend's status sets), `finishedStepCount` (succeeded or skipped), and `ranThisVersion(run, pipeline)` — whether a run executed exactly the pipeline on screen, conditions and review loops included |
 | `RunTriggerTag.tsx` | A small icon and "Scheduled" or "From a webhook" for a run a schedule or another app started (`TRIGGER_TAGS`, `hasTriggerTag`); nothing for any other run. Shown beside the date in `RunHistoryList` and in `RunByline` |
+| `ShareRunButton.tsx`, `useRunShare.ts` | "Share" in an ended run's action row on the Runs page: `useRunShare(runId)` reads the run's link when it opens (`GET /runs/{id}/share`), makes it (`share`) or withdraws it (`unshare`); the button shows the link (`sharedRunUrl`, this origin + `/shared/<token>`) with Copy link and Stop sharing, and "Anyone with the link can read this report, without an account." |
 | `RunByline.tsx` | The line under a run's title in `RunDetail`: "Run #12 · Started Oct 24, 9:58 PM · Scheduled · Open the pipeline" (the tag only for a run a schedule or a webhook started, the link only while the pipeline exists) |
 | `RunsPage.tsx`, `RunHistoryList.tsx`, `RunDetail.tsx`, `DeleteRunButton.tsx` | The Runs screen: the list (pipeline, status, start, duration and cost) beside the open run on wide screens, one at a time on a phone (with "← All runs"); the detail is the pipeline's name (h2, under the page's h1 "Runs") and its byline, then the run's report at level 3 with the team's diagram in its appendix (the column sets `--sticky-top` to 60px below `lg`, where the window scrolls under the top bar, and 0 from `lg`); Delete asks "Delete this run for good?" with Keep focused, and is offered only once the run has ended |
 
@@ -246,6 +247,15 @@ a reset link opens `/reset-password?token=…` (`ResetPasswordPage`: a new passw
 twice, sent with the token; done, it offers to sign in; without a token it says
 the link is incomplete and where to ask for one). The `AuthCard`'s `submitLabel`
 is optional, for a card that is only read.
+
+### `features/share`
+
+`SharedRunPage` at `/shared/:token`, public: the report a share link shows (`GET
+/shared/<token>`, already without the run's inputs, prompts, pending requests or
+feedback), under the AIMIx mark, the pipeline's name as the h1 and "Run of … · shared
+with you, read-only", rendered by `RunReport` at level 2 without controls, so nothing
+can be stopped, answered or rated. A withdrawn or unknown link shows the server's
+words in an alert.
 
 ### `features/legal`
 

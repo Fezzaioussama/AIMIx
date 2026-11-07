@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
@@ -144,6 +145,37 @@ class RunFeedbackIn(BaseModel):
         if value is not None and value not in RATINGS:
             raise ValueError(f"Rate a run {USEFUL} (useful), {NOT_USEFUL} (not useful) or null.")
         return value
+
+
+class RunShareOut(BaseModel):
+    """A run's share link, which only its owner reads: anyone who opens ``url`` reads
+    the run's report (``GET /shared/<token>``, public)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    token: str
+    url: str
+    created_at: UtcDateTime
+
+
+def shared_view(run: RunOut) -> RunOut:
+    """The run as its share link shows it (§6 least privilege): the deliverables, each
+    step's output and trace, and the team's titles and roles; never what the run was
+    given, the prompts, the requests that waited for the owner, or the owner's feedback."""
+    steps = [step.model_copy(update={"input_used": ""}) for step in run.steps]
+    team = [
+        step.model_copy(update={"prompt": "", "expected_output": ""})
+        for step in run.definition.steps
+    ]
+    definition = run.definition.model_copy(update={"inputs": [], "steps": team})
+    hidden: dict[str, Any] = {
+        "input": "",
+        "inputs": {},
+        "pending_approvals": [],
+        "rating": None,
+        "feedback": "",
+    }
+    return run.model_copy(update={**hidden, "steps": steps, "definition": definition})
 
 
 class RunPageOut(BaseModel):

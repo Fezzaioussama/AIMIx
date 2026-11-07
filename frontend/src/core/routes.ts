@@ -13,6 +13,13 @@ export function runPath(runId: number): string {
   return `/runs/${runId}`;
 }
 
+/** A run's report shared by link, read without an account (`SharedRunPage`). */
+export const SHARED_RUN_PATH = '/shared';
+
+export function sharedRunPath(token: string): string {
+  return `${SHARED_RUN_PATH}/${encodeURIComponent(token)}`;
+}
+
 /** The screen a path belongs to: its first segment, so /runs and /runs/7 are one. */
 export function sectionOf(pathname: string): string {
   return pathname.split('/')[1] ?? '';

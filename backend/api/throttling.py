@@ -42,6 +42,21 @@ def auth_rate_limit(
     )
 
 
+def shared_run_rate_limit(client: ClientAddress, session: DbSession, settings: AppSettings) -> None:
+    """One counter per client for every shared-run link it opens (the auth limits), so
+    links cannot be guessed at speed."""
+    enforce(
+        session,
+        settings.secret_key,
+        RateLimitRequest(
+            client,
+            "shared-run",
+            settings.auth_rate_limit_requests,
+            settings.auth_rate_limit_window_seconds,
+        ),
+    )
+
+
 def registration_rate_limit(
     client: ClientAddress, session: DbSession, settings: AppSettings
 ) -> Iterator[None]:

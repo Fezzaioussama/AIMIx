@@ -15,7 +15,7 @@ import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from './core/auth/RequireAuth';
 import { useAuth } from './core/auth/AuthContext';
 import { useAccountName } from './core/hooks/useAccountName';
-import { HOME_PATH, LEGAL_LINKS } from './core/routes';
+import { HOME_PATH, LEGAL_LINKS, SHARED_RUN_PATH } from './core/routes';
 import { AmbientBackdrop } from './core/ui/AmbientBackdrop';
 import { AppFrame } from './core/ui/AppFrame';
 import { PageTransition } from './core/ui/PageTransition';
@@ -69,6 +69,11 @@ const SettingsPage = lazy(() =>
 );
 const LegalPage = lazy(() =>
   import('./features/legal/LegalPage').then((module) => ({ default: module.LegalPage })),
+);
+const SharedRunPage = lazy(() =>
+  import('./features/share/SharedRunPage').then((module) => ({
+    default: module.SharedRunPage,
+  })),
 );
 
 function lazyRoute(Page: LazyExoticComponent<ComponentType>) {
@@ -139,6 +144,8 @@ export function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      {/* A run's report shared by link: public, read-only. */}
+      <Route path={`${SHARED_RUN_PATH}/:token`} element={lazyRoute(SharedRunPage)} />
       {LEGAL_LINKS.map((link) => (
         <Route
           key={link.path}

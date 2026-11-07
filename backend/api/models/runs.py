@@ -16,6 +16,7 @@ from api.models.base import (
     PIPELINE_NAME_MAX_LENGTH,
     STATUS_MAX_LENGTH,
     STEP_TITLE_MAX_LENGTH,
+    TOKEN_HASH_LENGTH,
     TOOL_NAME_MAX_LENGTH,
     TOOL_SOURCE_MAX_LENGTH,
     Base,
@@ -238,3 +239,20 @@ class RunApproval(Base):
         if deadline.tzinfo is None:
             deadline = deadline.replace(tzinfo=timezone.utc)
         return now >= deadline
+
+
+class RunShare(Base):
+    """A secret link that shows one run's report, read-only, to anyone who has it.
+
+    Like a webhook's, its token is kept twice: ``token_hash`` (SHA-256) finds the share
+    when the link is opened, ``token_encrypted`` (the server's secret box) lets the owner
+    read the link again. One per run; deleting the run deletes it.
+    """
+
+    __tablename__ = "run_shares"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), unique=True)
+    token_hash: Mapped[str] = mapped_column(String(TOKEN_HASH_LENGTH), unique=True)
+    token_encrypted: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)

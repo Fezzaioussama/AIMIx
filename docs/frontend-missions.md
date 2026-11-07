@@ -160,7 +160,9 @@ renders a run the same way in three places:
 
 Render it as `<RunReport key={run.id} run={…} control={…} level={2 | 3} extras={…} />`:
 `control` is anything with `RunControls` (`useRun`'s state, or the mission's and builder's
-`FollowedRun`), and the `key` gives each run fresh, closed panels and nothing to announce.
+`FollowedRun`), or left out for a read-only report (a shared run: no Stop, Resume, approval
+cards, feedback or files), and the `key` gives each run fresh, closed panels and nothing to
+announce.
 Every model output is rendered exactly once on the page.
 
 **Its parts, in a fixed order** (a part with nothing to say renders nothing):

@@ -1506,6 +1506,35 @@ annotated runs, newest first, each as the workflow's name, whether the run was
 useful and your note, fenced as data, with the instruction to shape the team so
 the same faults do not recur. A revision of an existing team is not.
 
+### Sharing a run: `GET|POST|DELETE /runs/<id>/share`
+
+A run's report can be shared by secret link, read-only, with anyone who has
+the link, no account needed. `POST` makes the link once the run has ended
+(`409 conflict` while it is active) and returns it; a second `POST` returns the
+same link. `GET` returns it, or `null` while the run is not shared. `DELETE`
+(`204`) withdraws it at once; nothing to withdraw is fine, and a later `POST`
+makes a new link. `404` for a run that is not yours. Deleting the run
+withdraws its link.
+
+```json
+{ "token": "k3Z…", "url": "https://aimix.example/shared/k3Z…", "created_at": "2026-10-24T10:05:00Z" }
+```
+
+`url` is the page on `APP_PUBLIC_URL`; the token is stored as its SHA-256
+digest (to look it up) and sealed with the server's secret key (so you can read
+the link again), like a webhook's.
+
+### `GET /shared/<token>` — public
+
+The report the link shows, as [`GET /runs/<id>`](#get-runsid) returns a run but
+without what the run was given (`input`, `inputs`, each step's `input_used`),
+the team's prompts and expected outputs (`definition.steps[].prompt` and
+`expected_output` are `""`, `definition.inputs` is `[]`), the requests that
+waited for the owner (`pending_approvals` is `[]`) and the owner's
+`rating`/`feedback`. `404 not_found` ("This link does not show a run: it may
+have been withdrawn.") for an unknown or withdrawn link. Rate-limited per
+client address like the auth routes, so links cannot be guessed at speed.
+
 ### `DELETE /runs/<id>`
 
 `204`. Only a finished run can be deleted: a queued, running or waiting one is a

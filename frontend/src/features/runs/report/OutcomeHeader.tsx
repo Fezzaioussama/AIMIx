@@ -62,7 +62,8 @@ function OutcomeSentence({ run, words }: { run: Run; words: OutcomeWords }) {
 interface OutcomeHeaderProps {
   run: Run;
   model: ReportModel;
-  control: RunControls;
+  /** Without it the report is read-only (a shared report). */
+  control?: RunControls;
   level: 2 | 3;
   /** The screen's own controls after the run's action, e.g. Delete. */
   actions?: ReactNode;
@@ -83,7 +84,7 @@ export function OutcomeHeader(props: OutcomeHeaderProps) {
   const { run, model, control, level } = props;
   const words = OUTCOME_COPY[model.outcome]({ run, model });
   const heading = useRef<HTMLHeadingElement>(null);
-  const focusAfter = useFocusAfterAction(heading, control.busy, run.status);
+  const focusAfter = useFocusAfterAction(heading, control?.busy ?? false, run.status);
   return (
     <header>
       {/* Named by the current words: the old ones are still swapping out (M2) when Stop or

@@ -29,7 +29,7 @@ export interface ReportExtras {
 interface ReportBodyProps {
   run: Run;
   model: ReportModel;
-  control: RunControls;
+  control?: RunControls;
   level: 2 | 3;
   diagram: boolean;
   onReadCheck: () => void;
@@ -47,12 +47,16 @@ function ReportBody({ run, model, control, level, diagram, onReadCheck }: Report
       <div className="mt-10 empty:hidden">
         <DeliverableList run={run} model={model} level={level} />
       </div>
-      <div className="mt-10 empty:hidden">
-        <FeedbackRow run={run} control={control} level={level} />
-      </div>
-      <div className="mt-14 empty:hidden">
-        <RunFiles run={run} level={level} />
-      </div>
+      {control && (
+        <div className="mt-10 empty:hidden">
+          <FeedbackRow run={run} control={control} level={level} />
+        </div>
+      )}
+      {control && (
+        <div className="mt-14 empty:hidden">
+          <RunFiles run={run} level={level} />
+        </div>
+      )}
       <div className="mt-14">
         <TeamWork
           run={run}
@@ -70,7 +74,8 @@ function ReportBody({ run, model, control, level, diagram, onReadCheck }: Report
 
 interface RunReportProps {
   run: Run;
-  control: RunControls;
+  /** Without controls the report is read-only (a shared report): nothing to act on or answer. */
+  control?: RunControls;
   /** The level of the report's headings: 3 under a pane or page h2, 2 under the h1. */
   level: 2 | 3;
   extras?: ReportExtras;
@@ -107,13 +112,15 @@ export function RunReport({ run, control, level, extras = {} }: RunReportProps) 
         checkOpen={checkOpen}
         onToggleCheck={() => setCheckOpen((open) => !open)}
       />
-      <PendingApprovals
-        run={run}
-        onApprove={(approvalId) => void control.approve(approvalId)}
-        onDecline={(approvalId) => void control.decline(approvalId)}
-        onAnswer={(approvalId, text) => void control.answer(approvalId, text)}
-        busy={control.busy}
-      />
+      {control && (
+        <PendingApprovals
+          run={run}
+          onApprove={(approvalId) => void control.approve(approvalId)}
+          onDecline={(approvalId) => void control.decline(approvalId)}
+          onAnswer={(approvalId, text) => void control.answer(approvalId, text)}
+          busy={control.busy}
+        />
+      )}
       <ReportBody
         run={run}
         model={model}

@@ -25,6 +25,7 @@ from api.endpoints import (
     memory,
     models,
     pipelines,
+    run_shares,
     runs,
     schedules,
     templates,
@@ -35,7 +36,12 @@ from api.endpoints import (
 
 API_PREFIX = "/api"
 
-PUBLIC_ROUTERS = (auth.public_router, health.router, webhooks.public_router)
+PUBLIC_ROUTERS = (
+    auth.public_router,
+    health.router,
+    webhooks.public_router,
+    run_shares.public_router,
+)
 PROTECTED_ROUTERS = (
     auth.router,
     account.router,
@@ -51,6 +57,7 @@ PROTECTED_ROUTERS = (
     integrations.router,
     files.router,
     runs.router,
+    run_shares.router,
     usage.router,
     approvals.router,
     schedules.router,

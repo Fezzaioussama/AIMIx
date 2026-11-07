@@ -68,7 +68,9 @@ function serviceDetail(run: Run, outcome: OutcomeKind): string {
   return outcome === 'failed' ? (run.error?.detail.trim() ?? '') : '';
 }
 
-interface ActionRowProps extends StateActionProps {
+interface ActionRowProps extends Omit<StateActionProps, 'control'> {
+  /** Without it the report is read-only (a shared report): no Stop or Resume, no error. */
+  control?: RunControls;
   outcome: OutcomeKind;
   /** More controls after the run's own action, e.g. Delete. */
   actions?: ReactNode;
@@ -81,13 +83,14 @@ interface ActionRowProps extends StateActionProps {
 export function ActionRow({ run, control, onAct, outcome, actions }: ActionRowProps) {
   const [saidOpen, setSaidOpen] = useState(false);
   const detail = serviceDetail(run, outcome);
-  const hasAction = isActive(run.status) || isResumable(run.status) || Boolean(actions);
-  if (!hasAction && detail === '' && control.error === '') return null;
+  const error = control?.error ?? '';
+  const own = control !== undefined && (isActive(run.status) || isResumable(run.status));
+  if (!own && !actions && detail === '' && error === '') return null;
   const saidId = reportIds(run.id).serviceSaid;
   return (
     <div className="mt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <StateAction run={run} control={control} onAct={onAct} />
+        {control && <StateAction run={run} control={control} onAct={onAct} />}
         {actions}
         {detail !== '' && (
           <DisclosureButton
@@ -99,9 +102,9 @@ export function ActionRow({ run, control, onAct, outcome, actions }: ActionRowPr
         )}
       </div>
       {detail !== '' && <ServiceSaid id={saidId} open={saidOpen} detail={detail} />}
-      {control.error && (
+      {error && (
         <p role="alert" className="mt-3 text-sm text-amber-300">
-          {control.error}
+          {error}
         </p>
       )}
     </div>

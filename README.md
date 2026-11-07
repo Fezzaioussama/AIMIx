@@ -275,9 +275,10 @@ All routes under `/api`.
 | Agent tools | `GET /agent-tools` — available pipeline tools and their sources |
 | Templates | `GET /templates`, `POST /templates/<slug>/use` — the mission gallery, and a template turned into your own pipeline |
 | Pipelines | `GET\|POST /pipelines/`, `GET\|PUT\|PATCH\|DELETE /pipelines/<id>/`, `POST /pipelines/<id>/runs` (background), `POST /pipelines/<id>/run` (waits), `POST /pipelines/generate` |
-| Runs | `GET /runs`, `GET\|DELETE /runs/<id>`, `POST /runs/<id>/cancel`, `POST /runs/<id>/resume`, `PUT /runs/<id>/feedback` (useful or not, and a note the planner's next team reads) |
+| Runs | `GET /runs`, `GET\|DELETE /runs/<id>`, `POST /runs/<id>/cancel`, `POST /runs/<id>/resume`, `PUT /runs/<id>/feedback` (useful or not, and a note the planner's next team reads), `GET\|POST\|DELETE /runs/<id>/share` (a read-only link to the report; anyone with it reads `GET /shared/<token>`) |
 
-Everything except `POST /register`, `POST /login` and `POST /token/refresh`
+Everything except `POST /register`, `POST /login`, `POST /token/refresh`, a
+webhook call and a shared run's report
 requires `Authorization: Bearer <access>`; routes are protected by default in
 `api/routes.py`.
 

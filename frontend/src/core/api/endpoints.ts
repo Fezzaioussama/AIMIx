@@ -31,6 +31,8 @@ export const API = {
   cancelRun: (runId: number) => `/api/runs/${runId}/cancel`,
   resumeRun: (runId: number) => `/api/runs/${runId}/resume`,
   runFeedback: (runId: number) => `/api/runs/${runId}/feedback`,
+  runShare: (runId: number) => `/api/runs/${runId}/share`,
+  sharedRun: (token: string) => `/api/shared/${encodeURIComponent(token)}`,
   usage: '/api/usage',
   approveToolCall: (runId: number, approvalId: number) =>
     `/api/runs/${runId}/approvals/${approvalId}/approve`,

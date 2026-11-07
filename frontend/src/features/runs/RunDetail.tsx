@@ -3,6 +3,7 @@ import { DeleteRunButton } from './DeleteRunButton';
 import { RunByline } from './RunByline';
 import { RunReport } from './report/RunReport';
 import { isActive } from './runStatus';
+import { ShareRunButton } from './ShareRunButton';
 import type { LiveRunState } from './useRun';
 
 interface RunDetailProps {
@@ -42,7 +43,10 @@ export function RunDetail({ live, onDelete, deleting }: RunDetailProps) {
         extras={{
           diagram: true,
           actions: isActive(run.status) ? undefined : (
-            <DeleteRunButton onDelete={onDelete} busy={deleting} />
+            <>
+              <ShareRunButton runId={run.id} />
+              <DeleteRunButton onDelete={onDelete} busy={deleting} />
+            </>
           ),
         }}
       />

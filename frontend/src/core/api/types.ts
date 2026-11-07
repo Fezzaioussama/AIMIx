@@ -229,6 +229,13 @@ export interface RunFeedback {
   feedback: string;
 }
 
+/** A run's share link, which only its owner reads: anyone who opens `url` reads the report. */
+export interface RunShare {
+  token: string;
+  url: string;
+  created_at: string;
+}
+
 export interface RunPage {
   items: RunSummary[];
   /** How many runs match in all. */

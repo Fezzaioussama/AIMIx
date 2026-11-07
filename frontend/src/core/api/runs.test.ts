@@ -1,7 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { API } from './endpoints';
-import { cancelRun, deleteRun, getRun, listRuns, rateRun, resumeRun, startRun } from './runs';
+import {
+  cancelRun,
+  deleteRun,
+  getRun,
+  getRunShare,
+  getSharedRun,
+  listRuns,
+  rateRun,
+  resumeRun,
+  shareRun,
+  sharedRunUrl,
+  startRun,
+  unshareRun,
+} from './runs';
 
 function ok(body: unknown = {}): Response {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -48,6 +61,27 @@ describe('runs API', () => {
     const [path, init] = fetchMock.mock.calls[0];
     expect([path, init?.method]).toEqual([API.runFeedback(7), 'PUT']);
     expect(init?.body).toBe('{"rating":1,"feedback":"Shorter next time."}');
+  });
+
+  it('reads, makes and withdraws a run’s share link, and reads a shared run', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (_path, init) =>
+        init?.method === 'DELETE' ? new Response(null, { status: 204 }) : ok({ token: 'tok' }),
+      );
+
+    await getRunShare(7);
+    await shareRun(7);
+    await unshareRun(7);
+    await getSharedRun('tok/1');
+
+    expect(fetchMock.mock.calls.map(([path, init]) => [path, init?.method ?? 'GET'])).toEqual([
+      [API.runShare(7), 'GET'],
+      [API.runShare(7), 'POST'],
+      [API.runShare(7), 'DELETE'],
+      ['/api/shared/tok%2F1', 'GET'],
+    ]);
+    expect(sharedRunUrl('tok')).toBe(`${window.location.origin}/shared/tok`);
   });
 
   it('pages the history and filters it by pipeline', async () => {

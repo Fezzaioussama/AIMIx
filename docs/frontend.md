@@ -45,6 +45,7 @@ frontend/src/
 | `/register` | `RegisterPage` (creates the account, signs the person in and goes to `/mission`; if only that sign-in fails it goes to `/login`) | public |
 | `/forgot-password` | `ForgotPasswordPage` (asks for the account's address; the server emails a reset link) | public |
 | `/reset-password` | `ResetPasswordPage` (`?token=…` from the link: a new password, once) | public |
+| `/shared/:token` | `SharedRunPage` (lazy-loaded; one run's report by its share link, read-only: `RunReport` without controls) | public |
 | `/legal`, `/privacy`, `/terms` | `LegalPage` (lazy-loaded; one route per entry of `LEGAL_LINKS` in `core/routes.ts`) | public |
 | `/mission`, `/mission/:pipelineId` | `MissionPage` (one route, `/mission/:pipelineId?`) | guarded |
 | `/chat` | `ChatPage` | guarded |
@@ -413,7 +414,9 @@ For approval gates: `core/api/approvals.test.ts`, `approvalFormat.test.ts`,
 read-only states, the plain ask, the jump target), `QuestionCard.test.tsx` (the question,
 its suggested answers, an answer of their own, Skip, read-only), `PendingApprovals.test.tsx`,
 `useRunApprovals.test.tsx` (answering through `useRun`), `report/FeedbackRow.test.tsx`
-(nothing while the run works, the thumbs, the note), `RunsPageWaiting.test.tsx`
+(nothing while the run works, the thumbs, the note), `ShareRunButton.test.tsx` and
+`features/share/SharedRunPage.test.tsx` (the link made, copied and withdrawn; the
+read-only page and a withdrawn link), `RunsPageWaiting.test.tsx`
 (a waiting run in the history and its detail, approve, decline and a
 refused answer), `useWaitingRuns.test.tsx`, `core/ui/SidebarNav.test.tsx` and
 `App.test.tsx` (the badge), and `features/settings/IntegrationApproval.test.tsx` (the switch).
